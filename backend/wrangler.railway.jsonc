@@ -2,13 +2,27 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "meras-alelm-railway",
   "main": "dist/server/index.js",
+
   "compatibility_date": "2026-05-15",
   "compatibility_flags": ["nodejs_compat"],
+
   "no_bundle": true,
+  "find_additional_modules": true,
+  "base_dir": "dist/server",
+  "preserve_file_names": true,
+
+  "rules": [
+    {
+      "type": "ESModule",
+      "globs": ["**/*.js", "**/*.mjs"]
+    }
+  ],
+
   "assets": {
     "directory": "dist/client",
     "binding": "ASSETS"
   },
+
   "d1_databases": [
     {
       "binding": "DB",
@@ -17,6 +31,7 @@
       "migrations_dir": "drizzle"
     }
   ],
+
   "r2_buckets": [
     {
       "binding": "BUCKET",
