@@ -1,0 +1,856 @@
+{
+  "generatedAt": "2026-08-22T07:57:28.232Z",
+  "count": 85,
+  "records": [
+    {
+      "slug": "umm-al-qura",
+      "name": "جامعة أم القرى",
+      "domain": "uqu.edu.sa",
+      "sourceUrl": "https://uqu.edu.sa/assets/images/logo-white.svg",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://uqu.edu.sa/assets/images/logo-white.svg"
+    },
+    {
+      "slug": "islamic-university",
+      "name": "الجامعة الإسلامية",
+      "domain": "iu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30032.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "imamu",
+      "name": "جامعة الإمام محمد بن سعود الإسلامية",
+      "domain": "imamu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/1.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "ksu",
+      "name": "جامعة الملك سعود",
+      "domain": "ksu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/2.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "kau",
+      "name": "جامعة الملك عبدالعزيز",
+      "domain": "kau.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30016.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "kfupm",
+      "name": "جامعة الملك فهد للبترول والمعادن",
+      "domain": "kfupm.edu.sa",
+      "sourceUrl": "https://mediacenter.kfupm.edu.sa/documents/23/KFUPM-Seal.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://mediacenter.kfupm.edu.sa/documents/23/KFUPM-Seal.png"
+    },
+    {
+      "slug": "kfu",
+      "name": "جامعة الملك فيصل",
+      "domain": "kfu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30013.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "kku",
+      "name": "جامعة الملك خالد",
+      "domain": "kku.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30014.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "qu",
+      "name": "جامعة القصيم",
+      "domain": "qu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30029.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "taibahu",
+      "name": "جامعة طيبة",
+      "domain": "taibahu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30020.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "tu",
+      "name": "جامعة الطائف",
+      "domain": "tu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30027.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "uoh",
+      "name": "جامعة حائل",
+      "domain": "uoh.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30017.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "jazanu",
+      "name": "جامعة جازان",
+      "domain": "jazanu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30012.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "ju",
+      "name": "جامعة الجوف",
+      "domain": "ju.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30026.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "bu",
+      "name": "جامعة الباحة",
+      "domain": "bu.edu.sa",
+      "sourceUrl": "https://spaceappssaudi.com/files/loges_2024_Baha_%281%29.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://spaceappssaudi.com/files/loges_2024_Baha_%281%29.png"
+    },
+    {
+      "slug": "ut",
+      "name": "جامعة تبوك",
+      "domain": "ut.edu.sa",
+      "sourceUrl": "https://drive.uqu.edu.sa/_/icrs/images/customers/1.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://t2.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=http://ut.edu.sa&size=256"
+    },
+    {
+      "slug": "nu",
+      "name": "جامعة نجران",
+      "domain": "nu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30021.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "nbu",
+      "name": "جامعة الحدود الشمالية",
+      "domain": "nbu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30028.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "pnu",
+      "name": "جامعة الأميرة نورة بنت عبدالرحمن",
+      "domain": "pnu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/3.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "iau",
+      "name": "جامعة الإمام عبدالرحمن بن فيصل",
+      "domain": "iau.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30010.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "psau",
+      "name": "جامعة الأمير سطام بن عبدالعزيز",
+      "domain": "psau.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30024.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "su",
+      "name": "جامعة شقراء",
+      "domain": "su.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30018.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "mu",
+      "name": "جامعة المجمعة",
+      "domain": "mu.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30030.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "seu",
+      "name": "الجامعة السعودية الإلكترونية",
+      "domain": "seu.edu.sa",
+      "sourceUrl": "https://www.google.com/s2/favicons?domain=seu.edu.sa&sz=256",
+      "sourceKind": "domain",
+      "source": "الموقع الرسمي للمؤسسة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "uj",
+      "name": "جامعة جدة",
+      "domain": "uj.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30015.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "ub",
+      "name": "جامعة بيشة",
+      "domain": "ub.edu.sa",
+      "sourceUrl": "https://alrayah.sa/mobile/uploadimages/2021/07/8DB6CE1A-2D6B-49AD-B99B-57EA1692B77C.jpeg",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://alrayah.sa/mobile/uploadimages/2021/07/8DB6CE1A-2D6B-49AD-B99B-57EA1692B77C.jpeg"
+    },
+    {
+      "slug": "uhb",
+      "name": "جامعة حفر الباطن",
+      "domain": "uhb.edu.sa",
+      "sourceUrl": "https://object.moe.gov.sa/studyinsaudi/universities/30023.jpg",
+      "sourceKind": "moe",
+      "source": "الموقع الرسمي للجامعة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "ksau-hs",
+      "name": "جامعة الملك سعود بن عبدالعزيز للعلوم الصحية",
+      "domain": "ksau-hs.edu.sa",
+      "sourceUrl": "https://www.google.com/s2/favicons?domain=ksau-hs.edu.sa&sz=256",
+      "sourceKind": "domain",
+      "source": "الموقع الرسمي للمؤسسة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "kaust",
+      "name": "جامعة الملك عبدالله للعلوم والتقنية",
+      "domain": "kaust.edu.sa",
+      "sourceUrl": "https://www.google.com/s2/favicons?domain=kaust.edu.sa&sz=256",
+      "sourceKind": "domain",
+      "source": "الموقع الرسمي للمؤسسة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "psu",
+      "name": "جامعة الأمير سلطان",
+      "domain": "psu.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo003.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "alfaisal",
+      "name": "جامعة الفيصل",
+      "domain": "alfaisal.edu",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo007.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "alyamamah",
+      "name": "جامعة اليمامة",
+      "domain": "yu.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo008.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "aou",
+      "name": "الجامعة العربية المفتوحة",
+      "domain": "arabou.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PHOTO-2022-11-17-11-53-57.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "effat",
+      "name": "جامعة عفت",
+      "domain": "effatuniversity.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/EfatUnversitylogo.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "dah",
+      "name": "جامعة دار الحكمة",
+      "domain": "dah.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo011.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "ubt",
+      "name": "جامعة الأعمال والتكنولوجيا",
+      "domain": "ubt.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo002.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "pmu",
+      "name": "جامعة الأمير محمد بن فهد",
+      "domain": "pmu.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo005.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "fbsu",
+      "name": "جامعة فهد بن سلطان",
+      "domain": "fbsu.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo004.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "sr.edu",
+      "name": "جامعة سليمان الراجحي",
+      "domain": "sr.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/ALrajhe.jpg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "almaarefa",
+      "name": "جامعة المعرفة",
+      "domain": "um.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo013.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "riyadh-elm",
+      "name": "جامعة رياض العلم",
+      "domain": "riyadh.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/شعار-جامعة-رياض-العلم-1.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "dar-aluloom",
+      "name": "جامعة دار العلوم",
+      "domain": "dau.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo009.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "mustaqbal",
+      "name": "جامعة المستقبل",
+      "domain": "uom.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo014.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "upm",
+      "name": "جامعة الأمير مقرن بن عبدالعزيز",
+      "domain": "upm.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/PULogo006.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "aloola",
+      "name": "كليات الأولى الأهلية بالأحساء",
+      "domain": "aloola.edu.sa",
+      "sourceUrl": "https://www.google.com/s2/favicons?domain=aloola.edu.sa&sz=256",
+      "sourceKind": "domain",
+      "source": "الموقع الرسمي للمؤسسة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "jadara",
+      "name": "كلية جدارة للعلوم الإدارية والإنسانية",
+      "domain": "jadara.edu.sa",
+      "sourceUrl": "https://www.google.com/s2/favicons?domain=jadara.edu.sa&sz=256",
+      "sourceKind": "domain",
+      "source": "الموقع الرسمي للمؤسسة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "madinah-law",
+      "name": "كلية الحقوق والعلوم الإسلامية بالمدينة المنورة",
+      "domain": "clis.edu.sa",
+      "sourceUrl": "https://clis.edu.sa/images/logo-icon.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://clis.edu.sa/images/logo-icon.png"
+    },
+    {
+      "slug": "manar-aljanoub",
+      "name": "كلية منار الجنوب للعلوم والتقنية",
+      "domain": "mjc.edu.sa",
+      "sourceUrl": "https://www.google.com/s2/favicons?domain=mjc.edu.sa&sz=256",
+      "sourceKind": "domain",
+      "source": "الموقع الرسمي للمؤسسة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "makkah-national",
+      "name": "كلية مكة الأهلية",
+      "domain": "mnc.edu.sa",
+      "sourceUrl": "https://www.google.com/s2/favicons?domain=mnc.edu.sa&sz=256",
+      "sourceKind": "domain",
+      "source": "الموقع الرسمي للمؤسسة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "alnahda",
+      "name": "كلية النهضة للصيدلة والعلوم الطبية",
+      "domain": "alnahda.edu.sa",
+      "sourceUrl": "https://www.google.com/s2/favicons?domain=alnahda.edu.sa&sz=256",
+      "sourceKind": "domain",
+      "source": "الموقع الرسمي للمؤسسة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "kspp",
+      "name": "كلية كابسارك للسياسات العامة",
+      "domain": "kspp.edu.sa",
+      "sourceUrl": "https://www.google.com/s2/favicons?domain=kspp.edu.sa&sz=256",
+      "sourceKind": "domain",
+      "source": "الموقع الرسمي للمؤسسة",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "mbsc",
+      "name": "كلية الأمير محمد بن سلمان للإدارة وريادة الأعمال",
+      "domain": "mbsc.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2024/04/PULogo002.png",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "bmc",
+      "name": "كلية البترجي الطبية",
+      "domain": "bmc.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo008.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "ibnsina",
+      "name": "كلية ابن سينا الأهلية للعلوم الطبية",
+      "domain": "ibnsina.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo006.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "fakeeh",
+      "name": "كلية فقيه للعلوم الطبية",
+      "domain": "fakeehcollege.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo0019.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "machs",
+      "name": "كلية محمد المانع للعلوم الطبية",
+      "domain": "machs.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo0020-1.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "vision",
+      "name": "كليات الرؤية",
+      "domain": "vision.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/Vision.jpg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "alghad",
+      "name": "كليات الغد الدولية للعلوم الطبية التطبيقية",
+      "domain": "gc.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/Untitled-1.jpg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "inaya",
+      "name": "كليات العناية الطبية",
+      "domain": "inaya.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo0012.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "aic",
+      "name": "كليات الشرق العربي",
+      "domain": "arabeast.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo0011.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "gulf",
+      "name": "كليات الخليج",
+      "domain": "gulf.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo002.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "jic",
+      "name": "كلية جدة العالمية",
+      "domain": "jicollege.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo0017.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "jubail-industrial",
+      "name": "كلية الجبيل الصناعية",
+      "domain": "rcjy.edu.sa",
+      "sourceUrl": "https://vectorseek.com/wp-content/uploads/2023/09/Royal-Commission-For-Jubail-And-Yanbu-Logo-Vector.svg-.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://vectorseek.com/wp-content/uploads/2023/09/Royal-Commission-For-Jubail-And-Yanbu-Logo-Vector.svg-.png"
+    },
+    {
+      "slug": "yanbu-industrial",
+      "name": "كلية ينبع الصناعية",
+      "domain": "rcjy.edu.sa",
+      "sourceUrl": "https://vectorseek.com/wp-content/uploads/2023/09/Royal-Commission-For-Jubail-And-Yanbu-Logo-Vector.svg-.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://vectorseek.com/wp-content/uploads/2023/09/Royal-Commission-For-Jubail-And-Yanbu-Logo-Vector.svg-.png"
+    },
+    {
+      "slug": "alasala",
+      "name": "كليات الأصالة الأهلية",
+      "domain": "alasala.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo001.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "unaizah-colleges",
+      "name": "كليات عنيزة الأهلية",
+      "domain": "oc.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo004.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "ibn-rushd",
+      "name": "كلية ابن رشد للعلوم الإدارية",
+      "domain": "ibnrushd.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo005.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "baha-private",
+      "name": "كلية الباحة الأهلية للعلوم",
+      "domain": "bpcs.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo007.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "alriyada",
+      "name": "كلية الريادة للعلوم الصحية",
+      "domain": "alriyada.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo009.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "alrayan",
+      "name": "كليات الريان الأهلية",
+      "domain": "amc.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo0010.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "buraidah-colleges",
+      "name": "كليات بريدة الأهلية",
+      "domain": "bpc.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo0016.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "saad-nursing",
+      "name": "كلية سعد للتمريض والعلوم الصحية",
+      "domain": "saadcollege.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo0018.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "psc-management",
+      "name": "كلية الأمير سلطان للإدارة",
+      "domain": "pscj.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/CLogo0021.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "north-nursing",
+      "name": "كلية الشمال للتمريض",
+      "domain": "nec.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/ncn.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "vision-jeddah",
+      "name": "كلية الرؤية لطب الأسنان والتمريض بجدة",
+      "domain": "vision.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/Vision-1.jpg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "fayha",
+      "name": "كلية الفيحاء الأهلية",
+      "domain": "fayha.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/alfaiha.jpg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "almoosa",
+      "name": "كلية الموسى للعلوم الصحية",
+      "domain": "almoosacollege.edu.sa",
+      "sourceUrl": "https://www.cua.gov.sa/wp-content/uploads/2023/01/Almosa.jpeg",
+      "sourceKind": "cua",
+      "source": "مجلس شؤون الجامعات",
+      "status": "ready",
+      "used": "bundled-local"
+    },
+    {
+      "slug": "tvtc-riyadh",
+      "name": "الكلية التقنية بالرياض",
+      "domain": "tvtc.gov.sa",
+      "sourceUrl": "https://rodna.edu.sa/images/tvtc_vertical.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://rodna.edu.sa/images/tvtc_vertical.png"
+    },
+    {
+      "slug": "tvtc-jeddah",
+      "name": "الكلية التقنية بجدة",
+      "domain": "tvtc.gov.sa",
+      "sourceUrl": "https://rodna.edu.sa/images/tvtc_vertical.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://rodna.edu.sa/images/tvtc_vertical.png"
+    },
+    {
+      "slug": "tvtc-madinah",
+      "name": "الكلية التقنية بالمدينة المنورة",
+      "domain": "tvtc.gov.sa",
+      "sourceUrl": "https://rodna.edu.sa/images/tvtc_vertical.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://rodna.edu.sa/images/tvtc_vertical.png"
+    },
+    {
+      "slug": "tvtc-dammam",
+      "name": "الكلية التقنية بالدمام",
+      "domain": "tvtc.gov.sa",
+      "sourceUrl": "https://rodna.edu.sa/images/tvtc_vertical.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://rodna.edu.sa/images/tvtc_vertical.png"
+    },
+    {
+      "slug": "tvtc-abha",
+      "name": "الكلية التقنية بأبها",
+      "domain": "tvtc.gov.sa",
+      "sourceUrl": "https://rodna.edu.sa/images/tvtc_vertical.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://rodna.edu.sa/images/tvtc_vertical.png"
+    },
+    {
+      "slug": "tvtc-qassim",
+      "name": "الكلية التقنية ببريدة",
+      "domain": "tvtc.gov.sa",
+      "sourceUrl": "https://rodna.edu.sa/images/tvtc_vertical.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://rodna.edu.sa/images/tvtc_vertical.png"
+    },
+    {
+      "slug": "tvtc-taif",
+      "name": "الكلية التقنية بالطائف",
+      "domain": "tvtc.gov.sa",
+      "sourceUrl": "https://rodna.edu.sa/images/tvtc_vertical.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://rodna.edu.sa/images/tvtc_vertical.png"
+    },
+    {
+      "slug": "tvtc-tabuk",
+      "name": "الكلية التقنية بتبوك",
+      "domain": "tvtc.gov.sa",
+      "sourceUrl": "https://rodna.edu.sa/images/tvtc_vertical.png",
+      "sourceKind": "override",
+      "source": "الموقع الرسمي",
+      "status": "ready",
+      "used": "https://rodna.edu.sa/images/tvtc_vertical.png"
+    }
+  ]
+}

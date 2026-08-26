@@ -1,0 +1,31 @@
+import { answerAssistant } from "@/lib/assistant-knowledge";
+import { answerWithGemini } from "@/lib/assistant-ai";
+import { buildAssistantContext } from "@/lib/assistant-context";
+import { cleanText, jsonError } from "@/lib/api";
+import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { getPublicSettings } from "@/lib/platform-settings";
+
+export async function POST(request: Request) {
+  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!await checkRateLimit("assistant", clientIp(request), 50, 10 * 60)) return jsonError("أرسلت أسئلة كثيرة بسرعة. انتظر قليلًا ثم حاول مجددًا.", 429);
+  let payload: Record<string, unknown>;
+  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("صيغة السؤال غير صالحة"); }
+  const question = cleanText(payload.question, 500).replace(/\s+/g, " ");
+  if (question.length < 2) return jsonError("اكتب سؤالك بكلمتين على الأقل");
+  const history = Array.isArray(payload.history) ? payload.history.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const row = item as Record<string, unknown>;
+    const role = row.role === "assistant" ? "assistant" as const : row.role === "user" ? "user" as const : null;
+    const text = cleanText(row.text, 500).replace(/\s+/g, " ");
+    return role && text ? [{ role, text }] : [];
+  }).slice(-8) : [];
+  const [user, settings] = await Promise.all([getSessionUser(request), getPublicSettings()]);
+  let reply = null;
+  if (process.env.GEMINI_API_KEY?.trim() && (process.env.ASSISTANT_PROVIDER || "gemini") === "gemini") {
+    try {
+      const context = await buildAssistantContext(user, settings);
+      reply = await answerWithGemini({ question, history, user, settings, context });
+    } catch { /* The deterministic guide below keeps the assistant available. */ }
+  }
+  return Response.json(reply || answerAssistant(question, user, settings), { headers: { "cache-control": "no-store" } });
+}

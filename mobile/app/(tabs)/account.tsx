@@ -1,0 +1,28 @@
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AppHeader } from "@/src/components/AppHeader";
+import { AppButton, Card, EmptyState, Screen, SectionTitle } from "@/src/components/ui";
+import { useAuth } from "@/src/providers/AuthProvider";
+import { useTheme } from "@/src/providers/ThemeProvider";
+
+export default function Account() {
+  const { user, logout } = useAuth(); const { colors, mode, setMode } = useTheme();
+  if (!user) return <Screen><AppHeader title="حسابي" subtitle="الدخول إلى مراس" /><EmptyState icon="person-circle-outline" title="أهلًا بك في مراس" text="أنشئ حسابًا لإظهار مواد تخصصك وحفظ التقدم والطلبات والإشعارات." action={<View style={{ width: "100%", gap: 9 }}><AppButton title="تسجيل الدخول" onPress={() => router.push("/(auth)/login")} /><AppButton title="إنشاء حساب" variant="soft" onPress={() => router.push("/(auth)/register")} /></View>} /></Screen>;
+  const items: { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; text: string; route: string }[] = [
+    { icon: "person-outline" as const, title: "بيانات الحساب", text: "الاسم والجوال والجامعة والتخصص", route: "/profile" },
+    { icon: "notifications-outline" as const, title: "الإشعارات", text: "تحديثات المواد والطلبات", route: "/notifications" },
+    { icon: "heart-outline" as const, title: "المفضلة", text: "المواد التي حفظتها للرجوع", route: "/favorites" },
+    { icon: "receipt-outline" as const, title: "الطلبات والفواتير", text: "حالة الاشتراكات والفواتير", route: "/orders" },
+    { icon: "cloud-upload-outline" as const, title: "طلبات المواد", text: "طلب جديد ورفع السلايدات", route: "/requests" },
+    { icon: "headset-outline" as const, title: "الدعم الفني", text: "التذاكر ووسائل التواصل", route: "/support" },
+    { icon: "shield-checkmark-outline" as const, title: "الأمان والخصوصية", text: "الجلسات وحذف الحساب", route: "/security" },
+  ];
+  if (user.role === "admin") items.unshift({ icon: "grid-outline", title: "لوحة الإدارة", text: "المستخدمون والطلبات والدعم", route: "/admin" });
+  if (user.role === "supervisor" || user.role === "admin") items.unshift({ icon: "construct-outline", title: "مساحة المشرف", text: "الطلبات والمحتوى المسند", route: "/supervisor" });
+  return <Screen><AppHeader title="حسابي" subtitle={user.role === "admin" ? "مدير المنصة" : user.role === "supervisor" ? "مشرف محتوى" : "طالب مراس"} /><Card style={styles.profile}><View style={[styles.avatar, { backgroundColor: colors.primary }]}><Text>{user.fullName[0]}</Text></View><View style={styles.profileCopy}><Text style={[styles.name, { color: colors.text }]}>{user.fullName}</Text><Text style={[styles.email, { color: colors.textSoft }]}>{user.email}</Text><Text style={[styles.study, { color: colors.primary }]}>{user.specialty || "أكمل تخصصك"}</Text></View></Card><SectionTitle title="المظهر" subtitle="يتبع النظام تلقائيًا أو اختر وضعًا ثابتًا" /><View style={styles.themeRow}>{[{ key: "system" as const, label: "تلقائي", icon: "phone-portrait-outline" as const }, { key: "light" as const, label: "فاتح", icon: "sunny-outline" as const }, { key: "dark" as const, label: "ليلي", icon: "moon-outline" as const }].map((item) => <Pressable key={item.key} onPress={() => setMode(item.key)} style={[styles.theme, { backgroundColor: mode === item.key ? colors.primary : colors.surface, borderColor: mode === item.key ? colors.primary : colors.border }]}><Ionicons name={item.icon} size={20} color={mode === item.key ? "#FFF" : colors.text} /><Text style={{ color: mode === item.key ? "#FFF" : colors.text, fontSize: 10, fontWeight: "800" }}>{item.label}</Text></Pressable>)}</View><SectionTitle title="الإعدادات والخدمات" /><View style={styles.menu}>{items.map((item) => <Pressable key={item.title} onPress={() => router.push(item.route as never)} style={[styles.row, { backgroundColor: colors.surface, borderColor: colors.border }]}><View style={[styles.rowIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name={item.icon} size={21} color={colors.primary} /></View><View style={styles.rowCopy}><Text style={[styles.rowTitle, { color: colors.text }]}>{item.title}</Text><Text style={[styles.rowText, { color: colors.textSoft }]}>{item.text}</Text></View><Ionicons name="chevron-back" size={18} color={colors.textSoft} /></Pressable>)}</View><AppButton title="تسجيل الخروج" variant="ghost" icon="log-out-outline" onPress={async () => { await logout(); router.replace("/(auth)/welcome"); }} /></Screen>;
+}
+
+const styles = StyleSheet.create({ profile: { flexDirection: "row-reverse", alignItems: "center", gap: 14 }, avatar: { width: 66, height: 66, borderRadius: 23, alignItems: "center", justifyContent: "center" }, profileCopy: { flex: 1, alignItems: "flex-end" }, name: { fontSize: 18, fontWeight: "900", textAlign: "right" }, email: { fontSize: 10, marginTop: 3 }, study: { fontSize: 10, fontWeight: "800", marginTop: 7 }, themeRow: { flexDirection: "row-reverse", gap: 9 }, theme: { flex: 1, minHeight: 70, borderWidth: 1, borderRadius: 17, alignItems: "center", justifyContent: "center", gap: 7 }, menu: { gap: 9, marginBottom: 22 }, row: { minHeight: 76, borderWidth: 1, borderRadius: 18, padding: 12, flexDirection: "row-reverse", alignItems: "center", gap: 12 }, rowIcon: { width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center" }, rowCopy: { flex: 1, alignItems: "flex-end" }, rowTitle: { fontSize: 13, fontWeight: "900" }, rowText: { fontSize: 9, marginTop: 4 },
+});

@@ -1,0 +1,24 @@
+import { Ionicons } from "@expo/vector-icons";
+import { useQuery } from "@tanstack/react-query";
+import { router, useLocalSearchParams } from "expo-router";
+import React from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
+import { AppHeader } from "@/src/components/AppHeader";
+import { Card, EmptyState, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
+import { api } from "@/src/lib/api";
+import { useAuth } from "@/src/providers/AuthProvider";
+import { useTheme } from "@/src/providers/ThemeProvider";
+import type { Catalog, Dashboard } from "@/src/types";
+
+export default function LearningRoom() {
+  const { slug } = useLocalSearchParams<{ slug: string }>(); const { user } = useAuth(); const { colors } = useTheme();
+  const catalog = useQuery({ queryKey: ["catalog"], queryFn: () => api<Catalog>("/api/mobile/catalog") });
+  const dashboard = useQuery({ queryKey: ["dashboard", user?.id], queryFn: () => api<Dashboard>("/api/mobile/dashboard"), enabled: Boolean(user) });
+  if (!user) return <Screen><AppHeader title="غرفة التعلم" back /><EmptyState title="سجّل الدخول" text="الوصول إلى المادة مرتبط بحساب الطالب." /></Screen>;
+  if (catalog.isLoading || dashboard.isLoading) return <Screen><LoadingState /></Screen>;
+  const course = catalog.data?.courses.find((item) => item.slug === slug); const owned = dashboard.data?.owned.find((item) => item.slug === slug); const progress = dashboard.data?.progress.filter((row) => row.courseSlug === slug) || [];
+  if (!course || !owned) return <Screen><AppHeader title="غرفة التعلم" back /><EmptyState title="لا توجد صلاحية نشطة" text="فعّل المادة من حسابك ثم أعد المحاولة." /></Screen>;
+  const completed = progress.filter((item) => item.completed).length; const lessons = course.units.flatMap((unit) => unit.lessons); const percentage = lessons.length ? Math.round(completed / lessons.length * 100) : 0;
+  return <Screen><AppHeader title={course.title} subtitle={`${percentage}% مكتمل`} back /><Card style={styles.progressCard}><View style={styles.progressHead}><Text style={[styles.percent, { color: colors.primary }]}>{percentage}%</Text><View><Text style={[styles.progressTitle, { color: colors.text }]}>تقدمك في المادة</Text><Text style={[styles.progressCopy, { color: colors.textSoft }]}>{completed} من {lessons.length} دروس مكتملة</Text></View></View><View style={[styles.track, { backgroundColor: colors.surfaceAlt }]}><View style={[styles.fill, { backgroundColor: colors.primary, width: `${percentage}%` }]} /></View></Card><SectionTitle title="الوحدات والدروس" subtitle="اضغط على أي درس للمتابعة" />{course.units.map((unit, unitIndex) => <Card key={`${unit.title}-${unitIndex}`} style={styles.unit}><Text style={[styles.unitTitle, { color: colors.text }]}>{unitIndex + 1}. {unit.title}</Text>{unit.lessons.map((lesson, index) => { const row = progress.find((item) => item.lessonId === lesson.id); return <Pressable key={lesson.id} onPress={() => router.push({ pathname: "/lesson/[courseSlug]/[lessonId]", params: { courseSlug: course.slug, lessonId: lesson.id } })} style={[styles.lesson, { borderTopColor: colors.border }]}><View style={[styles.icon, { backgroundColor: row?.completed ? `${colors.success}20` : colors.surfaceAlt }]}><Ionicons name={row?.completed ? "checkmark" : "play"} size={17} color={row?.completed ? colors.success : colors.primary} /></View><View style={styles.flex}><Text style={[styles.lessonTitle, { color: colors.text }]}>{index + 1}. {lesson.title}</Text><Text style={[styles.lessonMeta, { color: colors.textSoft }]}>{lesson.duration}{row?.watchedSeconds ? ` · شاهدت ${Math.floor(row.watchedSeconds / 60)} د` : ""}</Text></View></Pressable>; })}</Card>)}</Screen>;
+}
+const styles = StyleSheet.create({ flex: { flex: 1 }, progressCard: { marginBottom: 8 }, progressHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, percent: { fontSize: 25, fontWeight: "900" }, progressTitle: { fontSize: 14, fontWeight: "900", textAlign: "right" }, progressCopy: { fontSize: 9, marginTop: 4, textAlign: "right" }, track: { height: 8, borderRadius: 4, marginTop: 15, overflow: "hidden" }, fill: { height: 8, borderRadius: 4 }, unit: { paddingVertical: 7, marginBottom: 10 }, unitTitle: { fontSize: 14, fontWeight: "900", textAlign: "right", padding: 8 }, lesson: { minHeight: 66, borderTopWidth: 1, flexDirection: "row-reverse", alignItems: "center", gap: 11, paddingVertical: 10 }, icon: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" }, lessonTitle: { fontSize: 11, fontWeight: "800", textAlign: "right" }, lessonMeta: { fontSize: 8, marginTop: 4, textAlign: "right" } });
