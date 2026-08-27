@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Clock3, PlayCircle, Star } from "lucide-react";
 import type { Course } from "@/lib/data";
+import { CourseActions } from "./course-actions";
 
 export function CourseCard({ course, compact = false }: { course: Course; compact?: boolean }) {
   return (
@@ -24,6 +25,7 @@ export function CourseCard({ course, compact = false }: { course: Course; compac
           <div className="price"><strong>{course.price}</strong><span>ر.س</span>{course.oldPrice && <del>{course.oldPrice}</del>}</div>
           <Link href={`/courses/${course.slug}`} className="button button-soft">عرض المادة</Link>
         </div>
+        <CourseActions courseSlug={course.slug} compact={compact} />
       </div>
     </article>
   );

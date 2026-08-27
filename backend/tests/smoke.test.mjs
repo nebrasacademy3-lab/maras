@@ -43,6 +43,13 @@ test("production server serves public web/mobile contracts and reports database 
   assert.equal(health.status, 503);
   assert.equal((await health.json()).database, "unavailable");
 
+  const unauthenticatedSupport = await fetch(`${base}/api/support`);
+  assert.equal(unauthenticatedSupport.status, 401);
+  const unauthenticatedSupportFile = await fetch(`${base}/api/support/files/1`);
+  assert.equal(unauthenticatedSupportFile.status, 401);
+  const crossOriginSupport = await fetch(`${base}/api/support`, { method: "POST", headers: { "content-type": "application/json", origin: "https://evil.example" }, body: JSON.stringify({ title: "test", message: "this should be rejected" }) });
+  assert.equal(crossOriginSupport.status, 403);
+
   const unauthenticatedAdmin = await fetch(`${base}/api/admin/console`);
   assert.equal(unauthenticatedAdmin.status, 403);
   const uploadTokenOnAdminConsole = await fetch(`${base}/api/admin/console`, {

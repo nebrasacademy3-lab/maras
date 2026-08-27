@@ -27,7 +27,16 @@ export function usePushNotifications() {
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener((response) => {
       const route = response.notification.request.content.data?.route;
-      if (typeof route === "string" && route.startsWith("/")) router.push(route as never);
+      if (typeof route !== "string" || !route.startsWith("/")) return;
+      if (route.startsWith("/learn/")) { const slug = decodeURIComponent(route.slice("/learn/".length)); if (slug) router.push({ pathname: "/course/[slug]", params: { slug } }); }
+      else if (route === "/courses") router.push("/(tabs)/courses");
+      else if (route === "/universities") router.push("/(tabs)/universities");
+      else if (route === "/contact") router.push("/contact");
+      else if (route === "/support") router.push("/support");
+      else if (route === "/requests") router.push("/requests");
+      else if (route === "/notifications") router.push("/notifications");
+      else if (route === "/cart") router.push("/cart");
+      else if (route === "/favorites") router.push("/favorites");
     });
     return () => subscription.remove();
   }, []);

@@ -1,7 +1,7 @@
 import { getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
-import { getCourseCatalog } from "@/lib/catalog-store";
-import { quoteCoupon } from "@/lib/coupons";
+import { getCoursesCatalog } from "@/lib/catalog-store";
+import { quoteCoupon, quoteCouponForCart } from "@/lib/coupons";
 
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
@@ -10,9 +10,11 @@ export async function POST(request: Request) {
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; }
   catch { return jsonError("بيانات غير صالحة"); }
-  const course = await getCourseCatalog(cleanText(payload.courseSlug, 120));
-  if (!course) return jsonError("المادة غير موجودة", 404);
-  const quote = await quoteCoupon(cleanText(payload.code, 40), course.slug, course.price);
-  if (!quote) return jsonError("الكود غير صالح أو منتهي أو غير مخصص لهذه المادة", 404);
+  const requestedSlugs = Array.isArray(payload.courseSlugs) ? payload.courseSlugs.map((slug) => cleanText(slug, 120)).filter(Boolean).slice(0, 30) : [cleanText(payload.courseSlug, 120)].filter(Boolean);
+  const courses = await getCoursesCatalog();
+  const selected = requestedSlugs.map((slug) => courses.find((course) => course.slug === slug)).filter((course): course is NonNullable<typeof course> => Boolean(course));
+  if (!selected.length || selected.length !== requestedSlugs.length) return jsonError("إحدى المواد غير موجودة أو غير منشورة", 404);
+  const quote = selected.length === 1 ? await quoteCoupon(cleanText(payload.code, 40), selected[0].slug, selected[0].price) : await quoteCouponForCart(cleanText(payload.code, 40), selected.map((course) => ({ courseSlug: course.slug, price: course.price })));
+  if (!quote) return jsonError("الكود غير صالح أو منتهي أو غير مخصص لهذه المادة أو السلة", 404);
   return Response.json({ ok: true, ...quote });
 }

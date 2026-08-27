@@ -13,6 +13,9 @@ export const PUBLIC_SETTING_DEFAULTS = {
   social_youtube: "",
   social_telegram: "",
   social_linkedin: "",
+  social_facebook: "",
+  social_snapchat: "",
+  social_threads: "",
   announcement: "",
 } as const;
 
@@ -30,6 +33,9 @@ export const SETTING_META: Record<PublicSettingKey, { label: string; category: s
   social_youtube: { label: "رابط YouTube", category: "social" },
   social_telegram: { label: "رابط Telegram", category: "social" },
   social_linkedin: { label: "رابط LinkedIn", category: "social" },
+  social_facebook: { label: "رابط Facebook", category: "social" },
+  social_snapchat: { label: "رابط Snapchat", category: "social" },
+  social_threads: { label: "رابط Threads", category: "social" },
   announcement: { label: "تنبيه عام", category: "general" },
 };
 

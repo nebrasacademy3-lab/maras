@@ -21,7 +21,7 @@ function safeInternalHref(href: string, user: SessionUser | null) {
 }
 
 function allowedExternalOrigins(settings: PublicSettings) {
-  const values = [settings.social_x, settings.social_instagram, settings.social_tiktok, settings.social_youtube, settings.social_telegram, settings.social_linkedin];
+  const values = [settings.social_x, settings.social_instagram, settings.social_tiktok, settings.social_youtube, settings.social_telegram, settings.social_linkedin, settings.social_facebook, settings.social_snapchat, settings.social_threads];
   const origins = new Set<string>(["https://wa.me"]);
   for (const value of values) {
     try { if (value) origins.add(new URL(value).origin); } catch { /* Invalid optional value is ignored. */ }

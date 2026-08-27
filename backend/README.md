@@ -48,7 +48,8 @@ npm run db:migrate
 bash scripts/start-railway.sh
 ```
 
-يفحص السكربت وجود `DATABASE_URL`، ينشئ مجلد التخزين، يطبق هجرات PostgreSQL، ثم يشغل Next.js على `0.0.0.0:$PORT`. لا يحتاج التشغيل إلى Wrangler أو Workerd أو D1.
+يفحص السكربت وجود `DATABASE_URL`، ينشئ مجلد التخزين، يطبق هجرات PostgreSQL، ثم يشغل Next.js على `0.0.0.0:$PORT`.
+
 
 بعد إنشاء النطاق العام، اضبط القيم التالية على عنوان HTTPS نفسه:
 

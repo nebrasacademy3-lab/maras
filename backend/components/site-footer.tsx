@@ -1,6 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Instagram, Linkedin, Mail, MessageCircle, Send, Twitter, Youtube } from "lucide-react";
+import { AtSign, Facebook, Ghost, Instagram, Linkedin, Mail, MessageCircle, Send, Twitter, Youtube } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
 import { getPublicSettings, whatsappHref } from "@/lib/platform-settings";
 
@@ -13,6 +13,9 @@ export async function SiteFooter() {
   if (settings.social_telegram) socials.push({ href: settings.social_telegram, label: "Telegram", icon: <Send size={18} /> });
   if (settings.social_linkedin) socials.push({ href: settings.social_linkedin, label: "LinkedIn", icon: <Linkedin size={18} /> });
   if (settings.social_youtube) socials.push({ href: settings.social_youtube, label: "YouTube", icon: <Youtube size={18} /> });
+  if (settings.social_facebook) socials.push({ href: settings.social_facebook, label: "Facebook", icon: <Facebook size={18} /> });
+  if (settings.social_snapchat) socials.push({ href: settings.social_snapchat, label: "Snapchat", icon: <Ghost size={18} /> });
+  if (settings.social_threads) socials.push({ href: settings.social_threads, label: "Threads", icon: <AtSign size={18} /> });
   return (
     <footer className="site-footer">
       <div className="container footer-grid">

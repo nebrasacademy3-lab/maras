@@ -8,7 +8,7 @@ export async function sendPushNotification(target: PushTarget, title: string, bo
   try {
     const rows = await getDb().select({ token: pushDevices.token, email: users.email, role: users.role })
       .from(pushDevices).innerJoin(users, eq(pushDevices.userId, users.id)).where(eq(pushDevices.status, "active"));
-    const selected = rows.filter((row) => target.userEmail ? row.email === target.userEmail : !target.audience || target.audience === "user" || row.role === target.audience);
+    const selected = rows.filter((row) => target.userEmail ? row.email === target.userEmail : !target.audience || target.audience === "user" || target.audience === "public" || row.role === target.audience);
     if (!selected.length) return;
     for (let index = 0; index < selected.length; index += 100) {
       const messages = selected.slice(index, index + 100).map((row) => ({ to: row.token, title, body, data, sound: "default", priority: "high", channelId: "updates" }));

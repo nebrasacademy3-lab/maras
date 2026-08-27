@@ -37,7 +37,7 @@ export default async function DashboardPage({ searchParams }:{ searchParams:Prom
   });
   const dashboardOrders:DashboardOrder[]=orderRows.map((row)=>({orderNumber:row.orderNumber,courseTitle:courseMap.get(row.courseSlug)?.title||row.courseSlug,total:row.total,currency:row.currency,status:row.status,createdAt:row.createdAt}));
   const dashboardRequests:DashboardRequest[]=requestRows.map((row)=>({id:row.id,courseName:row.courseName,status:row.status,attachmentsCount:row.attachmentsCount,createdAt:row.createdAt}));
-  const notices:DashboardNotice[]=noticeRows.map((row)=>({id:row.id,title:row.title,body:row.body,actionUrl:row.actionUrl,createdAt:row.createdAt,read:Boolean(row.readAt)}));
+  const notices:DashboardNotice[]=noticeRows.map((row)=>({id:row.id,title:row.title,body:row.body,actionUrl:row.actionUrl,actionLabel:row.actionLabel,presentation:row.presentation,createdAt:row.createdAt,read:Boolean(row.readAt)}));
   const recommended:DashboardRecommendation[]=recommendedRows.map((course)=>({slug:course.slug,title:course.title,university:course.university,specialty:course.specialty,price:course.price,color:course.color,icon:course.icon,match:course.universitySlug===user.universitySlug&&course.specialty===user.specialty?"تخصصك":course.universitySlug===user.universitySlug?"جامعتك":"تخصص مشابه"}));
   const tickets=ticketRows.map((ticket)=>({...ticket,replies:replyRows.filter((reply)=>reply.ticketId===ticket.id).map((reply)=>({id:reply.id,body:reply.body,createdAt:reply.createdAt}))}));
   const view=(await searchParams).view||"overview";

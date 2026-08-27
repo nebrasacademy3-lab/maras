@@ -3,11 +3,11 @@ import { getDb } from "@/db";
 import {
   auditLogs, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseRequests,
   courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, notificationsDb, orders, platformSettings,
-  supervisorAssignments, supportReplies, supportTickets, users, videoAssets,
+  supervisorAssignments, supportReplyFiles, supportReplies, supportTickets, users, videoAssets,
 } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest, validEmail } from "@/lib/auth";
-import { getCourseCatalog, getCoursesCatalog, getInstitutionCatalog, getInstitutionsCatalog, getProgramsCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
+import { getCourseCatalog, getCoursesCatalog, getInstitutionCatalog, getInstitutionsCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { invalidatePublicSettingsCache, PUBLIC_SETTING_DEFAULTS, SETTING_META, type PublicSettingKey } from "@/lib/platform-settings";
 import { sendPushNotification } from "@/lib/push";
 
@@ -49,7 +49,7 @@ export async function GET(request: Request) {
   const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
   if (!await checkRateLimit("admin-console-read", identity, 30, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
-  const [institutionRows, courses, specialtyRows, links, unitRows, lessonRows, videoRows, studentRows, orderRows, requestRows, ticketRows, replyRows, reviewRows, accessRows, supervisorRows, notificationRows, couponRows, settingRows, audits] = await Promise.all([
+  const [institutionRows, courses, specialtyRows, links, unitRows, lessonRows, videoRows, studentRows, orderRows, requestRows, ticketRows, replyRows, supportFileRows, reviewRows, accessRows, supervisorRows, notificationRows, couponRows, settingRows, audits] = await Promise.all([
     getInstitutionsCatalog(true),
     getCoursesCatalog(true),
     db.select().from(catalogSpecialties).orderBy(catalogSpecialties.name),
@@ -61,7 +61,8 @@ export async function GET(request: Request) {
     db.select().from(orders).orderBy(desc(orders.createdAt)).limit(300),
     db.select().from(courseRequests).orderBy(desc(courseRequests.createdAt)).limit(300),
     db.select().from(supportTickets).orderBy(desc(supportTickets.createdAt)).limit(300),
-    db.select().from(supportReplies).orderBy(desc(supportReplies.createdAt)).limit(500),
+    db.select().from(supportReplies).orderBy(desc(supportReplies.createdAt)).limit(1000),
+    db.select().from(supportReplyFiles).limit(2000),
     db.select().from(courseReviews).orderBy(desc(courseReviews.createdAt)).limit(300),
     db.select().from(courseAccess).orderBy(desc(courseAccess.startsAt)).limit(500),
     db.select().from(supervisorAssignments).orderBy(desc(supervisorAssignments.createdAt)).limit(500),
@@ -105,7 +106,7 @@ export async function GET(request: Request) {
     users: studentRows,
     orders: orderRows,
     requests: requestRows,
-    tickets: ticketRows.map((ticket) => ({ ...ticket, replies: replyRows.filter((reply) => reply.ticketId === ticket.id) })),
+    tickets: ticketRows.map((ticket) => ({ ...ticket, replies: replyRows.filter((reply) => reply.ticketId === ticket.id).map((reply) => ({ ...reply, files: supportFileRows.filter((file) => file.replyId === reply.id).map((file) => ({ id: file.id, replyId: file.replyId, ticketId: file.ticketId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })) })),
     reviews: reviewRows,
     access: accessRows,
     supervisorAssignments: supervisorRows,
@@ -143,11 +144,17 @@ export async function POST(request: Request) {
     const type = cleanText(payload.type, 30);
     const domain = cleanText(payload.domain, 180).replace(/^https?:\/\//, "").replace(/\/$/, "");
     const logoUrl = cleanText(payload.logoUrl, 500);
+    const directorySourceUrl = cleanText(payload.directorySourceUrl, 500);
+    const aliasValues: unknown[] = Array.isArray(payload.aliases) ? payload.aliases : [];
+    const suppliedAliases = Array.isArray(payload.aliases);
+    const aliasesJson = suppliedAliases ? JSON.stringify(aliasValues.map((item: unknown) => cleanText(item, 160)).filter(Boolean).slice(0, 20)) : undefined;
+    const verificationStatus = cleanText(payload.verificationStatus, 30) || "pending-review";
     const status = cleanText(payload.status, 20) || "published";
-    if (!validSlug(slug) || name.length < 3 || !region || !["حكومية", "أهلية", "كلية", "تقنية"].includes(type) || !["published", "hidden"].includes(status)) return jsonError("تحقق من بيانات الجهة");
+    if (!validSlug(slug) || name.length < 3 || !region || !["حكومية", "أهلية", "كلية", "تقنية"].includes(type) || !["published", "hidden"].includes(status) || !["official-directory", "pending-review"].includes(verificationStatus)) return jsonError("تحقق من بيانات الجهة");
     if (logoUrl && !safeUrl(logoUrl) && !logoUrl.startsWith("r2:")) return jsonError("رابط الشعار يجب أن يبدأ بـ https");
+    if (directorySourceUrl && !safeUrl(directorySourceUrl)) return jsonError("رابط المصدر يجب أن يبدأ بـ https");
     const [before] = await db.select().from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
-    const values = { slug, name, nameEn, region, type, domain: domain || null, logoUrl: logoUrl || before?.logoUrl || null, status, featured: payload.featured === true, sortOrder: Number.isFinite(Number(payload.sortOrder)) ? Math.floor(Number(payload.sortOrder)) : 0, updatedAt: now };
+    const values = { slug, name, nameEn, region, type, domain: domain || null, logoUrl: logoUrl || before?.logoUrl || null, directorySourceUrl: directorySourceUrl || before?.directorySourceUrl || null, verificationStatus: verificationStatus === "pending-review" && before?.verificationStatus === "official-directory" ? "official-directory" : verificationStatus, aliasesJson: aliasesJson ?? before?.aliasesJson ?? "[]", status, featured: payload.featured === true, sortOrder: Number.isFinite(Number(payload.sortOrder)) ? Math.floor(Number(payload.sortOrder)) : 0, updatedAt: now };
     await db.insert(catalogInstitutions).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "institution", slug, before, values);
@@ -158,12 +165,18 @@ export async function POST(request: Request) {
     const slug = cleanText(payload.slug, 80).toLowerCase();
     const name = cleanText(payload.name, 140);
     const description = cleanText(payload.description, 1000);
+    const sourceUrl = cleanText(payload.sourceUrl, 500);
+    const verifiedAt = cleanText(payload.verifiedAt, 30);
+    const verificationStatus = cleanText(payload.verificationStatus, 30) || "pending-review";
+    const faculty = cleanText(payload.faculty, 160) || null;
+    const degree = cleanText(payload.degree, 80) || null;
     const status = cleanText(payload.status, 20) || "published";
     const institutionSlug = cleanText(payload.institutionSlug, 80).toLowerCase();
-    if (!validSlug(slug) || name.length < 2 || !["published", "hidden"].includes(status)) return jsonError("تحقق من بيانات التخصص");
+    if (!validSlug(slug) || name.length < 2 || !["published", "hidden"].includes(status) || !["official-program", "pending-review", "discovery"].includes(verificationStatus)) return jsonError("تحقق من بيانات التخصص");
+    if (sourceUrl && !safeUrl(sourceUrl)) return jsonError("رابط مصدر التخصص يجب أن يبدأ بـ https");
     if (institutionSlug && !await getInstitutionCatalog(institutionSlug, true)) return jsonError("الجهة غير موجودة");
     const [before] = await db.select().from(catalogSpecialties).where(eq(catalogSpecialties.slug, slug)).limit(1);
-    const values = { slug, name, description, status, updatedAt: now };
+    const values = { slug, name, description, sourceUrl: sourceUrl || before?.sourceUrl || null, verifiedAt: verifiedAt || before?.verifiedAt || null, verificationStatus, faculty, degree, status, updatedAt: now };
     await db.insert(catalogSpecialties).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogSpecialties.slug, set: values });
     if (institutionSlug) await db.insert(institutionSpecialties).values({ institutionSlug, specialtySlug: slug, status: "published", sortOrder: 0 }).onConflictDoUpdate({ target: [institutionSpecialties.institutionSlug, institutionSpecialties.specialtySlug], set: { status: "published" } });
     invalidateCatalogCache();
@@ -182,6 +195,8 @@ export async function POST(request: Request) {
     if (!validSlug(slug) || title.length < 3 || !await getInstitutionCatalog(institutionSlug, true) || !validSlug(specialtySlug) || !Number.isFinite(price) || price < 0 || price > 50_000 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من بيانات المادة وربطها");
     const [specialty] = await db.select().from(catalogSpecialties).where(eq(catalogSpecialties.slug, specialtySlug)).limit(1);
     if (!specialty) return jsonError("أنشئ التخصص أو اربطه أولًا");
+    const [specialtyLink] = await db.select().from(institutionSpecialties).where(and(eq(institutionSpecialties.institutionSlug, institutionSlug), eq(institutionSpecialties.specialtySlug, specialtySlug), eq(institutionSpecialties.status, "published"))).limit(1);
+    if (!specialtyLink) return jsonError("التخصص غير مربوط بهذه الجهة");
     const [before] = await db.select().from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
     const values = {
       slug, institutionSlug, specialtySlug, title,
@@ -189,6 +204,8 @@ export async function POST(request: Request) {
       description: cleanText(payload.description, 3000), price,
       oldPrice: Number.isFinite(oldPriceValue) && oldPriceValue > price ? oldPriceValue : null,
       accessLabel: cleanText(payload.accessLabel, 80) || "90 يومًا",
+      sourceUrl: cleanText(payload.sourceUrl, 500) || before?.sourceUrl || null,
+      verifiedAt: cleanText(payload.verifiedAt, 30) || before?.verifiedAt || null,
       status, featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
     };
     await db.insert(catalogCourses).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogCourses.slug, set: values });
@@ -257,8 +274,10 @@ export async function POST(request: Request) {
     const [supervisor] = await db.select({ id: users.id, role: users.role, email: users.email }).from(users).where(eq(users.id, supervisorId)).limit(1);
     if (!supervisor || supervisor.role !== "supervisor") return jsonError("الحساب المحدد ليس مشرفًا");
     if (!await getInstitutionCatalog(institutionSlug, true)) return jsonError("الجهة غير موجودة");
-    const programs = await getProgramsCatalog(institutionSlug);
-    if (!programs.programs.some((program) => program.name === specialty)) return jsonError("التخصص غير مرتبط بالجهة");
+    const [managedSpecialty] = await db.select({ slug: catalogSpecialties.slug }).from(catalogSpecialties).where(eq(catalogSpecialties.name, specialty)).limit(1);
+    if (!managedSpecialty) return jsonError("أنشئ التخصص الإداري أولًا");
+    const [specialtyLink] = await db.select({ id: institutionSpecialties.id }).from(institutionSpecialties).where(and(eq(institutionSpecialties.institutionSlug, institutionSlug), eq(institutionSpecialties.specialtySlug, managedSpecialty.slug), eq(institutionSpecialties.status, "published"))).limit(1);
+    if (!specialtyLink) return jsonError("التخصص غير مربوط بهذه الجهة");
     if (id) {
       const [before] = await db.select().from(supervisorAssignments).where(eq(supervisorAssignments.id, id)).limit(1);
       if (!before) return jsonError("نطاق الإشراف غير موجود", 404);
@@ -298,10 +317,12 @@ export async function POST(request: Request) {
     if (before.userId) {
       const [student] = await db.select({ email: users.email }).from(users).where(eq(users.id, before.userId)).limit(1);
       if (student) {
-        const title = "تحديث طلب المادة";
-        const body = `تغيرت حالة طلب «${before.courseName}» إلى ${status}.`;
-        await db.insert(notificationsDb).values({ userEmail: student.email, audience: "student", title, body, actionUrl: "/dashboard?view=requests", createdAt: now });
-        await sendPushNotification({ userEmail: student.email }, title, body, { route: "/requests" });
+        const matchedCourse = status === "available" ? (await getCoursesCatalog()).find((course) => course.title.trim() === before.courseName.trim() && (!before.universitySlug || course.universitySlug === before.universitySlug) && (!before.specialty || course.specialty === before.specialty)) : null;
+        const title = matchedCourse ? "مادتك أصبحت متاحة" : "تحديث طلب المادة";
+        const body = matchedCourse ? `أصبحت مادة «${matchedCourse.title}» متاحة الآن في مراس.` : `تغيرت حالة طلب «${before.courseName}» إلى ${status}.`;
+        const actionUrl = matchedCourse ? `/learn/${matchedCourse.slug}` : "/dashboard?view=requests";
+        await db.insert(notificationsDb).values({ userEmail: student.email, audience: "student", title, body, actionUrl, actionLabel: matchedCourse ? "افتح المادة" : "عرض الطلب", createdAt: now });
+        await sendPushNotification({ userEmail: student.email }, title, body, { route: matchedCourse ? `/learn/${matchedCourse.slug}` : "/requests" });
       }
     }
     await audit(request, authorization.actor, "update", "course_request", String(id), { status: before.status }, { status });
@@ -316,11 +337,11 @@ export async function POST(request: Request) {
     const [before] = await db.select().from(supportTickets).where(eq(supportTickets.id, id)).limit(1);
     if (!before) return jsonError("التذكرة غير موجودة", 404);
     await db.update(supportTickets).set({ status, assignedTo: authorization.actor, updatedAt: now }).where(eq(supportTickets.id, id));
-    if (reply) await db.insert(supportReplies).values({ ticketId: id, authorEmail: authorization.actor, body: reply, internal: payload.internal === true, createdAt: now });
+    if (reply) await db.insert(supportReplies).values({ ticketId: id, authorEmail: authorization.actor, authorRole: authorization.user?.role || "admin", body: reply, internal: payload.internal === true, createdAt: now });
     if (before.userEmail && (reply || before.status !== status)) {
       const title = reply ? "رد جديد من دعم مراس" : "تحديث تذكرة الدعم";
       const body = reply ? reply.slice(0, 240) : `تغيرت حالة التذكرة ${before.ticketNumber} إلى ${status}.`;
-      await db.insert(notificationsDb).values({ userEmail: before.userEmail, audience: "student", title, body, actionUrl: "/dashboard?view=support", createdAt: now });
+      await db.insert(notificationsDb).values({ userEmail: before.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة", createdAt: now });
       await sendPushNotification({ userEmail: before.userEmail }, title, body, { route: "/support" });
     }
     await audit(request, authorization.actor, "update", "support_ticket", String(id), { status: before.status }, { status, replied: Boolean(reply) });
@@ -359,9 +380,16 @@ export async function POST(request: Request) {
     const body = cleanText(payload.body, 1000);
     const userEmail = cleanText(payload.userEmail, 180).toLowerCase() || null;
     const actionUrl = cleanText(payload.actionUrl, 300) || null;
-    if (!["student", "supervisor", "admin", "user"].includes(audience) || title.length < 3 || body.length < 3 || (actionUrl && (!actionUrl.startsWith("/") || actionUrl.startsWith("//")))) return jsonError("تحقق من بيانات الإشعار");
-    const [created] = await db.insert(notificationsDb).values({ audience, title, body, userEmail, actionUrl, createdAt: now }).returning({ id: notificationsDb.id });
-    await sendPushNotification({ userEmail, audience }, title, body, { route: actionUrl || "/notifications" });
+    const actionLabel = cleanText(payload.actionLabel, 80) || null;
+    const presentation = cleanText(payload.presentation, 20) || "inbox";
+    const pushEnabled = payload.pushEnabled !== false;
+    const startsAt = cleanText(payload.startsAt, 40) || null;
+    const expiresAt = cleanText(payload.expiresAt, 40) || null;
+    const dismissible = payload.dismissible !== false;
+    if (!["student", "public", "supervisor", "admin", "user"].includes(audience) || !["inbox", "banner", "modal", "all"].includes(presentation) || title.length < 3 || body.length < 3 || (actionUrl && (!actionUrl.startsWith("/") || actionUrl.startsWith("//"))) || (startsAt && Number.isNaN(new Date(startsAt).getTime())) || (expiresAt && Number.isNaN(new Date(expiresAt).getTime()))) return jsonError("تحقق من بيانات الإشعار");
+    if (startsAt && expiresAt && new Date(expiresAt).getTime() <= new Date(startsAt).getTime()) return jsonError("فترة الإعلان غير صحيحة");
+    const [created] = await db.insert(notificationsDb).values({ audience, title, body, userEmail, actionUrl, actionLabel, presentation, pushEnabled, startsAt, expiresAt, dismissible, createdAt: now }).returning({ id: notificationsDb.id });
+    if (pushEnabled) await sendPushNotification({ userEmail, audience }, title, body, { route: actionUrl || "/notifications", notificationId: created.id });
     await audit(request, authorization.actor, "create", "notification", String(created.id), null, { audience, title, userEmail });
     return Response.json({ ok: true, id: created.id }, { status: 201 });
   }

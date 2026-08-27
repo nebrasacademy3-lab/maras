@@ -1,7 +1,7 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { couponsDb, courseAccess, invoices, orders, paymentEvents } from "@/db/schema";
+import { couponsDb, courseAccess, invoices, orderItems, orders, paymentEvents } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 
 type TapReference = { order?: string; transaction?: string; gateway?: string; payment?: string };
@@ -13,7 +13,7 @@ type TapCharge = {
   updated?: string;
   created?: string;
   transaction?: { created?: string };
-  metadata?: { order_number?: string; course_slug?: string };
+  metadata?: { order_number?: string; course_slug?: string; course_slugs?: string };
   reference?: TapReference;
   customer?: { email?: string };
 };
@@ -98,10 +98,13 @@ export async function POST(request: Request) {
   ).limit(1);
 
   if (!order) return Response.json({ ok: true, received: true, matched: false });
+  const itemRows = await db.select({ courseSlug: orderItems.courseSlug }).from(orderItems).where(eq(orderItems.orderNumber, order.orderNumber));
+  const expectedCourseSlugs = itemRows.length ? itemRows.map((item) => item.courseSlug) : [order.courseSlug];
   if (status === "CAPTURED") {
     const amountMatches = typeof verified.amount === "number" && Math.abs(verified.amount - order.total) < 0.01;
     const currencyMatches = cleanText(verified.currency, 10).toUpperCase() === order.currency.toUpperCase();
-    const courseMatches = !verified.metadata?.course_slug || verified.metadata.course_slug === order.courseSlug;
+    const postedCourseSlugs = verified.metadata?.course_slugs?.split(",").map((slug) => cleanText(slug, 120)).filter(Boolean) || (verified.metadata?.course_slug ? [verified.metadata.course_slug] : []);
+    const courseMatches = !postedCourseSlugs.length || (postedCourseSlugs.length === expectedCourseSlugs.length && postedCourseSlugs.every((slug) => expectedCourseSlugs.includes(slug)));
     const emailMatches = !verified.customer?.email || verified.customer.email.toLowerCase() === order.customerEmail.toLowerCase();
     if (!amountMatches || !currencyMatches || !courseMatches || !emailMatches) return jsonError("فشلت مطابقة تفاصيل عملية الدفع", 409);
   }
@@ -116,7 +119,7 @@ export async function POST(request: Request) {
   }
 
   if (newlyPaid) {
-    await db.insert(courseAccess).values({ userEmail: order.customerEmail, courseSlug: order.courseSlug, source: "tap", orderNumber: order.orderNumber, startsAt: now }).onConflictDoUpdate({ target: [courseAccess.userEmail, courseAccess.courseSlug], set: { source: "tap", orderNumber: order.orderNumber, revokedAt: null, expiresAt: null, startsAt: now } });
+    await db.insert(courseAccess).values(expectedCourseSlugs.map((courseSlug) => ({ userEmail: order.customerEmail, courseSlug, source: "tap", orderNumber: order.orderNumber, startsAt: now }))).onConflictDoUpdate({ target: [courseAccess.userEmail, courseAccess.courseSlug], set: { source: "tap", orderNumber: order.orderNumber, revokedAt: null, expiresAt: null, startsAt: now } });
     await db.insert(invoices).values({ invoiceNumber: `INV-${order.orderNumber}`, orderNumber: order.orderNumber, customerEmail: order.customerEmail, total: order.total, taxAmount: Math.round((order.total * 15 / 115) * 100) / 100, currency: order.currency, issuedAt: now }).onConflictDoNothing({ target: invoices.orderNumber });
     if (order.couponCode) await db.update(couponsDb).set({ usedCount: sql`${couponsDb.usedCount} + 1` }).where(eq(couponsDb.code, order.couponCode));
   }

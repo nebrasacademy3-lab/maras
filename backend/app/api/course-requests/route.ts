@@ -80,14 +80,14 @@ export async function POST(request: Request) {
 
   const studentTitle = "تم استلام طلب المادة";
   const studentBody = `استلمنا طلب «${courseName}»${files.length ? ` مع ${files.length} مرفقات` : ""}.`;
-  await db.insert(notificationsDb).values({ userEmail: user.email, audience: "student", title: studentTitle, body: studentBody, actionUrl: "/dashboard?view=requests" });
+  await db.insert(notificationsDb).values({ userEmail: user.email, audience: "student", title: studentTitle, body: studentBody, actionUrl: "/dashboard?view=requests", actionLabel: "متابعة الطلب" });
   await sendPushNotification({ userEmail: user.email }, studentTitle, studentBody, { route: "/requests" });
   if (assignedSupervisorId) {
     const [supervisor] = await db.select({ email: users.email }).from(users).where(eq(users.id, assignedSupervisorId)).limit(1);
     if (supervisor) {
       const title = "طلب مادة جديد";
       const body = `${institution.name} · ${user.specialty} · ${courseName}`;
-      await db.insert(notificationsDb).values({ userEmail: supervisor.email, audience: "supervisor", title, body, actionUrl: "/supervisor?view=requests" });
+      await db.insert(notificationsDb).values({ userEmail: supervisor.email, audience: "supervisor", title, body, actionUrl: "/supervisor?view=requests", actionLabel: "فتح الطلبات" });
       await sendPushNotification({ userEmail: supervisor.email }, title, body, { route: "/supervisor" });
     }
   }

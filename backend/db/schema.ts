@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, index, integer, pgTable, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, foreignKey, index, integer, pgTable, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -57,6 +57,7 @@ export const supportTickets = pgTable("support_tickets", {
   priority: text("priority").notNull().default("normal"),
   title: text("title").notNull(),
   message: text("message").notNull(),
+  contactChannel: text("contact_channel").notNull().default("in_app"),
   status: text("status").notNull().default("new"),
   assignedTo: text("assigned_to"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
@@ -81,6 +82,16 @@ export const orders = pgTable("orders", {
   paidAt: text("paid_at"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [uniqueIndex("orders_number_unique").on(table.orderNumber), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
+
+export const orderItems = pgTable("order_items", {
+  id: serial("id").primaryKey(),
+  orderNumber: text("order_number").notNull(),
+  courseSlug: text("course_slug").notNull(),
+  unitPrice: real("unit_price").notNull(),
+  discount: real("discount").notNull().default(0),
+  total: real("total").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [uniqueIndex("order_items_order_course_unique").on(table.orderNumber, table.courseSlug), index("order_items_order_idx").on(table.orderNumber), index("order_items_course_idx").on(table.courseSlug)]);
 
 export const paymentEvents = pgTable("payment_events", {
   id: serial("id").primaryKey(),
@@ -157,6 +168,9 @@ export const catalogInstitutions = pgTable("catalog_institutions", {
   type: text("type").notNull(),
   logoUrl: text("logo_url"),
   domain: text("domain"),
+  directorySourceUrl: text("directory_source_url"),
+  verificationStatus: text("verification_status").notNull().default("pending-review"),
+  aliasesJson: text("aliases_json").notNull().default("[]"),
   status: text("status").notNull().default("published"),
   featured: boolean("featured").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
@@ -168,6 +182,11 @@ export const catalogSpecialties = pgTable("catalog_specialties", {
   slug: text("slug").primaryKey(),
   name: text("name").notNull(),
   description: text("description").notNull().default(""),
+  sourceUrl: text("source_url"),
+  verifiedAt: text("verified_at"),
+  verificationStatus: text("verification_status").notNull().default("pending-review"),
+  faculty: text("faculty"),
+  degree: text("degree"),
   status: text("status").notNull().default("published"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
@@ -179,7 +198,12 @@ export const institutionSpecialties = pgTable("institution_specialties", {
   specialtySlug: text("specialty_slug").notNull(),
   sortOrder: integer("sort_order").notNull().default(0),
   status: text("status").notNull().default("published"),
-}, (table) => [uniqueIndex("institution_specialties_unique").on(table.institutionSlug, table.specialtySlug), index("institution_specialties_lookup_idx").on(table.institutionSlug, table.status)]);
+}, (table) => [
+  uniqueIndex("institution_specialties_unique").on(table.institutionSlug, table.specialtySlug),
+  index("institution_specialties_lookup_idx").on(table.institutionSlug, table.status),
+  foreignKey({ name: "institution_specialties_institution_fk", columns: [table.institutionSlug], foreignColumns: [catalogInstitutions.slug] }),
+  foreignKey({ name: "institution_specialties_specialty_fk", columns: [table.specialtySlug], foreignColumns: [catalogSpecialties.slug] }),
+]);
 
 export const catalogCourses = pgTable("catalog_courses", {
   slug: text("slug").primaryKey(),
@@ -192,12 +216,21 @@ export const catalogCourses = pgTable("catalog_courses", {
   price: real("price").notNull().default(0),
   oldPrice: real("old_price"),
   accessLabel: text("access_label").notNull().default("90 يومًا"),
+  sourceUrl: text("source_url"),
+  verifiedAt: text("verified_at"),
   status: text("status").notNull().default("draft"),
   featured: boolean("featured").notNull().default(false),
   coverTheme: text("cover_theme").notNull().default("blue-violet"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("catalog_courses_institution_idx").on(table.institutionSlug), index("catalog_courses_specialty_idx").on(table.specialtySlug), index("catalog_courses_status_idx").on(table.status)]);
+}, (table) => [
+  index("catalog_courses_institution_idx").on(table.institutionSlug),
+  index("catalog_courses_specialty_idx").on(table.specialtySlug),
+  index("catalog_courses_status_idx").on(table.status),
+  foreignKey({ name: "catalog_courses_institution_fk", columns: [table.institutionSlug], foreignColumns: [catalogInstitutions.slug] }),
+  foreignKey({ name: "catalog_courses_specialty_fk", columns: [table.specialtySlug], foreignColumns: [catalogSpecialties.slug] }),
+  foreignKey({ name: "catalog_courses_institution_specialty_fk", columns: [table.institutionSlug, table.specialtySlug], foreignColumns: [institutionSpecialties.institutionSlug, institutionSpecialties.specialtySlug] }),
+]);
 
 export const courseUnitsDb = pgTable("course_units", {
   id: serial("id").primaryKey(),
@@ -300,6 +333,13 @@ export const favorites = pgTable("favorites", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [uniqueIndex("favorites_user_course_unique").on(table.userEmail, table.courseSlug)]);
 
+export const cartItems = pgTable("cart_items", {
+  id: serial("id").primaryKey(),
+  userEmail: text("user_email").notNull(),
+  courseSlug: text("course_slug").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [uniqueIndex("cart_items_user_course_unique").on(table.userEmail, table.courseSlug), index("cart_items_user_idx").on(table.userEmail, table.createdAt)]);
+
 export const lessonNotes = pgTable("lesson_notes", {
   id: serial("id").primaryKey(),
   userEmail: text("user_email").notNull(),
@@ -326,6 +366,12 @@ export const notificationsDb = pgTable("notifications", {
   title: text("title").notNull(),
   body: text("body").notNull(),
   actionUrl: text("action_url"),
+  actionLabel: text("action_label"),
+  presentation: text("presentation").notNull().default("inbox"),
+  pushEnabled: boolean("push_enabled").notNull().default(true),
+  startsAt: text("starts_at"),
+  expiresAt: text("expires_at"),
+  dismissible: boolean("dismissible").notNull().default(true),
   readAt: text("read_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience)]);
@@ -380,7 +426,19 @@ export const supportReplies = pgTable("support_replies", {
   id: serial("id").primaryKey(),
   ticketId: integer("ticket_id").notNull(),
   authorEmail: text("author_email").notNull(),
-  body: text("body").notNull(),
+  authorRole: text("author_role").notNull().default("student"),
+  body: text("body").notNull().default(""),
   internal: boolean("internal").notNull().default(false),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("support_replies_ticket_idx").on(table.ticketId, table.createdAt)]);
+}, (table) => [index("support_replies_ticket_idx").on(table.ticketId, table.createdAt), index("support_replies_author_idx").on(table.authorEmail, table.createdAt)]);
+
+export const supportReplyFiles = pgTable("support_reply_files", {
+  id: serial("id").primaryKey(),
+  replyId: integer("reply_id").notNull(),
+  ticketId: integer("ticket_id").notNull(),
+  objectKey: text("object_key").notNull(),
+  originalName: text("original_name").notNull(),
+  contentType: text("content_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [uniqueIndex("support_reply_files_object_unique").on(table.objectKey), index("support_reply_files_reply_idx").on(table.replyId), index("support_reply_files_ticket_idx").on(table.ticketId)]);

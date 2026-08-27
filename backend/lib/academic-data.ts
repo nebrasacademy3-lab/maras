@@ -3,7 +3,10 @@ export type ProgramArea = "تقنية" | "صحية" | "هندسية" | "إدار
 export type AcademicProgram = {
   name: string;
   area: ProgramArea;
-  degree: "بكالوريوس" | "دبلوم" | "دراسات عليا";
+  degree: "بكالوريوس" | "دبلوم" | "دراسات عليا" | "مزدوج" | "فرعي";
+  verificationStatus?: "official-program" | "discovery" | "pending-review";
+  sourceUrl?: string;
+  aliases?: string[];
 };
 
 const p = (name: string, area: ProgramArea, degree: AcademicProgram["degree"] = "بكالوريوس"): AcademicProgram => ({ name, area, degree });
@@ -76,6 +79,34 @@ const technical = [
   p("الإدارة المكتبية", "تقنية تطبيقية", "دبلوم"), p("التسويق والابتكار", "تقنية تطبيقية", "دبلوم"),
 ];
 
+const seuOfficialPrograms: AcademicProgram[] = [
+  p("برنامج البكالوريوس في تقنية المعلومات", "تقنية"),
+  p("برنامج البكالوريوس في علوم الحاسب الآلي", "تقنية"),
+  p("برنامج البكالوريوس في علوم البيانات", "تقنية"),
+  p("برنامج الماجستير في الأمن السيبراني", "تقنية", "دراسات عليا"),
+  p("برنامج الماجستير في علوم البيانات", "تقنية", "دراسات عليا"),
+  { ...p("برنامج بكالوريوس العلوم في إدارة الأعمال - تخصص إدارة", "إدارية"), aliases: ["إدارة الأعمال"] },
+  p("برنامج الماجستير في إدارة الأعمال", "إدارية", "دراسات عليا"),
+  p("برنامج ماجستير إدارة الأعمال التنفيذي", "إدارية", "دراسات عليا"),
+  p("برنامج ماجستير تسويق رقمي", "إدارية", "دراسات عليا"),
+  p("برنامج بكالوريوس العلوم في إدارة الأعمال - تخصص محاسبة", "إدارية"),
+  p("برنامج بكالوريوس العلوم في المالية", "إدارية"),
+  p("برنامج بكالوريوس العلوم في إدارة الأعمال - تخصص تجارة إلكترونية", "إدارية"),
+  p("التخصص المزدوج - إدارة الأعمال", "إدارية", "مزدوج"),
+  p("التخصص الفرعي - إدارة الأعمال", "إدارية", "فرعي"),
+  p("التخصص المزدوج - المالية", "إدارية", "مزدوج"),
+  p("التخصص الفرعي - المالية", "إدارية", "فرعي"),
+  p("برنامج البكالوريس في المعلوماتية الصحية", "صحية"),
+  p("برنامج البكالوريوس في الصحة العامة", "صحية"),
+  p("برنامج الماجستير في إدارة الرعاية الصحية", "صحية", "دراسات عليا"),
+  p("الماجستير التنفيذي لجودة الرعاية الصحية وسلامة المرضى", "صحية", "دراسات عليا"),
+  p("برنامج البكالوريوس في الإعلام الإلكتروني", "إنسانية"),
+  p("برنامج البكالوريوس في القانون", "إنسانية"),
+  p("برنامج البكالوريوس في اللغة الإنجليزية والترجمة", "إنسانية"),
+  p("برنامج الماجستير في تقنيات الترجمة", "إنسانية", "دراسات عليا"),
+  p("برنامج البكالوريوس في الإحصاء التطبيقي وتحليل البيانات", "علمية"),
+].map((program) => ({ ...program, verificationStatus: "official-program" as const, sourceUrl: "https://seu.edu.sa/ar/programs/" }));
+
 const kaustPrograms = [
   p("علوم الحاسب", "تقنية", "دراسات عليا"), p("الهندسة الكهربائية وهندسة الحاسب", "هندسية", "دراسات عليا"),
   p("الإحصاء", "علمية", "دراسات عليا"), p("الرياضيات التطبيقية والعلوم الحاسوبية", "علمية", "دراسات عليا"),
@@ -118,7 +149,7 @@ const profileForInstitution: Record<string, keyof typeof profiles> = {
 };
 
 const exactOverrides: Record<string, AcademicProgram[]> = {
-  "ksau-hs": [p("الطب والجراحة", "صحية"), p("طب الأسنان", "صحية"), p("دكتور صيدلة", "صحية"), p("التمريض", "صحية"), p("الصحة العامة", "صحية"), p("المعلوماتية الصحية", "تقنية"), p("العلاج التنفسي", "صحية"), p("الخدمات الطبية الطارئة", "صحية"), p("المختبرات الطبية", "صحية"), p("التغذية الإكلينيكية", "صحية"), p("العلاج الوظيفي", "صحية"), p("التخدير", "صحية")],
+  "ksau-hs": [{ ...p("الطب والجراحة", "صحية"), aliases: ["الطب"] }, p("طب الأسنان", "صحية"), p("دكتور صيدلة", "صحية"), p("التمريض", "صحية"), p("الصحة العامة", "صحية"), p("المعلوماتية الصحية", "تقنية"), p("العلاج التنفسي", "صحية"), p("الخدمات الطبية الطارئة", "صحية"), p("المختبرات الطبية", "صحية"), p("التغذية الإكلينيكية", "صحية"), p("العلاج الوظيفي", "صحية"), p("التخدير", "صحية")],
   "riyadh-elm": [p("طب الأسنان", "صحية"), p("صحة الفم والأسنان", "صحية"), p("مساعد طبيب أسنان", "صحية", "دبلوم"), p("تقنية الأسنان", "صحية"), p("التمريض", "صحية"), p("الصيدلة", "صحية")],
   mbsc: [p("ماجستير إدارة الأعمال", "إدارية", "دراسات عليا"), p("ماجستير المالية", "إدارية", "دراسات عليا"), p("ماجستير ريادة الأعمال", "إدارية", "دراسات عليا"), p("القيادة التنفيذية", "إدارية", "دراسات عليا")],
   kspp: [p("ماجستير السياسات العامة", "إدارية", "دراسات عليا"), p("اقتصاديات الطاقة", "إدارية", "دراسات عليا"), p("السياسات المناخية والاستدامة", "إدارية", "دراسات عليا")],
@@ -127,7 +158,9 @@ const exactOverrides: Record<string, AcademicProgram[]> = {
 };
 
 export function getInstitutionPrograms(institutionSlug: string): AcademicProgram[] {
-  return exactOverrides[institutionSlug] || profiles[profileForInstitution[institutionSlug] || "regional"];
+  if (institutionSlug === "seu") return seuOfficialPrograms;
+  const programs = exactOverrides[institutionSlug] || profiles[profileForInstitution[institutionSlug] || "regional"];
+  return programs.map((program) => ({ ...program, ...(institutionSlug === "kku" && program.name === "دكتور صيدلة" ? { aliases: ["الصيدلة"] } : {}), verificationStatus: "discovery" as const }));
 }
 
 const courseSets: Record<ProgramArea, string[]> = {
@@ -166,6 +199,7 @@ export const moeInstitutionDetails: Record<string, number> = {
 };
 
 export function getOfficialProgramSource(institutionSlug: string, domain?: string) {
+  if (institutionSlug === "seu") return "https://seu.edu.sa/ar/programs/";
   const detailId = moeInstitutionDetails[institutionSlug];
   return detailId ? `https://studyinsaudi.moe.gov.sa/Universities/Details/${detailId}` : domain ? `https://${domain}` : "https://studyinsaudi.moe.gov.sa/Universities";
 }

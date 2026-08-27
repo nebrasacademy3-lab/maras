@@ -18,7 +18,10 @@ function mobileRoute(href: string) {
   if (/^https:\/\//.test(href)) return href;
   const path = href.split(/[?#]/)[0] || "/"; const query = new URLSearchParams(href.split("?")[1] || "");
   if (path === "/request-course" || query.get("view") === "requests") return "/requests";
-  if (path === "/support" || path === "/contact") return "/support";
+  if (path === "/support") return "/support";
+  if (path === "/contact") return "/contact";
+  if (path === "/cart") return "/cart";
+  if (path === "/favorites") return "/favorites";
   if (path === "/dashboard") { const view = query.get("view"); if (view === "notifications") return "/notifications"; if (view === "account") return "/profile"; if (view === "requests") return "/requests"; if (view === "orders") return "/(tabs)/account"; return "/(tabs)/learning"; }
   if (path === "/courses") return "/(tabs)/courses";
   if (path.startsWith("/courses/")) return path.replace("/courses/", "/course/");

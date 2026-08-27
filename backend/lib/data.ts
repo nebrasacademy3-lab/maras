@@ -13,6 +13,11 @@ export type Institution = {
   specialties: number;
   courses: number;
   featured?: boolean;
+  officialName?: string;
+  aliases?: string[];
+  parentSlug?: string;
+  directorySourceUrl?: string;
+  verificationStatus?: "official-directory" | "pending-review";
 };
 
 export type Lesson = {
@@ -99,7 +104,7 @@ export const institutions: Institution[] = [
   { slug: "dah", name: "جامعة دار الحكمة", nameEn: "Dar Al-Hekma University", region: "مكة المكرمة", type: "أهلية", logo: cuaLogo("PULogo011.jpeg"), domain: "dah.edu.sa", specialties: 16, courses: 1 },
   { slug: "ubt", name: "جامعة الأعمال والتكنولوجيا", nameEn: "University of Business & Technology", region: "مكة المكرمة", type: "أهلية", logo: cuaLogo("PULogo002.jpeg"), domain: "ubt.edu.sa", specialties: 24, courses: 3 },
   { slug: "pmu", name: "جامعة الأمير محمد بن فهد", nameEn: "Prince Mohammad Bin Fahd University", region: "الشرقية", type: "أهلية", logo: cuaLogo("PULogo005.jpeg"), domain: "pmu.edu.sa", specialties: 22, courses: 2 },
-  { slug: "fbsu", name: "جامعة فهد بن سلطان", nameEn: "Fahad Bin Sultan University", region: "تبوك", type: "أهلية", logo: cuaLogo("PULogo004.jpeg"), domain: "fbsu.edu.sa", specialties: 16, courses: 1 },
+  { slug: "fbsu", name: "جامعة الأمير فهد بن سلطان", nameEn: "Prince Fahd Bin Sultan University", region: "تبوك", type: "أهلية", logo: cuaLogo("PULogo004.jpeg"), domain: "fbsu.edu.sa", specialties: 16, courses: 1, aliases: ["جامعة فهد بن سلطان"] },
   { slug: "sr.edu", name: "جامعة سليمان الراجحي", nameEn: "Sulaiman Al Rajhi University", region: "القصيم", type: "أهلية", logo: cuaLogo("ALrajhe.jpg"), domain: "sr.edu.sa", specialties: 12, courses: 2 },
   { slug: "almaarefa", name: "جامعة المعرفة", nameEn: "AlMaarefa University", region: "الرياض", type: "أهلية", logo: cuaLogo("PULogo013.jpeg"), domain: "um.edu.sa", specialties: 13, courses: 4 },
   { slug: "riyadh-elm", name: "جامعة رياض العلم", nameEn: "Riyadh Elm University", region: "الرياض", type: "أهلية", logo: cuaLogo("شعار-جامعة-رياض-العلم-1.jpeg"), domain: "riyadh.edu.sa", specialties: 12, courses: 2 },
@@ -107,7 +112,7 @@ export const institutions: Institution[] = [
   { slug: "mustaqbal", name: "جامعة المستقبل", nameEn: "Mustaqbal University", region: "القصيم", type: "أهلية", logo: cuaLogo("PULogo014.jpeg"), domain: "uom.edu.sa", specialties: 17, courses: 2 },
   { slug: "upm", name: "جامعة الأمير مقرن بن عبدالعزيز", nameEn: "University of Prince Mugrin", region: "المدينة المنورة", type: "أهلية", logo: cuaLogo("PULogo006.jpeg"), domain: "upm.edu.sa", specialties: 15, courses: 1 },
   { slug: "aloola", name: "كليات الأولى الأهلية بالأحساء", nameEn: "Al Oula National Colleges", region: "الشرقية", type: "كلية", domain: "aloola.edu.sa", specialties: 8, courses: 0 },
-  { slug: "jadara", name: "كلية جدارة للعلوم الإدارية والإنسانية", nameEn: "Jadara College", region: "الشرقية", type: "كلية", domain: "jadara.edu.sa", specialties: 7, courses: 0 },
+  { slug: "jadara", name: "كلية جدارة للعلوم الإدارية والإنسانية بحفر الباطن", nameEn: "Jadara College of Administrative and Humanities Sciences", region: "الشرقية", type: "كلية", domain: "jadara.edu.sa", specialties: 7, courses: 0, aliases: ["كلية جدارة للعلوم الإدارية والإنسانية"] },
   { slug: "madinah-law", name: "كلية الحقوق والعلوم الإسلامية بالمدينة المنورة", nameEn: "College of Law and Islamic Sciences", region: "المدينة المنورة", type: "كلية", domain: "clis.edu.sa", specialties: 6, courses: 0 },
   { slug: "manar-aljanoub", name: "كلية منار الجنوب للعلوم والتقنية", nameEn: "Manar Al Janoub College", region: "عسير", type: "كلية", domain: "mjc.edu.sa", specialties: 7, courses: 0 },
   { slug: "makkah-national", name: "كلية مكة الأهلية", nameEn: "Makkah National College", region: "مكة المكرمة", type: "كلية", domain: "mnc.edu.sa", specialties: 8, courses: 0 },
@@ -115,14 +120,14 @@ export const institutions: Institution[] = [
   { slug: "kspp", name: "كلية كابسارك للسياسات العامة", nameEn: "KAPSARC School of Public Policy", region: "الرياض", type: "كلية", domain: "kspp.edu.sa", specialties: 5, courses: 0 },
   { slug: "mbsc", name: "كلية الأمير محمد بن سلمان للإدارة وريادة الأعمال", nameEn: "MBSC", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("PULogo002.png", "2024/04"), domain: "mbsc.edu.sa", specialties: 8, courses: 0 },
 
-  { slug: "bmc", name: "كلية البترجي الطبية", nameEn: "Batterjee Medical College", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("CLogo008.jpeg"), domain: "bmc.edu.sa", specialties: 11, courses: 4 },
-  { slug: "ibnsina", name: "كلية ابن سينا الأهلية للعلوم الطبية", nameEn: "Ibn Sina National College", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("CLogo006.jpeg"), domain: "ibnsina.edu.sa", specialties: 8, courses: 3 },
+  { slug: "bmc", name: "كلية البترجي الطبية للعلوم والتكنولوجيا", nameEn: "Batterjee Medical College for Science and Technology", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("CLogo008.jpeg"), domain: "bmc.edu.sa", specialties: 11, courses: 4, aliases: ["كلية البترجي الطبية"] },
+  { slug: "ibnsina", name: "كلية ابن سينا الأهلية", nameEn: "Ibn Sina National College for Medical Studies", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("CLogo006.jpeg"), domain: "ibnsina.edu.sa", specialties: 8, courses: 3, aliases: ["كلية ابن سينا الأهلية للعلوم الطبية"] },
   { slug: "fakeeh", name: "كلية فقيه للعلوم الطبية", nameEn: "Fakeeh College for Medical Sciences", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("CLogo0019.jpeg"), domain: "fakeehcollege.edu.sa", specialties: 8, courses: 3 },
   { slug: "machs", name: "كلية محمد المانع للعلوم الطبية", nameEn: "Mohammed Al-Mana College for Medical Sciences", region: "الشرقية", type: "كلية", logo: cuaLogo("CLogo0020-1.jpeg"), domain: "machs.edu.sa", specialties: 7, courses: 3 },
-  { slug: "vision", name: "كليات الرؤية", nameEn: "Vision Colleges", region: "الرياض", type: "كلية", logo: cuaLogo("Vision.jpg"), domain: "vision.edu.sa", specialties: 8, courses: 2 },
-  { slug: "alghad", name: "كليات الغد الدولية للعلوم الطبية التطبيقية", nameEn: "Al-Ghad International Colleges", region: "عدة مناطق", type: "كلية", logo: cuaLogo("Untitled-1.jpg"), domain: "gc.edu.sa", specialties: 9, courses: 3 },
-  { slug: "inaya", name: "كليات العناية الطبية", nameEn: "Inaya Medical Colleges", region: "الرياض", type: "كلية", logo: cuaLogo("CLogo0012.jpeg"), domain: "inaya.edu.sa", specialties: 8, courses: 2 },
-  { slug: "aic", name: "كليات الشرق العربي", nameEn: "Arab East Colleges", region: "الرياض", type: "كلية", logo: cuaLogo("CLogo0011.jpeg"), domain: "arabeast.edu.sa", specialties: 12, courses: 1 },
+  { slug: "vision", name: "كلية الرؤية بالرياض", nameEn: "Vision College Riyadh", region: "الرياض", type: "كلية", logo: cuaLogo("Vision.jpg"), domain: "vision.edu.sa", specialties: 8, courses: 2, aliases: ["كليات الرؤية"] },
+  { slug: "alghad", name: "كلية الغد الدولية للعلوم الطبية التطبيقية", nameEn: "Al-Ghad International College for Applied Medical Sciences", region: "عدة مناطق", type: "كلية", logo: cuaLogo("Untitled-1.jpg"), domain: "gc.edu.sa", specialties: 9, courses: 3, aliases: ["كليات الغد الدولية للعلوم الطبية التطبيقية"] },
+  { slug: "inaya", name: "كلية العناية الطبية", nameEn: "Inaya Medical College", region: "الرياض", type: "كلية", logo: cuaLogo("CLogo0012.jpeg"), domain: "inaya.edu.sa", specialties: 8, courses: 2, aliases: ["كليات العناية الطبية"] },
+  { slug: "aic", name: "كليات الشرق العربي للدراسات العليا", nameEn: "Arab East Colleges for Graduate Studies", region: "الرياض", type: "كلية", logo: cuaLogo("CLogo0011.jpeg"), domain: "arabeast.edu.sa", specialties: 12, courses: 1, aliases: ["كليات الشرق العربي"] },
   { slug: "gulf", name: "كليات الخليج", nameEn: "Gulf Colleges", region: "المنطقة الشرقية", type: "كلية", logo: cuaLogo("CLogo002.jpeg"), domain: "gulf.edu.sa", specialties: 10, courses: 1 },
   { slug: "jic", name: "كلية جدة العالمية", nameEn: "Jeddah International College", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("CLogo0017.jpeg"), domain: "jicollege.edu.sa", specialties: 12, courses: 2 },
   { slug: "jubail-industrial", name: "كلية الجبيل الصناعية", nameEn: "Jubail Industrial College", region: "الشرقية", type: "كلية", domain: "rcjy.edu.sa", specialties: 14, courses: 2 },
@@ -132,10 +137,10 @@ export const institutions: Institution[] = [
   { slug: "ibn-rushd", name: "كلية ابن رشد للعلوم الإدارية", nameEn: "Ibn Rushd College", region: "عسير", type: "كلية", logo: cuaLogo("CLogo005.jpeg"), domain: "ibnrushd.edu.sa", specialties: 7, courses: 0 },
   { slug: "baha-private", name: "كلية الباحة الأهلية للعلوم", nameEn: "Al Baha Private College of Science", region: "الباحة", type: "كلية", logo: cuaLogo("CLogo007.jpeg"), domain: "bpcs.edu.sa", specialties: 8, courses: 0 },
   { slug: "alriyada", name: "كلية الريادة للعلوم الصحية", nameEn: "Al Riyada College for Health Sciences", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("CLogo009.jpeg"), domain: "alriyada.edu.sa", specialties: 7, courses: 0 },
-  { slug: "alrayan", name: "كليات الريان الأهلية", nameEn: "Al Rayan Colleges", region: "المدينة المنورة", type: "كلية", logo: cuaLogo("CLogo0010.jpeg"), domain: "amc.edu.sa", specialties: 9, courses: 0 },
+  { slug: "alrayan", name: "كليات الريان الأهلية بالمدينة المنورة", nameEn: "Al Rayan National Colleges in Madinah", region: "المدينة المنورة", type: "كلية", logo: cuaLogo("CLogo0010.jpeg"), domain: "amc.edu.sa", specialties: 9, courses: 0, aliases: ["كليات الريان الأهلية"] },
   { slug: "buraidah-colleges", name: "كليات بريدة الأهلية", nameEn: "Buraidah Private Colleges", region: "القصيم", type: "كلية", logo: cuaLogo("CLogo0016.jpeg"), domain: "bpc.edu.sa", specialties: 12, courses: 0 },
   { slug: "saad-nursing", name: "كلية سعد للتمريض والعلوم الصحية", nameEn: "Saad College of Nursing and Health Sciences", region: "الشرقية", type: "كلية", logo: cuaLogo("CLogo0018.jpeg"), domain: "saadcollege.edu.sa", specialties: 6, courses: 0 },
-  { slug: "psc-management", name: "كلية الأمير سلطان للإدارة", nameEn: "Prince Sultan College of Business", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("CLogo0021.jpeg"), domain: "pscj.edu.sa", specialties: 8, courses: 0 },
+  { slug: "psc-management", name: "جامعة الفيصل – كلية الأمير سلطان للإدارة", nameEn: "Alfaisal University – Prince Sultan College of Business", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("CLogo0021.jpeg"), domain: "pscj.edu.sa", specialties: 8, courses: 0, parentSlug: "alfaisal", aliases: ["كلية الأمير سلطان للإدارة"] },
   { slug: "north-nursing", name: "كلية الشمال للتمريض", nameEn: "Northern College of Nursing", region: "الحدود الشمالية", type: "كلية", logo: cuaLogo("ncn.jpeg"), domain: "nec.edu.sa", specialties: 5, courses: 0 },
   { slug: "vision-jeddah", name: "كلية الرؤية لطب الأسنان والتمريض بجدة", nameEn: "Vision College Jeddah", region: "مكة المكرمة", type: "كلية", logo: cuaLogo("Vision-1.jpg"), domain: "vision.edu.sa", specialties: 6, courses: 0 },
   { slug: "fayha", name: "كلية الفيحاء الأهلية", nameEn: "Al Fayha National College", region: "الشرقية", type: "كلية", logo: cuaLogo("alfaiha.jpg"), domain: "fayha.edu.sa", specialties: 7, courses: 0 },

@@ -15,6 +15,41 @@
       "when": 1787792000699,
       "tag": "0001_sloppy_mulholland_black",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1787798911476,
+      "tag": "0002_catalog_provenance",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787799376507,
+      "tag": "0003_catalog_relationship_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787800539474,
+      "tag": "0004_cart_order_items",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1787801458261,
+      "tag": "0005_notification_campaign_fields",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787802407721,
+      "tag": "0006_square_living_mummy",
+      "breakpoints": true
     }
   ]
 }

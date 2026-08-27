@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Bell, BookOpen, CheckCircle2, FileUp, LayoutDashboard, LifeBuoy, LogOut, Play, Receipt, Settings, Sparkles, TrendingUp, UserRound } from "lucide-react";
 import type { Institution } from "@/lib/data";
@@ -10,7 +10,7 @@ export type DashboardUser = { id:number; fullName:string; email:string; phone:st
 export type DashboardCourse = { slug:string; title:string; university:string; color:string; icon:string; progress:number; current:string; remaining:string };
 export type DashboardOrder = { orderNumber:string; courseTitle:string; total:number; currency:string; status:string; createdAt:string };
 export type DashboardRequest = { id:number; courseName:string; status:string; attachmentsCount:number; createdAt:string };
-export type DashboardNotice = { id:number; title:string; body:string; actionUrl:string | null; createdAt:string; read:boolean };
+export type DashboardNotice = { id:number; title:string; body:string; actionUrl:string | null; actionLabel?:string | null; presentation?:string; createdAt:string; read:boolean };
 export type DashboardRecommendation = { slug:string; title:string; university:string; specialty:string; price:number; color:string; icon:string; match:"تخصصك"|"جامعتك"|"تخصص مشابه" };
 export type DashboardTicket = { id:number;ticketNumber:string;title:string;category:string;status:string;createdAt:string;replies:Array<{id:number;body:string;createdAt:string}> };
 
@@ -26,9 +26,25 @@ const nav = [
 
 export function StudentDashboard({ initialView = "overview", user, owned, orders, requests, notices, tickets, institutions, recommended }: { initialView?:string; user:DashboardUser; owned:DashboardCourse[]; orders:DashboardOrder[]; requests:DashboardRequest[]; notices:DashboardNotice[]; tickets:DashboardTicket[]; institutions:Institution[]; recommended:DashboardRecommendation[] }) {
   const [active, setActive] = useState(initialView);
-  const unread = notices.filter((item) => !item.read).length;
+  const [noticeRows, setNoticeRows] = useState(notices);
+  const unread = noticeRows.filter((item) => !item.read).length;
+  useEffect(() => {
+    if (active !== "notifications") return;
+    const controller = new AbortController();
+    fetch("/api/mobile/notifications", { credentials: "same-origin", cache: "no-store", signal: controller.signal })
+      .then(async (response) => response.ok ? await response.json() as { notifications?: Array<{ id: number; title: string; body: string; actionUrl: string | null; createdAt: string; readAt: string | null }> } : null)
+      .then((payload) => {
+        if (!payload || controller.signal.aborted) return;
+        const rows = (payload.notifications || []).map((item) => ({ id: item.id, title: item.title, body: item.body, actionUrl: item.actionUrl, createdAt: item.createdAt, read: Boolean(item.readAt) }));
+        setNoticeRows(rows);
+        return fetch("/api/mobile/notifications", { method: "PATCH", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ all: true }), signal: controller.signal });
+      })
+      .then(() => setNoticeRows((rows) => rows.map((item) => ({ ...item, read: true }))))
+      .catch(() => undefined);
+    return () => controller.abort();
+  }, [active]);
   const institution = institutions.find((item) => item.slug === user.universitySlug);
-  const content = active === "overview" ? <Overview user={user} owned={owned} requests={requests} recommended={recommended} setActive={setActive} /> : active === "courses" ? <MyCourses owned={owned} /> : active === "requests" ? <Requests rows={requests} /> : active === "orders" ? <Orders rows={orders} /> : active === "notifications" ? <Notifications rows={notices} /> : active === "support" ? <Support rows={tickets} /> : <Account user={user} institutions={institutions} />;
+  const content = active === "overview" ? <Overview user={user} owned={owned} requests={requests} recommended={recommended} setActive={setActive} /> : active === "courses" ? <MyCourses owned={owned} /> : active === "requests" ? <Requests rows={requests} /> : active === "orders" ? <Orders rows={orders} /> : active === "notifications" ? <Notifications rows={noticeRows} onRead={(id) => setNoticeRows((rows) => rows.map((item) => item.id === id ? { ...item, read: true } : item))} /> : active === "support" ? <Support rows={tickets} /> : <Account user={user} institutions={institutions} />;
   const logout = async () => { await fetch("/api/auth/logout", { method:"POST" }); window.location.assign("/"); };
   return <div className="student-app"><aside className="student-sidebar"><div className="student-profile-mini"><div>{user.fullName[0]}</div><span><strong>{user.fullName}</strong><small>{institution?.name || "مراس العلم"}</small></span></div><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={active===item.id?"active":""} onClick={() => setActive(item.id)}><Icon size={18} />{item.label}{item.id==="notifications"&&unread>0&&<i>{unread}</i>}</button>; })}</nav><div className="student-sidebar-help"><LifeBuoy size={21} /><strong>تحتاج مساعدة؟</strong><small>فريق مراس معك</small><button onClick={() => setActive("support")}>تواصل معنا</button></div><button className="student-logout" onClick={logout}><LogOut size={17} /> تسجيل الخروج</button></aside><div className="student-content"><div className="student-mobile-tabs">{nav.slice(0,5).map((item)=>{const Icon=item.icon;return <button key={item.id} onClick={()=>setActive(item.id)} className={active===item.id?"active":""}><Icon size={18}/><span>{item.label}</span></button>;})}</div>{content}</div></div>;
 }
@@ -52,7 +68,7 @@ function Requests({rows}:{rows:DashboardRequest[]}) { return <><DashboardTitle t
 
 function Orders({rows}:{rows:DashboardOrder[]}) { return <><DashboardTitle title="الطلبات والفواتير" description="سجل عمليات الدفع الفعلية المرتبطة بحسابك."/>{rows.length?<div className="dashboard-panel table-panel"><div className="orders-table"><div className="table-row table-head"><span>رقم الطلب</span><span>المادة</span><span>التاريخ</span><span>المبلغ</span><span>الحالة</span><span></span></div>{rows.map(row=><div className="table-row" key={row.orderNumber}><span dir="ltr">#{row.orderNumber}</span><strong>{row.courseTitle}</strong><span>{new Date(row.createdAt).toLocaleDateString("ar-SA")}</span><span>{row.total} {row.currency}</span><em>{statusLabel(row.status)}</em><span /></div>)}</div></div>:<EmptyPanel title="لا توجد عمليات شراء" text="لن تُفعّل أي مادة إلا بعد تأكيد الدفع من Tap على الخادم."/>}</>; }
 
-function Notifications({rows}:{rows:DashboardNotice[]}) { return <><DashboardTitle title="الإشعارات" description="تحديثات المواد والطلبات والحساب."/>{rows.length?<section className="dashboard-panel notifications-panel">{rows.map((item)=><article key={item.id} className={!item.read?"new":""}><i><Bell size={18}/></i><div><strong>{item.title}</strong><p>{item.body}</p></div><span>{new Date(item.createdAt).toLocaleDateString("ar-SA")}</span></article>)}</section>:<EmptyPanel title="لا توجد إشعارات" text="ستصلك هنا حالة طلبات المواد وتأكيدات الشراء."/>}</>; }
+function Notifications({rows,onRead}:{rows:DashboardNotice[];onRead:(id:number)=>void}) { return <><DashboardTitle title="الإشعارات" description="تحديثات المواد والطلبات والحساب. عند فتح هذا القسم تُعلّم الرسائل كمقروءة." action={rows.some((item)=>!item.read)?<span className="notifications-unread-badge">{rows.filter((item)=>!item.read).length} غير مقروءة</span>:undefined}/>{rows.length?<section className="dashboard-panel notifications-panel">{rows.map((item)=>{const href=item.actionUrl&&item.actionUrl.startsWith("/")?item.actionUrl:null; const content=<><i><Bell size={18}/></i><div><strong>{item.title}</strong><p>{item.body}</p>{href&&<small>فتح التفاصيل <ArrowLeft size={12}/></small>}</div><span>{new Date(item.createdAt).toLocaleDateString("ar-SA")}</span></>; return href?<Link href={href} key={item.id} onClick={()=>onRead(item.id)} className={!item.read?"new":""}>{content}</Link>:<article key={item.id} onClick={()=>onRead(item.id)} className={!item.read?"new":""}>{content}</article>;})}</section>:<EmptyPanel title="لا توجد إشعارات" text="ستصلك هنا حالة طلبات المواد وتأكيدات الشراء."/>}</>; }
 
 function Support({rows}:{rows:DashboardTicket[]}) { return <><DashboardTitle title="الدعم الفني" description="التذاكر والردود مرتبطة بحسابك ولا يراها غيرك وفريق الدعم." action={<Link href="/support" className="button button-primary">فتح تذكرة جديدة</Link>}/>{rows.length?<section className="dashboard-panel support-ticket-history">{rows.map((ticket)=><article key={ticket.id}><header><span><strong>{ticket.title}</strong><small dir="ltr">#{ticket.ticketNumber}</small></span><em>{statusLabel(ticket.status)}</em></header><p>{ticket.category} · {new Date(ticket.createdAt).toLocaleDateString("ar-SA")}</p>{ticket.replies.length?<div>{ticket.replies.map((reply)=><blockquote key={reply.id}><b>رد فريق الدعم</b><span>{reply.body}</span><small>{new Date(reply.createdAt).toLocaleString("ar-SA")}</small></blockquote>)}</div>:<small>بانتظار رد الفريق، وستظهر الإجابة هنا.</small>}</article>)}</section>:<section className="dashboard-panel support-contact"><LifeBuoy size={33}/><h2>لا توجد تذاكر بعد</h2><p>اذكر رقم الطلب أو اسم المادة لتسريع المعالجة.</p><Link href="/support" className="button button-soft">تواصل مع الدعم</Link></section>}</>; }
 

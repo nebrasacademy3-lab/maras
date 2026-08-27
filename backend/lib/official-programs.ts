@@ -11,7 +11,7 @@ function decodeEntities(value: string) {
   });
 }
 
-function parsePrograms(html: string, fallback: AcademicProgram[]) {
+function parsePrograms(html: string, fallback: AcademicProgram[], sourceUrl: string) {
   const text = decodeEntities(html)
     .replace(/<script[\s\S]*?<\/script>/gi, " ")
     .replace(/<style[\s\S]*?<\/style>/gi, " ")
@@ -40,7 +40,7 @@ function parsePrograms(html: string, fallback: AcademicProgram[]) {
     if (/تصميم|فنون|أزياء/.test(name)) return "تصميم";
     return "إنسانية";
   };
-  const programs = Array.from(new Set(names)).map((name) => fallbackByName.get(name) || ({ name, area: inferArea(name), degree: /ماجستير|دكتوراه/.test(name) ? "دراسات عليا" : /دبلوم/.test(name) ? "دبلوم" : "بكالوريوس" } as AcademicProgram));
+  const programs = Array.from(new Set(names)).map((name) => ({ ...(fallbackByName.get(name) || ({ name, area: inferArea(name), degree: /ماجستير|دكتوراه/.test(name) ? "دراسات عليا" : /دبلوم/.test(name) ? "دبلوم" : "بكالوريوس" } as AcademicProgram)), verificationStatus: "official-program" as const, sourceUrl }));
   return programs.length >= 4 ? programs : null;
 }
 
@@ -56,7 +56,7 @@ export async function getVerifiedInstitutionPrograms(institutionSlug: string, do
       signal: AbortSignal.timeout(4_500),
     });
     if (!response.ok) throw new Error("official catalog unavailable");
-    const programs = parsePrograms(await response.text(), fallback);
+    const programs = parsePrograms(await response.text(), fallback, getOfficialProgramSource(institutionSlug, domain));
     if (!programs) throw new Error("official specialties could not be parsed");
     memoryCache.set(institutionSlug, { programs, expires: Date.now() + 6 * 60 * 60 * 1000 });
     return { programs, sourceUrl: getOfficialProgramSource(institutionSlug, domain), liveVerified: true };
