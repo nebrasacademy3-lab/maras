@@ -8,5 +8,5 @@ export async function GET() {
     .from(notificationsDb)
     .where(and(eq(notificationsDb.audience, "public"), isNull(notificationsDb.userEmail), or(eq(notificationsDb.presentation, "banner"), eq(notificationsDb.presentation, "modal"), eq(notificationsDb.presentation, "all")), or(isNull(notificationsDb.startsAt), lte(notificationsDb.startsAt, now)), or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now))))
     .orderBy(desc(notificationsDb.createdAt)).limit(8);
-  return Response.json({ ok: true, announcements: rows }, { headers: { "cache-control": "public, max-age=30, stale-while-revalidate=120" } });
+  return Response.json({ ok: true, announcements: rows }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }

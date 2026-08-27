@@ -27,7 +27,6 @@ export function MobileFooter() {
   const socials = settings ? socialChannels.filter((item) => settings[item.key].startsWith("https://")) : [];
   return <View style={[styles.footer, { borderTopColor: colors.border }]}>
     <Image source={require("../../assets/icon.png")} style={styles.mark} resizeMode="contain" accessibilityLabel="مراس العلم" />
-    <Text style={[styles.title, { color: colors.text }]}>مراس العلم</Text>
     <Text style={[styles.copy, { color: colors.textSoft }]}>شرح جامعتك في مكان واحد، مع قنوات تواصل تُحدّث مباشرة من الإدارة.</Text>
     {settings && <View style={styles.actions}>
       <Pressable onPress={() => Linking.openURL(`mailto:${settings.support_email}`)} style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="button" accessibilityLabel="البريد الإلكتروني"><Ionicons name="mail-outline" size={17} color={colors.primary} /></Pressable>
@@ -41,10 +40,8 @@ export function MobileFooter() {
 const styles = StyleSheet.create({
   footer: { alignItems: "center", paddingTop: 28, paddingBottom: 30, marginTop: 30, borderTopWidth: 1, gap: 7 },
   mark: { width: 72, height: 72, borderRadius: 20, backgroundColor: "#FFFFFF" },
-  title: { fontSize: 15, fontWeight: "900", textAlign: "center" },
   copy: { maxWidth: 330, fontSize: 10, lineHeight: 17, textAlign: "center", writingDirection: "rtl" },
   actions: { flexDirection: "row-reverse", flexWrap: "wrap", justifyContent: "center", gap: 7, maxWidth: 340, marginTop: 8 },
   action: { width: 37, height: 37, borderWidth: 1, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   note: { fontSize: 8, textAlign: "center", marginTop: 7 },
 });
-

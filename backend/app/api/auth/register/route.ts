@@ -15,7 +15,7 @@ function canonicalPhone(value: string) {
 
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
-  if (!await checkRateLimit("register", clientIp(request), 6, 60 * 60)) return jsonError("محاولات كثيرة. حاول بعد ساعة.", 429);
+  if (!await checkRateLimit("register-ip", clientIp(request), 100, 60 * 60)) return jsonError("محاولات كثيرة. حاول بعد ساعة.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات التسجيل غير صالحة"); }
 
@@ -27,6 +27,8 @@ export async function POST(request: Request) {
   const universitySlug = cleanText(payload.universitySlug, 120);
   const specialty = cleanText(payload.specialty, 120);
   const academicLevel = cleanText(payload.academicLevel, 80);
+
+  if (!await checkRateLimit("register-identity", `${email}:${phone}`, 5, 60 * 60)) return jsonError("محاولات كثيرة لهذا الحساب. حاول بعد ساعة.", 429);
 
   if (fullName.length < 5 || !validEmail(email) || !validSaudiPhone(rawPhone)) return jsonError("تحقق من الاسم والبريد ورقم الجوال السعودي");
   if (!validPassword(password)) return jsonError("كلمة المرور يجب أن تكون 10 أحرف على الأقل وتحتوي رقمًا ورمزًا خاصًا");
@@ -54,7 +56,8 @@ export async function POST(request: Request) {
     status: "active",
     createdAt: now,
     updatedAt: now,
-  }).returning({ id: users.id, email: users.email, fullName: users.fullName });
+  }).onConflictDoNothing().returning({ id: users.id, email: users.email, fullName: users.fullName });
+  if (!created) return jsonError("يوجد حساب مرتبط بالبريد أو رقم الجوال", 409);
   const session = await createSession(created.id, request, true);
   return Response.json({ ok: true, user: created, next: "/onboarding" }, { status: 201, headers: { "set-cookie": session.cookie, "cache-control": "no-store" } });
 }

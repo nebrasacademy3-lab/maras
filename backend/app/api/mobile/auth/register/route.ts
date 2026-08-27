@@ -16,7 +16,7 @@ function canonicalPhone(value: string) {
 
 export async function POST(request: Request) {
   if (!isMobileRequest(request)) return jsonError("طلب تطبيق غير صالح", 403);
-  if (!await checkRateLimit("mobile-register", clientIp(request), 6, 60 * 60)) return jsonError("محاولات كثيرة. حاول بعد ساعة.", 429);
+  if (!await checkRateLimit("mobile-register-ip", clientIp(request), 100, 60 * 60)) return jsonError("محاولات كثيرة. حاول بعد ساعة.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات التسجيل غير صالحة"); }
   const fullName = cleanText(payload.fullName, 120).replace(/\s+/g, " ");
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
   const universitySlug = cleanText(payload.universitySlug, 120);
   const specialty = cleanText(payload.specialty, 120);
   const academicLevel = cleanText(payload.academicLevel, 80);
+  if (!await checkRateLimit("register-identity", `${email}:${phone}`, 5, 60 * 60)) return jsonError("محاولات كثيرة لهذا الحساب. حاول بعد ساعة.", 429);
   if (fullName.length < 5 || !validEmail(email) || !validSaudiPhone(rawPhone)) return jsonError("تحقق من الاسم والبريد ورقم الجوال السعودي");
   if (!validPassword(password)) return jsonError("كلمة المرور يجب أن تكون 10 أحرف على الأقل وتحتوي رقمًا ورمزًا خاصًا");
   if (!validAcademicLevel(academicLevel)) return jsonError("اختر المستوى الدراسي أو خريج من القائمة");
@@ -42,8 +43,8 @@ export async function POST(request: Request) {
   const [created] = await db.insert(users).values({
     email, phone, fullName, passwordHash: await hashPassword(password), role: "student", universitySlug, specialty, academicLevel,
     profileCompletedAt: now, status: "active", createdAt: now, updatedAt: now,
-  }).returning();
+  }).onConflictDoNothing().returning();
+  if (!created) return jsonError("يوجد حساب مرتبط بالبريد أو رقم الجوال", 409);
   const session = await createSession(created.id, request, true);
   return Response.json({ ok: true, token: session.token, expiresAt: session.expiresAt, user: sessionUserFromRow(created), next: "/onboarding" }, { status: 201, headers: mobileNoStoreHeaders });
 }
-

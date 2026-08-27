@@ -2,14 +2,16 @@ import Link from "next/link";
 import { Clock3, PlayCircle, Star } from "lucide-react";
 import type { Course } from "@/lib/data";
 import { CourseActions } from "./course-actions";
+import { CourseCoverImage } from "./course-cover-image";
 
 export function CourseCard({ course, compact = false }: { course: Course; compact?: boolean }) {
+  const hasReadyPreview = course.units.some((unit) => unit.lessons.some((lesson) => lesson.free && lesson.ready));
   return (
     <article className={`course-card ${compact ? "course-card-compact" : ""}`}>
       <Link href={`/courses/${course.slug}`} className={`course-cover bg-gradient-to-br ${course.color}`} aria-label={`عرض ${course.title}`}>
         <span className="course-cover-grid" />
-        {course.coverImage ? <img className="course-cover-image" src={course.coverImage} alt="" loading="lazy" /> : <span className="course-cover-icon">{course.icon}</span>}
-        <span className="preview-pill"><PlayCircle size={14} /> درس مجاني</span>
+        {course.coverImage ? <CourseCoverImage className="course-cover-image" src={course.coverImage} alt="" sizes="(max-width: 520px) 100vw, (max-width: 900px) 50vw, 33vw" /> : <span className="course-cover-icon">{course.icon}</span>}
+        <span className={`preview-pill ${hasReadyPreview ? "" : "preparing-pill"}`}>{hasReadyPreview ? <><PlayCircle size={14} /> درس مجاني</> : "قريبًا"}</span>
         {course.oldPrice && <span className="sale-pill">وفر {course.oldPrice - course.price} ر.س</span>}
       </Link>
       <div className="course-card-body">
@@ -25,9 +27,8 @@ export function CourseCard({ course, compact = false }: { course: Course; compac
           <div className="price"><strong>{course.price}</strong><span>ر.س</span>{course.oldPrice && <del>{course.oldPrice}</del>}</div>
           <Link href={`/courses/${course.slug}`} className="button button-soft">عرض المادة</Link>
         </div>
-        <CourseActions courseSlug={course.slug} compact={compact} />
+        <CourseActions courseSlug={course.slug} compact={compact} purchasable={course.availableForPurchase === true} />
       </div>
     </article>
   );
 }
-

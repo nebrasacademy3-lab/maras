@@ -3,11 +3,14 @@
 import { useState } from "react";
 import { ArrowLeft, BellRing, CheckCircle2, FileText, LoaderCircle, Paperclip, Sparkles, UploadCloud, X } from "lucide-react";
 
+const MAX_FILES = 100;
+const MAX_TOTAL_FILE_BYTES = 100 * 1024 * 1024;
+
 export function RequestCourseForm({ universityName, specialty, studentName }: { universityName:string; specialty:string; studentName:string }) {
   const [status, setStatus] = useState<"idle" | "loading" | "done">("idle");
   const [error, setError] = useState("");
   const [files,setFiles]=useState<File[]>([]);
-  const choose=(list:FileList|null)=>{if(!list)return;const selected=Array.from(list);const total=selected.reduce((sum,file)=>sum+file.size,0);setFiles(selected);setError(total>100*1024*1024?"إجمالي حجم المرفقات يجب ألا يتجاوز 100 ميجابايت":"");};
+  const choose=(list:FileList|null)=>{if(!list)return;const selected=Array.from(list);const total=selected.reduce((sum,file)=>sum+file.size,0);setFiles(selected);setError(selected.length>MAX_FILES?`يمكن إرفاق ${MAX_FILES} ملف كحد أقصى`:total>MAX_TOTAL_FILE_BYTES?"إجمالي حجم المرفقات يجب ألا يتجاوز 100 ميجابايت":"");};
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if(error)return;
@@ -22,8 +25,8 @@ export function RequestCourseForm({ universityName, specialty, studentName }: { 
     <label>اسم المادة<div className="input-with-icon"><Sparkles size={18}/><input name="courseName" required minLength={3} maxLength={160} placeholder="مثال: علم الأدوية Pharmacology"/></div></label>
     <label>رمز المادة (اختياري)<div className="input-with-icon"><FileText size={18}/><input name="courseCode" maxLength={40} placeholder="مثال: PHRM 214" dir="ltr"/></div></label>
     <label>ملاحظات أو تفاصيل المنهج<textarea name="notes" maxLength={1500} placeholder="اسم المدرّس، الوحدات المطلوبة، موعد الاختبار أو أي تفاصيل تساعد المشرف..."/></label>
-    <label className="request-upload"><input type="file" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.png,.jpg,.jpeg" onChange={(event)=>choose(event.target.files)}/><UploadCloud size={28}/><span><strong>ارفع السلايدات أو توصيف المقرر</strong><small>PDF, PPTX, DOCX أو صور · عدد الملفات غير محدود · إجمالي حتى 100MB</small></span></label>
-    {files.length>0&&<div className="request-file-list">{files.map((file,index)=><span key={`${file.name}-${file.size}`}><Paperclip size={14}/><b>{file.name}</b><small>{(file.size/1024/1024).toFixed(1)} MB</small><button type="button" onClick={()=>{const next=files.filter((_,item)=>item!==index);setFiles(next);setError(next.reduce((sum,item)=>sum+item.size,0)>100*1024*1024?"إجمالي حجم المرفقات يجب ألا يتجاوز 100 ميجابايت":"");}} aria-label="حذف الملف"><X size={14}/></button></span>)}</div>}
+    <label className="request-upload"><input type="file" multiple accept=".pdf,.ppt,.pptx,.doc,.docx,.png,.jpg,.jpeg" onChange={(event)=>choose(event.target.files)}/><UploadCloud size={28}/><span><strong>ارفع السلايدات أو توصيف المقرر</strong><small>PDF, PPTX, DOCX أو صور · حتى {MAX_FILES} ملف · إجمالي حتى 100MB</small></span></label>
+    {files.length>0&&<div className="request-file-list">{files.map((file,index)=><span key={`${file.name}-${file.size}-${index}`}><Paperclip size={14}/><b>{file.name}</b><small>{(file.size/1024/1024).toFixed(1)} MB</small><button type="button" onClick={()=>{const next=files.filter((_,item)=>item!==index);setFiles(next);setError(next.length>MAX_FILES?`يمكن إرفاق ${MAX_FILES} ملف كحد أقصى`:next.reduce((sum,item)=>sum+item.size,0)>MAX_TOTAL_FILE_BYTES?"إجمالي حجم المرفقات يجب ألا يتجاوز 100 ميجابايت":"");}} aria-label="حذف الملف"><X size={14}/></button></span>)}</div>}
     <label className="terms-check"><input type="checkbox" name="notify" defaultChecked/> أرسل لي إشعارًا عند إسناد الطلب أو بدء إنتاج المادة أو توفرها.</label>
     {error&&<p className="form-error" role="alert">{error}</p>}
     <button className="button button-primary form-main-submit" disabled={status==="loading"}>{status==="loading"?<LoaderCircle size={18} className="spin"/>:<><BellRing size={17}/> إرسال الطلب والمرفقات <ArrowLeft size={16}/></>}</button>

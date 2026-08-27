@@ -4,7 +4,7 @@ import { Check, Heart, LoaderCircle, ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
 import { ensureCommerceLoaded, setCart, setFavorite, useCommerceState } from "./commerce-state";
 
-export function CourseActions({ courseSlug, compact = false }: { courseSlug: string; compact?: boolean }) {
+export function CourseActions({ courseSlug, compact = false, purchasable = true }: { courseSlug: string; compact?: boolean; purchasable?: boolean }) {
   const { cartSlugs, favoriteSlugs, loaded } = useCommerceState();
   const [busy, setBusy] = useState<"cart" | "favorite" | "">("");
   const [message, setMessage] = useState("");
@@ -28,7 +28,7 @@ export function CourseActions({ courseSlug, compact = false }: { courseSlug: str
   }
 
   return <div className={`course-actions ${compact ? "course-actions-compact" : ""} ${loaded ? "commerce-ready" : ""}`}>
-    <button type="button" className={isInCart ? "is-added" : ""} onClick={() => void mutate("cart")} aria-pressed={isInCart} aria-label={isInCart ? "إزالة المادة من السلة" : "إضافة إلى السلة"} title={isInCart ? "إزالة من السلة" : "إضافة إلى السلة"}>{busy === "cart" ? <LoaderCircle className="spin" size={15} /> : <ShoppingBag size={15} />}<span>{compact ? (isInCart ? "مضافة" : "سلة") : (isInCart ? "مضافة للسلة" : "أضف للسلة")}</span><Check className="course-action-check" size={13} /></button>
+    <button type="button" className={isInCart ? "is-added" : ""} onClick={() => void mutate("cart")} disabled={!purchasable && !isInCart} aria-pressed={isInCart} aria-label={!purchasable && !isInCart ? "المادة قيد التجهيز" : isInCart ? "إزالة المادة من السلة" : "إضافة إلى السلة"} title={!purchasable && !isInCart ? "تتاح بعد اكتمال الفيديوهات" : isInCart ? "إزالة من السلة" : "إضافة إلى السلة"}>{busy === "cart" ? <LoaderCircle className="spin" size={15} /> : <ShoppingBag size={15} />}<span>{!purchasable && !isInCart ? "قريبًا" : compact ? (isInCart ? "مضافة" : "سلة") : (isInCart ? "مضافة للسلة" : "أضف للسلة")}</span><Check className="course-action-check" size={13} /></button>
     <button type="button" className={isFavorite ? "is-favorite" : ""} onClick={() => void mutate("favorite")} aria-pressed={isFavorite} aria-label={isFavorite ? "إزالة المادة من المفضلة" : "إضافة إلى المفضلة"} title={isFavorite ? "إزالة من المفضلة" : "إضافة إلى المفضلة"}>{busy === "favorite" ? <LoaderCircle className="spin" size={15} /> : <Heart size={15} fill={isFavorite ? "currentColor" : "none"} />}<span>{compact ? "مفضلة" : (isFavorite ? "في المفضلة" : "مفضلة")}</span></button>
     {message && <small role="status" className="course-action-message">{message}</small>}
   </div>;

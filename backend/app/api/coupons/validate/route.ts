@@ -1,4 +1,4 @@
-import { getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { getCoursesCatalog } from "@/lib/catalog-store";
 import { quoteCoupon, quoteCouponForCart } from "@/lib/coupons";
@@ -7,6 +7,7 @@ export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
+  if (!await checkRateLimit("coupon-quote", `user:${user.id}`, 60, 60)) return jsonError("محاولات كوبون كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; }
   catch { return jsonError("بيانات غير صالحة"); }

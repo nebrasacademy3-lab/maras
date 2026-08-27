@@ -104,11 +104,22 @@ function ContentManager({ data, colors, run }: { data: Workspace; colors: Return
     if (!file) return;
     setUploadingLesson(target.id);
     await run(async () => {
-      const form = new FormData();
-      form.append("courseSlug", courseSlug);
-      form.append("lessonId", target.id);
-      form.append("file", { uri: file.uri, name: file.name, type: assetMimeType(file, "video/mp4") } as unknown as Blob);
-      await api("/api/admin/videos", { method: "POST", body: form });
+      const contentType = assetMimeType(file, /\.mov$/i.test(file.name) ? "video/quicktime" : "video/mp4");
+      const response = await FileSystem.uploadAsync(absoluteUrl("/api/admin/videos"), file.uri, {
+        httpMethod: "POST",
+        uploadType: FileSystem.FileSystemUploadType.BINARY_CONTENT,
+        headers: {
+          accept: "application/json",
+          authorization: `Bearer ${getApiToken()}`,
+          "content-type": contentType,
+          "x-meras-client": "mobile-v1",
+          "x-meras-course": courseSlug,
+          "x-meras-lesson": target.id,
+        },
+      });
+      let payload: { error?: string } = {};
+      try { payload = response.body ? JSON.parse(response.body) as { error?: string } : {}; } catch { /* Keep the HTTP status as the source of truth. */ }
+      if (response.status < 200 || response.status >= 300) throw new ApiError(payload.error || "تعذر رفع الفيديو", response.status);
     }, "تم رفع الفيديو إلى التخزين الخاص");
     setUploadingLesson(null);
   };

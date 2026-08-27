@@ -21,12 +21,11 @@ export async function POST(request: Request) {
   const password = typeof payload.password === "string" ? payload.password : "";
   const ipIdentity = clientIp(request);
   if (!identifier || !password) return jsonError("أدخل البريد أو الجوال وكلمة المرور");
-  if (!await checkRateLimit("mobile-login-ip", ipIdentity, 40, 15 * 60) || !await checkRateLimit("mobile-login-account", identifier, 8, 15 * 60)) return jsonError("تم إيقاف المحاولات مؤقتًا. حاول بعد 15 دقيقة.", 429);
+  if (!await checkRateLimit("mobile-login-ip", ipIdentity, 300, 15 * 60) || !await checkRateLimit("mobile-login-account", identifier, 8, 15 * 60)) return jsonError("تم إيقاف المحاولات مؤقتًا. حاول بعد 15 دقيقة.", 429);
   const db = getDb();
   const [row] = await db.select().from(users).where(or(eq(users.email, identifier), eq(users.phone, phoneCandidate(identifier)))).limit(1);
   const valid = row?.status === "active" && await verifyPassword(password, row.passwordHash);
   if (!row || !valid) return jsonError("بيانات الدخول غير صحيحة", 401);
-  await clearRateLimit("mobile-login-ip", ipIdentity);
   await clearRateLimit("mobile-login-account", identifier);
   const now = new Date().toISOString();
   await db.update(users).set({ lastLoginAt: now, updatedAt: now }).where(eq(users.id, row.id));
@@ -35,4 +34,3 @@ export async function POST(request: Request) {
   const next = user.profileCompleted ? (user.onboardingCompleted ? "/home" : "/onboarding") : "/complete-profile";
   return Response.json({ ok: true, token: session.token, expiresAt: session.expiresAt, user, next }, { headers: mobileNoStoreHeaders });
 }
-

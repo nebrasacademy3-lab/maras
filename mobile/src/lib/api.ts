@@ -23,19 +23,23 @@ export function absoluteUrl(path?: string | null) {
   return `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
-export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const headers = new Headers(init.headers);
+export type ApiRequestInit = RequestInit & { timeoutMs?: number };
+
+export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  const { timeoutMs = 15_000, ...requestInit } = init;
+  const headers = new Headers(requestInit.headers);
   headers.set("accept", "application/json");
   headers.set("x-meras-client", "mobile-v1");
   if (sessionToken) headers.set("authorization", `Bearer ${sessionToken}`);
-  if (init.body && !(init.body instanceof FormData) && !headers.has("content-type")) headers.set("content-type", "application/json");
+  if (requestInit.body && !(requestInit.body instanceof FormData) && !headers.has("content-type")) headers.set("content-type", "application/json");
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  const externalSignal = init.signal;
+  const safeTimeout = Math.max(1_000, Math.min(15 * 60_000, Math.floor(timeoutMs)));
+  const timeout = setTimeout(() => controller.abort(), safeTimeout);
+  const externalSignal = requestInit.signal;
   if (externalSignal?.aborted) controller.abort();
   else if (externalSignal) externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
   try {
-    const response = await fetch(absoluteUrl(path), { ...init, headers, signal: controller.signal });
+    const response = await fetch(absoluteUrl(path), { ...requestInit, headers, signal: controller.signal });
     const text = await response.text();
     let payload: unknown = {};
     try { payload = text ? JSON.parse(text) : {}; } catch { payload = {}; }
@@ -54,4 +58,3 @@ export async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export function jsonBody(value: unknown) { return JSON.stringify(value); }
-

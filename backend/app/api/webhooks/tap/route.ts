@@ -70,12 +70,18 @@ export async function POST(request: Request) {
   const chargeId = cleanText(posted.id, 160);
   if (!chargeId) return jsonError("معرّف العملية مفقود");
 
-  const verifiedResponse = await fetch(`https://api.tap.company/v2/charges/${encodeURIComponent(chargeId)}`, {
-    headers: { authorization: `Bearer ${tapSecretKey}`, accept: "application/json" },
-    signal: AbortSignal.timeout(10_000),
-  });
+  let verifiedResponse: Response;
+  try {
+    verifiedResponse = await fetch(`https://api.tap.company/v2/charges/${encodeURIComponent(chargeId)}`, {
+      headers: { authorization: `Bearer ${tapSecretKey}`, accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return jsonError("تعذر الاتصال بخدمة Tap للتحقق من العملية", 502);
+  }
   if (!verifiedResponse.ok) return jsonError("تعذر التحقق من العملية لدى Tap", 502);
-  const verified = await verifiedResponse.json() as TapCharge;
+  let verified: TapCharge;
+  try { verified = await verifiedResponse.json() as TapCharge; } catch { return jsonError("استجابة Tap غير صالحة", 502); }
   if (verified.id !== chargeId) return jsonError("تعذر مطابقة العملية", 409);
 
   const orderNumber = cleanText(verified.metadata?.order_number || verified.reference?.order || verified.reference?.transaction, 160);

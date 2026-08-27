@@ -24,7 +24,8 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
   const [programs, setPrograms] = useState<Program[]>([]);
   const [programsSlug, setProgramsSlug] = useState("");
 
-  useRealtimeSync(() => {
+  useRealtimeSync((payload) => {
+    if (payload.changed && !payload.changed.includes("catalog")) return;
     fetch("/api/mobile/catalog", { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { courses?: Course[]; institutions?: Institution[] } : null).then((payload) => {
       if (payload?.courses) setLiveCourses(payload.courses);
       if (payload?.institutions) setLiveInstitutions(payload.institutions);

@@ -7,17 +7,25 @@ import { dirname, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (relative) => readFile(join(here, "..", relative), "utf8");
 const checkout = await read("app/api/checkout/route.ts");
+const cart = await read("app/api/cart/route.ts");
+const catalogStore = await read("lib/catalog-store.ts");
 const videoUpload = await read("app/api/admin/videos/route.ts");
 const account = await read("app/api/mobile/account/route.ts");
 const health = await read("app/api/health/route.ts");
 const push = await read("app/api/mobile/push/route.ts");
 const logo = await read("app/api/logos/[slug]/route.ts");
 
- test("checkout has abuse protection, atomic order creation, and an upstream timeout", () => {
+test("checkout has abuse protection, atomic order creation, and an upstream timeout", () => {
   assert.match(checkout, /checkRateLimit\("checkout"/);
   assert.match(checkout, /db\.transaction\(async \(tx\)/);
   assert.match(checkout, /AbortSignal\.timeout\(15_000\)/);
   assert.match(checkout, /status: "failed"/);
+});
+
+test("unfinished course templates cannot enter the cart or payment flow", () => {
+  assert.match(catalogStore, /readyLessons === lessons\.length && hasReadyPreview/);
+  assert.match(cart, /!course\.availableForPurchase/);
+  assert.match(checkout, /selected\.filter\(\(course\) => !course\.availableForPurchase\)/);
 });
 
 test("video upload requires detected container bytes and refreshes catalog state", () => {

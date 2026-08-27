@@ -8,6 +8,8 @@ type SyncPayload = { ok: true; channels?: Record<string, string>; version?: stri
 
 const CHANNEL_KEYS: Record<string, readonly (readonly unknown[])[]> = {
   catalog: [["catalog"], ["dashboard"]],
+  settings: [["settings"], ["dashboard"]],
+  announcements: [["announcements"]],
   account: [["dashboard"], ["cart"], ["favorites"]],
   commerce: [["dashboard"], ["cart"]],
   support: [["support"], ["dashboard"], ["notifications"]],
@@ -30,16 +32,11 @@ export function RealtimeSyncProvider({ children }: { children: React.ReactNode }
   const appState = useRef<AppStateStatus>(AppState.currentState);
 
   useEffect(() => {
-    const subscription = AppState.addEventListener("change", (next) => { appState.current = next; });
-    return () => subscription.remove();
-  }, []);
-
-  useEffect(() => {
-    if (loading || !token || !user) return;
+    if (loading) return;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let inFlight = false;
-    let delay = 15_000;
+    let delay = 5_000;
 
     const schedule = (nextDelay = delay) => {
       if (!stopped) timer = setTimeout(() => void poll(), nextDelay);
@@ -55,9 +52,9 @@ export function RealtimeSyncProvider({ children }: { children: React.ReactNode }
           if (changed.length) invalidateChannels(queryClient, changed);
         }
         previous.current = next;
-        delay = 15_000;
+        delay = 5_000;
       } catch (reason) {
-        if (reason instanceof ApiError && reason.status === 401) {
+        if (token && reason instanceof ApiError && reason.status === 401) {
           await refresh();
           return;
         }
@@ -71,7 +68,7 @@ export function RealtimeSyncProvider({ children }: { children: React.ReactNode }
       appState.current = next;
       if (next === "active") {
         if (timer) clearTimeout(timer);
-        delay = 15_000;
+        delay = 5_000;
         void poll();
       } else if (timer) clearTimeout(timer);
     };

@@ -61,6 +61,8 @@ export type Course = {
   featured?: boolean;
   access: string;
   units: CourseUnit[];
+  readyLessons?: number;
+  availableForPurchase?: boolean;
 };
 
 const moeLogo = (file: string) =>

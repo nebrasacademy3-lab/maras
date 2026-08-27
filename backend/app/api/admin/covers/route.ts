@@ -4,6 +4,7 @@ import { auditLogs, catalogCourses } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { getCourseCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
+import { syncCatalogTemplates } from "@/lib/catalog-sync";
 import { deleteObject, putObject } from "@/lib/storage";
 
 const MAX_COVER_BYTES = 6 * 1024 * 1024;
@@ -39,10 +40,16 @@ export async function POST(request: Request) {
   const objectKey = `covers/${slug}/${crypto.randomUUID()}.${extension}`;
   try {
     const db = getDb();
-    const [existing] = await db.select({ coverImageUrl: catalogCourses.coverImageUrl }).from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
+    let [existing] = await db.select({ coverImageUrl: catalogCourses.coverImageUrl }).from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
+    if (!existing) {
+      await syncCatalogTemplates(49, "core");
+      [existing] = await db.select({ coverImageUrl: catalogCourses.coverImageUrl }).from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
+    }
+    if (!existing) return jsonError("حوّل المادة إلى سجل قابل للإدارة قبل رفع الغلاف", 409);
     await putObject(objectKey, file.stream(), detectedType);
     const coverImageUrl = `r2:${objectKey}`;
-    await db.update(catalogCourses).set({ coverImageUrl, updatedAt: new Date().toISOString() }).where(eq(catalogCourses.slug, slug));
+    const updated = await db.update(catalogCourses).set({ coverImageUrl, updatedAt: new Date().toISOString() }).where(eq(catalogCourses.slug, slug)).returning({ slug: catalogCourses.slug });
+    if (!updated.length) throw new Error("course-update-failed");
     if (existing?.coverImageUrl?.startsWith("r2:")) await deleteObject(existing.coverImageUrl.slice(3)).catch(() => undefined);
     await db.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "course_cover", entityId: slug, beforeJson: existing?.coverImageUrl || null, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
     invalidateCatalogCache();

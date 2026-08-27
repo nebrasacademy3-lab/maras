@@ -5,7 +5,7 @@ import {
   lessonNotes, lessonProgress, notificationsDb, orders, passwordResetTokens, pushDevices, supervisorAssignments,
   supportReplyFiles, supportReplies, supportTickets, users,
 } from "@/db/schema";
-import { getSessionUser, verifyPassword } from "@/lib/auth";
+import { checkRateLimit, getSessionUser, verifyPassword } from "@/lib/auth";
 import { jsonError } from "@/lib/api";
 import { isMobileRequest, mobileNoStoreHeaders } from "@/lib/mobile-api";
 import { deleteObject } from "@/lib/storage";
@@ -14,6 +14,7 @@ export async function DELETE(request: Request) {
   if (!isMobileRequest(request)) return jsonError("طلب تطبيق غير صالح", 403);
   const current = await getSessionUser(request);
   if (!current) return jsonError("سجّل الدخول", 401);
+  if (!await checkRateLimit("delete-account", `user:${current.id}`, 5, 60 * 60)) return jsonError("محاولات حذف كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الحذف غير صالحة"); }
   if (payload.confirmation !== "حذف حسابي") return jsonError("اكتب عبارة التأكيد المطلوبة");

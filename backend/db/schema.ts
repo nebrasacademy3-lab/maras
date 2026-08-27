@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, foreignKey, index, integer, pgTable, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -301,6 +301,16 @@ export const authRateLimits = pgTable("auth_rate_limits", {
   windowExpiresAt: text("window_expires_at").notNull(),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 });
+
+export const syncRevisions = pgTable("sync_revisions", {
+  channel: text("channel").notNull(),
+  scopeKey: text("scope_key").notNull().default("*"),
+  version: integer("version").notNull().default(1),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [
+  primaryKey({ name: "sync_revisions_pk", columns: [table.channel, table.scopeKey] }),
+  index("sync_revisions_channel_idx").on(table.channel, table.updatedAt),
+]);
 
 export const passwordResetTokens = pgTable("password_reset_tokens", {
   id: serial("id").primaryKey(),

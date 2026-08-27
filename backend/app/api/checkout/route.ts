@@ -28,6 +28,8 @@ export async function POST(request: Request) {
   const courses = await getCoursesCatalog();
   const selected = uniqueSlugs.map((slug) => courses.find((course) => course.slug === slug)).filter((course): course is NonNullable<typeof course> => Boolean(course));
   if (selected.length !== uniqueSlugs.length) return jsonError("إحدى المواد غير موجودة أو غير منشورة", 404);
+  const preparing = selected.filter((course) => !course.availableForPurchase);
+  if (preparing.length) return jsonError(`المواد التالية قيد التجهيز ولا تقبل الدفع بعد: ${preparing.map((course) => course.title).join("، ")}`, 409);
 
   const db = getDb();
   const now = new Date().toISOString();

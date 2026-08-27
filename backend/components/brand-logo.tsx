@@ -8,20 +8,10 @@ export function BrandLogo({ href = "/", compact = false, markOnly = false }: { h
       className={`brand-logo${compact ? " brand-logo-compact" : ""}${markOnly ? " brand-logo-mark-only" : ""}`}
       aria-label="مراس العلم — الرئيسية"
     >
-      <img
-        src={markOnly ? "/brand/mark-m.png" : "/brand/logo-light.png"}
-        alt={markOnly ? "مراس العلم" : "مراس العلم"}
-        width={markOnly ? 1920 : 496}
-        height={markOnly ? 1920 : 289}
-        className="brand-logo-light"
-      />
-      <img
-        src={markOnly ? "/brand/mark-m.png" : "/brand/logo-dark.png"}
-        alt={markOnly ? "مراس العلم" : "مراس العلم"}
-        width={markOnly ? 1920 : 496}
-        height={markOnly ? 1920 : 289}
-        className="brand-logo-dark"
-      />
+      {markOnly ? <img src="/brand/mark-m.png" alt="علامة مراس العلم" width={1920} height={1920} /> : <>
+        <img src="/brand/logo-light-hq.png" alt="مراس العلم" width={1984} height={1156} className="brand-logo-light" />
+        <img src="/brand/logo-dark-hq.png" alt="" aria-hidden="true" width={1984} height={1156} className="brand-logo-dark" />
+      </>}
     </Link>
   );
 }

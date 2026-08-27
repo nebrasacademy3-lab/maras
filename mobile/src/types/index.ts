@@ -59,6 +59,8 @@ export type Course = {
   updatedAt?: string;
   sourceUrl?: string;
   verifiedAt?: string;
+  readyLessons?: number;
+  availableForPurchase?: boolean;
 };
 
 export type Catalog = { ok: true; institutions: Institution[]; courses: Course[] };

@@ -3,7 +3,8 @@ import { getDb } from "@/db";
 import { auditLogs, notificationsDb, supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
-import { deleteObject, putObject } from "@/lib/storage";
+import { deleteObject } from "@/lib/storage";
+import { deleteStoredMultipartFiles, parseStoredMultipart, type StoredMultipartFile } from "@/lib/multipart-upload";
 import { sendPushNotification } from "@/lib/push";
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
@@ -19,10 +20,6 @@ function isManager(user: Awaited<ReturnType<typeof getSessionUser>>) {
   return Boolean(user && (user.role === "admin" || user.role === "supervisor"));
 }
 
-function safeName(value: string) {
-  return value.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-120) || "attachment";
-}
-
 function hasValidSignature(type: string, bytes: Uint8Array) {
   if (type === "application/pdf") return bytes.length >= 5 && String.fromCharCode(...bytes.slice(0, 5)) === "%PDF-";
   if (type === "image/png") return bytes.length >= 8 && bytes.slice(0, 8).every((value, index) => value === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index]);
@@ -34,29 +31,6 @@ function hasValidSignature(type: string, bytes: Uint8Array) {
   return false;
 }
 
-async function uploadFiles(files: File[], ticketId: number, replyId: number) {
-  if (files.length > MAX_FILES) throw new Error("الحد الأقصى 5 مرفقات في الرسالة");
-  const db = getDb();
-  const uploaded: string[] = [];
-  try {
-    for (const file of files) {
-      const type = file.type.toLowerCase();
-      if (!allowedTypes.has(type)) throw new Error(`نوع الملف ${file.name} غير مدعوم`);
-      if (file.size <= 0 || file.size > MAX_FILE_BYTES) throw new Error(`الملف ${file.name} يجب ألا يتجاوز 15 ميجابايت`);
-      if (!hasValidSignature(type, new Uint8Array(await file.slice(0, 64).arrayBuffer()))) throw new Error(`محتوى الملف ${file.name} لا يطابق نوعه`);
-      const objectKey = `support/${ticketId}/${crypto.randomUUID()}-${safeName(file.name)}`;
-      await putObject(objectKey, file.stream(), type);
-      uploaded.push(objectKey);
-      await db.insert(supportReplyFiles).values({ replyId, ticketId, objectKey, originalName: file.name.slice(0, 180), contentType: type, sizeBytes: file.size });
-    }
-  } catch (error) {
-    await db.delete(supportReplyFiles).where(eq(supportReplyFiles.replyId, replyId)).catch(() => undefined);
-    await Promise.all(uploaded.map((key) => deleteObject(key).catch(() => undefined)));
-    throw error;
-  }
-  return uploaded.length;
-}
-
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
@@ -64,34 +38,52 @@ export async function POST(request: Request) {
   if (!await checkRateLimit("support-write", `${current.id}:${clientIp(request)}`, 30, 60 * 60)) return jsonError("تم إرسال طلبات كثيرة. حاول لاحقًا.", 429);
   const db = getDb();
   const multipart = (request.headers.get("content-type") || "").includes("multipart/form-data");
-  let values: Record<string, FormDataEntryValue | unknown> = {};
-  let files: File[] = [];
+  let values: Record<string, unknown> = {};
+  let files: StoredMultipartFile[] = [];
   try {
     if (multipart) {
-      const form = await request.formData();
-      values = Object.fromEntries(form.entries());
-      files = form.getAll("files").filter((entry): entry is File => entry instanceof File && entry.size > 0);
+      const parsed = await parseStoredMultipart(request, {
+        fieldName: "files",
+        maxFiles: MAX_FILES,
+        maxFileBytes: MAX_FILE_BYTES,
+        maxTotalBytes: MAX_FILES * MAX_FILE_BYTES,
+        objectPrefix: `support/${current.id}/staged`,
+        allowedTypes,
+        validSignature: hasValidSignature,
+      });
+      values = parsed.fields;
+      files = parsed.files;
     } else values = await request.json() as Record<string, unknown>;
-  } catch { return jsonError("بيانات الدعم غير صالحة"); }
+  } catch (error) { return jsonError(error instanceof Error ? error.message : "بيانات الدعم غير صالحة", multipart ? 413 : 400); }
+  const discardFiles = () => deleteStoredMultipartFiles(files);
 
   const ticketId = Math.floor(Number(values.ticketId));
   const body = cleanText(values.message ?? values.body, 4000);
   if (ticketId) {
     const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
-    if (!ticket) return jsonError("التذكرة غير موجودة", 404);
-    if (!isManager(current) && ticket.userEmail !== current.email) return jsonError("غير مصرح", 403);
-    if (!body && !files.length) return jsonError("اكتب رسالة أو أرفق ملفًا");
-    const internal = isManager(current) && values.internal === true;
-    const [reply] = await db.insert(supportReplies).values({ ticketId, authorEmail: current.email, authorRole: current.role, body, internal, createdAt: new Date().toISOString() }).returning({ id: supportReplies.id });
-    try { await uploadFiles(files, ticketId, reply.id); } catch (error) { await db.delete(supportReplies).where(eq(supportReplies.id, reply.id)); return jsonError(error instanceof Error ? error.message : "تعذر رفع المرفقات", 413); }
+    if (!ticket) { await discardFiles(); return jsonError("التذكرة غير موجودة", 404); }
+    if (!isManager(current) && ticket.userEmail !== current.email) { await discardFiles(); return jsonError("غير مصرح", 403); }
+    if (!body && !files.length) { await discardFiles(); return jsonError("اكتب رسالة أو أرفق ملفًا"); }
+    const internal = isManager(current) && (values.internal === true || values.internal === "true");
     const nextStatus = !isManager(current) && ["closed", "resolved"].includes(ticket.status) ? "open" : ticket.status;
-    await db.update(supportTickets).set({ status: nextStatus, assignedTo: isManager(current) ? current.email : ticket.assignedTo, updatedAt: new Date().toISOString() }).where(eq(supportTickets.id, ticketId));
+    let replyId = 0;
+    try {
+      replyId = await db.transaction(async (tx) => {
+        const [reply] = await tx.insert(supportReplies).values({ ticketId, authorEmail: current.email, authorRole: current.role, body, internal, createdAt: new Date().toISOString() }).returning({ id: supportReplies.id });
+        if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: reply.id, ticketId, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes })));
+        await tx.update(supportTickets).set({ status: nextStatus, assignedTo: isManager(current) ? current.email : ticket.assignedTo, updatedAt: new Date().toISOString() }).where(eq(supportTickets.id, ticketId));
+        return reply.id;
+      });
+    } catch {
+      await discardFiles();
+      return jsonError("تعذر حفظ رسالة الدعم أو مرفقاتها", 500);
+    }
     if (ticket.userEmail && isManager(current) && !internal) {
       const title = "رد جديد من دعم مراس";
-      await db.insert(notificationsDb).values({ userEmail: ticket.userEmail, audience: "student", title, body: body.slice(0, 240) || "أُضيف مرفق جديد إلى تذكرتك", actionUrl: "/support", actionLabel: "فتح المحادثة" });
+      await db.insert(notificationsDb).values({ userEmail: ticket.userEmail, audience: "student", title, body: body.slice(0, 240) || "أُضيف مرفق جديد إلى تذكرتك", actionUrl: "/support", actionLabel: "فتح المحادثة" }).catch(() => undefined);
       await sendPushNotification({ userEmail: ticket.userEmail }, title, body.slice(0, 240) || "أُضيف مرفق جديد إلى تذكرتك", { route: "/support" });
     }
-    return Response.json({ ok: true, replyId: reply.id, status: nextStatus }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ ok: true, replyId, status: nextStatus }, { headers: { "cache-control": "no-store" } });
   }
 
   const category = cleanText(values.category, 80);
@@ -99,13 +91,22 @@ export async function POST(request: Request) {
   const priority = priorityValue === "عالية" ? "high" : priorityValue.includes("عاجل") ? "urgent" : ["low", "normal", "high", "urgent"].includes(priorityValue) ? priorityValue : "normal";
   const title = cleanText(values.title, 180);
   const contactChannel = ["in_app", "email", "whatsapp"].includes(String(values.contactChannel)) ? String(values.contactChannel) : "in_app";
-  if (!category || !title || body.length < 10) return jsonError("أضف عنوانًا وتفاصيل كافية للمشكلة");
+  if (!category || !title || body.length < 10) { await discardFiles(); return jsonError("أضف عنوانًا وتفاصيل كافية للمشكلة"); }
   const now = new Date().toISOString();
   const ticketNumber = `SP-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
-  const [ticket] = await db.insert(supportTickets).values({ ticketNumber, category, priority, title, message: body, contactChannel, userEmail: current.email, createdAt: now, updatedAt: now }).returning({ id: supportTickets.id, ticketNumber: supportTickets.ticketNumber, status: supportTickets.status });
-  if (files.length) {
-    const [initialReply] = await db.insert(supportReplies).values({ ticketId: ticket.id, authorEmail: current.email, authorRole: current.role, body: "", createdAt: now }).returning({ id: supportReplies.id });
-    try { await uploadFiles(files, ticket.id, initialReply.id); } catch (error) { await db.delete(supportReplies).where(eq(supportReplies.id, initialReply.id)); await db.delete(supportTickets).where(eq(supportTickets.id, ticket.id)); return jsonError(error instanceof Error ? error.message : "تعذر رفع المرفقات", 413); }
+  let ticket: { id: number; ticketNumber: string; status: string };
+  try {
+    ticket = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(supportTickets).values({ ticketNumber, category, priority, title, message: body, contactChannel, userEmail: current.email, createdAt: now, updatedAt: now }).returning({ id: supportTickets.id, ticketNumber: supportTickets.ticketNumber, status: supportTickets.status });
+      if (files.length) {
+        const [initialReply] = await tx.insert(supportReplies).values({ ticketId: created.id, authorEmail: current.email, authorRole: current.role, body: "", createdAt: now }).returning({ id: supportReplies.id });
+        await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: initialReply.id, ticketId: created.id, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes })));
+      }
+      return created;
+    });
+  } catch {
+    await discardFiles();
+    return jsonError("تعذر فتح المحادثة أو حفظ المرفقات", 500);
   }
   return Response.json({ ok: true, ticket: { ...ticket, contactChannel } }, { status: 201, headers: { "cache-control": "no-store" } });
 }
@@ -173,7 +174,7 @@ export async function PATCH(request: Request) {
   if (ticket.userEmail && isManager(current)) {
     const title = status === "closed" ? "أُغلقت تذكرة الدعم" : "أُعيد فتح تذكرة الدعم";
     const body = `${ticket.ticketNumber}: ${status === "closed" ? "تم إنهاء المحادثة ويمكنك إعادة فتحها عند الحاجة." : "أصبحت المحادثة مفتوحة من جديد."}`;
-    await db.insert(notificationsDb).values({ userEmail: ticket.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة" });
+    await db.insert(notificationsDb).values({ userEmail: ticket.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة" }).catch(() => undefined);
     await sendPushNotification({ userEmail: ticket.userEmail }, title, body, { route: "/support" });
   }
   return Response.json({ ok: true, status }, { headers: { "cache-control": "no-store" } });

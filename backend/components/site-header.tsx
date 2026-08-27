@@ -49,9 +49,11 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
     return () => controller.abort();
   }, [pathname, signedIn]);
 
-  useRealtimeSync(() => {
-    fetch("/api/auth/me", { credentials: "include", cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { user?: HeaderUser } : null).then((payload) => setAccount(payload?.user || null)).catch(() => undefined);
-    if (signedIn) fetch("/api/mobile/notifications", { credentials: "include", cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { unreadCount?: number } : null).then((payload) => setUnreadNotifications(payload?.unreadCount || 0)).catch(() => undefined);
+  useRealtimeSync((payload) => {
+    const changed = payload.changed || [];
+    if (!changed.length || changed.includes("account")) fetch("/api/auth/me", { credentials: "include", cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { user?: HeaderUser } : null).then((payload) => setAccount(payload?.user || null)).catch(() => undefined);
+    if (signedIn && (!changed.length || changed.includes("notifications"))) fetch("/api/mobile/notifications", { credentials: "include", cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { unreadCount?: number } : null).then((payload) => setUnreadNotifications(payload?.unreadCount || 0)).catch(() => undefined);
+    if (signedIn && changed.some((channel) => channel === "account" || channel === "commerce")) { resetCommerce(); void ensureCommerceLoaded(); }
   });
 
   const displayName = appMode ? userName : account?.fullName || userName;
@@ -76,7 +78,7 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
   return <>
     <header className={`site-header ${signedIn ? "site-header-app" : ""}`}>
       <div className="container header-inner">
-        <Link href="/" aria-label="الرئيسية"><BrandLogo compact /></Link>
+        <BrandLogo compact />
         <nav className="desktop-nav" aria-label={signedIn ? "تنقل حساب الطالب" : "التنقل الرئيسي"}>{activeLinks.map((link) => <Link key={link.href} href={link.href} className={pathname === link.href.split("?")[0] ? "active" : ""}><link.icon size={15} aria-hidden="true" /><span>{link.label}</span></Link>)}</nav>
         <div className="header-actions">
           <button className="icon-button" onClick={() => setSearchOpen(true)} aria-label="البحث"><Search size={19} /></button>

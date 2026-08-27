@@ -27,11 +27,12 @@ COPY --from=build /app/drizzle ./drizzle
 COPY --from=build /app/db ./db
 COPY --from=build /app/lib ./lib
 COPY --from=build /app/package.json ./package.json
-COPY --from=build --chmod=755 /app/scripts/start-railway.sh ./scripts/start-railway.sh
+COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/next.config.ts ./next.config.ts
 COPY --from=build /app/drizzle.config.ts ./drizzle.config.ts
+COPY --from=build /app/tsconfig.json ./tsconfig.json
 
-RUN mkdir -p /data/uploads && chown -R node:node /app /data
+RUN find /app/scripts -type f -name "*.sh" -exec chmod 755 {} \; && mkdir -p /data/uploads && chown -R node:node /app /data
 USER node
 
 EXPOSE 3000

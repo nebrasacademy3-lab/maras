@@ -29,8 +29,53 @@ function extensionFor(type: string) {
 
 function compatibleVideoType(declared: string, detected: string) {
   if (!detected) return false;
+  if (!declared) return true;
   if (declared === detected) return true;
+  if (declared === "video/quicktime" && detected === "video/mp4") return true;
   return (declared === "video/webm" || declared === "video/x-matroska") && detected === "video/webm";
+}
+
+async function inspectUploadStream(input: ReadableStream<Uint8Array>) {
+  const reader = input.getReader();
+  const buffered: Uint8Array[] = [];
+  let bufferedBytes = 0;
+  let transferredBytes = 0;
+  while (bufferedBytes < 64) {
+    const item = await reader.read();
+    if (item.done) break;
+    buffered.push(item.value);
+    bufferedBytes += item.value.byteLength;
+    transferredBytes += item.value.byteLength;
+  }
+  const header = new Uint8Array(Math.min(bufferedBytes, 64));
+  let offset = 0;
+  for (const value of buffered) {
+    if (offset >= header.byteLength) break;
+    const available = Math.min(value.byteLength, header.byteLength - offset);
+    header.set(value.subarray(0, available), offset);
+    offset += available;
+  }
+  let bufferedIndex = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    async pull(controller) {
+      if (bufferedIndex < buffered.length) {
+        controller.enqueue(buffered[bufferedIndex]);
+        bufferedIndex += 1;
+        return;
+      }
+      const item = await reader.read();
+      if (item.done) { controller.close(); return; }
+      transferredBytes += item.value.byteLength;
+      if (transferredBytes > MAX_VIDEO_BYTES) {
+        await reader.cancel("video-too-large").catch(() => undefined);
+        controller.error(new Error("video-too-large"));
+        return;
+      }
+      controller.enqueue(item.value);
+    },
+    cancel(reason) { return reader.cancel(reason); },
+  });
+  return { header, stream, transferredBytes: () => transferredBytes };
 }
 
 export async function POST(request: Request) {
@@ -47,36 +92,67 @@ export async function POST(request: Request) {
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_VIDEO_BYTES + 2 * 1024 * 1024) return jsonError("حجم الطلب أكبر من المسموح", 413);
 
-  let form: FormData;
-  try { form = await request.formData(); } catch { return jsonError("تعذر قراءة ملف الفيديو", 400); }
-  const file = form.get("file");
-  const courseSlug = cleanText(form.get("courseSlug"), 120);
-  const lessonId = cleanText(form.get("lessonId"), 120);
-  if (!(file instanceof File)) return jsonError("اختر ملف فيديو صالحًا");
-  if (file.size <= 0 || file.size > MAX_VIDEO_BYTES) return jsonError("حجم الفيديو يجب ألا يتجاوز 200 ميجابايت", 413);
-  const declaredType = file.type.toLowerCase();
-  if (declaredType && !ALLOWED_TYPES.has(declaredType)) return jsonError("صيغة الفيديو غير مسموحة");
-  const headerBytes = new Uint8Array(await file.slice(0, 64).arrayBuffer());
-  const detectedType = detectVideoType(headerBytes);
-  if (!compatibleVideoType(declaredType, detectedType)) return jsonError("محتوى الفيديو لا يطابق نوع الملف");
-  const contentType = declaredType === "video/quicktime" && detectedType === "video/mp4" ? "video/quicktime" : declaredType;
+  const requestType = (request.headers.get("content-type") || "").split(";", 1)[0].trim().toLowerCase();
+  const rawCourseSlug = cleanText(request.headers.get("x-meras-course"), 120);
+  const rawLessonId = cleanText(request.headers.get("x-meras-lesson"), 120);
+  const rawUpload = ALLOWED_TYPES.has(requestType) && Boolean(rawCourseSlug && rawLessonId);
+  let courseSlug = rawCourseSlug;
+  let lessonId = rawLessonId;
+  let declaredType = requestType;
+  let sizeBytes = declaredLength;
+  let uploadStream: ReadableStream<Uint8Array>;
+  let detectedType = "";
+  let measuredSize = () => sizeBytes;
+
+  if (rawUpload) {
+    if (!Number.isSafeInteger(declaredLength) || declaredLength <= 0) return jsonError("يلزم تحديد حجم الفيديو", 411);
+    if (declaredLength > MAX_VIDEO_BYTES) return jsonError("حجم الفيديو يجب ألا يتجاوز 200 ميجابايت", 413);
+    if (!request.body) return jsonError("ملف الفيديو فارغ");
+    try {
+      const inspected = await inspectUploadStream(request.body);
+      uploadStream = inspected.stream;
+      measuredSize = inspected.transferredBytes;
+      detectedType = detectVideoType(inspected.header);
+    } catch {
+      return jsonError("تعذر قراءة ملف الفيديو", 400);
+    }
+  } else {
+    let form: FormData;
+    try { form = await request.formData(); } catch { return jsonError("تعذر قراءة ملف الفيديو", 400); }
+    const file = form.get("file");
+    courseSlug = cleanText(form.get("courseSlug"), 120);
+    lessonId = cleanText(form.get("lessonId"), 120);
+    if (!(file instanceof File)) return jsonError("اختر ملف فيديو صالحًا");
+    if (file.size <= 0 || file.size > MAX_VIDEO_BYTES) return jsonError("حجم الفيديو يجب ألا يتجاوز 200 ميجابايت", 413);
+    declaredType = file.type.toLowerCase();
+    sizeBytes = file.size;
+    uploadStream = file.stream();
+    detectedType = detectVideoType(new Uint8Array(await file.slice(0, 64).arrayBuffer()));
+  }
+  const discardRawUpload = async () => { if (rawUpload) await uploadStream.cancel("upload-rejected").catch(() => undefined); };
+  if (declaredType && !ALLOWED_TYPES.has(declaredType)) { await discardRawUpload(); return jsonError("صيغة الفيديو غير مسموحة"); }
+  if (!compatibleVideoType(declaredType, detectedType)) { await discardRawUpload(); return jsonError("محتوى الفيديو لا يطابق نوع الملف"); }
+  const contentType = declaredType === "video/quicktime" && detectedType === "video/mp4" ? "video/quicktime" : declaredType || detectedType;
 
   const course = await getCourseCatalog(courseSlug, true);
-  if (!course?.units.some((unit) => unit.lessons.some((lesson) => lesson.id === lessonId))) return jsonError("تعذر مطابقة المادة أو الدرس");
+  if (!course?.units.some((unit) => unit.lessons.some((lesson) => lesson.id === lessonId))) { await discardRawUpload(); return jsonError("تعذر مطابقة المادة أو الدرس"); }
   if (!tokenAuthorized && user?.role === "supervisor") {
     const assignments = await getDb().select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId, user.id), eq(supervisorAssignments.active, true)));
     const mayEdit = assignments.some((assignment) => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (!assignment.specialty || assignment.specialty === course.specialty));
-    if (!mayEdit) return jsonError("هذه المادة غير مسندة لهذا المشرف", 403);
+    if (!mayEdit) { await discardRawUpload(); return jsonError("هذه المادة غير مسندة لهذا المشرف", 403); }
   }
 
   const objectKey = `private/${courseSlug}/${lessonId}/${crypto.randomUUID()}.${extensionFor(contentType)}`;
   const db = getDb();
   const existingAssets = await db.select({ id: videoAssets.id, objectKey: videoAssets.objectKey }).from(videoAssets).where(and(eq(videoAssets.courseSlug, courseSlug), eq(videoAssets.lessonId, lessonId)));
   try {
-    await putObject(objectKey, file.stream(), contentType);
+    await putObject(objectKey, uploadStream, contentType);
+    const actualSize = measuredSize();
+    if (actualSize <= 0 || actualSize > MAX_VIDEO_BYTES || (rawUpload && actualSize !== sizeBytes)) throw new Error("video-size-mismatch");
+    sizeBytes = actualSize;
     const now = new Date().toISOString();
     const asset = await db.transaction(async (tx) => {
-      const [created] = await tx.insert(videoAssets).values({ courseSlug, lessonId, objectKey, contentType, sizeBytes: file.size, status: "ready", createdAt: now, updatedAt: now }).returning({ id: videoAssets.id, objectKey: videoAssets.objectKey, status: videoAssets.status });
+      const [created] = await tx.insert(videoAssets).values({ courseSlug, lessonId, objectKey, contentType, sizeBytes, status: "ready", createdAt: now, updatedAt: now }).returning({ id: videoAssets.id, objectKey: videoAssets.objectKey, status: videoAssets.status });
       await tx.update(lessonsDb).set({ videoAssetId: created.id, updatedAt: now }).where(eq(lessonsDb.id, lessonId));
       if (existingAssets.length) await tx.delete(videoAssets).where(inArray(videoAssets.id, existingAssets.map((item) => item.id)));
       return created;

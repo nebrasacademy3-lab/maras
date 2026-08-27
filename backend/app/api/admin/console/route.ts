@@ -159,7 +159,8 @@ export async function POST(request: Request) {
   if (action === "syncCatalogTemplates") {
     const rawPrice = Number(payload.templatePrice);
     const templatePrice = Number.isFinite(rawPrice) && rawPrice >= 0 && rawPrice <= 50_000 ? rawPrice : 49;
-    const result = await syncCatalogTemplates(templatePrice);
+    const mode = cleanText(payload.mode, 10) === "full" ? "full" : "core";
+    const result = await syncCatalogTemplates(templatePrice, mode);
     invalidateCatalogCache();
     await audit(request, authorization.actor, "sync", "catalog_templates", "all", null, result);
     return Response.json({ ok: true, result });
@@ -342,7 +343,7 @@ export async function POST(request: Request) {
     const course = await getCourseCatalog(courseSlug, true);
     const notificationTitle = "تم تفعيل المادة";
     const notificationBody = `أصبحت مادة «${course?.title || courseSlug}» متاحة في حسابك.`;
-    await db.insert(notificationsDb).values({ userEmail, audience: "student", title: notificationTitle, body: notificationBody, actionUrl: `/learn/${courseSlug}`, createdAt: now });
+    await db.insert(notificationsDb).values({ userEmail, audience: "student", title: notificationTitle, body: notificationBody, actionUrl: `/learn/${courseSlug}`, createdAt: now }).catch(() => undefined);
     await sendPushNotification({ userEmail }, notificationTitle, notificationBody, { route: `/learn/${courseSlug}` });
     await audit(request, authorization.actor, "grant", "course_access", `${userEmail}:${courseSlug}`, null, { expiresAt });
     return Response.json({ ok: true });
@@ -364,7 +365,7 @@ export async function POST(request: Request) {
       if (student) {
         const title = "تم تجهيز المادة المطلوبة";
         const body = `تم تجهيز مادة «${course.title}» وأصبحت متاحة الآن في حسابك.`;
-        await db.insert(notificationsDb).values({ userEmail: student.email, audience: "student", title, body, actionUrl: `/learn/${course.slug}`, actionLabel: "فتح المادة", createdAt: now });
+        await db.insert(notificationsDb).values({ userEmail: student.email, audience: "student", title, body, actionUrl: `/learn/${course.slug}`, actionLabel: "فتح المادة", createdAt: now }).catch(() => undefined);
         await sendPushNotification({ userEmail: student.email }, title, body, { route: `/learn/${course.slug}` });
       }
     }
@@ -389,7 +390,7 @@ export async function POST(request: Request) {
         const title = matchedCourse ? "مادتك أصبحت متاحة" : "تحديث طلب المادة";
         const body = matchedCourse ? `أصبحت مادة «${matchedCourse.title}» متاحة الآن في مراس.` : `تغيرت حالة طلب «${before.courseName}» إلى ${status}.`;
         const actionUrl = matchedCourse ? `/learn/${matchedCourse.slug}` : "/dashboard?view=requests";
-        await db.insert(notificationsDb).values({ userEmail: student.email, audience: "student", title, body, actionUrl, actionLabel: matchedCourse ? "افتح المادة" : "عرض الطلب", createdAt: now });
+        await db.insert(notificationsDb).values({ userEmail: student.email, audience: "student", title, body, actionUrl, actionLabel: matchedCourse ? "افتح المادة" : "عرض الطلب", createdAt: now }).catch(() => undefined);
         await sendPushNotification({ userEmail: student.email }, title, body, { route: matchedCourse ? `/learn/${matchedCourse.slug}` : "/requests" });
       }
     }
@@ -409,7 +410,7 @@ export async function POST(request: Request) {
     if (before.userEmail && (reply || before.status !== status)) {
       const title = reply ? "رد جديد من دعم مراس" : "تحديث تذكرة الدعم";
       const body = reply ? reply.slice(0, 240) : `تغيرت حالة التذكرة ${before.ticketNumber} إلى ${status}.`;
-      await db.insert(notificationsDb).values({ userEmail: before.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة", createdAt: now });
+      await db.insert(notificationsDb).values({ userEmail: before.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة", createdAt: now }).catch(() => undefined);
       await sendPushNotification({ userEmail: before.userEmail }, title, body, { route: "/support" });
     }
     await audit(request, authorization.actor, "update", "support_ticket", String(id), { status: before.status }, { status, replied: Boolean(reply) });

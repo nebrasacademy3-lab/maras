@@ -40,7 +40,9 @@ export function StudentDashboard({ initialView = "overview", user, owned, orders
       setLive((current) => ({ user: payload.user || current.user, owned: payload.owned || current.owned, orders: payload.orders || current.orders, requests: payload.requests || current.requests, notices: nextNotices || current.notices, tickets: payload.tickets || current.tickets, institutions: payload.institutions || current.institutions, recommended: payload.recommended || current.recommended }));
     } catch { /* Keep the last known snapshot when the network is temporarily unavailable. */ }
   }, []);
-  useRealtimeSync(() => { void refresh(); });
+  useRealtimeSync((payload) => {
+    if (!payload.changed || payload.changed.some((channel) => ["account", "commerce", "support", "notifications", "requests", "catalog", "settings"].includes(channel))) void refresh();
+  });
   const unread = noticeRows.filter((item) => !item.read).length;
   useEffect(() => {
     if (active !== "notifications") return;

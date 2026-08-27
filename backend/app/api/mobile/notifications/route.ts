@@ -1,7 +1,7 @@
 import { and, desc, eq, gt, isNull, lte, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { notificationsDb } from "@/db/schema";
-import { getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { jsonError } from "@/lib/api";
 import { mobileNoStoreHeaders } from "@/lib/mobile-api";
 
@@ -20,6 +20,7 @@ export async function PATCH(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  if (!await checkRateLimit("notification-read-state", `user:${user.id}`, 120, 60)) return jsonError("تحديثات كثيرة للإشعارات. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
   const now = new Date().toISOString();

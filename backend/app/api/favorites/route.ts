@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { favorites } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
-import { getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { getCourseCatalog, getCoursesCatalog } from "@/lib/catalog-store";
 
 export async function GET(request: Request) {
@@ -17,6 +17,7 @@ export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  if (!await checkRateLimit("favorite-write", `user:${user.id}`, 120, 60)) return jsonError("تحديثات كثيرة للمفضلة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
   const courseSlug = cleanText(payload.courseSlug, 120);

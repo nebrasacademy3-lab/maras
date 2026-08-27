@@ -5,11 +5,12 @@ import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginReques
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { getInstitutionCatalog } from "@/lib/catalog-store";
 import { sendPushNotification } from "@/lib/push";
-import { deleteObject, putObject } from "@/lib/storage";
+import { deleteStoredMultipartFiles, parseStoredMultipart } from "@/lib/multipart-upload";
 
 const MAX_TOTAL_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_FILE_BYTES = MAX_TOTAL_FILE_BYTES;
 const MAX_TOTAL_BODY_BYTES = 120 * 1024 * 1024;
+const MAX_FILES = 100;
 const allowedTypes = new Set(["application/pdf", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg"]);
 
 function matchesSignature(type: string, bytes: Uint8Array) {
@@ -40,58 +41,60 @@ export async function POST(request: Request) {
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_TOTAL_BODY_BYTES) return jsonError("حجم الطلب أكبر من المسموح", 413);
 
-  let form: FormData;
-  try { form = await request.formData(); } catch { return jsonError("بيانات الطلب غير صالحة"); }
-  const courseName = cleanText(form.get("courseName"), 160);
-  const courseCode = cleanText(form.get("courseCode"), 40);
-  const notes = cleanText(form.get("notes"), 1500);
-  if (courseName.length < 3) return jsonError("أدخل اسم المادة بصورة صحيحة");
-  const files = form.getAll("files").filter((item): item is File => item instanceof File && item.size > 0);
-  const totalFileBytes = files.reduce((sum, file) => sum + file.size, 0);
-  if (totalFileBytes > MAX_TOTAL_FILE_BYTES) return jsonError("إجمالي حجم المرفقات يجب ألا يتجاوز 100 ميجابايت", 413);
-  for (const file of files) {
-    const type = file.type.toLowerCase();
-    if (file.size > MAX_FILE_BYTES) return jsonError(`الملف ${file.name} يتجاوز الحد الإجمالي البالغ 100 ميجابايت`, 413);
-    if (!allowedTypes.has(type)) return jsonError(`نوع الملف ${file.name} غير مدعوم`, 413);
-    if (!matchesSignature(type, new Uint8Array(await file.slice(0, 64).arrayBuffer()))) return jsonError(`محتوى الملف ${file.name} لا يطابق نوعه`, 413);
+  let parsed: Awaited<ReturnType<typeof parseStoredMultipart>>;
+  try {
+    parsed = await parseStoredMultipart(request, {
+      fieldName: "files",
+      maxFiles: MAX_FILES,
+      maxFileBytes: MAX_FILE_BYTES,
+      maxTotalBytes: MAX_TOTAL_FILE_BYTES,
+      objectPrefix: `course-requests/${user.id}/staged`,
+      allowedTypes,
+      validSignature: matchesSignature,
+    });
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "بيانات الطلب غير صالحة", 413);
   }
+  const { fields, files } = parsed;
+  const discardFiles = () => deleteStoredMultipartFiles(files);
+  const courseName = cleanText(fields.courseName, 160);
+  const courseCode = cleanText(fields.courseCode, 40);
+  const notes = cleanText(fields.notes, 1500);
+  if (courseName.length < 3) { await discardFiles(); return jsonError("أدخل اسم المادة بصورة صحيحة"); }
 
   const institution = await getInstitutionCatalog(user.universitySlug);
-  if (!institution) return jsonError("تعذر مطابقة الجامعة");
+  if (!institution) { await discardFiles(); return jsonError("تعذر مطابقة الجامعة"); }
   const db = getDb();
-  const assignedSupervisorId = await supervisorFor(user.universitySlug, user.specialty);
+  let assignedSupervisorId: number | null;
+  try { assignedSupervisorId = await supervisorFor(user.universitySlug, user.specialty); }
+  catch { await discardFiles(); return jsonError("تعذر إسناد الطلب حاليًا", 503); }
   const now = new Date().toISOString();
-  const [row] = await db.insert(courseRequests).values({ userId: user.id, university: institution.name, universitySlug: user.universitySlug, specialty: user.specialty, courseName: courseCode ? `${courseName} (${courseCode})` : courseName, name: user.fullName, phone: user.phone, notes, notify: form.get("notify") !== null, status: assignedSupervisorId ? "assigned" : "new", assignedSupervisorId, attachmentsCount: 0, createdAt: now, updatedAt: now }).returning({ id: courseRequests.id, status: courseRequests.status });
-  const uploadedKeys: string[] = [];
+  let row: { id: number; status: string };
   try {
-    for (const file of files) {
-      const type = file.type.toLowerCase();
-      const safe = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-120) || "attachment";
-      const objectKey = `course-requests/${user.id}/${row.id}/${crypto.randomUUID()}-${safe}`;
-      await putObject(objectKey, file.stream(), type);
-      uploadedKeys.push(objectKey);
-      await db.insert(courseRequestFiles).values({ requestId: row.id, userId: user.id, objectKey, originalName: file.name.slice(0, 180), contentType: type, sizeBytes: file.size });
-    }
-    if (files.length) await db.update(courseRequests).set({ attachmentsCount: files.length, updatedAt: new Date().toISOString() }).where(eq(courseRequests.id, row.id));
+    row = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(courseRequests).values({ userId: user.id, university: institution.name, universitySlug: user.universitySlug!, specialty: user.specialty!, courseName: courseCode ? `${courseName} (${courseCode})` : courseName, name: user.fullName, phone: user.phone!, notes, notify: fields.notify !== undefined, status: assignedSupervisorId ? "assigned" : "new", assignedSupervisorId, attachmentsCount: files.length, createdAt: now, updatedAt: now }).returning({ id: courseRequests.id, status: courseRequests.status });
+      if (files.length) await tx.insert(courseRequestFiles).values(files.map((file) => ({ requestId: created.id, userId: user.id, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes })));
+      return created;
+    });
   } catch {
-    await Promise.all(uploadedKeys.map((key) => deleteObject(key).catch(() => undefined)));
-    await db.delete(courseRequestFiles).where(eq(courseRequestFiles.requestId, row.id)).catch(() => undefined);
-    await db.delete(courseRequests).where(eq(courseRequests.id, row.id)).catch(() => undefined);
+    await discardFiles();
     return jsonError("تعذر حفظ مرفقات الطلب", 500);
   }
 
   const studentTitle = "تم استلام طلب المادة";
   const studentBody = `استلمنا طلب «${courseName}»${files.length ? ` مع ${files.length} مرفقات` : ""}.`;
-  await db.insert(notificationsDb).values({ userEmail: user.email, audience: "student", title: studentTitle, body: studentBody, actionUrl: "/dashboard?view=requests", actionLabel: "متابعة الطلب" });
+  await db.insert(notificationsDb).values({ userEmail: user.email, audience: "student", title: studentTitle, body: studentBody, actionUrl: "/dashboard?view=requests", actionLabel: "متابعة الطلب" }).catch(() => undefined);
   await sendPushNotification({ userEmail: user.email }, studentTitle, studentBody, { route: "/requests" });
   if (assignedSupervisorId) {
-    const [supervisor] = await db.select({ email: users.email }).from(users).where(eq(users.id, assignedSupervisorId)).limit(1);
-    if (supervisor) {
-      const title = "طلب مادة جديد";
-      const body = `${institution.name} · ${user.specialty} · ${courseName}`;
-      await db.insert(notificationsDb).values({ userEmail: supervisor.email, audience: "supervisor", title, body, actionUrl: "/supervisor?view=requests", actionLabel: "فتح الطلبات" });
-      await sendPushNotification({ userEmail: supervisor.email }, title, body, { route: "/supervisor" });
-    }
+    try {
+      const [supervisor] = await db.select({ email: users.email }).from(users).where(eq(users.id, assignedSupervisorId)).limit(1);
+      if (supervisor) {
+        const title = "طلب مادة جديد";
+        const body = `${institution.name} · ${user.specialty} · ${courseName}`;
+        await db.insert(notificationsDb).values({ userEmail: supervisor.email, audience: "supervisor", title, body, actionUrl: "/supervisor?view=requests", actionLabel: "فتح الطلبات" }).catch(() => undefined);
+        await sendPushNotification({ userEmail: supervisor.email }, title, body, { route: "/supervisor" });
+      }
+    } catch { /* The saved request remains available in the supervisor workspace. */ }
   }
   return Response.json({ ok: true, request: { ...row, attachmentsCount: files.length } }, { status: 201, headers: { "cache-control": "no-store" } });
 }

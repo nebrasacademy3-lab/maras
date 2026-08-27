@@ -38,6 +38,16 @@ function secondsLabel(total: number) {
   return rest ? `${hours} س ${rest} د` : `${hours} ساعات`;
 }
 
+function courseReadiness(units: Course["units"]) {
+  const lessons = units.flatMap((unit) => unit.lessons);
+  const readyLessons = lessons.filter((lesson) => lesson.ready).length;
+  const hasReadyPreview = lessons.some((lesson) => lesson.free && lesson.ready);
+  return {
+    readyLessons,
+    availableForPurchase: lessons.length > 0 && readyLessons === lessons.length && hasReadyPreview,
+  };
+}
+
 export async function getInstitutionsCatalog(includeHidden = false): Promise<Institution[]> {
   if (!process.env.DATABASE_URL) return staticInstitutionFallback();
   if (!includeHidden && institutionsCache && institutionsCache.expiresAt > Date.now()) return institutionsCache.value;
@@ -129,7 +139,7 @@ export async function getProgramsCatalog(institutionSlug: string): Promise<{ pro
 }
 
 export async function getCoursesCatalog(includeDraft = false): Promise<Course[]> {
-  if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item }));
+  if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item, ...courseReadiness(item.units) }));
   if (!includeDraft && coursesCache && coursesCache.expiresAt > Date.now()) return coursesCache.value;
   if (!includeDraft && coursesInFlight) return coursesInFlight;
   const load = async () => {
@@ -181,7 +191,38 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
     const liveRating = liveReviews.length ? Math.round(liveReviews.reduce((sum, review) => sum + review.rating, 0) / liveReviews.length * 10) / 10 : 0;
     const liveStudents = accessCountByCourse.get(item.slug) || 0;
     const live = { rating: liveRating, ratingsCount: liveReviews.length, students: liveStudents };
-    result.set(item.slug, linkedRow ? { ...item, ...live, title: linkedRow.title, titleEn: linkedRow.titleEn, code: linkedRow.code || undefined, description: linkedRow.description, coverImage: publicCover(item.slug, linkedRow.coverImageUrl) || item.coverImage, price: linkedRow.price, oldPrice: linkedRow.oldPrice || undefined, access: linkedRow.accessLabel, featured: linkedRow.featured, color: themes[linkedRow.coverTheme] || item.color } : { ...item, ...live });
+    const liveUnits = linkedRow ? (unitsByCourse.get(item.slug) || []).filter((unit) => includeDraft || unit.status === "published").map((unit) => ({
+      title: unit.title,
+      description: unit.description,
+      lessons: (lessonsByUnit.get(unit.id) || []).filter((lesson) => includeDraft || lesson.status === "published").map((lesson) => ({
+        id: lesson.id,
+        title: lesson.title,
+        description: lesson.description,
+        duration: lesson.durationSeconds > 0 ? secondsLabel(lesson.durationSeconds) : "بانتظار الفيديو",
+        free: lesson.freePreview,
+        ready: readyLessonIds.has(lesson.id),
+        type: "video" as const,
+      })),
+    })) : [];
+    const liveLessonCount = liveUnits.reduce((sum, unit) => sum + unit.lessons.length, 0);
+    const resolvedUnits = liveUnits.length ? liveUnits : item.units;
+    result.set(item.slug, linkedRow ? {
+      ...item,
+      ...live,
+      title: linkedRow.title,
+      titleEn: linkedRow.titleEn,
+      code: linkedRow.code || undefined,
+      description: linkedRow.description,
+      coverImage: publicCover(item.slug, linkedRow.coverImageUrl) || item.coverImage,
+      price: linkedRow.price,
+      oldPrice: linkedRow.oldPrice || undefined,
+      access: linkedRow.accessLabel,
+      featured: linkedRow.featured,
+      color: themes[linkedRow.coverTheme] || item.color,
+      units: resolvedUnits,
+      lessons: liveUnits.length ? liveLessonCount : item.lessons,
+      ...courseReadiness(resolvedUnits),
+    } : { ...item, ...live, ...courseReadiness(item.units) });
   }
   const specialtyBySlug = new Map(specialties.map((row) => [row.slug, row.name]));
   const institutionBySlug = new Map(institutions.map((row) => [row.slug, row.name]));
@@ -222,6 +263,7 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       featured: row.featured,
       access: row.accessLabel,
       units: unitRows,
+      ...courseReadiness(unitRows),
     });
   }
   const value = [...result.values()];

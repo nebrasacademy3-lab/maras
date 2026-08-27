@@ -174,7 +174,7 @@ function Support({ rows, colors, mutate, refresh, onDelete }: { rows: AdminData[
   const send = async (row: AdminData["tickets"][number]) => {
     const file = files[row.id]; const text = replies[row.id] || "";
     try {
-      if (file) { const form = new FormData(); form.append("ticketId", String(row.id)); form.append("message", text); form.append("files", { uri: file.uri, name: file.name, type: assetMimeType(file, "application/octet-stream") } as unknown as Blob); await api("/api/support", { method: "POST", body: form }); setFiles({ ...files, [row.id]: null }); }
+      if (file) { const form = new FormData(); form.append("ticketId", String(row.id)); form.append("message", text); form.append("files", { uri: file.uri, name: file.name, type: assetMimeType(file, "application/octet-stream") } as unknown as Blob); await api("/api/support", { method: "POST", body: form, timeoutMs: 180_000 }); setFiles({ ...files, [row.id]: null }); }
       else await mutate({ action: "updateTicket", id: row.id, status: row.status, reply: text, internal: false }, "تم إرسال الرد");
       setReplies({ ...replies, [row.id]: "" }); setFeedback("تم إرسال الرسالة إلى الطالب"); if (file) await refresh();
     } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر إرسال الرسالة أو المرفق"); }
@@ -196,7 +196,7 @@ function CatalogAdmin({ data, colors, mutate, refresh, onDelete }: { data: Admin
     const saved = await mutate({ action: "saveInstitution", ...institution, slug: institutionKey, status: "published", featured: false }, "تم حفظ الجهة التعليمية");
     if (!saved || !logo) return;
     const form = new FormData(); form.append("slug", institutionKey); form.append("file", { uri: logo.uri, name: logo.name, type: assetMimeType(logo, "image/png") } as unknown as Blob);
-    try { await api("/api/admin/logos", { method: "POST", body: form }); setLogo(null); await refresh(); }
+    try { await api("/api/admin/logos", { method: "POST", body: form, timeoutMs: 120_000 }); setLogo(null); await refresh(); }
     catch { /* The institution remains saved and a remote logo can be added later. */ }
   };
   const pickLogo = async () => { const result = await DocumentPicker.getDocumentAsync({ type: "image/*", multiple: false, copyToCacheDirectory: true }); if (!result.canceled) setLogo(result.assets[0] || null); };
@@ -207,7 +207,7 @@ function CatalogAdmin({ data, colors, mutate, refresh, onDelete }: { data: Admin
     const saved = await mutate({ action: "saveCourse", ...course, slug: courseKey, price: Number(course.price), oldPrice: Number(course.oldPrice), status: "draft", featured: false, coverTheme: "blue-violet" }, "تم حفظ المادة كمسودة");
     if (!saved || !cover) return;
     const form = new FormData(); form.append("courseSlug", courseKey); form.append("file", { uri: cover.uri, name: cover.name, type: assetMimeType(cover, "image/jpeg") } as unknown as Blob);
-    try { await api("/api/admin/covers", { method: "POST", body: form }); setCover(null); await refresh(); } catch { /* يبقى السجل محفوظًا ويمكن إعادة الرفع لاحقًا. */ }
+    try { await api("/api/admin/covers", { method: "POST", body: form, timeoutMs: 120_000 }); setCover(null); await refresh(); } catch { /* يبقى السجل محفوظًا ويمكن إعادة الرفع لاحقًا. */ }
   };
   const syncCatalog = async () => { const ok = await mutate({ action: "syncCatalogTemplates", templatePrice: 49 }, "تم تجهيز الجامعات والتخصصات والمواد والوحدات"); if (ok) await refresh(); };
   return <>
