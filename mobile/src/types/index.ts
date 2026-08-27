@@ -7,6 +7,7 @@ export type SessionUser = {
   fullName: string;
   universitySlug: string | null;
   specialty: string | null;
+  academicLevel: string | null;
   role: UserRole;
   profileCompleted: boolean;
   onboardingCompleted: boolean;
@@ -28,8 +29,8 @@ export type Institution = {
   verificationStatus?: "official-directory" | "pending-review";
 };
 
-export type Lesson = { id: string; title: string; duration: string; free: boolean; type: "video" | "pdf" };
-export type CourseUnit = { title: string; lessons: Lesson[] };
+export type Lesson = { id: string; title: string; description?: string; ready?: boolean; duration: string; free: boolean; type: "video" | "pdf" };
+export type CourseUnit = { title: string; description?: string; lessons: Lesson[] };
 export type Course = {
   slug: string;
   title: string;
@@ -39,6 +40,9 @@ export type Course = {
   universitySlug: string;
   specialty: string;
   description: string;
+  coverImage?: string;
+  specialtySlug?: string;
+  coverTheme?: string;
   price: number;
   oldPrice?: number;
   rating: number;

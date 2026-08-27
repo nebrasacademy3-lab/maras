@@ -6,8 +6,10 @@ import * as Linking from "expo-linking";
 import React, { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
+import { AppearanceSettings } from "@/src/components/AppearanceSettings";
 import { AppButton, Card, EmptyState, Field, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
 import { absoluteUrl, api, ApiError, getApiToken, jsonBody } from "@/src/lib/api";
+import { assetMimeType } from "@/src/lib/file-types";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { Course } from "@/src/types";
@@ -18,7 +20,7 @@ type VideoRow = { id: number; courseSlug: string; lessonId: string; status: stri
 type Workspace = { ok: true; courses: Course[]; units: UnitRow[]; lessons: LessonRow[]; videos: VideoRow[]; assignments: { id: number; institutionSlug: string | null; specialty: string | null }[] };
 type RequestRow = { id: number; courseName: string; university: string; specialty: string; status: string; notes: string; attachmentsCount: number; createdAt: string; files: { id: number; originalName: string; sizeBytes: number }[] };
 type RequestsPayload = { ok: true; requests: RequestRow[] };
-type Tab = "requests" | "content";
+type Tab = "requests" | "content" | "appearance";
 
 const statuses = ["assigned", "reviewing", "planned", "producing", "available", "declined"];
 const labels: Record<string, string> = { assigned: "مسند", reviewing: "مراجعة", planned: "مخطط", producing: "إنتاج", available: "متاح", declined: "متعذر" };
@@ -54,9 +56,10 @@ export default function Supervisor() {
     <View style={styles.tabs}>
       <TabButton active={tab === "requests"} label="طلبات الطلاب" icon="file-tray-full-outline" onPress={() => setTab("requests")} colors={colors} />
       <TabButton active={tab === "content"} label="إدارة المحتوى" icon="videocam-outline" onPress={() => setTab("content")} colors={colors} />
+      <TabButton active={tab === "appearance"} label="المظهر" icon="color-palette-outline" onPress={() => setTab("appearance")} colors={colors} />
     </View>
     {feedback ? <Text style={[styles.feedback, { color: feedback.startsWith("تم") ? colors.success : colors.danger }]}>{feedback}</Text> : null}
-    {tab === "requests" ? <RequestQueue rows={requests.data?.requests || []} colors={colors} run={run} openingFile={openingFile} onOpenFile={async (file) => { setOpeningFile(file.id); try { const uri = `${FileSystem.cacheDirectory || FileSystem.documentDirectory || ""}maras-request-${file.id}-${encodeURIComponent(file.originalName).replace(/%/g, "_")}`; const result = await FileSystem.downloadAsync(absoluteUrl(`/api/supervisor/request-files/${file.id}`), uri, { headers: { authorization: `Bearer ${getApiToken()}` } }); await Linking.openURL(result.uri); } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر فتح المرفق من الخادم"); } finally { setOpeningFile(null); } }} /> : <ContentManager data={workspace.data!} colors={colors} run={run} />}
+    {tab === "requests" ? <RequestQueue rows={requests.data?.requests || []} colors={colors} run={run} openingFile={openingFile} onOpenFile={async (file) => { setOpeningFile(file.id); try { const uri = `${FileSystem.cacheDirectory || FileSystem.documentDirectory || ""}maras-request-${file.id}-${encodeURIComponent(file.originalName).replace(/%/g, "_")}`; const result = await FileSystem.downloadAsync(absoluteUrl(`/api/supervisor/request-files/${file.id}`), uri, { headers: { authorization: `Bearer ${getApiToken()}` } }); await Linking.openURL(result.uri); } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر فتح المرفق من الخادم"); } finally { setOpeningFile(null); } }} /> : tab === "content" ? <ContentManager data={workspace.data!} colors={colors} run={run} /> : <AppearanceSettings />}
   </Screen>;
 }
 
@@ -103,7 +106,7 @@ function ContentManager({ data, colors, run }: { data: Workspace; colors: Return
       const form = new FormData();
       form.append("courseSlug", courseSlug);
       form.append("lessonId", target.id);
-      form.append("file", { uri: file.uri, name: file.name, type: file.mimeType || "video/mp4" } as unknown as Blob);
+      form.append("file", { uri: file.uri, name: file.name, type: assetMimeType(file, "video/mp4") } as unknown as Blob);
       await api("/api/admin/videos", { method: "POST", body: form });
     }, "تم رفع الفيديو إلى التخزين الخاص");
     setUploadingLesson(null);

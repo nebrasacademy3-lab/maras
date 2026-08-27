@@ -74,7 +74,7 @@ export function CheckoutClient({ course, user }: { course: Course; user:{fullNam
     </section>
     <aside className="order-summary">
       <h2>ملخص الطلب</h2>
-      <div className={`summary-course-art bg-gradient-to-br ${course.color}`}><span className="course-cover-grid" /><strong>{course.icon}</strong></div>
+      <div className={`summary-course-art bg-gradient-to-br ${course.color}`}><span className="course-cover-grid" />{course.coverImage ? <img src={course.coverImage} alt={`غلاف ${course.title}`} loading="lazy"/> : <strong>{course.icon}</strong>}</div>
       <div className="summary-course-info"><small>{course.university}</small><h3>{course.title}</h3><p>{course.lessons} درسًا · {course.duration}</p><span><BadgeCheck size={14} /> وصول {course.access}</span></div>
       <div className="coupon-box"><label><Gift size={17} /><input value={coupon} onChange={(event) => { setCoupon(event.target.value); setDiscount(0); setAppliedCoupon(""); setCouponMessage(""); }} placeholder="كود الخصم" dir="ltr" /><button type="button" onClick={applyCoupon}>تطبيق</button></label>{couponMessage && <p className={discount ? "success" : "error"}>{couponMessage}</p>}<small>تُنشأ أكواد الخصم وتُحدد صلاحيتها من لوحة الإدارة.</small></div>
       <div className="summary-totals"><p><span>سعر المادة</span><b>{course.price} ر.س</b></p><p><span>الخصم</span><b className="discount">{discount ? `- ${discount} ر.س` : "0 ر.س"}</b></p><p><span>ضريبة القيمة المضافة</span><b>مشمولة</b></p><div><span>الإجمالي</span><strong>{total} <small>ر.س</small></strong></div></div>

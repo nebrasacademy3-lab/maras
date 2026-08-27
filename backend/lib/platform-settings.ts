@@ -1,3 +1,4 @@
+import { unstable_noStore as noStore } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { platformSettings } from "@/db/schema";
@@ -48,13 +49,14 @@ export function whatsappHref(settings: Pick<PublicSettings, "whatsapp_number" | 
 
 let publicSettingsCache: { expiresAt: number; value: PublicSettings } | null = null;
 let publicSettingsInFlight: Promise<PublicSettings> | null = null;
-const SETTINGS_CACHE_TTL = 30_000;
+const SETTINGS_CACHE_TTL = 5_000;
 
 export function invalidatePublicSettingsCache() {
   publicSettingsCache = null;
 }
 
 export async function getPublicSettings(): Promise<PublicSettings> {
+  noStore();
   if (publicSettingsCache && publicSettingsCache.expiresAt > Date.now()) return publicSettingsCache.value;
   if (publicSettingsInFlight) return publicSettingsInFlight;
   const load = async () => {

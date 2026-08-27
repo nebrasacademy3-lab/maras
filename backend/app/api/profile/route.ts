@@ -4,6 +4,7 @@ import { users } from "@/db/schema";
 import { getSessionUser, sameOriginRequest, validSaudiPhone } from "@/lib/auth";
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
+import { validAcademicLevel } from "@/lib/academic-levels";
 
 function canonicalPhone(value: string) {
   const digits = normalizePhone(value).replace(/\D/g, "");
@@ -28,7 +29,9 @@ export async function PATCH(request: Request) {
   const rawPhone = normalizePhone(payload.phone);
   const phone = canonicalPhone(rawPhone);
   const universitySlug = cleanText(payload.universitySlug, 120);
-  const specialty = cleanText(payload.specialty, 120);
+  const specialty = cleanText(payload.specialty, 120) || current.specialty || "";
+  const academicLevel = cleanText(payload.academicLevel, 80) || current.academicLevel || "";
+  if (current.role === "student" && !validAcademicLevel(academicLevel)) return jsonError("اختر المستوى الدراسي أو خريج من القائمة");
   if (fullName.length < 5 || !validSaudiPhone(rawPhone)) return jsonError("تحقق من الاسم ورقم الجوال");
   const institution = await getInstitutionCatalog(universitySlug);
   if (!institution) return jsonError("اختر الجامعة أو الكلية من القائمة المعتمدة");
@@ -38,6 +41,6 @@ export async function PATCH(request: Request) {
   const [duplicatePhone] = await db.select({ id: users.id }).from(users).where(and(eq(users.phone, phone), ne(users.id, current.id))).limit(1);
   if (duplicatePhone) return jsonError("رقم الجوال مستخدم في حساب آخر", 409);
   const now = new Date().toISOString();
-  await db.update(users).set({ fullName, phone, universitySlug, specialty, profileCompletedAt: now, updatedAt: now }).where(eq(users.id, current.id));
+  await getDb().update(users).set({ fullName, phone, universitySlug, specialty, academicLevel: academicLevel || null, profileCompletedAt: now, updatedAt: now }).where(eq(users.id, current.id));
   return Response.json({ ok: true, next: current.onboardingCompleted ? "/dashboard" : "/onboarding" });
 }

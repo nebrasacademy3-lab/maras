@@ -8,7 +8,7 @@ export function AssistantFab() {
   const segments = useSegments();
   const { dark, colors } = useTheme();
   const route = segments.join("/");
-  if (route.includes("(auth)") || route.includes("assistant") || route.includes("lesson")) return null;
+  if (route.includes("(auth)") || route.includes("assistant") || route.includes("lesson") || route.includes("admin")) return null;
   return <View pointerEvents="box-none" style={styles.layer}><Pressable accessibilityLabel="مساعد مراس" onPress={() => router.push("/assistant")} style={({ pressed }) => [styles.button, { backgroundColor: dark ? "#071127" : "#FFFFFF", borderColor: colors.border, transform: [{ scale: pressed ? .93 : 1 }] }]}><Image source={dark ? require("@/assets/brand-mark-dark.png") : require("@/assets/brand-mark.png")} style={styles.mark} contentFit="contain" /></Pressable></View>;
 }
 

@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { pushDevices } from "@/db/schema";
-import { getSessionUser } from "@/lib/auth";
+import { checkRateLimit, clientIp, getSessionUser } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { isMobileRequest, mobileNoStoreHeaders } from "@/lib/mobile-api";
 
@@ -13,6 +13,7 @@ export async function POST(request: Request) {
   if (!isMobileRequest(request)) return jsonError("طلب تطبيق غير صالح", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  if (!await checkRateLimit("push-device-write", `user:${user.id}:${clientIp(request)}`, 20, 60 * 60)) return jsonError("طلبات الأجهزة كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الجهاز غير صالحة"); }
   const token = cleanText(payload.token, 260);
@@ -28,6 +29,7 @@ export async function DELETE(request: Request) {
   if (!isMobileRequest(request)) return jsonError("طلب تطبيق غير صالح", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  if (!await checkRateLimit("push-device-write", `user:${user.id}:${clientIp(request)}`, 20, 60 * 60)) return jsonError("طلبات الأجهزة كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الجهاز غير صالحة"); }
   const token = cleanText(payload.token, 260);

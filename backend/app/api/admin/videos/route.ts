@@ -1,10 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { supervisorAssignments, videoAssets } from "@/db/schema";
+import { lessonsDb, supervisorAssignments, videoAssets } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
-import { getCourseCatalog } from "@/lib/catalog-store";
+import { getCourseCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { deleteObject, putObject } from "@/lib/storage";
 
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
@@ -25,6 +25,12 @@ function detectVideoType(bytes: Uint8Array) {
 
 function extensionFor(type: string) {
   return ({ "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov", "video/x-matroska": "mkv", "video/x-msvideo": "avi" } as Record<string, string>)[type] || "bin";
+}
+
+function compatibleVideoType(declared: string, detected: string) {
+  if (!detected) return false;
+  if (declared === detected) return true;
+  return (declared === "video/webm" || declared === "video/x-matroska") && detected === "video/webm";
 }
 
 export async function POST(request: Request) {
@@ -52,10 +58,8 @@ export async function POST(request: Request) {
   if (declaredType && !ALLOWED_TYPES.has(declaredType)) return jsonError("صيغة الفيديو غير مسموحة");
   const headerBytes = new Uint8Array(await file.slice(0, 64).arrayBuffer());
   const detectedType = detectVideoType(headerBytes);
-  const contentType = detectedType || declaredType;
-  if (!ALLOWED_TYPES.has(contentType) || (declaredType && detectedType && declaredType !== detectedType && !(declaredType === "video/quicktime" && detectedType === "video/mp4"))) {
-    return jsonError("محتوى الفيديو لا يطابق نوع الملف");
-  }
+  if (!compatibleVideoType(declaredType, detectedType)) return jsonError("محتوى الفيديو لا يطابق نوع الملف");
+  const contentType = declaredType === "video/quicktime" && detectedType === "video/mp4" ? "video/quicktime" : declaredType;
 
   const course = await getCourseCatalog(courseSlug, true);
   if (!course?.units.some((unit) => unit.lessons.some((lesson) => lesson.id === lessonId))) return jsonError("تعذر مطابقة المادة أو الدرس");
@@ -66,10 +70,19 @@ export async function POST(request: Request) {
   }
 
   const objectKey = `private/${courseSlug}/${lessonId}/${crypto.randomUUID()}.${extensionFor(contentType)}`;
+  const db = getDb();
+  const existingAssets = await db.select({ id: videoAssets.id, objectKey: videoAssets.objectKey }).from(videoAssets).where(and(eq(videoAssets.courseSlug, courseSlug), eq(videoAssets.lessonId, lessonId)));
   try {
     await putObject(objectKey, file.stream(), contentType);
     const now = new Date().toISOString();
-    const [asset] = await getDb().insert(videoAssets).values({ courseSlug, lessonId, objectKey, contentType, sizeBytes: file.size, status: "ready", createdAt: now, updatedAt: now }).returning({ id: videoAssets.id, objectKey: videoAssets.objectKey, status: videoAssets.status });
+    const asset = await db.transaction(async (tx) => {
+      const [created] = await tx.insert(videoAssets).values({ courseSlug, lessonId, objectKey, contentType, sizeBytes: file.size, status: "ready", createdAt: now, updatedAt: now }).returning({ id: videoAssets.id, objectKey: videoAssets.objectKey, status: videoAssets.status });
+      await tx.update(lessonsDb).set({ videoAssetId: created.id, updatedAt: now }).where(eq(lessonsDb.id, lessonId));
+      if (existingAssets.length) await tx.delete(videoAssets).where(inArray(videoAssets.id, existingAssets.map((item) => item.id)));
+      return created;
+    });
+    await Promise.all(existingAssets.map(async (item) => { try { await deleteObject(item.objectKey); } catch { console.warn("[video-upload] previous object cleanup failed", item.objectKey); } }));
+    invalidateCatalogCache();
     return Response.json({ ok: true, asset }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch {
     await deleteObject(objectKey).catch(() => undefined);

@@ -1,5 +1,5 @@
 import { createReadStream, createWriteStream } from "node:fs";
-import { mkdir, rm, stat } from "node:fs/promises";
+import { mkdir, rename, rm, stat } from "node:fs/promises";
 import { dirname, join, normalize, relative } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -32,9 +32,16 @@ function toNodeReadable(stream: ReadableStream) {
 
 export async function putObject(key: string, body: ReadableStream, contentType?: string) {
   const destination = safePath(key);
+  const temporary = `${destination}.${crypto.randomUUID()}.part`;
   await mkdir(dirname(destination), { recursive: true });
-  await pipeline(toNodeReadable(body), createWriteStream(destination, { flags: "w", mode: 0o600 }));
-  return { key, contentType };
+  try {
+    await pipeline(toNodeReadable(body), createWriteStream(temporary, { flags: "wx", mode: 0o600 }));
+    await rename(temporary, destination);
+    return { key, contentType };
+  } catch (error) {
+    await rm(temporary, { force: true }).catch(() => undefined);
+    throw error;
+  }
 }
 
 export async function getObject(key: string, range?: { offset: number; length: number }): Promise<StoredObject | null> {
@@ -47,8 +54,9 @@ export async function getObject(key: string, range?: { offset: number; length: n
     throw error;
   }
   if (!details.isFile()) return null;
+  if (range && (!Number.isSafeInteger(range.offset) || !Number.isSafeInteger(range.length) || range.offset < 0 || range.length <= 0 || range.offset >= details.size)) return null;
   const start = range?.offset ?? 0;
-  const end = range ? start + range.length - 1 : details.size - 1;
+  const end = range ? Math.min(details.size - 1, start + range.length - 1) : details.size - 1;
   const stream = createReadStream(filename, range ? { start, end } : undefined);
   const etag = `"${details.size.toString(16)}-${Math.floor(details.mtimeMs).toString(16)}"`;
   return { body: Readable.toWeb(stream) as ReadableStream, size: details.size, etag };

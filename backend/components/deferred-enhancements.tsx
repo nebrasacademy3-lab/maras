@@ -2,11 +2,13 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 const DeferredAssistant = dynamic(() => import("@/components/meras-assistant").then((module) => module.MerasAssistant), { ssr: false });
 const DeferredMotion = dynamic(() => import("@/components/motion-orchestrator").then((module) => module.MotionOrchestrator), { ssr: false });
 
 export function DeferredEnhancements() {
+  const pathname = usePathname();
   const [ready, setReady] = useState(false);
   useEffect(() => {
     const activate = () => setReady(true);
@@ -17,5 +19,6 @@ export function DeferredEnhancements() {
     const timeout = setTimeout(activate, 900);
     return () => clearTimeout(timeout);
   }, []);
-  return ready ? <><DeferredMotion /><DeferredAssistant /></> : null;
+  const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
+  return ready ? <><DeferredMotion />{!isAdmin && <DeferredAssistant />}</> : null;
 }

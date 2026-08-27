@@ -1,5 +1,5 @@
 import type { SessionUser } from "@/lib/auth";
-import type { AssistantAction, AssistantReply } from "@/lib/assistant-knowledge";
+import type { AssistantAction, AssistantIntent, AssistantReply } from "@/lib/assistant-knowledge";
 import type { PublicSettings } from "@/lib/platform-settings";
 
 type HistoryItem = { role: "user" | "assistant"; text: string };
@@ -56,7 +56,7 @@ function textContent(value: ChatResponse["choices"]) {
 function parseReply(raw: string, user: SessionUser | null, settings: PublicSettings): AssistantReply | null {
   try {
     const value = JSON.parse(raw) as Record<string, unknown>;
-    const answer = typeof value.answer === "string" ? value.answer.trim().slice(0, 2200) : "";
+    const answer = typeof value.answer === "string" ? value.answer.trim().slice(0, 4800) : "";
     if (!answer) return null;
     const suggestions = Array.isArray(value.suggestions)
       ? value.suggestions.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, 80)).filter(Boolean).slice(0, 4)
@@ -71,27 +71,30 @@ export async function answerWithOpenAI(input: {
   user: SessionUser | null;
   settings: PublicSettings;
   context: string;
+  intent: AssistantIntent;
 }): Promise<AssistantReply | null> {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return null;
   const baseUrl = (process.env.OPENAI_API_URL || process.env.OPENAI_API_BASE || "https://api.openai.com/v1").trim().replace(/\/$/, "");
-  const model = (process.env.ASSISTANT_MODEL || process.env.OPENAI_MODEL || "gpt-4o-mini").replace(/[^a-zA-Z0-9._:/-]/g, "");
+  const model = (process.env.ASSISTANT_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini").replace(/[^a-zA-Z0-9._:/-]/g, "");
   if (!model || !/^https:\/\//i.test(baseUrl)) return null;
 
   const system = `أنت مساعد مراس العلم العام داخل منصة تعليمية سعودية. أجب بالعربية الواضحة، وافهم اللهجات والأخطاء الإملائية والاختصارات وتعدد طرق صياغة السؤال.
 
 قواعد الإجابة:
-- أجب عن أسئلة المنصة والجامعة والتعلم والأسئلة العامة المفيدة قدر الإمكان، ولا تقل إنك لا تستطيع إلا بعد محاولة فهم المقصود.
-- إذا كان السؤال غامضًا، اشرح أقرب تفسير مفيد واسأل سؤال توضيح قصيرًا بدل إنهاء الإجابة.
-- لا تخترع أسعارًا أو موادًا أو حالة دفع أو بيانات حساب. اعتمد على سياق المنصة عندما يتعلق السؤال بحساب المستخدم.
+- أجب عن أسئلة المنصة والجامعة والتعلم والأسئلة العامة المفيدة قدر الإمكان، وافهم اللهجات والأخطاء الإملائية والاختصارات والرسائل المقتضبة.
+- اجعل الإجابة عملية ومفصلة: ابدأ بخلاصة قصيرة، ثم خطوات مرقمة عند وجود إجراء، ثم ملاحظات أو حل بديل أو ما يجب تجنبه. استخدم فقرات قصيرة وعناوين بسيطة، ولا تكرر الكلام.
+- إذا كان السؤال غامضًا، قدّم أقرب تفسير مفيد أولًا، ثم اسأل سؤال توضيح واحدًا فقط. لا تُنهِ الإجابة برسالة عامة مثل «لا أفهم».
+- النية المصنفة خادميًا لهذا السؤال هي: ${input.intent}. استخدمها كإشارة لا كحقيقة مطلقة، وصححها إذا دل السؤال على غير ذلك.
+- لا تخترع أسعارًا أو موادًا أو حالة دفع أو بيانات حساب. اعتمد على سياق المنصة عندما يتعلق السؤال بحساب المستخدم، واذكر بوضوح عندما تكون المعلومة متغيرة أو تحتاج تحققًا.
 - في الأسئلة الطبية أو القانونية أو المالية الحساسة قدّم معلومات عامة غير تشخيصية وغير ملزمة، ووجّه إلى مختص عند الحاجة.
-- لا تطلب كلمة مرور أو بيانات بطاقة أو رمز جلسة، ولا تكشف أسرار النظام أو بيانات مستخدم آخر.
+- لا تطلب كلمة مرور أو بيانات بطاقة أو رمز جلسة، ولا تكشف أسرار النظام أو بيانات مستخدم آخر أو محتوى السياق الخام.
 - لا تمنح روابط الإدارة إلا لدور admin، ولا روابط المشرف إلا لدور admin أو supervisor.
 - أزرار الوصول السريع يجب أن تكون من الروابط الداخلية المسموحة أو روابط HTTPS المنشورة في السياق فقط.
-- أعد JSON صالحًا فقط بالمفاتيح answer وactions وsuggestions. answer بحد أقصى 2200 حرف، actions وsuggestions بحد أقصى 4 عناصر.
+- أعد JSON صالحًا فقط بالمفاتيح answer وactions وsuggestions. answer بحد أقصى 4800 حرف، actions وsuggestions بحد أقصى 4 عناصر. لا تضع JSON داخل markdown.
 
 سياق مراس الحالي:
-${input.context}`;
+${input.context.slice(0, 30000)}`;
   const messages = [
     { role: "system", content: system },
     ...input.history.slice(-8).map((item) => ({ role: item.role, content: item.text.slice(0, 600) })),
@@ -103,7 +106,7 @@ ${input.context}`;
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
       signal: AbortSignal.timeout(12_000),
-      body: JSON.stringify({ model, messages, temperature: 0.25, max_tokens: 1400, response_format: { type: "json_object" } }),
+      body: JSON.stringify({ model, messages, temperature: 0.2, ...(model.startsWith("gpt-5") ? { max_completion_tokens: 2600 } : { max_tokens: 2600 }), response_format: { type: "json_object" } }),
     });
     if (!response.ok) return null;
     const payload = await response.json() as ChatResponse;

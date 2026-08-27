@@ -1,6 +1,6 @@
 import { asc, eq, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
-import { catalogCourses, catalogInstitutions, catalogSpecialties, courseAccess, courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb } from "@/db/schema";
+import { catalogCourses, catalogInstitutions, catalogSpecialties, courseAccess, courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, videoAssets } from "@/db/schema";
 import { courses as staticCourses, institutions as staticInstitutions, type Course, type Institution, type InstitutionType } from "@/lib/data";
 import { getVerifiedInstitutionPrograms } from "@/lib/official-programs";
 import { withCatalogSource } from "@/lib/catalog-sources";
@@ -25,6 +25,7 @@ export function invalidateCatalogCache() {
 }
 
 const publicLogo = (slug: string, value: string | null | undefined) => value?.startsWith("r2:") ? `/api/logos/${slug}` : value || undefined;
+const publicCover = (slug: string, value: string | null | undefined) => value?.startsWith("r2:") ? `/api/covers/${slug}` : value || undefined;
 const bundledLogo = (slug: string) => `/institutions/${slug}.png`;
 const parseAliases = (value: string | null | undefined, fallback: string[] = []) => { try { const parsed = JSON.parse(value || "[]"); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string").slice(0, 20) : fallback; } catch { return fallback; } };
 const staticInstitutionFallback = () => staticInstitutions.map((item) => withCatalogSource({ ...item, logo: bundledLogo(item.slug), courses: staticCourses.filter((course) => course.universitySlug === item.slug).length }));
@@ -133,7 +134,7 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
   if (!includeDraft && coursesInFlight) return coursesInFlight;
   const load = async () => {
   const db = getDb();
-  const [managed, units, lessons, specialties, institutions, reviews, accessRows, links] = await Promise.all([
+  const [managed, units, lessons, specialties, institutions, reviews, accessRows, links, readyVideos] = await Promise.all([
     db.select().from(catalogCourses),
     db.select().from(courseUnitsDb).orderBy(asc(courseUnitsDb.position)),
     db.select().from(lessonsDb).orderBy(asc(lessonsDb.position)),
@@ -142,33 +143,60 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
     db.select().from(courseReviews).where(eq(courseReviews.status, "published")),
     db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(isNull(courseAccess.revokedAt)),
     db.select({ institutionSlug: institutionSpecialties.institutionSlug, specialtySlug: institutionSpecialties.specialtySlug, status: institutionSpecialties.status }).from(institutionSpecialties),
+    db.select({ lessonId: videoAssets.lessonId }).from(videoAssets).where(eq(videoAssets.status, "ready")),
   ]);
   const validSpecialtyLinks = new Set(links.filter((link) => link.status === "published").map((link) => `${link.institutionSlug}:${link.specialtySlug}`));
+  const readyLessonIds = new Set(readyVideos.map((row) => row.lessonId));
+  const reviewsByCourse = new Map<string, typeof reviews>();
+  const accessCountByCourse = new Map<string, number>();
+  const unitsByCourse = new Map<string, typeof units>();
+  const lessonsByCourse = new Map<string, typeof lessons>();
+  const lessonsByUnit = new Map<number, typeof lessons>();
+  for (const review of reviews) {
+    const bucket = reviewsByCourse.get(review.courseSlug) || [];
+    bucket.push(review);
+    reviewsByCourse.set(review.courseSlug, bucket);
+  }
+  for (const access of accessRows) accessCountByCourse.set(access.courseSlug, (accessCountByCourse.get(access.courseSlug) || 0) + 1);
+  for (const unit of units) {
+    const bucket = unitsByCourse.get(unit.courseSlug) || [];
+    bucket.push(unit);
+    unitsByCourse.set(unit.courseSlug, bucket);
+  }
+  for (const lesson of lessons) {
+    const courseBucket = lessonsByCourse.get(lesson.courseSlug) || [];
+    courseBucket.push(lesson);
+    lessonsByCourse.set(lesson.courseSlug, courseBucket);
+    const unitBucket = lessonsByUnit.get(lesson.unitId) || [];
+    unitBucket.push(lesson);
+    lessonsByUnit.set(lesson.unitId, unitBucket);
+  }
   const managedBySlug = new Map(managed.map((row) => [row.slug, row]));
   const result = new Map<string, Course>();
   for (const item of staticCourses) {
     const row = managedBySlug.get(item.slug);
     const linkedRow = row && validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`) ? row : undefined;
     if (linkedRow && linkedRow.status !== "published" && !includeDraft) continue;
-    const liveReviews = reviews.filter((review) => review.courseSlug === item.slug);
+    const liveReviews = reviewsByCourse.get(item.slug) || [];
     const liveRating = liveReviews.length ? Math.round(liveReviews.reduce((sum, review) => sum + review.rating, 0) / liveReviews.length * 10) / 10 : 0;
-    const liveStudents = accessRows.filter((access) => access.courseSlug === item.slug).length;
+    const liveStudents = accessCountByCourse.get(item.slug) || 0;
     const live = { rating: liveRating, ratingsCount: liveReviews.length, students: liveStudents };
-    result.set(item.slug, linkedRow ? { ...item, ...live, title: linkedRow.title, titleEn: linkedRow.titleEn, code: linkedRow.code || undefined, description: linkedRow.description, price: linkedRow.price, oldPrice: linkedRow.oldPrice || undefined, access: linkedRow.accessLabel, featured: linkedRow.featured, color: themes[linkedRow.coverTheme] || item.color } : { ...item, ...live });
+    result.set(item.slug, linkedRow ? { ...item, ...live, title: linkedRow.title, titleEn: linkedRow.titleEn, code: linkedRow.code || undefined, description: linkedRow.description, coverImage: publicCover(item.slug, linkedRow.coverImageUrl) || item.coverImage, price: linkedRow.price, oldPrice: linkedRow.oldPrice || undefined, access: linkedRow.accessLabel, featured: linkedRow.featured, color: themes[linkedRow.coverTheme] || item.color } : { ...item, ...live });
   }
   const specialtyBySlug = new Map(specialties.map((row) => [row.slug, row.name]));
   const institutionBySlug = new Map(institutions.map((row) => [row.slug, row.name]));
   for (const row of managed) {
     if (!validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`)) continue;
     if (result.has(row.slug) || (row.status !== "published" && !includeDraft)) continue;
-    const courseUnits = units.filter((unit) => unit.courseSlug === row.slug && (includeDraft || unit.status === "published"));
+    const courseUnits = (unitsByCourse.get(row.slug) || []).filter((unit) => includeDraft || unit.status === "published");
     const unitRows = courseUnits.map((unit) => ({
       title: unit.title,
-      lessons: lessons.filter((lesson) => lesson.unitId === unit.id && (includeDraft || lesson.status === "published")).map((lesson) => ({ id: lesson.id, title: lesson.title, duration: secondsLabel(lesson.durationSeconds), free: lesson.freePreview, type: "video" as const })),
+      description: unit.description,
+      lessons: (lessonsByUnit.get(unit.id) || []).filter((lesson) => includeDraft || lesson.status === "published").map((lesson) => ({ id: lesson.id, title: lesson.title, description: lesson.description, duration: secondsLabel(lesson.durationSeconds), free: lesson.freePreview, ready: readyLessonIds.has(lesson.id), type: "video" as const })),
     }));
     const flatLessons = unitRows.flatMap((unit) => unit.lessons);
-    const durationSeconds = lessons.filter((lesson) => lesson.courseSlug === row.slug).reduce((sum, lesson) => sum + lesson.durationSeconds, 0);
-    const courseReviewsRows = reviews.filter((review) => review.courseSlug === row.slug);
+    const durationSeconds = (lessonsByCourse.get(row.slug) || []).reduce((sum, lesson) => sum + lesson.durationSeconds, 0);
+    const courseReviewsRows = reviewsByCourse.get(row.slug) || [];
     const rating = courseReviewsRows.length ? Math.round(courseReviewsRows.reduce((sum, review) => sum + review.rating, 0) / courseReviewsRows.length * 10) / 10 : 0;
     result.set(row.slug, {
       slug: row.slug,
@@ -179,11 +207,12 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       universitySlug: row.institutionSlug,
       specialty: specialtyBySlug.get(row.specialtySlug) || row.specialtySlug,
       description: row.description,
+      coverImage: publicCover(row.slug, row.coverImageUrl),
       price: row.price,
       oldPrice: row.oldPrice || undefined,
       rating,
       ratingsCount: courseReviewsRows.length,
-      students: accessRows.filter((access) => access.courseSlug === row.slug).length,
+      students: accessCountByCourse.get(row.slug) || 0,
       duration: secondsLabel(durationSeconds),
       lessons: flatLessons.length,
       updatedAt: row.updatedAt,

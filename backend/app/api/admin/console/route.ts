@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
-  auditLogs, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseRequests,
+  auditLogs, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseRequestFiles, courseRequests,
   courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, notificationsDb, orders, platformSettings,
   supervisorAssignments, supportReplyFiles, supportReplies, supportTickets, users, videoAssets,
 } from "@/db/schema";
@@ -10,6 +10,9 @@ import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginReques
 import { getCourseCatalog, getCoursesCatalog, getInstitutionCatalog, getInstitutionsCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { invalidatePublicSettingsCache, PUBLIC_SETTING_DEFAULTS, SETTING_META, type PublicSettingKey } from "@/lib/platform-settings";
 import { sendPushNotification } from "@/lib/push";
+import { syncCatalogTemplates } from "@/lib/catalog-sync";
+import { courseSlug, institutionSlug as makeInstitutionSlug, lessonId, specialtySlug } from "@/lib/catalog-templates";
+import { deleteAdminEntity, DeletionPolicyError, type AdminDeletionType } from "@/lib/admin-deletion";
 
 async function authorize(request: Request) {
   const user = await getSessionUser(request);
@@ -49,7 +52,7 @@ export async function GET(request: Request) {
   const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
   if (!await checkRateLimit("admin-console-read", identity, 30, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
-  const [institutionRows, courses, specialtyRows, links, unitRows, lessonRows, videoRows, studentRows, orderRows, requestRows, ticketRows, replyRows, supportFileRows, reviewRows, accessRows, supervisorRows, notificationRows, couponRows, settingRows, audits] = await Promise.all([
+  const [institutionRows, courses, specialtyRows, links, unitRows, lessonRows, videoRows, studentRows, orderRows, requestRows, requestFileRows, ticketRows, replyRows, supportFileRows, reviewRows, accessRows, supervisorRows, notificationRows, couponRows, settingRows, audits] = await Promise.all([
     getInstitutionsCatalog(true),
     getCoursesCatalog(true),
     db.select().from(catalogSpecialties).orderBy(catalogSpecialties.name),
@@ -57,9 +60,10 @@ export async function GET(request: Request) {
     db.select().from(courseUnitsDb).orderBy(courseUnitsDb.position),
     db.select().from(lessonsDb).orderBy(lessonsDb.position),
     db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(500),
-    db.select({ id: users.id, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).orderBy(desc(users.createdAt)).limit(500),
+    db.select({ id: users.id, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).orderBy(desc(users.createdAt)).limit(500),
     db.select().from(orders).orderBy(desc(orders.createdAt)).limit(300),
     db.select().from(courseRequests).orderBy(desc(courseRequests.createdAt)).limit(300),
+    db.select().from(courseRequestFiles).orderBy(desc(courseRequestFiles.createdAt)).limit(3000),
     db.select().from(supportTickets).orderBy(desc(supportTickets.createdAt)).limit(300),
     db.select().from(supportReplies).orderBy(desc(supportReplies.createdAt)).limit(1000),
     db.select().from(supportReplyFiles).limit(2000),
@@ -105,8 +109,8 @@ export async function GET(request: Request) {
     videos: videoRows,
     users: studentRows,
     orders: orderRows,
-    requests: requestRows,
-    tickets: ticketRows.map((ticket) => ({ ...ticket, replies: replyRows.filter((reply) => reply.ticketId === ticket.id).map((reply) => ({ ...reply, files: supportFileRows.filter((file) => file.replyId === reply.id).map((file) => ({ id: file.id, replyId: file.replyId, ticketId: file.ticketId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })) })),
+    requests: requestRows.map((request) => ({ ...request, student: request.userId ? (() => { const student = studentRows.find((user) => user.id === request.userId); return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null; })() : null, files: requestFileRows.filter((file) => file.requestId === request.id).map((file) => ({ id: file.id, requestId: file.requestId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })),
+    tickets: ticketRows.map((ticket) => ({ ...ticket, student: ticket.userEmail ? (() => { const student = studentRows.find((user) => user.email.toLowerCase() === ticket.userEmail!.toLowerCase()); return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null; })() : null, replies: replyRows.filter((reply) => reply.ticketId === ticket.id).map((reply) => ({ ...reply, files: supportFileRows.filter((file) => file.replyId === reply.id).map((file) => ({ id: file.id, replyId: file.replyId, ticketId: file.ticketId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })) })),
     reviews: reviewRows,
     access: accessRows,
     supervisorAssignments: supervisorRows,
@@ -136,9 +140,35 @@ export async function POST(request: Request) {
   const db = getDb();
   const now = new Date().toISOString();
 
+  if (action === "deleteEntity") {
+    const entityType = cleanText(payload.entityType, 50) as AdminDeletionType;
+    const entityId = cleanText(payload.entityId, 180);
+    const confirmation = typeof payload.confirmation === "string" ? payload.confirmation.trim() : "";
+    if (!entityType || !entityId) return jsonError("حدد السجل المراد حذفه");
+    try {
+      const result = await deleteAdminEntity(db, { entityType, entityId, actor: authorization.actor, ipAddress: clientIp(request), confirmation });
+      if (["institution", "specialty", "course", "unit", "lesson", "video"].includes(entityType)) invalidateCatalogCache();
+      return Response.json({ ok: true, ...result }, { headers: { "cache-control": "no-store" } });
+    } catch (error) {
+      if (error instanceof DeletionPolicyError) return jsonError(error.message, error.status);
+      console.error("[admin-delete] transaction failed", error instanceof Error ? error.message : "unknown error");
+      return jsonError("تعذر تنفيذ الحذف بأمان. لم يتم اعتماد التغييرات.", 500);
+    }
+  }
+
+  if (action === "syncCatalogTemplates") {
+    const rawPrice = Number(payload.templatePrice);
+    const templatePrice = Number.isFinite(rawPrice) && rawPrice >= 0 && rawPrice <= 50_000 ? rawPrice : 49;
+    const result = await syncCatalogTemplates(templatePrice);
+    invalidateCatalogCache();
+    await audit(request, authorization.actor, "sync", "catalog_templates", "all", null, result);
+    return Response.json({ ok: true, result });
+  }
+
   if (action === "saveInstitution") {
-    const slug = cleanText(payload.slug, 80).toLowerCase();
     const name = cleanText(payload.name, 140);
+    const suppliedSlug = cleanText(payload.slug, 80).toLowerCase();
+    const slug = suppliedSlug || makeInstitutionSlug(name);
     const nameEn = cleanText(payload.nameEn, 140);
     const region = cleanText(payload.region, 80);
     const type = cleanText(payload.type, 30);
@@ -162,8 +192,9 @@ export async function POST(request: Request) {
   }
 
   if (action === "saveSpecialty") {
-    const slug = cleanText(payload.slug, 80).toLowerCase();
     const name = cleanText(payload.name, 140);
+    const suppliedSlug = cleanText(payload.slug, 80).toLowerCase();
+    const slug = suppliedSlug || specialtySlug(name);
     const description = cleanText(payload.description, 1000);
     const sourceUrl = cleanText(payload.sourceUrl, 500);
     const verifiedAt = cleanText(payload.verifiedAt, 30);
@@ -185,23 +216,26 @@ export async function POST(request: Request) {
   }
 
   if (action === "saveCourse") {
-    const slug = cleanText(payload.slug, 80).toLowerCase();
     const institutionSlug = cleanText(payload.institutionSlug, 80).toLowerCase();
     const specialtySlug = cleanText(payload.specialtySlug, 80).toLowerCase();
     const title = cleanText(payload.title, 160);
+    const suppliedSlug = cleanText(payload.slug, 80).toLowerCase();
     const status = cleanText(payload.status, 20) || "draft";
     const price = Number(payload.price);
     const oldPriceValue = Number(payload.oldPrice);
-    if (!validSlug(slug) || title.length < 3 || !await getInstitutionCatalog(institutionSlug, true) || !validSlug(specialtySlug) || !Number.isFinite(price) || price < 0 || price > 50_000 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من بيانات المادة وربطها");
+    const coverImageUrl = cleanText(payload.coverImageUrl, 1000);
     const [specialty] = await db.select().from(catalogSpecialties).where(eq(catalogSpecialties.slug, specialtySlug)).limit(1);
     if (!specialty) return jsonError("أنشئ التخصص أو اربطه أولًا");
+    const slug = suppliedSlug || courseSlug(institutionSlug, specialty.name, title);
+    if (!validSlug(slug) || title.length < 3 || !await getInstitutionCatalog(institutionSlug, true) || !validSlug(specialtySlug) || !Number.isFinite(price) || price < 0 || price > 50_000 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من بيانات المادة وربطها");
+    if (coverImageUrl && !safeUrl(coverImageUrl) && !coverImageUrl.startsWith("r2:")) return jsonError("رابط غلاف المادة يجب أن يبدأ بـ https");
     const [specialtyLink] = await db.select().from(institutionSpecialties).where(and(eq(institutionSpecialties.institutionSlug, institutionSlug), eq(institutionSpecialties.specialtySlug, specialtySlug), eq(institutionSpecialties.status, "published"))).limit(1);
     if (!specialtyLink) return jsonError("التخصص غير مربوط بهذه الجهة");
     const [before] = await db.select().from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
     const values = {
       slug, institutionSlug, specialtySlug, title,
       titleEn: cleanText(payload.titleEn, 160), code: cleanText(payload.code, 50) || null,
-      description: cleanText(payload.description, 3000), price,
+      description: cleanText(payload.description, 3000), coverImageUrl: coverImageUrl || before?.coverImageUrl || null, price,
       oldPrice: Number.isFinite(oldPriceValue) && oldPriceValue > price ? oldPriceValue : null,
       accessLabel: cleanText(payload.accessLabel, 80) || "90 يومًا",
       sourceUrl: cleanText(payload.sourceUrl, 500) || before?.sourceUrl || null,
@@ -218,6 +252,7 @@ export async function POST(request: Request) {
     const id = Math.floor(Number(payload.id));
     const courseSlug = cleanText(payload.courseSlug, 80);
     const title = cleanText(payload.title, 160);
+    const description = cleanText(payload.description, 2000);
     const status = cleanText(payload.status, 20) || "draft";
     if (!validSlug(courseSlug) || title.length < 2 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من الوحدة");
     const [course] = await db.select().from(catalogCourses).where(eq(catalogCourses.slug, courseSlug)).limit(1);
@@ -226,27 +261,33 @@ export async function POST(request: Request) {
     if (id) {
       const [before] = await db.select().from(courseUnitsDb).where(eq(courseUnitsDb.id, id)).limit(1);
       if (!before || before.courseSlug !== courseSlug) return jsonError("الوحدة غير موجودة", 404);
-      await db.update(courseUnitsDb).set({ title, position, status, updatedAt: now }).where(eq(courseUnitsDb.id, id));
-      await audit(request, authorization.actor, "update", "unit", String(id), before, { title, position, status });
+      await db.update(courseUnitsDb).set({ title, description: description || before.description, position, status, updatedAt: now }).where(eq(courseUnitsDb.id, id));
+      invalidateCatalogCache();
+      await audit(request, authorization.actor, "update", "unit", String(id), before, { title, description: description || before.description, position, status });
       return Response.json({ ok: true, id });
     }
-    const [created] = await db.insert(courseUnitsDb).values({ courseSlug, title, position, status, createdAt: now, updatedAt: now }).returning({ id: courseUnitsDb.id });
-    await audit(request, authorization.actor, "create", "unit", String(created.id), null, { courseSlug, title, position, status });
+    const [created] = await db.insert(courseUnitsDb).values({ courseSlug, title, description, position, status, createdAt: now, updatedAt: now }).returning({ id: courseUnitsDb.id });
+    invalidateCatalogCache();
+    await audit(request, authorization.actor, "create", "unit", String(created.id), null, { courseSlug, title, description, position, status });
     return Response.json({ ok: true, id: created.id }, { status: 201 });
   }
 
   if (action === "saveLesson") {
-    const id = cleanText(payload.id, 100);
+    const suppliedId = cleanText(payload.id, 100);
     const courseSlug = cleanText(payload.courseSlug, 80);
     const unitId = Math.floor(Number(payload.unitId));
     const title = cleanText(payload.title, 160);
+    const description = cleanText(payload.description, 2000);
     const status = cleanText(payload.status, 20) || "draft";
+    const position = Math.max(0, Math.floor(Number(payload.position) || 0));
+    const id = suppliedId || lessonId(courseSlug, position + 1, title);
     if (!validSlug(courseSlug) || !validSlug(id) || !unitId || title.length < 2 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من بيانات الدرس");
     const [unit] = await db.select().from(courseUnitsDb).where(and(eq(courseUnitsDb.id, unitId), eq(courseUnitsDb.courseSlug, courseSlug))).limit(1);
     if (!unit) return jsonError("الوحدة لا تتبع هذه المادة");
     const [before] = await db.select().from(lessonsDb).where(eq(lessonsDb.id, id)).limit(1);
-    const values = { id, courseSlug, unitId, title, position: Math.max(0, Math.floor(Number(payload.position) || 0)), durationSeconds: Math.max(0, Math.floor(Number(payload.durationSeconds) || 0)), freePreview: payload.freePreview === true, status, videoAssetId: before?.videoAssetId || null, updatedAt: now };
+    const values = { id, courseSlug, unitId, title, description: description || before?.description || "", position, durationSeconds: Math.max(0, Math.floor(Number(payload.durationSeconds) || 0)), freePreview: payload.freePreview === true, status, videoAssetId: before?.videoAssetId || null, updatedAt: now };
     await db.insert(lessonsDb).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: lessonsDb.id, set: values });
+    invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "lesson", id, before, values);
     return Response.json({ ok: true, lesson: values });
   }
@@ -307,17 +348,44 @@ export async function POST(request: Request) {
     return Response.json({ ok: true });
   }
 
-  if (action === "updateRequest") {
+  if (action === "prepareRequest") {
     const id = Math.floor(Number(payload.id));
-    const status = cleanText(payload.status, 30);
-    if (!id || !["new", "assigned", "reviewing", "planned", "producing", "available", "declined"].includes(status)) return jsonError("الحالة غير صالحة");
+    const courseSlug = cleanText(payload.courseSlug, 80);
+    if (!id || !courseSlug || !validSlug(courseSlug)) return jsonError("اختر طلبًا ومادة صالحة");
     const [before] = await db.select().from(courseRequests).where(eq(courseRequests.id, id)).limit(1);
     if (!before) return jsonError("الطلب غير موجود", 404);
-    await db.update(courseRequests).set({ status, updatedAt: now }).where(eq(courseRequests.id, id));
+    const course = await getCourseCatalog(courseSlug, true);
+    if (!course) return jsonError("المادة غير موجودة أو غير منشورة", 404);
+    if (before.universitySlug && course.universitySlug && before.universitySlug !== course.universitySlug) return jsonError("المادة لا تتبع جامعة الطلب");
+    if (before.specialty && course.specialty && before.specialty !== course.specialty) return jsonError("المادة لا تتبع تخصص الطلب");
+    await db.update(courseRequests).set({ status: "available", preparedCourseSlug: course.slug, updatedAt: now }).where(eq(courseRequests.id, id));
     if (before.userId) {
       const [student] = await db.select({ email: users.email }).from(users).where(eq(users.id, before.userId)).limit(1);
       if (student) {
-        const matchedCourse = status === "available" ? (await getCoursesCatalog()).find((course) => course.title.trim() === before.courseName.trim() && (!before.universitySlug || course.universitySlug === before.universitySlug) && (!before.specialty || course.specialty === before.specialty)) : null;
+        const title = "تم تجهيز المادة المطلوبة";
+        const body = `تم تجهيز مادة «${course.title}» وأصبحت متاحة الآن في حسابك.`;
+        await db.insert(notificationsDb).values({ userEmail: student.email, audience: "student", title, body, actionUrl: `/learn/${course.slug}`, actionLabel: "فتح المادة", createdAt: now });
+        await sendPushNotification({ userEmail: student.email }, title, body, { route: `/learn/${course.slug}` });
+      }
+    }
+    await audit(request, authorization.actor, "prepare", "course_request", String(id), { status: before.status, preparedCourseSlug: before.preparedCourseSlug }, { status: "available", preparedCourseSlug: course.slug });
+    return Response.json({ ok: true, course: { slug: course.slug, title: course.title } });
+  }
+
+  if (action === "updateRequest") {
+    const id = Math.floor(Number(payload.id));
+    const status = cleanText(payload.status, 30);
+    const selectedCourseSlug = cleanText(payload.courseSlug, 80);
+    if (!id || !["new", "assigned", "reviewing", "planned", "producing", "available", "declined"].includes(status)) return jsonError("الحالة غير صالحة");
+    const [before] = await db.select().from(courseRequests).where(eq(courseRequests.id, id)).limit(1);
+    if (!before) return jsonError("الطلب غير موجود", 404);
+    const selectedCourse = status === "available" && selectedCourseSlug ? await getCourseCatalog(selectedCourseSlug, true) : null;
+    const matchedCourse = status === "available" ? selectedCourse || (await getCoursesCatalog()).find((course) => course.title.trim() === before.courseName.trim() && (!before.universitySlug || course.universitySlug === before.universitySlug) && (!before.specialty || course.specialty === before.specialty)) : null;
+    if (status === "available" && selectedCourseSlug && !selectedCourse) return jsonError("المادة المختارة غير موجودة أو غير منشورة", 404);
+    await db.update(courseRequests).set({ status, preparedCourseSlug: matchedCourse?.slug || before.preparedCourseSlug || null, updatedAt: now }).where(eq(courseRequests.id, id));
+    if (before.userId) {
+      const [student] = await db.select({ email: users.email }).from(users).where(eq(users.id, before.userId)).limit(1);
+      if (student) {
         const title = matchedCourse ? "مادتك أصبحت متاحة" : "تحديث طلب المادة";
         const body = matchedCourse ? `أصبحت مادة «${matchedCourse.title}» متاحة الآن في مراس.` : `تغيرت حالة طلب «${before.courseName}» إلى ${status}.`;
         const actionUrl = matchedCourse ? `/learn/${matchedCourse.slug}` : "/dashboard?view=requests";
@@ -398,10 +466,20 @@ export async function POST(request: Request) {
     const code = cleanText(payload.code, 40).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
     const type = cleanText(payload.type, 20);
     const value = Number(payload.value);
-    if (code.length < 3 || !["percent", "fixed"].includes(type) || !Number.isFinite(value) || value <= 0 || (type === "percent" && value > 95)) return jsonError("تحقق من بيانات الكوبون (الحد الأقصى للنسبة 95%)");
-    await db.insert(couponsDb).values({ code, type, value, courseSlug: cleanText(payload.courseSlug, 80) || null, usageLimit: Number(payload.usageLimit) > 0 ? Math.floor(Number(payload.usageLimit)) : null, startsAt: cleanText(payload.startsAt, 40) || null, expiresAt: cleanText(payload.expiresAt, 40) || null, status: "active", createdAt: now }).onConflictDoUpdate({ target: couponsDb.code, set: { type, value, courseSlug: cleanText(payload.courseSlug, 80) || null, usageLimit: Number(payload.usageLimit) > 0 ? Math.floor(Number(payload.usageLimit)) : null, startsAt: cleanText(payload.startsAt, 40) || null, expiresAt: cleanText(payload.expiresAt, 40) || null, status: "active" } });
-    await audit(request, authorization.actor, "save", "coupon", code, null, { type, value });
-    return Response.json({ ok: true });
+    const courseSlug = cleanText(payload.courseSlug, 80) || null;
+    const usageLimitValue = Number(payload.usageLimit);
+    const usageLimit = Number.isFinite(usageLimitValue) && usageLimitValue > 0 ? Math.floor(usageLimitValue) : null;
+    const startsAt = cleanText(payload.startsAt, 40) || null;
+    const expiresAt = cleanText(payload.expiresAt, 40) || null;
+    const status = cleanText(payload.status, 20) || "active";
+    const startsTime = startsAt ? new Date(startsAt).getTime() : null;
+    const expiresTime = expiresAt ? new Date(expiresAt).getTime() : null;
+    if (code.length < 3 || !["percent", "fixed"].includes(type) || !Number.isFinite(value) || value <= 0 || (type === "percent" && value > 95) || !["active", "disabled"].includes(status) || (startsAt && startsTime !== null && Number.isNaN(startsTime)) || (expiresAt && expiresTime !== null && Number.isNaN(expiresTime)) || (startsTime !== null && expiresTime !== null && expiresTime <= startsTime)) return jsonError("تحقق من بيانات الكوبون (النسبة حتى 95% والتواريخ متسقة)");
+    if (courseSlug && (!validSlug(courseSlug) || !await getCourseCatalog(courseSlug, true))) return jsonError("المادة المحددة للكوبون غير موجودة");
+    const couponValues = { type, value, courseSlug, usageLimit, startsAt, expiresAt, status };
+    await db.insert(couponsDb).values({ code, ...couponValues, createdAt: now }).onConflictDoUpdate({ target: couponsDb.code, set: couponValues });
+    await audit(request, authorization.actor, "save", "coupon", code, null, couponValues);
+    return Response.json({ ok: true, coupon: { code, ...couponValues } });
   }
 
   return jsonError("الإجراء غير معروف", 404);

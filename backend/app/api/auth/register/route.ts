@@ -4,6 +4,7 @@ import { users } from "@/db/schema";
 import { checkRateLimit, clientIp, createSession, hashPassword, sameOriginRequest, validEmail, validPassword, validSaudiPhone } from "@/lib/auth";
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
+import { validAcademicLevel } from "@/lib/academic-levels";
 
 function canonicalPhone(value: string) {
   const digits = value.replace(/\D/g, "").replace(/^00966/, "966");
@@ -25,9 +26,11 @@ export async function POST(request: Request) {
   const password = typeof payload.password === "string" ? payload.password : "";
   const universitySlug = cleanText(payload.universitySlug, 120);
   const specialty = cleanText(payload.specialty, 120);
+  const academicLevel = cleanText(payload.academicLevel, 80);
 
   if (fullName.length < 5 || !validEmail(email) || !validSaudiPhone(rawPhone)) return jsonError("تحقق من الاسم والبريد ورقم الجوال السعودي");
   if (!validPassword(password)) return jsonError("كلمة المرور يجب أن تكون 10 أحرف على الأقل وتحتوي رقمًا ورمزًا خاصًا");
+  if (!validAcademicLevel(academicLevel)) return jsonError("اختر المستوى الدراسي أو خريج من القائمة");
   const institution = await getInstitutionCatalog(universitySlug);
   if (!institution) return jsonError("اختر جامعة أو كلية معتمدة من القائمة");
   if (payload.termsAccepted !== true) return jsonError("يلزم الموافقة على الشروط وسياسة الخصوصية");
@@ -46,6 +49,7 @@ export async function POST(request: Request) {
     role: "student",
     universitySlug,
     specialty,
+    academicLevel,
     profileCompletedAt: now,
     status: "active",
     createdAt: now,

@@ -1,9 +1,9 @@
 import { answerWithOpenAI } from "@/lib/assistant-ai";
-import { answerAssistant } from "@/lib/assistant-knowledge";
+import { answerAssistant, detectAssistantIntent } from "@/lib/assistant-knowledge";
 import { buildAssistantContext } from "@/lib/assistant-context";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
-import { getPublicSettings } from "@/lib/platform-settings";
+import { getPublicSettings, PUBLIC_SETTING_DEFAULTS } from "@/lib/platform-settings";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 
 export async function POST(request: Request) {
@@ -20,11 +20,17 @@ export async function POST(request: Request) {
     const text = cleanText(row.text, 500).replace(/\s+/g, " ");
     return role && text ? [{ role, text }] : [];
   }).slice(-8) : [];
-  const [user, settings, institutions, courses] = await Promise.all([getSessionUser(request), getPublicSettings(), getInstitutionsCatalog(), getCoursesCatalog()]);
+  const [user, settings, institutions, courses] = await Promise.all([
+    getSessionUser(request).catch(() => null),
+    getPublicSettings().catch(() => ({ ...PUBLIC_SETTING_DEFAULTS })),
+    getInstitutionsCatalog().catch(() => []),
+    getCoursesCatalog().catch(() => []),
+  ]);
+  const intent = detectAssistantIntent(question);
   let reply = null;
   try {
     const context = await buildAssistantContext(user, settings);
-    reply = await answerWithOpenAI({ question, history, user, settings, context });
+    reply = await answerWithOpenAI({ question, history, user, settings, context, intent });
   } catch { /* The deterministic guide below keeps the assistant available. */ }
-  return Response.json(reply || answerAssistant(question, user, settings, { institutions, courses }), { headers: { "cache-control": "no-store" } });
+  return Response.json(reply || answerAssistant(question, user, settings, { institutions, courses }), { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }

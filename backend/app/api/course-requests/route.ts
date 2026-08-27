@@ -7,8 +7,9 @@ import { getInstitutionCatalog } from "@/lib/catalog-store";
 import { sendPushNotification } from "@/lib/push";
 import { deleteObject, putObject } from "@/lib/storage";
 
-const MAX_FILE_BYTES = 15 * 1024 * 1024;
-const MAX_TOTAL_BODY_BYTES = 5 * MAX_FILE_BYTES + 2 * 1024 * 1024;
+const MAX_TOTAL_FILE_BYTES = 100 * 1024 * 1024;
+const MAX_FILE_BYTES = MAX_TOTAL_FILE_BYTES;
+const MAX_TOTAL_BODY_BYTES = 120 * 1024 * 1024;
 const allowedTypes = new Set(["application/pdf", "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "image/png", "image/jpeg"]);
 
 function matchesSignature(type: string, bytes: Uint8Array) {
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول لطلب مادة", 401);
-  if (!user.profileCompleted || !user.phone || !user.universitySlug || !user.specialty) return jsonError("أكمل ملفك الدراسي أولًا", 409);
+  if (!user.profileCompleted || !user.phone || !user.universitySlug || !user.specialty || !user.academicLevel) return jsonError("أكمل ملفك الدراسي ومستواك أولًا", 409);
   if (!await checkRateLimit("course-request", `user:${user.id}`, 10, 60 * 60)) return jsonError("طلبات كثيرة. حاول بعد ساعة.", 429);
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_TOTAL_BODY_BYTES) return jsonError("حجم الطلب أكبر من المسموح", 413);
@@ -46,10 +47,11 @@ export async function POST(request: Request) {
   const notes = cleanText(form.get("notes"), 1500);
   if (courseName.length < 3) return jsonError("أدخل اسم المادة بصورة صحيحة");
   const files = form.getAll("files").filter((item): item is File => item instanceof File && item.size > 0);
-  if (files.length > 5) return jsonError("الحد الأقصى 5 ملفات", 413);
+  const totalFileBytes = files.reduce((sum, file) => sum + file.size, 0);
+  if (totalFileBytes > MAX_TOTAL_FILE_BYTES) return jsonError("إجمالي حجم المرفقات يجب ألا يتجاوز 100 ميجابايت", 413);
   for (const file of files) {
     const type = file.type.toLowerCase();
-    if (file.size > MAX_FILE_BYTES) return jsonError(`الملف ${file.name} أكبر من 15 ميجابايت`, 413);
+    if (file.size > MAX_FILE_BYTES) return jsonError(`الملف ${file.name} يتجاوز الحد الإجمالي البالغ 100 ميجابايت`, 413);
     if (!allowedTypes.has(type)) return jsonError(`نوع الملف ${file.name} غير مدعوم`, 413);
     if (!matchesSignature(type, new Uint8Array(await file.slice(0, 64).arrayBuffer()))) return jsonError(`محتوى الملف ${file.name} لا يطابق نوعه`, 413);
   }

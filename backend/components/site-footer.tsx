@@ -20,10 +20,12 @@ export async function SiteFooter() {
     <footer className="site-footer">
       <div className="container footer-grid">
         <div className="footer-brand">
-          <BrandLogo compact />
+          <BrandLogo markOnly />
           <p>منصة سعودية تجمع شروحات المواد الجامعية في مكان واحد. ابحث، جرّب مجانًا، ثم تعلّم بثقة.</p>
-          <div className="socials" role="group" aria-label="حسابات مراس الاجتماعية">
+          <div className="socials footer-brand-socials" role="group" aria-label="قنوات مراس الرسمية">
             {socials.map((item) => <a key={item.label} href={item.href} target="_blank" rel="noreferrer" aria-label={item.label}>{item.icon}</a>)}
+            <a href={`mailto:${settings.support_email}`} aria-label="البريد الإلكتروني"><Mail size={18} /></a>
+            {whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer" aria-label="واتساب"><MessageCircle size={18} /></a>}
           </div>
         </div>
         <div><h3>استكشف</h3><Link href="/universities">الجامعات والكليات</Link><Link href="/courses">جميع المواد</Link><Link href="/request-course">اطلب مادة</Link><Link href="/how-it-works">كيف تعمل مراس؟</Link></div>

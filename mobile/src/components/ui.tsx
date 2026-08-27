@@ -5,10 +5,12 @@ import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable,
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { metrics } from "@/src/theme/colors";
+import { MobileFooter } from "@/src/components/MobileFooter";
 
 export function Screen({ children, scroll = true, padded = true, keyboard = false, style }: { children: React.ReactNode; scroll?: boolean; padded?: boolean; keyboard?: boolean; style?: ViewStyle }) {
-  const { colors } = useTheme();
-  const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, padded && styles.padded, style]}>{children}</ScrollView> : <View style={[styles.flex, padded && styles.padded, style]}>{children}</View>;
+  const { colors, fontScale } = useTheme();
+  const scaleStyle: ViewStyle | undefined = fontScale === 1 ? undefined : { transform: [{ scale: fontScale }], alignSelf: "center" };
+  const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, padded && styles.padded, style]}><View style={[styles.screenContent, scaleStyle]}>{children}<MobileFooter /></View></ScrollView> : <View style={[styles.flex, padded && styles.padded, style]}><View style={[styles.screenContent, scaleStyle]}>{children}<MobileFooter /></View></View>;
   return <SafeAreaView edges={["top", "left", "right"]} style={[styles.flex, { backgroundColor: colors.background }]}>{keyboard ? <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>{content}</KeyboardAvoidingView> : content}</SafeAreaView>;
 }
 
@@ -60,7 +62,7 @@ export function HeroGradient({ children }: { children: React.ReactNode }) {
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 }, scroll: { flexGrow: 1, paddingBottom: 120 }, padded: { paddingHorizontal: metrics.screen },
+  flex: { flex: 1 }, screenContent: { flexGrow: 1 }, scroll: { flexGrow: 1, paddingBottom: 120 }, padded: { paddingHorizontal: metrics.screen },
   button: { minHeight: 50, paddingHorizontal: 18, borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 8 }, buttonFull: { width: "100%" }, buttonText: { fontSize: 14, fontWeight: "800" },
   fieldWrap: { gap: 7, marginBottom: 14 }, label: { fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, inputWrap: { minHeight: 52, borderWidth: 1, borderRadius: 15, paddingHorizontal: 14, flexDirection: "row-reverse", alignItems: "center", gap: 9 }, input: { flex: 1, minHeight: 50, fontSize: 14, writingDirection: "rtl" }, error: { fontSize: 11, textAlign: "right" },
   card: { borderRadius: metrics.radius, borderWidth: 1, padding: 16, shadowColor: "#061A42", shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2 },

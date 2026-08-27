@@ -1,11 +1,11 @@
 import * as SecureStore from "expo-secure-store";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { api, jsonBody, setApiToken } from "@/src/lib/api";
+import { api, ApiError, jsonBody, setApiToken } from "@/src/lib/api";
 import type { SessionUser } from "@/src/types";
 
 const TOKEN_KEY = "meras_session_token";
 type Credentials = { identifier: string; password: string; remember?: boolean };
-type Registration = { fullName: string; email: string; phone: string; password: string; universitySlug: string; specialty: string; termsAccepted: true };
+type Registration = { fullName: string; email: string; phone: string; password: string; universitySlug: string; specialty: string; academicLevel: string; termsAccepted: true };
 type AuthResponse = { ok: true; token: string; expiresAt: string; user: SessionUser; next: string };
 type AuthContextValue = {
   user: SessionUser | null;
@@ -39,7 +39,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const response = await api<{ ok: true; user: SessionUser }>("/api/auth/me");
       setUser(response.user);
       return response.user;
-    } catch { setUser(null); return null; }
+    } catch (reason) {
+      setUser(null);
+      if (reason instanceof ApiError && reason.status === 401) {
+        await clearPersistedToken();
+        setToken(null);
+      }
+      return null;
+    }
   }, []);
   useEffect(() => {
     void (async () => {

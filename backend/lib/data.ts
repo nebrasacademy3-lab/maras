@@ -23,6 +23,8 @@ export type Institution = {
 export type Lesson = {
   id: string;
   title: string;
+  description?: string;
+  ready?: boolean;
   duration: string;
   free?: boolean;
   completed?: boolean;
@@ -31,6 +33,7 @@ export type Lesson = {
 
 export type CourseUnit = {
   title: string;
+  description?: string;
   lessons: Lesson[];
 };
 
@@ -43,6 +46,7 @@ export type Course = {
   universitySlug: string;
   specialty: string;
   description: string;
+  coverImage?: string;
   price: number;
   oldPrice?: number;
   rating: number;

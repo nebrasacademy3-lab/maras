@@ -47,6 +47,8 @@ test("production server serves public web/mobile contracts and reports database 
   assert.equal(unauthenticatedSupport.status, 401);
   const unauthenticatedSupportFile = await fetch(`${base}/api/support/files/1`);
   assert.equal(unauthenticatedSupportFile.status, 401);
+  const unauthenticatedSupportDelete = await fetch(`${base}/api/support`, { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ ticketId: 1 }) });
+  assert.equal(unauthenticatedSupportDelete.status, 403);
   const crossOriginSupport = await fetch(`${base}/api/support`, { method: "POST", headers: { "content-type": "application/json", origin: "https://evil.example" }, body: JSON.stringify({ title: "test", message: "this should be rejected" }) });
   assert.equal(crossOriginSupport.status, 403);
 

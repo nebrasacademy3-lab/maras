@@ -14,6 +14,7 @@ export type SessionUser = {
   fullName: string;
   universitySlug: string | null;
   specialty: string | null;
+  academicLevel: string | null;
   role: UserRole;
   profileCompleted: boolean;
   onboardingCompleted: boolean;
@@ -55,14 +56,18 @@ export async function verifyPassword(password: string, stored: string | null) {
   const [algorithm, rawIterations, encodedSalt, encodedHash] = stored.split("$");
   const iterations = Number(rawIterations);
   if (algorithm !== "pbkdf2" || !Number.isInteger(iterations) || iterations < 100_000 || !encodedSalt || !encodedHash) return false;
-  const salt = base64UrlToBytes(encodedSalt);
-  const expected = base64UrlToBytes(encodedHash);
-  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
-  const derived = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, key, expected.byteLength * 8));
-  if (derived.byteLength !== expected.byteLength) return false;
-  let difference = 0;
-  for (let index = 0; index < derived.byteLength; index += 1) difference |= derived[index] ^ expected[index];
-  return difference === 0;
+  try {
+    const salt = base64UrlToBytes(encodedSalt);
+    const expected = base64UrlToBytes(encodedHash);
+    const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(password), "PBKDF2", false, ["deriveBits"]);
+    const derived = new Uint8Array(await crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, key, expected.byteLength * 8));
+    if (derived.byteLength !== expected.byteLength) return false;
+    let difference = 0;
+    for (let index = 0; index < derived.byteLength; index += 1) difference |= derived[index] ^ expected[index];
+    return difference === 0;
+  } catch {
+    return false;
+  }
 }
 
 function effectiveRole(email: string, storedRole: string): UserRole {
@@ -87,6 +92,7 @@ function bearerToken(requestHeaders: Headers) {
 
 export function sessionUserFromRow(row: typeof users.$inferSelect): SessionUser {
   const email = row.email.toLowerCase();
+  const role = effectiveRole(email, row.role);
   return {
     id: row.id,
     email,
@@ -94,8 +100,9 @@ export function sessionUserFromRow(row: typeof users.$inferSelect): SessionUser 
     fullName: row.fullName,
     universitySlug: row.universitySlug,
     specialty: row.specialty,
-    role: effectiveRole(email, row.role),
-    profileCompleted: Boolean(row.profileCompletedAt && row.phone && row.universitySlug && row.specialty),
+    academicLevel: row.academicLevel,
+    role,
+    profileCompleted: role !== "student" || Boolean(row.profileCompletedAt && row.phone && row.universitySlug && row.specialty && row.academicLevel),
     onboardingCompleted: Boolean(row.onboardingCompletedAt),
   };
 }

@@ -8,7 +8,7 @@ export function CourseCard({ course, compact = false }: { course: Course; compac
     <article className={`course-card ${compact ? "course-card-compact" : ""}`}>
       <Link href={`/courses/${course.slug}`} className={`course-cover bg-gradient-to-br ${course.color}`} aria-label={`عرض ${course.title}`}>
         <span className="course-cover-grid" />
-        <span className="course-cover-icon">{course.icon}</span>
+        {course.coverImage ? <img className="course-cover-image" src={course.coverImage} alt="" loading="lazy" /> : <span className="course-cover-icon">{course.icon}</span>}
         <span className="preview-pill"><PlayCircle size={14} /> درس مجاني</span>
         {course.oldPrice && <span className="sale-pill">وفر {course.oldPrice - course.price} ر.س</span>}
       </Link>

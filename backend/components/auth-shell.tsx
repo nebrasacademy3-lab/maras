@@ -7,6 +7,7 @@ import { BrandLogo } from "./brand-logo";
 import { ThemeToggle } from "./theme-provider";
 import type { Institution } from "@/lib/data";
 import { useAcademicPrograms } from "@/components/use-academic-programs";
+import { ACADEMIC_LEVELS } from "@/lib/academic-levels";
 
 function safeReturnTo() {
   if (typeof window === "undefined") return "";
@@ -55,8 +56,8 @@ export function LoginForm() {
   </form>;
 }
 
-type RegisterData = { fullName: string; phone: string; email: string; password: string; confirmPassword: string; universitySlug: string; specialty: string; termsAccepted: boolean };
-const emptyRegister: RegisterData = { fullName: "", phone: "", email: "", password: "", confirmPassword: "", universitySlug: "", specialty: "", termsAccepted: false };
+type RegisterData = { fullName: string; phone: string; email: string; password: string; confirmPassword: string; universitySlug: string; specialty: string; academicLevel: string; termsAccepted: boolean };
+const emptyRegister: RegisterData = { fullName: "", phone: "", email: "", password: "", confirmPassword: "", universitySlug: "", specialty: "", academicLevel: "", termsAccepted: false };
 
 export function RegisterForm({ institutions }: { institutions: Institution[] }) {
   const [step, setStep] = useState(1);
@@ -72,7 +73,7 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
     event.preventDefault();
     setError("");
     if (step === 1 && data.password !== data.confirmPassword) { setError("تأكيد كلمة المرور غير مطابق"); return; }
-    if (step === 2 && (!data.universitySlug || !data.specialty || catalog.loading)) { setError(catalog.loading ? "انتظر تحميل تخصصات الجامعة" : "اختر الجامعة والتخصص"); return; }
+    if (step === 2 && (!data.universitySlug || !data.specialty || !data.academicLevel || catalog.loading)) { setError(catalog.loading ? "انتظر تحميل تخصصات الجامعة" : "اختر الجامعة والتخصص"); return; }
     if (step < 3) { setStep(step + 1); return; }
     if (!data.termsAccepted) { setError("يلزم الموافقة على الشروط وسياسة الخصوصية"); return; }
     setLoading(true);
@@ -99,14 +100,15 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
       <label className="form-label">تأكيد كلمة المرور<div className="input-with-icon"><ShieldCheck size={18} /><input required minLength={10} maxLength={128} autoComplete="new-password" value={data.confirmPassword} onChange={(event) => update("confirmPassword", event.target.value)} type={showPassword ? "text" : "password"} placeholder="أعد كتابة كلمة المرور" /></div>{data.confirmPassword && <small className={data.password === data.confirmPassword ? "field-success" : "field-warning"}>{data.password === data.confirmPassword ? "كلمتا المرور متطابقتان" : "كلمتا المرور غير متطابقتين"}</small>}</label>
     </>}
     {step === 2 && <>
-      <div className="auth-heading"><span>ملفك الدراسي</span><h1>جامعتك وتخصصك</h1><p>هذه البيانات إلزامية لتخصيص المواد وإسناد طلباتك للمشرف المناسب.</p></div>
+      <div className="auth-heading"><span>ملفك الدراسي</span><h1>جامعتك وتخصصك ومستواك</h1><p>هذه البيانات إلزامية لتخصيص المواد وإسناد طلباتك للمشرف المناسب.</p></div>
       <label className="form-label">الجامعة أو الكلية<div className="input-with-icon"><GraduationCap size={18} /><select required value={data.universitySlug} onChange={(event) => setData((current) => ({ ...current, universitySlug: event.target.value, specialty: "" }))}><option value="">اختر من القائمة الرسمية</option>{institutions.map((item) => <option key={item.slug} value={item.slug}>{item.name}</option>)}</select></div></label>
-      <label className="form-label">التخصص<div className="input-with-icon"><Sparkles size={18} /><select required disabled={!data.universitySlug || catalog.loading} value={data.specialty} onChange={(event) => update("specialty", event.target.value)}><option value="">{catalog.loading ? "جارٍ تحميل التخصصات الرسمية..." : data.universitySlug ? "اختر تخصصك في هذه الجهة" : "اختر الجامعة أولًا"}</option>{catalog.programs.map((item) => <option key={`${item.name}-${item.degree}`} value={item.name}>{item.name} — {item.degree}</option>)}</select></div>{data.universitySlug && !catalog.loading && !catalog.error && <small className="catalog-status"><CheckCircle2 size={13} /> {catalog.verified ? "تمت مطابقة القائمة مع المصدر الرسمي الآن" : "قائمة أكاديمية منظمة مع رابط المصدر الرسمي"} · {catalog.programs.length} برنامجًا</small>}</label>
+      <label className="form-label">التخصص<div className="input-with-icon"><Sparkles size={18} /><select required disabled={!data.universitySlug || catalog.loading} value={data.specialty} onChange={(event) => update("specialty", event.target.value)}><option value="">{catalog.loading ? "جارٍ تحميل التخصصات الرسمية..." : data.universitySlug ? "اختر تخصصك في هذه الجهة" : "اختر الجامعة أولًا"}</option>{catalog.programs.map((item) => <option key={`${item.name}-${item.degree}`} value={item.name}>{item.name} — {item.degree}</option>)}</select></div>{data.universitySlug && !catalog.loading && !catalog.error && <small className="catalog-status"><CheckCircle2 size={13} /> {catalog.verified ? "تمت مطابقة القائمة مع المصدر الرسمي الآن" : "قائمة أكاديمية منظمة مع رابط المصدر الرسمي"} · {catalog.programs.length} برنامجًا</small>}{catalog.error && <small className="catalog-status">تعذر تحميل المصدر الرسمي، استخدم القائمة المتاحة</small>}</label>
+      <label className="form-label">المستوى الدراسي<div className="input-with-icon"><GraduationCap size={18} /><select required value={data.academicLevel} onChange={(event) => update("academicLevel", event.target.value)}><option value="">اختر مستواك الحالي</option>{ACADEMIC_LEVELS.map((level) => <option key={level} value={level}>{level}</option>)}</select></div><small className="catalog-status">اختر «خريج» إذا أنهيت دراستك، ويمكن تحديث المستوى من الملف الشخصي لاحقًا.</small></label>
       <div className="privacy-note"><ShieldCheck size={18} /><span><strong>البيانات لا تظهر للعامة</strong><small>تُستخدم لتخصيص المحتوى والفواتير وطلبات المواد فقط.</small></span></div>
     </>}
     {step === 3 && <div className="register-review">
       <div className="welcome-check"><ShieldCheck size={35} /></div><span>راجع بياناتك</span><h1>خطوة أخيرة</h1><p>بعد الإنشاء سنعرض لك جولة قصيرة تشرح المنصة وطلب مادة غير متوفرة مع رفع السلايدات.</p>
-      <dl><div><dt>الاسم</dt><dd>{data.fullName}</dd></div><div><dt>الجوال</dt><dd dir="ltr">{data.phone}</dd></div><div><dt>الجامعة</dt><dd>{university?.name}</dd></div><div><dt>التخصص</dt><dd>{data.specialty}</dd></div></dl>
+      <dl><div><dt>الاسم</dt><dd>{data.fullName}</dd></div><div><dt>الجوال</dt><dd dir="ltr">{data.phone}</dd></div><div><dt>الجامعة</dt><dd>{university?.name}</dd></div><div><dt>التخصص</dt><dd>{data.specialty}</dd></div><div><dt>المستوى</dt><dd>{data.academicLevel}</dd></div></dl>
       <label className="terms-check"><input required type="checkbox" checked={data.termsAccepted} onChange={(event) => update("termsAccepted", event.target.checked)} /> <span>أوافق على <Link href="/terms">الشروط والأحكام</Link> و<Link href="/privacy">سياسة الخصوصية</Link>.</span></label>
     </div>}
     {(error || catalog.error) && <p className="form-error" role="alert">{error || catalog.error}</p>}
@@ -117,7 +119,7 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
 }
 
 export function AuthShell({ children, mode }: { children: React.ReactNode; mode: "login" | "register" }) {
-  return <main className="auth-page"><div className="auth-top"><div className="auth-top-brand"><BrandLogo compact /><ThemeToggle compact /></div><Link href="/" className="auth-home-link"><House size={16} /> الرئيسية</Link></div><div className="auth-grid"><section className="auth-panel">{children}</section><aside className="auth-visual"><div className="auth-visual-glow" /><div className="auth-visual-content"><span className="auth-visual-badge"><Sparkles size={15} /> تعلّم بثقة</span><h2>{mode === "login" ? "كل تقدمك محفوظ، وكأنك ما توقفت." : "حساب واحد لكل رحلتك الجامعية."}</h2><p>{mode === "login" ? "ارجع إلى آخر ثانية شاهدتها، وكمّل دروسك من أي جهاز." : "موادك ومشترياتك وطلبات المحتوى وفواتيرك مرتبطة بملفك الدراسي."}</p><div className="auth-proof-card"><div className="auth-proof-art">∑<i><PlayCircleIcon /></i></div><div><small>تكمل الآن</small><strong>الهياكل المتقطعة</strong><span>68% مكتمل</span><div><i /></div></div></div><ul><li><CheckCircle2 size={17} /> محتوى مرتبط بجامعتك وتخصصك</li><li><CheckCircle2 size={17} /> دفع آمن وتفعيل تلقائي</li><li><CheckCircle2 size={17} /> مشغل خاص وتقدم محفوظ</li></ul></div><p className="auth-quote">“شرح واضح، تجربة مرتبة، ودرس مجاني قبل الاشتراك.”</p></aside></div></main>;
+  return <main className="auth-page"><div className="auth-top"><div className="auth-top-brand"><BrandLogo compact /></div><div className="auth-top-actions"><Link href="/" className="auth-home-link"><House size={16} /> الرئيسية</Link><ThemeToggle compact /></div></div><div className="auth-grid"><section className="auth-panel">{children}</section><aside className="auth-visual"><div className="auth-visual-glow" /><div className="auth-visual-content"><span className="auth-visual-badge"><Sparkles size={15} /> تعلّم بثقة</span><h2>{mode === "login" ? "كل تقدمك محفوظ، وكأنك ما توقفت." : "حساب واحد لكل رحلتك الجامعية."}</h2><p>{mode === "login" ? "ارجع إلى آخر ثانية شاهدتها، وكمّل دروسك من أي جهاز." : "موادك ومشترياتك وطلبات المحتوى وفواتيرك مرتبطة بملفك الدراسي."}</p><div className="auth-proof-card"><div className="auth-proof-art">∑<i><PlayCircleIcon /></i></div><div><small>تكمل الآن</small><strong>الهياكل المتقطعة</strong><span>68% مكتمل</span><div><i /></div></div></div><ul><li><CheckCircle2 size={17} /> محتوى مرتبط بجامعتك وتخصصك</li><li><CheckCircle2 size={17} /> دفع آمن وتفعيل تلقائي</li><li><CheckCircle2 size={17} /> مشغل خاص وتقدم محفوظ</li></ul></div><p className="auth-quote">“شرح واضح، تجربة مرتبة، ودرس مجاني قبل الاشتراك.”</p></aside></div></main>;
 }
 
 async function readAuthResponse(response: Response): Promise<{ error?: string; next?: string }> {

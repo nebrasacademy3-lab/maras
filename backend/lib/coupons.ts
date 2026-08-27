@@ -7,6 +7,7 @@ export type CouponQuote = {
   discount: number;
   total: number;
   label: string;
+  courseSlug: string | null;
 };
 
 const money = (value: number) => Math.round(value * 100) / 100;
@@ -30,6 +31,7 @@ export async function quoteCoupon(rawCode: string, courseSlug: string, price: nu
     discount,
     total: money(price - discount),
     label: coupon.type === "percent" ? `خصم ${Math.min(coupon.value, 95)}%` : `خصم ${money(discount)} ر.س`,
+    courseSlug: coupon.courseSlug,
   };
 }
 
@@ -49,5 +51,5 @@ export async function quoteCouponForCart(rawCode: string, items: Array<{ courseS
   const requested = coupon.type === "percent" ? subtotal * Math.min(coupon.value, 95) / 100 : coupon.value;
   const discount = money(Math.min(Math.max(0, requested), Math.max(0, subtotal - 1)));
   if (discount <= 0) return null;
-  return { code, discount, total: money(subtotal - discount), label: coupon.type === "percent" ? `خصم ${Math.min(coupon.value, 95)}%` : `خصم ${money(discount)} ر.س` };
+  return { code, discount, total: money(subtotal - discount), label: coupon.type === "percent" ? `خصم ${Math.min(coupon.value, 95)}%` : `خصم ${money(discount)} ر.س`, courseSlug: coupon.courseSlug };
 }

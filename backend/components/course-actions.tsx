@@ -1,26 +1,35 @@
 "use client";
 
-import { Heart, LoaderCircle, ShoppingBag } from "lucide-react";
-import { useState } from "react";
+import { Check, Heart, LoaderCircle, ShoppingBag } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ensureCommerceLoaded, setCart, setFavorite, useCommerceState } from "./commerce-state";
 
 export function CourseActions({ courseSlug, compact = false }: { courseSlug: string; compact?: boolean }) {
+  const { cartSlugs, favoriteSlugs, loaded } = useCommerceState();
   const [busy, setBusy] = useState<"cart" | "favorite" | "">("");
   const [message, setMessage] = useState("");
-  async function mutate(path: "/api/cart" | "/api/favorites", kind: "cart" | "favorite") {
+  const isInCart = cartSlugs.includes(courseSlug);
+  const isFavorite = favoriteSlugs.includes(courseSlug);
+
+  useEffect(() => { void ensureCommerceLoaded(); }, []);
+
+  async function mutate(kind: "cart" | "favorite") {
     if (busy) return;
+    const active = kind === "cart" ? !isInCart : !isFavorite;
     setBusy(kind); setMessage("");
     try {
-      const response = await fetch(path, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ courseSlug, active: true }) });
-      const payload = await response.json() as { error?: string };
-      if (response.status === 401) { window.location.assign(`/login?return_to=${encodeURIComponent(window.location.pathname)}`); return; }
-      if (!response.ok) throw new Error(payload.error || "تعذر تنفيذ الطلب");
-      setMessage(kind === "cart" ? "أضيفت للسلة" : "أضيفت للمفضلة");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "حاول مرة أخرى"); }
-    finally { setBusy(""); }
+      const response = kind === "cart" ? await setCart(courseSlug, active) : await setFavorite(courseSlug, active);
+      void response;
+      setMessage(kind === "cart" ? (active ? "أضيفت إلى السلة" : "أزيلت من السلة") : (active ? "أضيفت إلى المفضلة" : "أزيلت من المفضلة"));
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("401")) window.location.assign(`/login?return_to=${encodeURIComponent(window.location.pathname)}`);
+      else setMessage(error instanceof Error ? error.message : "حاول مرة أخرى");
+    } finally { setBusy(""); }
   }
-  return <div className={`course-actions ${compact ? "course-actions-compact" : ""}`}>
-    <button type="button" onClick={() => mutate("/api/cart", "cart")} aria-label="إضافة إلى السلة" title="إضافة إلى السلة">{busy === "cart" ? <LoaderCircle className="spin" size={15} /> : <ShoppingBag size={15} />}<span>{compact ? "سلة" : "أضف للسلة"}</span></button>
-    <button type="button" onClick={() => mutate("/api/favorites", "favorite")} aria-label="إضافة إلى المفضلة" title="إضافة إلى المفضلة">{busy === "favorite" ? <LoaderCircle className="spin" size={15} /> : <Heart size={15} />}<span>{compact ? "مفضلة" : "مفضلة"}</span></button>
-    {message && <small role="status">{message}</small>}
+
+  return <div className={`course-actions ${compact ? "course-actions-compact" : ""} ${loaded ? "commerce-ready" : ""}`}>
+    <button type="button" className={isInCart ? "is-added" : ""} onClick={() => void mutate("cart")} aria-pressed={isInCart} aria-label={isInCart ? "إزالة المادة من السلة" : "إضافة إلى السلة"} title={isInCart ? "إزالة من السلة" : "إضافة إلى السلة"}>{busy === "cart" ? <LoaderCircle className="spin" size={15} /> : <ShoppingBag size={15} />}<span>{compact ? (isInCart ? "مضافة" : "سلة") : (isInCart ? "مضافة للسلة" : "أضف للسلة")}</span><Check className="course-action-check" size={13} /></button>
+    <button type="button" className={isFavorite ? "is-favorite" : ""} onClick={() => void mutate("favorite")} aria-pressed={isFavorite} aria-label={isFavorite ? "إزالة المادة من المفضلة" : "إضافة إلى المفضلة"} title={isFavorite ? "إزالة من المفضلة" : "إضافة إلى المفضلة"}>{busy === "favorite" ? <LoaderCircle className="spin" size={15} /> : <Heart size={15} fill={isFavorite ? "currentColor" : "none"} />}<span>{compact ? "مفضلة" : (isFavorite ? "في المفضلة" : "مفضلة")}</span></button>
+    {message && <small role="status" className="course-action-message">{message}</small>}
   </div>;
 }

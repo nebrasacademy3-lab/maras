@@ -1,6 +1,6 @@
 import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { notificationsDb, supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
+import { auditLogs, notificationsDb, supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { deleteObject, putObject } from "@/lib/storage";
@@ -126,6 +126,31 @@ export async function GET(request: Request) {
   const replies = (await db.select().from(supportReplies).where(eq(supportReplies.internal, false)).orderBy(desc(supportReplies.createdAt)).limit(600)).filter((reply) => ids.has(reply.ticketId));
   const files = await db.select().from(supportReplyFiles).limit(1200);
   return Response.json({ ok: true, tickets: tickets.map((ticket) => ({ ...ticket, replies: replies.filter((reply) => reply.ticketId === ticket.id).map((reply) => ({ ...reply, files: files.filter((file) => file.replyId === reply.id).map((file) => ({ id: file.id, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })) })) }, { headers: { "cache-control": "no-store" } });
+}
+
+export async function DELETE(request: Request) {
+  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  const current = await getSessionUser(request);
+  const machineAuthorized = isAdminRequest(request);
+  if (!machineAuthorized && !isManager(current)) return jsonError("غير مصرح بحذف التذاكر", 403);
+  const actor = current?.email || "admin-api-token";
+  if (!await checkRateLimit("support-delete", `${actor}:${clientIp(request)}`, 10, 60 * 60)) return jsonError("طلبات حذف كثيرة. حاول لاحقًا.", 429);
+  let payload: Record<string, unknown>;
+  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
+  const ticketId = Math.floor(Number(payload.ticketId));
+  if (!ticketId) return jsonError("معرّف التذكرة غير صالح");
+  const db = getDb();
+  const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+  if (!ticket) return jsonError("التذكرة غير موجودة", 404);
+  const files = await db.select({ objectKey: supportReplyFiles.objectKey }).from(supportReplyFiles).where(eq(supportReplyFiles.ticketId, ticketId));
+  await db.transaction(async (tx) => {
+    await tx.delete(supportReplyFiles).where(eq(supportReplyFiles.ticketId, ticketId));
+    await tx.delete(supportReplies).where(eq(supportReplies.ticketId, ticketId));
+    await tx.delete(supportTickets).where(eq(supportTickets.id, ticketId));
+    await tx.insert(auditLogs).values({ actorEmail: actor, action: "delete", entityType: "support_ticket", entityId: String(ticketId), beforeJson: JSON.stringify({ ticketNumber: ticket.ticketNumber, userEmail: ticket.userEmail, title: ticket.title }), afterJson: null, ipAddress: clientIp(request) });
+  });
+  await Promise.all(files.map((file) => deleteObject(file.objectKey).catch(() => undefined)));
+  return Response.json({ ok: true, deleted: true }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function PATCH(request: Request) {

@@ -3,7 +3,7 @@ import { getDb } from "@/db";
 import { auditLogs, catalogInstitutions } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
-import { getInstitutionCatalog } from "@/lib/catalog-store";
+import { getInstitutionCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { deleteObject, putObject } from "@/lib/storage";
 
 const MAX_LOGO_BYTES = 4 * 1024 * 1024;
@@ -59,6 +59,8 @@ export async function POST(request: Request) {
     };
     await db.insert(catalogInstitutions).values({ ...values, createdAt: existing?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
     await db.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "institution_logo", entityId: slug, beforeJson: existing?.logoUrl || null, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
+    if (existing?.logoUrl?.startsWith("r2:")) await deleteObject(existing.logoUrl.slice(3)).catch((error) => console.warn("[logo-upload] previous object cleanup failed", error instanceof Error ? error.message : "unknown"));
+    invalidateCatalogCache();
     return Response.json({ ok: true, logoUrl: `/api/logos/${slug}` }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch {
     await deleteObject(objectKey).catch(() => undefined);

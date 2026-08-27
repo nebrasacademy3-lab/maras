@@ -12,7 +12,7 @@ const channelLabel: Record<string, string> = { in_app: "محادثة مراس", 
 
 export function SupportForm() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(() => { if (typeof window === "undefined") return null; const requested = Number(new URLSearchParams(window.location.search).get("ticket")); return Number.isInteger(requested) && requested > 0 ? requested : null; });
   const [status, setStatus] = useState<"idle" | "loading" | "done">("idle");
   const [ticketNumber, setTicketNumber] = useState("");
   const [error, setError] = useState("");

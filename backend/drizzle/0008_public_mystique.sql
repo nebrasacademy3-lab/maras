@@ -1,0 +1,1 @@
+ALTER TABLE "course_requests" ADD COLUMN "prepared_course_slug" text;

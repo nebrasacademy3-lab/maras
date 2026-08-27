@@ -23,7 +23,7 @@ export const metadata: Metadata = {
     images: [{ url: "/og.png", width: 1728, height: 910, alt: "مراس العلم — شرح جامعتك في مكان واحد" }],
   },
   twitter: { card: "summary_large_image", title: "مراس العلم", description: "شرح جامعتك، في مكان واحد.", images: ["/og.png"] },
-  icons: { icon: "/favicon.svg", shortcut: "/favicon.svg" },
+  icons: { icon: [{ url: "/brand/mark-m.png", type: "image/png", sizes: "1920x1920" }, { url: "/favicon.svg", type: "image/svg+xml" }], shortcut: "/brand/mark-m.png", apple: "/brand/mark-m.png" },
   manifest: "/manifest.webmanifest",
 };
 
@@ -36,7 +36,7 @@ export const viewport: Viewport = {
   ],
 };
 
-const themeScript = `(function(){try{var t=localStorage.getItem('meras-theme');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d)}catch(e){}})()`;
+const themeScript = `(function(){try{var t=localStorage.getItem('meras-theme');var p=localStorage.getItem('meras-palette');var s=localStorage.getItem('meras-font-scale');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.dataset.palette=['official','violet','rose','teal'].indexOf(p)>=0?p:'official';document.documentElement.dataset.fontScale=['0.9','1','1.1','1.2'].indexOf(s)>=0?s:'1'}catch(e){}})()`;
 const structuredData = {
   "@context": "https://schema.org",
   "@graph": [
