@@ -6,9 +6,9 @@ import {
   supervisorAssignments, supportReplies, supportTickets, users, videoAssets,
 } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
-import { getSessionUser, roleAllowed, sameOriginRequest, validEmail } from "@/lib/auth";
-import { getCourseCatalog, getCoursesCatalog, getInstitutionCatalog, getInstitutionsCatalog, getProgramsCatalog } from "@/lib/catalog-store";
-import { PUBLIC_SETTING_DEFAULTS, SETTING_META, type PublicSettingKey } from "@/lib/platform-settings";
+import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest, validEmail } from "@/lib/auth";
+import { getCourseCatalog, getCoursesCatalog, getInstitutionCatalog, getInstitutionsCatalog, getProgramsCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
+import { invalidatePublicSettingsCache, PUBLIC_SETTING_DEFAULTS, SETTING_META, type PublicSettingKey } from "@/lib/platform-settings";
 import { sendPushNotification } from "@/lib/push";
 
 async function authorize(request: Request) {
@@ -46,6 +46,8 @@ function safeUrl(value: string) {
 export async function GET(request: Request) {
   const authorization = await authorize(request);
   if (!authorization) return jsonError("غير مصرح", 403);
+  const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
+  if (!await checkRateLimit("admin-console-read", identity, 30, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
   const [institutionRows, courses, specialtyRows, links, unitRows, lessonRows, videoRows, studentRows, orderRows, requestRows, ticketRows, replyRows, reviewRows, accessRows, supervisorRows, notificationRows, couponRows, settingRows, audits] = await Promise.all([
     getInstitutionsCatalog(true),
@@ -112,7 +114,7 @@ export async function GET(request: Request) {
     settings,
     audit: audits,
     services: {
-      assistant: Boolean(process.env.GEMINI_API_KEY?.trim()),
+      assistant: true,
       payments: Boolean(process.env.TAP_SECRET_KEY?.trim()),
       email: Boolean(process.env.RESEND_API_KEY?.trim()),
       videoSigning: Boolean(process.env.VIDEO_SIGNING_SECRET?.trim() && process.env.VIDEO_SIGNING_SECRET!.trim().length >= 24),
@@ -121,9 +123,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  const machineAuthorized = isAdminRequest(request);
+  if (!machineAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const authorization = await authorize(request);
   if (!authorization) return jsonError("غير مصرح", 403);
+  const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
+  if (!await checkRateLimit("admin-console-write", identity, 60, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
   const action = cleanText(payload.action, 50);
@@ -144,6 +149,7 @@ export async function POST(request: Request) {
     const [before] = await db.select().from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
     const values = { slug, name, nameEn, region, type, domain: domain || null, logoUrl: logoUrl || before?.logoUrl || null, status, featured: payload.featured === true, sortOrder: Number.isFinite(Number(payload.sortOrder)) ? Math.floor(Number(payload.sortOrder)) : 0, updatedAt: now };
     await db.insert(catalogInstitutions).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
+    invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "institution", slug, before, values);
     return Response.json({ ok: true, institution: values });
   }
@@ -160,6 +166,7 @@ export async function POST(request: Request) {
     const values = { slug, name, description, status, updatedAt: now };
     await db.insert(catalogSpecialties).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogSpecialties.slug, set: values });
     if (institutionSlug) await db.insert(institutionSpecialties).values({ institutionSlug, specialtySlug: slug, status: "published", sortOrder: 0 }).onConflictDoUpdate({ target: [institutionSpecialties.institutionSlug, institutionSpecialties.specialtySlug], set: { status: "published" } });
+    invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "specialty", slug, before, { ...values, institutionSlug });
     return Response.json({ ok: true, specialty: values });
   }
@@ -185,6 +192,7 @@ export async function POST(request: Request) {
       status, featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
     };
     await db.insert(catalogCourses).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogCourses.slug, set: values });
+    invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "course", slug, before, values);
     return Response.json({ ok: true, course: values });
   }
@@ -340,6 +348,7 @@ export async function POST(request: Request) {
       if (key === "whatsapp_number" && value && !/^\+?[0-9\s-]{9,20}$/.test(value)) return jsonError("رقم واتساب غير صالح");
       await db.insert(platformSettings).values({ key, value, category: SETTING_META[key].category, isPublic: true, updatedBy: authorization.actor, updatedAt: now }).onConflictDoUpdate({ target: platformSettings.key, set: { value, category: SETTING_META[key].category, isPublic: true, updatedBy: authorization.actor, updatedAt: now } });
     }
+    invalidatePublicSettingsCache();
     await audit(request, authorization.actor, "update", "platform_settings", "public", null, Object.fromEntries(entries));
     return Response.json({ ok: true });
   }

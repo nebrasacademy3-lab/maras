@@ -12,6 +12,17 @@ const themes: Record<string, string> = {
   "indigo-cyan": "from-indigo-700 to-cyan-600",
 };
 
+const CATALOG_CACHE_TTL = 20_000;
+let institutionsCache: { expiresAt: number; value: Institution[] } | null = null;
+let coursesCache: { expiresAt: number; value: Course[] } | null = null;
+let institutionsInFlight: Promise<Institution[]> | null = null;
+let coursesInFlight: Promise<Course[]> | null = null;
+
+export function invalidateCatalogCache() {
+  institutionsCache = null;
+  coursesCache = null;
+}
+
 const publicLogo = (slug: string, value: string | null | undefined) => value?.startsWith("r2:") ? `/api/logos/${slug}` : value || undefined;
 const bundledLogo = (slug: string) => `/institutions/${slug}.png`;
 const staticInstitutionFallback = () => staticInstitutions.map((item) => ({ ...item, logo: bundledLogo(item.slug) }));
@@ -26,13 +37,19 @@ function secondsLabel(total: number) {
 
 export async function getInstitutionsCatalog(includeHidden = false): Promise<Institution[]> {
   if (!process.env.DATABASE_URL) return staticInstitutionFallback();
+  if (!includeHidden && institutionsCache && institutionsCache.expiresAt > Date.now()) return institutionsCache.value;
+  if (!includeHidden && institutionsInFlight) return institutionsInFlight;
+  const load = async () => {
   const db = getDb();
   const [rows, specialties, courseRows] = await Promise.all([
     db.select().from(catalogInstitutions).orderBy(asc(catalogInstitutions.sortOrder), asc(catalogInstitutions.name)),
     db.select().from(institutionSpecialties),
-    db.select({ institutionSlug: catalogCourses.institutionSlug, status: catalogCourses.status }).from(catalogCourses),
+    db.select({ slug: catalogCourses.slug, institutionSlug: catalogCourses.institutionSlug, status: catalogCourses.status }).from(catalogCourses),
   ]);
   const overrides = new Map(rows.map((row) => [row.slug, row]));
+  const courseStatus = new Map(courseRows.map((row) => [row.slug, row.status]));
+  const staticCourseSlugs = new Set(staticCourses.map((course) => course.slug));
+  const actualCourseCount = (slug: string) => staticCourses.filter((course) => course.universitySlug === slug && (courseStatus.get(course.slug) === undefined || courseStatus.get(course.slug) === "published")).length + courseRows.filter((course) => course.institutionSlug === slug && course.status === "published" && !staticCourseSlugs.has(course.slug)).length;
   const merged = new Map<string, Institution>();
   for (const item of staticInstitutions) {
     const row = overrides.get(item.slug);
@@ -46,7 +63,7 @@ export async function getInstitutionsCatalog(includeHidden = false): Promise<Ins
       logo: publicLogo(item.slug, row.logoUrl) || bundledLogo(item.slug),
       domain: row.domain || item.domain,
       specialties: specialties.filter((link) => link.institutionSlug === item.slug && link.status === "published").length || item.specialties,
-      courses: courseRows.filter((course) => course.institutionSlug === item.slug && course.status === "published").length || item.courses,
+      courses: actualCourseCount(item.slug),
       featured: row.featured,
     } : { ...item, logo: bundledLogo(item.slug) });
   }
@@ -61,11 +78,19 @@ export async function getInstitutionsCatalog(includeHidden = false): Promise<Ins
       logo: publicLogo(row.slug, row.logoUrl),
       domain: row.domain || undefined,
       specialties: specialties.filter((link) => link.institutionSlug === row.slug && link.status === "published").length,
-      courses: courseRows.filter((course) => course.institutionSlug === row.slug && course.status === "published").length,
+      courses: actualCourseCount(row.slug),
       featured: row.featured,
     });
   }
-  return [...merged.values()];
+  const value = [...merged.values()];
+  if (!includeHidden) institutionsCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
+  return value;
+  };
+  if (!includeHidden) {
+    institutionsInFlight = load();
+    try { return await institutionsInFlight; } finally { institutionsInFlight = null; }
+  }
+  return load();
 }
 
 export async function getInstitutionCatalog(slug: string, includeHidden = false) {
@@ -94,6 +119,9 @@ export async function getProgramsCatalog(institutionSlug: string): Promise<{ pro
 
 export async function getCoursesCatalog(includeDraft = false): Promise<Course[]> {
   if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item }));
+  if (!includeDraft && coursesCache && coursesCache.expiresAt > Date.now()) return coursesCache.value;
+  if (!includeDraft && coursesInFlight) return coursesInFlight;
+  const load = async () => {
   const db = getDb();
   const [managed, units, lessons, specialties, institutions, reviews, accessRows] = await Promise.all([
     db.select().from(catalogCourses),
@@ -153,7 +181,15 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       units: unitRows,
     });
   }
-  return [...result.values()];
+  const value = [...result.values()];
+  if (!includeDraft) coursesCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
+  return value;
+  };
+  if (!includeDraft) {
+    coursesInFlight = load();
+    try { return await coursesInFlight; } finally { coursesInFlight = null; }
+  }
+  return load();
 }
 
 export async function getCourseCatalog(slug: string, includeDraft = false) {

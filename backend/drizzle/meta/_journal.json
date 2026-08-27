@@ -8,6 +8,13 @@
       "when": 1787788116209,
       "tag": "0000_simple_william_stryker",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1787792000699,
+      "tag": "0001_sloppy_mulholland_black",
+      "breakpoints": true
     }
   ]
 }

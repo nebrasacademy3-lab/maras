@@ -1,7 +1,7 @@
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess } from "@/db/schema";
-import { getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { getCourseCatalog } from "@/lib/catalog-store";
 import { createVideoToken } from "@/lib/video-token";
@@ -14,11 +14,14 @@ export async function POST(request: Request) {
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الجلسة غير صالحة"); }
   const courseSlug = cleanText(payload.courseSlug, 120);
   const lessonId = cleanText(payload.lessonId, 120);
+  const viewer = await getSessionUser(request);
+  const rateIdentity = viewer?.email || clientIp(request);
+  if (!await checkRateLimit("video-session", rateIdentity, 60, 60)) return jsonError("طلبات مشاهدة كثيرة. حاول بعد قليل.", 429);
   const course = await getCourseCatalog(courseSlug);
   const lesson = course?.units.flatMap((unit) => unit.lessons).find((item) => item.id === lessonId);
   if (!course || !lesson) return jsonError("الدرس غير موجود", 404);
 
-  const email = (await getSessionUser(request))?.email || "";
+  const email = viewer?.email || "";
   if (!lesson.free) {
     if (!email) return jsonError("سجّل الدخول لمشاهدة هذا الدرس", 401);
     const now = new Date().toISOString();

@@ -1,9 +1,10 @@
+import { answerWithOpenAI } from "@/lib/assistant-ai";
 import { answerAssistant } from "@/lib/assistant-knowledge";
-import { answerWithGemini } from "@/lib/assistant-ai";
 import { buildAssistantContext } from "@/lib/assistant-context";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { getPublicSettings } from "@/lib/platform-settings";
+import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
@@ -19,13 +20,11 @@ export async function POST(request: Request) {
     const text = cleanText(row.text, 500).replace(/\s+/g, " ");
     return role && text ? [{ role, text }] : [];
   }).slice(-8) : [];
-  const [user, settings] = await Promise.all([getSessionUser(request), getPublicSettings()]);
+  const [user, settings, institutions, courses] = await Promise.all([getSessionUser(request), getPublicSettings(), getInstitutionsCatalog(), getCoursesCatalog()]);
   let reply = null;
-  if (process.env.GEMINI_API_KEY?.trim() && (process.env.ASSISTANT_PROVIDER || "gemini") === "gemini") {
-    try {
-      const context = await buildAssistantContext(user, settings);
-      reply = await answerWithGemini({ question, history, user, settings, context });
-    } catch { /* The deterministic guide below keeps the assistant available. */ }
-  }
-  return Response.json(reply || answerAssistant(question, user, settings), { headers: { "cache-control": "no-store" } });
+  try {
+    const context = await buildAssistantContext(user, settings);
+    reply = await answerWithOpenAI({ question, history, user, settings, context });
+  } catch { /* The deterministic guide below keeps the assistant available. */ }
+  return Response.json(reply || answerAssistant(question, user, settings, { institutions, courses }), { headers: { "cache-control": "no-store" } });
 }

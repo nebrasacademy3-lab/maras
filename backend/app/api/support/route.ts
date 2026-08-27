@@ -14,11 +14,11 @@ export async function POST(request: Request) {
   const title = cleanText(payload.title, 180);
   const message = cleanText(payload.message, 4000);
   if (!category || !title || message.length < 10) return jsonError("أضف عنوانًا وتفاصيل كافية للمشكلة");
-  const ticketNumber = `SP-${Date.now().toString().slice(-8)}`;
+  const ticketNumber = `SP-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
   const db = getDb();
   const current = await getSessionUser(request);
-  const suppliedEmail = cleanText(payload.userEmail, 180).toLowerCase();
-  const [ticket] = await db.insert(supportTickets).values({ ticketNumber, category, priority, title, message, userEmail: current?.email || suppliedEmail || null }).returning({ id: supportTickets.id, ticketNumber: supportTickets.ticketNumber, status: supportTickets.status });
+  const safePriority = ["low", "normal", "high", "urgent"].includes(priority) ? priority : "normal";
+  const [ticket] = await db.insert(supportTickets).values({ ticketNumber, category, priority: safePriority, title, message, userEmail: current?.email || null }).returning({ id: supportTickets.id, ticketNumber: supportTickets.ticketNumber, status: supportTickets.status });
   return Response.json({ ok: true, ticket }, { status: 201 });
 }
 

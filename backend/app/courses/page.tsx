@@ -8,7 +8,7 @@ import { getCoursesCatalog } from "@/lib/catalog-store";
 
 export const metadata: Metadata = { title: "المواد الجامعية", description: "ابحث في شروحات المواد الجامعية المتوفرة على منصة مراس العلم وشاهد درسًا مجانيًا قبل الاشتراك." };
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function CoursesPage() {
   const courses = await getCoursesCatalog();

@@ -28,13 +28,14 @@ type AdminData = {
   settings: Record<string, string>;
 };
 
-type Tab = "overview" | "users" | "requests" | "support" | "catalog" | "commerce" | "reviews" | "communication";
+type Tab = "overview" | "users" | "staff" | "requests" | "support" | "catalog" | "commerce" | "reviews" | "communication";
 type Mutate = (payload: Record<string, unknown>, success?: string) => Promise<boolean>;
 
 const requestStatuses = ["new", "assigned", "reviewing", "planned", "producing", "available", "declined"];
 const tabs: { key: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }[] = [
   { key: "overview", label: "الرئيسية", icon: "grid-outline" },
   { key: "users", label: "الحسابات", icon: "people-outline" },
+  { key: "staff", label: "الموظفون", icon: "person-add-outline" },
   { key: "requests", label: "الطلبات", icon: "cloud-upload-outline" },
   { key: "support", label: "الدعم", icon: "headset-outline" },
   { key: "catalog", label: "الكتالوج", icon: "library-outline" },
@@ -68,6 +69,7 @@ export default function Admin() {
     {message ? <Text style={[styles.message, { color: message.startsWith("تم") ? colors.success : colors.danger }]}>{message}</Text> : null}
     {tab === "overview" && <Overview data={data} colors={colors} />}
     {tab === "users" && <Users data={data} colors={colors} mutate={mutate} />}
+    {tab === "staff" && <StaffAdmin data={data} colors={colors} refresh={refresh} mutate={mutate} />}
     {tab === "requests" && <Requests rows={data.requests} colors={colors} mutate={mutate} />}
     {tab === "support" && <Support rows={data.tickets} colors={colors} mutate={mutate} />}
     {tab === "catalog" && <CatalogAdmin data={data} colors={colors} mutate={mutate} refresh={refresh} />}
@@ -95,6 +97,25 @@ function Overview({ data, colors }: { data: AdminData; colors: Colors }) {
 
 function Queue({ label, value, colors }: { label: string; value: number; colors: Colors }) {
   return <View style={[styles.queue, { borderBottomColor: colors.border }]}><Text style={[styles.queueValue, { color: colors.primary }]}>{value}</Text><Text style={[styles.queueLabel, { color: colors.text }]}>{label}</Text></View>;
+}
+
+function StaffAdmin({ data, colors, mutate, refresh }: { data: AdminData; colors: Colors; mutate: Mutate; refresh: () => Promise<void> }) {
+  const [form, setForm] = useState({ email: "", fullName: "", phone: "", password: "", role: "supervisor", universitySlug: "", specialty: "" });
+  const [feedback, setFeedback] = useState("");
+  const [busy, setBusy] = useState(false);
+  const staff = data.users.filter((row) => row.role !== "student");
+  const create = async () => {
+    setBusy(true); setFeedback("");
+    try {
+      const response = await api("/api/admin/staff", { method: "POST", body: jsonBody(form) });
+      void response;
+      setForm({ email: "", fullName: "", phone: "", password: "", role: "supervisor", universitySlug: "", specialty: "" });
+      setFeedback("تم إنشاء حساب الموظف وربطه بالبيانات");
+      await refresh();
+    } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر إنشاء حساب الموظف"); }
+    finally { setBusy(false); }
+  };
+  return <><SectionTitle title="إنشاء موظف وصلاحياته" subtitle="الحساب الجديد يبدأ بصلاحيات محددة ولا يصل إلى الإدارة إلا بدور مصرح" /><Card><Field label="البريد الإلكتروني" value={form.email} onChangeText={(value) => setForm({ ...form, email: value })} keyboardType="email-address" autoCapitalize="none" /><Field label="الاسم الكامل" value={form.fullName} onChangeText={(value) => setForm({ ...form, fullName: value })} /><Field label="الجوال السعودي" value={form.phone} onChangeText={(value) => setForm({ ...form, phone: value })} keyboardType="phone-pad" /><Field label="كلمة المرور المؤقتة" value={form.password} onChangeText={(value) => setForm({ ...form, password: value })} secureTextEntry autoCapitalize="none" /><ChoiceRow values={["supervisor", "admin"]} selected={form.role} onSelect={(value) => setForm({ ...form, role: value })} colors={colors} /><SearchPicker label="الجامعة أو الكلية" value={form.universitySlug} placeholder="اختر الجهة" items={data.institutions.map((row) => ({ key: row.slug, label: row.name, detail: row.region }))} onSelect={(item) => setForm({ ...form, universitySlug: item.key })} /><SearchPicker label="التخصص" value={form.specialty} placeholder="اختر التخصص" items={data.specialties.map((row) => ({ key: row.name, label: row.name }))} onSelect={(item) => setForm({ ...form, specialty: item.key })} />{feedback ? <Text style={[styles.message, { color: feedback.startsWith("تم") ? colors.success : colors.danger }]}>{feedback}</Text> : null}<AppButton title="إنشاء الحساب" icon="person-add-outline" loading={busy} disabled={form.email.trim().length < 5 || form.fullName.trim().length < 5 || form.phone.trim().length < 8 || form.password.length < 10 || !form.universitySlug || !form.specialty} onPress={create} /></Card><SectionTitle title="الموظفون الحاليون" subtitle={`${staff.length} حساب إداري أو إشرافي`} />{staff.length ? staff.map((row) => <Card key={row.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={[styles.role, { color: colors.primary }]}>{row.role}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.fullName}</Text></View><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.email} · {row.status}</Text><View style={styles.actionRow}><AppButton full={false} title={row.status === "active" ? "تعليق" : "تنشيط"} variant={row.status === "active" ? "danger" : "soft"} onPress={() => void mutate({ action: "updateUser", id: row.id, role: row.role, status: row.status === "active" ? "suspended" : "active" })} /><AppButton full={false} title="تحويل لمشرف" variant="ghost" onPress={() => void mutate({ action: "updateUser", id: row.id, role: row.role === "admin" ? "supervisor" : "admin", status: row.status })} /></View></Card>) : <EmptyState title="لا يوجد موظفون" text="أنشئ أول مشرف أو مدير من النموذج أعلاه." />}</>;
 }
 
 function Users({ data, colors, mutate }: { data: AdminData; colors: Colors; mutate: Mutate }) {

@@ -1,5 +1,19 @@
+import { timingSafeEqual } from "node:crypto";
+
+function secretEquals(expected: string, actual: string) {
+  const left = Buffer.from(expected, "utf8");
+  const right = Buffer.from(actual, "utf8");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 export function jsonError(message: string, status = 400) {
-  return Response.json({ ok: false, error: message }, { status });
+  return Response.json({ ok: false, error: message }, {
+    status,
+    headers: {
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+    },
+  });
 }
 
 export function cleanText(value: unknown, max = 500) {
@@ -17,9 +31,9 @@ export function requestOrigin(request: Request) {
 }
 
 export function isAdminRequest(request: Request) {
-  const expected = (process.env.ADMIN_API_TOKEN || process.env.ADMIN_UPLOAD_TOKEN)?.trim();
+  const expected = process.env.ADMIN_API_TOKEN?.trim();
   if (!expected) return false;
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   const direct = request.headers.get("x-admin-token")?.trim();
-  return bearer === expected || direct === expected;
+  return Boolean((bearer && secretEquals(expected, bearer)) || (direct && secretEquals(expected, direct)));
 }

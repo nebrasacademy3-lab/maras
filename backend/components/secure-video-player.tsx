@@ -80,7 +80,7 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
       <video ref={videoRef} src={streamSource || undefined} playsInline preload="metadata" disablePictureInPicture controlsList="nodownload noremoteplayback nofullscreen" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; setTime(current); if (current - lastSavedRef.current >= 15) { lastSavedRef.current = current; saveProgress(Math.floor(current)); } }} onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)} onEnded={(event) => { setPlaying(false); saveProgress(Math.floor(event.currentTarget.duration), true); }} onError={() => setHasError(true)} />
       <div className="secure-player-bg" />
       <div className={`video-watermark watermark-${watermark}`}>{preview ? "درس تجريبي مجاني" : studentLabel}</div>
-      <div className="video-brand"><img src="/brand/logo-dark.png" alt="" /></div>
+      <div className="video-brand"><img src="/brand/logo-dark.png" alt="" width={496} height={289} loading="lazy" decoding="async" /></div>
       {captions && playing && <div className="video-caption">لا يوجد ملف ترجمة مرفوع لهذا الدرس بعد.</div>}
       {sessionLoading && <div className="video-error"><LoaderCircle size={30} className="spin" /><strong>جارٍ تجهيز جلسة المشاهدة المحمية</strong><span>الرابط مؤقت ومرتبط بحسابك الحالي.</span></div>}
       {(hasError || sessionError) && !sessionLoading && <div className="video-error"><ShieldCheck size={30} /><strong>{sessionError || "تعذّر تحميل الفيديو"}</strong><span>تأكد من صلاحية المادة، أو أخبر الدعم إذا استمرت المشكلة.</span></div>}

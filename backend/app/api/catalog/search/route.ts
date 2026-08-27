@@ -9,5 +9,5 @@ export async function GET(request: Request) {
   const matchingCourses = query
     ? courses.filter((item) => `${item.title} ${item.titleEn} ${item.code || ""} ${item.specialty} ${item.university}`.toLocaleLowerCase("ar").includes(query))
     : [...courses].sort((a, b) => Number(Boolean(b.featured)) - Number(Boolean(a.featured)));
-  return Response.json({ institutions: matchingInstitutions.slice(0, 6), courses: matchingCourses.slice(0, 6) }, { headers: { "cache-control": "private, max-age=30" } });
+  return Response.json({ institutions: matchingInstitutions.slice(0, 6), courses: matchingCourses.slice(0, 6) }, { headers: { "cache-control": "public, max-age=30, s-maxage=90, stale-while-revalidate=600" } });
 }

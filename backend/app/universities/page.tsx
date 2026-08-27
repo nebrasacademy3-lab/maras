@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   description: "تصفّح الجامعات والكليات السعودية وابحث عن الشروحات المتوفرة حسب الجهة والتخصص.",
 };
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function UniversitiesPage() {
   const institutions = await getInstitutionsCatalog();

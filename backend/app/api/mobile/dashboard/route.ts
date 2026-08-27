@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, courseRequests, invoices, lessonProgress, notificationsDb, orders, supportReplies, supportTickets } from "@/db/schema";
 import { getSessionUser } from "@/lib/auth";
@@ -11,7 +11,7 @@ export async function GET(request: Request) {
   if (!user) return jsonError("سجّل الدخول", 401);
   const db = getDb();
   const now = new Date().toISOString();
-  const [accessRows, progressRows, orderRows, invoiceRows, requestRows, noticeRows, ticketRows, replyRows, courses, institutions, recommended] = await Promise.all([
+  const [accessRows, progressRows, orderRows, invoiceRows, requestRows, noticeRows, ticketRows] = await Promise.all([
     db.select().from(courseAccess).where(and(eq(courseAccess.userEmail, user.email), isNull(courseAccess.revokedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, now)))),
     db.select().from(lessonProgress).where(eq(lessonProgress.userEmail, user.email)),
     db.select().from(orders).where(eq(orders.customerEmail, user.email)).orderBy(desc(orders.createdAt)).limit(50),
@@ -19,8 +19,13 @@ export async function GET(request: Request) {
     db.select().from(courseRequests).where(eq(courseRequests.userId, user.id)).orderBy(desc(courseRequests.createdAt)).limit(50),
     db.select().from(notificationsDb).where(or(eq(notificationsDb.userEmail, user.email), and(isNull(notificationsDb.userEmail), eq(notificationsDb.audience, user.role)))).orderBy(desc(notificationsDb.createdAt)).limit(50),
     db.select().from(supportTickets).where(eq(supportTickets.userEmail, user.email)).orderBy(desc(supportTickets.createdAt)).limit(50),
-    db.select().from(supportReplies).where(eq(supportReplies.internal, false)).orderBy(desc(supportReplies.createdAt)).limit(300),
-    getCoursesCatalog(), getInstitutionsCatalog(), getRecommendedCourses(user.universitySlug || "", user.specialty || ""),
+  ]);
+  const ticketIds = ticketRows.map((ticket) => ticket.id);
+  const [replyRows, courses, institutions, recommended] = await Promise.all([
+    ticketIds.length ? db.select().from(supportReplies).where(and(eq(supportReplies.internal, false), inArray(supportReplies.ticketId, ticketIds))).orderBy(desc(supportReplies.createdAt)).limit(300) : Promise.resolve([]),
+    getCoursesCatalog(),
+    getInstitutionsCatalog(),
+    getRecommendedCourses(user.universitySlug || "", user.specialty || ""),
   ]);
   const bySlug = new Map(courses.map((course) => [course.slug, course]));
   const owned = accessRows.flatMap((access) => {
@@ -33,7 +38,10 @@ export async function GET(request: Request) {
     return [{ ...course, progress: lessons.length ? Math.round(completed / lessons.length * 100) : 0, currentLessonId: last?.lessonId || lessons[0]?.id || null, expiresAt: access.expiresAt }];
   });
   return Response.json({
-    ok: true, user, owned, progress: progressRows,
+    ok: true,
+    user,
+    owned,
+    progress: progressRows,
     orders: orderRows.map((row) => ({ ...row, courseTitle: bySlug.get(row.courseSlug)?.title || row.courseSlug })),
     invoices: invoiceRows,
     requests: requestRows,

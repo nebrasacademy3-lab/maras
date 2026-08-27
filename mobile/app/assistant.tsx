@@ -19,9 +19,10 @@ function mobileRoute(href: string) {
   const path = href.split(/[?#]/)[0] || "/"; const query = new URLSearchParams(href.split("?")[1] || "");
   if (path === "/request-course" || query.get("view") === "requests") return "/requests";
   if (path === "/support" || path === "/contact") return "/support";
-  if (path === "/dashboard") return query.get("view") === "notifications" ? "/notifications" : query.get("view") === "account" ? "/profile" : "/(tabs)/learning";
+  if (path === "/dashboard") { const view = query.get("view"); if (view === "notifications") return "/notifications"; if (view === "account") return "/profile"; if (view === "requests") return "/requests"; if (view === "orders") return "/(tabs)/account"; return "/(tabs)/learning"; }
   if (path === "/courses") return "/(tabs)/courses";
   if (path.startsWith("/courses/")) return path.replace("/courses/", "/course/");
+  if (path.startsWith("/learn/")) return path.replace("/learn/", "/course/");
   if (path === "/universities") return "/(tabs)/universities";
   if (path.startsWith("/universities/")) return path.replace("/universities/", "/university/");
   if (["/login", "/register"].includes(path)) return `/(auth)${path}`;

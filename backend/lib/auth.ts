@@ -1,4 +1,4 @@
-import { and, eq, gt, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { authRateLimits, authSessions, users } from "@/db/schema";
 
@@ -101,9 +101,10 @@ export function sessionUserFromRow(row: typeof users.$inferSelect): SessionUser 
 }
 
 export async function getSessionUserFromHeaders(requestHeaders: Headers): Promise<SessionUser | null> {
-  const db = getDb();
   const token = bearerToken(requestHeaders) || parseCookie(requestHeaders.get("cookie"), SESSION_COOKIE);
-  if (token) {
+  if (!token) return null;
+  try {
+    const db = getDb();
     const tokenHash = await sha256(token);
     const now = new Date().toISOString();
     const [row] = await db.select({ user: users }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).where(and(
@@ -112,10 +113,10 @@ export async function getSessionUserFromHeaders(requestHeaders: Headers): Promis
       gt(authSessions.expiresAt, now),
       eq(users.status, "active"),
     )).limit(1);
-    if (row) return sessionUserFromRow(row.user);
+    return row ? sessionUserFromRow(row.user) : null;
+  } catch {
+    return null;
   }
-
-  return null;
 }
 
 export function getSessionUser(request: Request) {
@@ -169,10 +170,7 @@ export function sameOriginRequest(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return request.headers.get("sec-fetch-site") !== "cross-site";
   const accepted = new Set([new URL(request.url).origin]);
-  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0].trim();
-  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0].trim();
-  if (forwardedHost && (forwardedProto === "http" || forwardedProto === "https")) accepted.add(`${forwardedProto}://${forwardedHost}`);
-  for (const configured of [process.env.APP_URL, process.env.NEXT_PUBLIC_SITE_URL]) {
+  for (const configured of [process.env.APP_URL, process.env.NEXT_PUBLIC_SITE_URL, process.env.MOBILE_APP_URL]) {
     if (!configured) continue;
     try { accepted.add(new URL(configured).origin); } catch { /* Ignore malformed optional URLs. */ }
   }
@@ -186,18 +184,18 @@ async function rateLimitKey(scope: string, identity: string) {
 export async function checkRateLimit(scope: string, identity: string, limit: number, windowSeconds: number) {
   const db = getDb();
   const key = await rateLimitKey(scope, identity);
-  const [row] = await db.select().from(authRateLimits).where(eq(authRateLimits.key, key)).limit(1);
   const now = Date.now();
-  if (!row || Date.parse(row.windowExpiresAt) <= now) {
-    await db.insert(authRateLimits).values({ key, attempts: 1, windowExpiresAt: new Date(now + windowSeconds * 1000).toISOString(), updatedAt: new Date(now).toISOString() }).onConflictDoUpdate({
-      target: authRateLimits.key,
-      set: { attempts: 1, windowExpiresAt: new Date(now + windowSeconds * 1000).toISOString(), updatedAt: new Date(now).toISOString() },
-    });
-    return true;
-  }
-  if (row.attempts >= limit) return false;
-  await db.update(authRateLimits).set({ attempts: row.attempts + 1, updatedAt: new Date(now).toISOString() }).where(eq(authRateLimits.key, key));
-  return true;
+  const nowIso = new Date(now).toISOString();
+  const expiryIso = new Date(now + windowSeconds * 1000).toISOString();
+  const [row] = await db.insert(authRateLimits).values({ key, attempts: 1, windowExpiresAt: expiryIso, updatedAt: nowIso }).onConflictDoUpdate({
+    target: authRateLimits.key,
+    set: {
+      attempts: sql`CASE WHEN ${authRateLimits.windowExpiresAt} <= ${nowIso} THEN 1 ELSE ${authRateLimits.attempts} + 1 END`,
+      windowExpiresAt: sql`CASE WHEN ${authRateLimits.windowExpiresAt} <= ${nowIso} THEN ${expiryIso} ELSE ${authRateLimits.windowExpiresAt} END`,
+      updatedAt: nowIso,
+    },
+  }).returning({ attempts: authRateLimits.attempts });
+  return Boolean(row && row.attempts <= limit);
 }
 
 export async function clearRateLimit(scope: string, identity: string) {

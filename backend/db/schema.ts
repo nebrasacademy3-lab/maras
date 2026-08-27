@@ -61,7 +61,7 @@ export const supportTickets = pgTable("support_tickets", {
   assignedTo: text("assigned_to"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("support_ticket_number_unique").on(table.ticketNumber), index("support_status_idx").on(table.status)]);
+}, (table) => [uniqueIndex("support_ticket_number_unique").on(table.ticketNumber), index("support_status_idx").on(table.status), index("support_user_idx").on(table.userEmail)]);
 
 export const orders = pgTable("orders", {
   id: serial("id").primaryKey(),
@@ -317,7 +317,7 @@ export const courseReviews = pgTable("course_reviews", {
   status: text("status").notNull().default("pending"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_reviews_user_course_unique").on(table.userEmail, table.courseSlug), index("course_reviews_status_idx").on(table.status)]);
+}, (table) => [uniqueIndex("course_reviews_user_course_unique").on(table.userEmail, table.courseSlug), index("course_reviews_status_idx").on(table.status), index("course_reviews_course_status_idx").on(table.courseSlug, table.status)]);
 
 export const notificationsDb = pgTable("notifications", {
   id: serial("id").primaryKey(),

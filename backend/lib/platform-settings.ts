@@ -40,18 +40,30 @@ export function whatsappHref(settings: Pick<PublicSettings, "whatsapp_number" | 
   return `https://wa.me/${international}?text=${encodeURIComponent(settings.whatsapp_message)}`;
 }
 
+let publicSettingsCache: { expiresAt: number; value: PublicSettings } | null = null;
+let publicSettingsInFlight: Promise<PublicSettings> | null = null;
+const SETTINGS_CACHE_TTL = 30_000;
+
+export function invalidatePublicSettingsCache() {
+  publicSettingsCache = null;
+}
+
 export async function getPublicSettings(): Promise<PublicSettings> {
-  const output = { ...PUBLIC_SETTING_DEFAULTS } as PublicSettings;
-  if (!process.env.DATABASE_URL) return output;
-  let rows;
-  try {
-    rows = await getDb().select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.isPublic, true));
-  } catch {
+  if (publicSettingsCache && publicSettingsCache.expiresAt > Date.now()) return publicSettingsCache.value;
+  if (publicSettingsInFlight) return publicSettingsInFlight;
+  const load = async () => {
+    const output = { ...PUBLIC_SETTING_DEFAULTS } as PublicSettings;
+    if (!process.env.DATABASE_URL) return output;
+    try {
+      const rows = await getDb().select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.isPublic, true));
+      for (const row of rows) if (row.key in output) output[row.key as PublicSettingKey] = row.value;
+    } catch {
+      return output;
+    }
+    publicSettingsCache = { expiresAt: Date.now() + SETTINGS_CACHE_TTL, value: output };
     return output;
-  }
-  for (const row of rows) {
-    if (row.key in output) output[row.key as PublicSettingKey] = row.value;
-  }
-  return output;
+  };
+  publicSettingsInFlight = load();
+  try { return await publicSettingsInFlight; } finally { publicSettingsInFlight = null; }
 }
 

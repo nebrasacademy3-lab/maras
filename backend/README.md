@@ -33,10 +33,10 @@ npm run db:migrate
 | `VIDEO_SIGNING_SECRET` | سر عشوائي طويل لتوقيع جلسات مشاهدة الفيديو. |
 | `ADMIN_API_TOKEN` و`ADMIN_UPLOAD_TOKEN` | حماية واجهات الإدارة والرفع. |
 | `TAP_SECRET_KEY` و`TAP_PUBLIC_KEY` و`TAP_MERCHANT_ID` | إعداد الدفع عند تفعيل Tap. |
-| `ASSISTANT_PROVIDER` و`GEMINI_API_KEY` و`GEMINI_MODEL` | المساعد السياقي الاختياري؛ بدون المفتاح يعمل المساعد بقاعدة المعرفة المحلية. |
+| `OPENAI_API_KEY` و`OPENAI_API_URL` و`ASSISTANT_MODEL` | المساعد العام السياقي الاختياري؛ بدونها يعمل محرك المعرفة العربي المحلي المتجدد. |
 | `RESEND_API_KEY` و`EMAIL_FROM` | رسائل استعادة كلمة المرور الاختيارية. |
 
-لا تضع أسرار الخادم داخل تطبيق الهاتف أو داخل المستودع.
+لا تضع أسرار الخادم داخل تطبيق الهاتف أو داخل المستودع. عند ضبط `OPENAI_API_KEY` و`ASSISTANT_MODEL` يستطيع المساعد الإجابة عن الأسئلة العامة مع سياق المنصة والحساب، وعند غيابها يبقى محرك المعرفة العربي المحلي متاحًا بإجابات المنصة وروابطها الحية.
 
 ## النشر على Railway
 
@@ -107,5 +107,5 @@ npm test
 | `/dashboard` | لوحة الطالب. |
 | `/supervisor` و`/admin` | لوحات الموظفين المحمية. |
 | `/api/health` | فحص الخدمة وقاعدة البيانات. |
-| `/api/assistant` | المساعد المحلي أو السياقي الاختياري. |
+| `/api/assistant` | مساعد مراس المتجدد: يقرأ بيانات PostgreSQL والإعدادات الحية، ويستخدم مزودًا OpenAI-compatible اختياريًا مع fallback محلي. |
 | `/api/webhooks/tap` | Webhook الدفع عند تفعيل Tap. |

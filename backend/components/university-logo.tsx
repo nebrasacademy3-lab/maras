@@ -22,10 +22,11 @@ export function UniversityLogo({ institution, size = "md" }: { institution: Inst
     .map((part) => part[0])
     .join("");
 
+  const pixelSize = size === "sm" ? 44 : size === "lg" ? 94 : 62;
   return (
     <div className={`university-logo university-logo-${size}`} aria-hidden="true">
       {src ? (
-        <img src={src} alt="" loading="lazy" referrerPolicy="no-referrer" onError={() => setSourceIndex((index) => index + 1)} />
+        <img src={src} alt="" width={pixelSize} height={pixelSize} loading="lazy" decoding="async" referrerPolicy="no-referrer" onError={() => setSourceIndex((index) => index + 1)} />
       ) : (
         <span>{initials || "م"}</span>
       )}

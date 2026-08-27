@@ -1,6 +1,11 @@
 import type { ExpoConfig, ConfigContext } from "expo/config";
 
-export default ({ config }: ConfigContext): ExpoConfig => ({
+export default ({ config }: ConfigContext): ExpoConfig => {
+  const apiUrl = process.env.EXPO_PUBLIC_API_URL || "";
+  if (process.env.NODE_ENV === "production" && !/^https:\/\//i.test(apiUrl)) {
+    throw new Error("EXPO_PUBLIC_API_URL must be an HTTPS URL in production builds");
+  }
+  return ({
   ...config,
   name: "مراس العلم",
   slug: "meras-alelm",
@@ -15,6 +20,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     supportsTablet: true,
     requireFullScreen: false,
     infoPlist: {
+      NSAppTransportSecurity: { NSAllowsArbitraryLoads: false },
       UIBackgroundModes: ["remote-notification"],
       NSPhotoLibraryUsageDescription: "يستخدم مراس اختيار الملفات عند إرسال طلب مادة أو تحديث محتوى بإذن المستخدم.",
     },
@@ -30,6 +36,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     "expo-router",
     "expo-secure-store",
     "expo-video",
+    ["expo-build-properties", { android: { usesCleartextTraffic: false } }],
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#155EEF", defaultChannel: "updates" }],
     ["expo-splash-screen", {
       image: "./assets/splash-icon.png",
@@ -40,10 +47,11 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     }]
   ],
   extra: {
-    apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000",
+    apiUrl: apiUrl || "http://localhost:3000",
     storeMode: process.env.EXPO_PUBLIC_STORE_MODE || "reader",
     eas: { projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID || undefined },
   },
   updates: { fallbackToCacheTimeout: 0 },
   runtimeVersion: { policy: "appVersion" },
-});
+  });
+};

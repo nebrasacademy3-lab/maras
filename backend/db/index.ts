@@ -17,13 +17,21 @@ function createPool() {
   const connectionString = getConnectionString();
   const sslEnabled = process.env.DATABASE_SSL === "true" || /[?&]sslmode=(require|verify-ca|verify-full)/i.test(connectionString);
   const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
-  return new Pool({
+  const requestedMax = Number(process.env.DATABASE_POOL_MAX || 10);
+  const max = Number.isFinite(requestedMax) ? Math.min(50, Math.max(2, Math.floor(requestedMax))) : 10;
+  const pool = new Pool({
     connectionString,
-    max: Number(process.env.DATABASE_POOL_MAX || 10),
+    max,
     idleTimeoutMillis: 30_000,
-    connectionTimeoutMillis: 10_000,
+    connectionTimeoutMillis: 8_000,
+    statement_timeout: 15_000,
+    query_timeout: 20_000,
+    keepAlive: true,
+    keepAliveInitialDelayMillis: 10_000,
     ssl: sslEnabled ? { rejectUnauthorized } : undefined,
   });
+  pool.on("error", (error) => console.error("[postgres-pool] idle client error", error));
+  return pool;
 }
 
 export function getPool() {

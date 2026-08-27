@@ -19,14 +19,15 @@ export async function POST(request: Request) {
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الدخول غير صالحة"); }
   const identifier = cleanText(payload.identifier, 180).toLowerCase();
   const password = typeof payload.password === "string" ? payload.password : "";
-  const limiterIdentity = `${clientIp(request)}:${identifier}`;
+  const ipIdentity = clientIp(request);
   if (!identifier || !password) return jsonError("أدخل البريد أو الجوال وكلمة المرور");
-  if (!await checkRateLimit("mobile-login", limiterIdentity, 8, 15 * 60)) return jsonError("تم إيقاف المحاولات مؤقتًا. حاول بعد 15 دقيقة.", 429);
+  if (!await checkRateLimit("mobile-login-ip", ipIdentity, 40, 15 * 60) || !await checkRateLimit("mobile-login-account", identifier, 8, 15 * 60)) return jsonError("تم إيقاف المحاولات مؤقتًا. حاول بعد 15 دقيقة.", 429);
   const db = getDb();
   const [row] = await db.select().from(users).where(or(eq(users.email, identifier), eq(users.phone, phoneCandidate(identifier)))).limit(1);
   const valid = row?.status === "active" && await verifyPassword(password, row.passwordHash);
   if (!row || !valid) return jsonError("بيانات الدخول غير صحيحة", 401);
-  await clearRateLimit("mobile-login", limiterIdentity);
+  await clearRateLimit("mobile-login-ip", ipIdentity);
+  await clearRateLimit("mobile-login-account", identifier);
   const now = new Date().toISOString();
   await db.update(users).set({ lastLoginAt: now, updatedAt: now }).where(eq(users.id, row.id));
   const session = await createSession(row.id, request, payload.remember !== false);

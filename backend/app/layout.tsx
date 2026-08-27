@@ -3,8 +3,7 @@ import "./globals.css";
 import "./checkout.css";
 import "./additions.css";
 import { ThemeProvider } from "@/components/theme-provider";
-import { MerasAssistant } from "@/components/meras-assistant";
-import { MotionOrchestrator } from "@/components/motion-orchestrator";
+import { DeferredEnhancements } from "@/components/deferred-enhancements";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -37,12 +36,19 @@ export const viewport: Viewport = {
 };
 
 const themeScript = `(function(){try{var t=localStorage.getItem('meras-theme');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d)}catch(e){}})()`;
+const structuredData = {
+  "@context": "https://schema.org",
+  "@graph": [
+    { "@type": "Organization", name: "مراس العلم", url: siteUrl, logo: `${siteUrl}/brand/logo-dark.png`, email: "hello@meras.sa" },
+    { "@type": "WebSite", name: "مراس العلم", url: siteUrl, inLanguage: "ar-SA", potentialAction: { "@type": "SearchAction", target: `${siteUrl}/courses?q={search_term_string}`, "query-input": "required name=search_term_string" } },
+  ],
+};
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /></head>
-      <body><ThemeProvider>{children}<MotionOrchestrator /><MerasAssistant /></ThemeProvider></body>
+      <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} /></head>
+      <body><ThemeProvider>{children}<DeferredEnhancements /></ThemeProvider></body>
     </html>
   );
 }

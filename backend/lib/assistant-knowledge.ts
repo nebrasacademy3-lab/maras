@@ -1,5 +1,5 @@
 import { allPrograms, getInstitutionPrograms, getProgramCourses } from "@/lib/academic-data";
-import { courses, institutions } from "@/lib/data";
+import { courses as bundledCourses, institutions as bundledInstitutions, type Course, type Institution } from "@/lib/data";
 import type { SessionUser } from "@/lib/auth";
 import { PUBLIC_SETTING_DEFAULTS, type PublicSettings, whatsappHref } from "@/lib/platform-settings";
 
@@ -7,12 +7,14 @@ export type AssistantAction = { label: string; href: string };
 export type AssistantReply = { answer: string; actions: AssistantAction[]; suggestions?: string[] };
 
 const normalize = (value: string) => value.toLowerCase()
-  .replace(/[أإآ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+  .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/ؤ/g, "و").replace(/ئ/g, "ي")
+  .replace(/[پ]/g, "ب").replace(/[چ]/g, "ج").replace(/[گ]/g, "ك").replace(/[ڤ]/g, "ف")
   .replace(/[ًٌٍَُِّْـ]/g, "").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
 const tokens = (value: string) => normalize(value).split(" ").filter((word) => word.length > 1);
 const bigrams = (value: string) => Array.from({ length: Math.max(0, value.length - 1) }, (_, index) => value.slice(index, index + 2));
 const closeWord = (left: string, right: string) => {
-  if (left === right || left.includes(right) || right.includes(left)) return true;
+  if (left === right) return true;
+  if (Math.min(left.length, right.length) >= 3 && (left.includes(right) || right.includes(left))) return true;
   if (Math.min(left.length, right.length) < 4) return false;
   const a = bigrams(left); const b = bigrams(right); let overlap = 0; const copy = [...b];
   for (const item of a) { const index = copy.indexOf(item); if (index >= 0) { overlap += 1; copy.splice(index, 1); } }
@@ -29,22 +31,27 @@ const has = (text: string, terms: string[]) => {
 };
 const action = (label: string, href: string): AssistantAction => ({ label, href });
 
-function detectedInstitution(text: string) {
-  return [...institutions].sort((a, b) => b.name.length - a.name.length).find((item) => {
+type LiveAssistantCatalog = { institutions: Institution[]; courses: Course[] };
+
+function detectedInstitution(text: string, rows: Institution[]) {
+  return [...rows].sort((a, b) => b.name.length - a.name.length).find((item) => {
     const full = normalize(item.name);
     const short = full.replace(/^(جامعه|الجامعه|كليه|كليات)\s+/, "");
     return text.includes(full) || (short.length > 5 && text.includes(short));
   });
 }
 
-function detectedProgram(text: string) {
-  return [...allPrograms].sort((a, b) => b.name.length - a.name.length).find((item) => text.includes(normalize(item.name)));
+function detectedProgram(text: string, rows: Course[]) {
+  const dynamic = rows.flatMap((course) => [course.specialty]).filter(Boolean).map((name) => ({ name }));
+  return [...allPrograms.map((item) => ({ name: item.name })), ...dynamic].sort((a, b) => b.name.length - a.name.length).find((item) => text.includes(normalize(item.name)));
 }
 
-export function answerAssistant(rawQuestion: string, user: SessionUser | null, publicSettings: PublicSettings = { ...PUBLIC_SETTING_DEFAULTS }): AssistantReply {
+export function answerAssistant(rawQuestion: string, user: SessionUser | null, publicSettings: PublicSettings = { ...PUBLIC_SETTING_DEFAULTS }, liveCatalog?: LiveAssistantCatalog): AssistantReply {
   const text = normalize(rawQuestion);
-  const institution = detectedInstitution(text);
-  const program = detectedProgram(text);
+  const institutions = liveCatalog?.institutions?.length ? liveCatalog.institutions : bundledInstitutions;
+  const courses = liveCatalog?.courses?.length ? liveCatalog.courses : bundledCourses;
+  const institution = detectedInstitution(text, institutions);
+  const program = detectedProgram(text, courses);
   const matchedCourse = courses.find((course) => text.includes(normalize(course.title)) || (course.code && text.includes(normalize(course.code))));
   const firstName = user?.fullName?.split(" ")[0];
 
@@ -54,7 +61,7 @@ export function answerAssistant(rawQuestion: string, user: SessionUser | null, p
     suggestions: ["ما لقيت مادتي", "كيف أجرب درسًا؟", "كيف أحمي حسابي؟"],
   };
 
-  if (has(text, ["ما لقيت", "لم اجد", "غير موجود", "مو موجود", "طلب ماده", "اطلب ماده", "توفير ماده", "اضافه ماده", "السلايدات"])) return {
+  if (has(text, ["ما لقيت", "ما لقي", "وين مادتي", "لم اجد", "غير موجود", "مو موجود", "مش موجود", "طلب ماده", "اطلب ماده", "توفير ماده", "اضافه ماده", "السلايدات", "التوصيف"])) return {
     answer: "إذا لم تجد مادتك، افتح «طلب مادة»، واكتب اسمها ورمزها إن وجد ثم ارفع السلايدات أو توصيف المقرر (PDF أو PPTX أو DOCX أو صور). يصل الطلب للمشرف مرتبطًا بجامعتك وتخصصك، ويمكنك متابعة حالته والإشعارات من لوحة الطالب.",
     actions: [action("طلب مادة الآن", "/request-course"), action("متابعة طلباتي", "/dashboard?view=requests")],
     suggestions: ["ما الملفات المسموحة؟", "كيف أتابع الطلب؟"],
@@ -76,19 +83,23 @@ export function answerAssistant(rawQuestion: string, user: SessionUser | null, p
   };
 
   if (institution) {
-    const programs = getInstitutionPrograms(institution.slug);
-    const names = programs.slice(0, 14).map((item) => item.name).join("، ");
+    const officialPrograms = getInstitutionPrograms(institution.slug).map((item) => item.name);
+    const livePrograms = courses.filter((course) => course.universitySlug === institution.slug).map((course) => course.specialty);
+    const programs = [...new Set([...livePrograms, ...officialPrograms])];
+    const names = programs.slice(0, 14).join("، ");
     return {
-      answer: `${institution.name} مدرجة في مراس ضمن ${institution.type === "حكومية" ? "الجامعات الحكومية" : institution.type === "أهلية" ? "الجامعات الأهلية" : "الكليات"} في ${institution.region}. من برامجها المدرجة: ${names}${programs.length > 14 ? `، وغيرها (${programs.length} برنامجًا في الدليل)` : ""}. افتح صفحتها للبحث في جميع البرامج ورؤية مواد كل تخصص ورابط المصدر الرسمي.`,
+      answer: `${institution.name} مدرجة في مراس ضمن ${institution.type === "حكومية" ? "الجامعات الحكومية" : institution.type === "أهلية" ? "الجامعات الأهلية" : "الكليات"} في ${institution.region}. من برامجها المدرجة: ${names || "راجع صفحة الجهة للبرامج المتاحة"}${programs.length > 14 ? `، وغيرها (${programs.length} برنامجًا في الدليل)` : ""}. افتح صفحتها للبحث في جميع البرامج ورؤية مواد كل تخصص ورابط المصدر الرسمي.`,
       actions: [action(`صفحة ${institution.name}`, `/universities/${institution.slug}`), action("طلب مادة لهذه الجهة", "/request-course")],
       suggestions: ["كيف أختار تخصصي؟", "ما المواد المتاحة؟"],
     };
   }
 
   if (program) {
-    const names = getProgramCourses(program);
+    const names = [...new Set(courses.filter((course) => course.specialty === program.name).map((course) => course.title))];
+    const fallbackNames = getProgramCourses(program.name);
+    const listedNames = names.length ? names : fallbackNames;
     return {
-      answer: `مواد ${program.name} المقترحة في الدليل تشمل: ${names.join("، ")}. قد تختلف رموز المادة والخطة حسب الجامعة والسنة؛ افتح جامعتك لمطابقة برنامجها، أو أرسل توصيف المقرر إذا كانت المادة غير متاحة.`,
+      answer: `مواد ${program.name} المقترحة في الدليل تشمل: ${listedNames.join("، ") || "لا توجد مادة منشورة بهذا الاسم حاليًا"}. قد تختلف رموز المادة والخطة حسب الجامعة والسنة؛ افتح جامعتك لمطابقة برنامجها، أو أرسل توصيف المقرر إذا كانت المادة غير متاحة.`,
       actions: [action("البحث عن المواد", `/courses?q=${encodeURIComponent(program.name)}`), action("طلب مادة", "/request-course")],
     };
   }
@@ -109,7 +120,7 @@ export function answerAssistant(rawQuestion: string, user: SessionUser | null, p
     actions: [action("تصفح كل المواد", "/courses"), action("تصفح كل الجامعات", "/universities"), action("موادي", "/dashboard?view=courses")],
   };
 
-  if (has(text, ["اشتري", "شراء", "ادفع", "الدفع", "تاب", "بطاقه", "مدى", "فيزا", "السعر"])) return {
+  if (has(text, ["اشتري", "ابغى اشتري", "ابي اشتري", "كيف اشتري", "شراء", "ادفع", "الدفع", "تاب", "بطاقه", "مدى", "فيزا", "ماستر", "السعر", "بكم"])) return {
     answer: "يلزم تسجيل الدخول وملف مكتمل قبل الشراء. اختر المادة وشاهد الدرس المجاني ثم تابع الدفع الآمن عبر Tap. لا تتفعّل المادة بمجرد الرجوع من صفحة الدفع؛ التفعيل يتم فقط بعد تأكيد العملية من الخادم، ثم تظهر في «موادي» وتصدر الفاتورة.",
     actions: [action("تصفح المواد", "/courses"), action("الطلبات والفواتير", "/dashboard?view=orders")],
   };
@@ -154,7 +165,7 @@ export function answerAssistant(rawQuestion: string, user: SessionUser | null, p
     actions: [action("رفع ملفات مع طلب مادة", "/request-course")],
   };
 
-  if (has(text, ["الدعم", "مشكله", "شكوى", "تواصل", "ساعدني", "خطا", "ما يشتغل"])) {
+  if (has(text, ["الدعم", "مشكله", "مشكلة", "شكوى", "تواصل", "ساعدني", "ساعد", "احتاج مساعدة", "خطا", "خطأ", "ما يشتغل", "ما يفتح", "خربان"])) {
     const whatsApp = whatsappHref(publicSettings);
     return {
       answer: `افتح تذكرة دعم واكتب وصف المشكلة واسم المادة ورقم الطلب إن وجد. لا تشارك كلمة المرور أو بيانات البطاقة. بريد الدعم: ${publicSettings.support_email}، وساعات العمل: ${publicSettings.support_hours}.${whatsApp ? " ويمكنك أيضًا بدء محادثة واتساب من الزر أدناه." : " لم تنشر الإدارة رقم واتساب بعد."}`,

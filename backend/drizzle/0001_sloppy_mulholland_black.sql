@@ -1,0 +1,2 @@
+CREATE INDEX "course_reviews_course_status_idx" ON "course_reviews" USING btree ("course_slug","status");--> statement-breakpoint
+CREATE INDEX "support_user_idx" ON "support_tickets" USING btree ("user_email");

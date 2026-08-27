@@ -10,11 +10,12 @@ import { SiteFooter } from "@/components/site-footer";
 import { HeroSearch } from "@/components/hero-search";
 import { UniversityCard } from "@/components/university-card";
 import { CourseCard } from "@/components/course-card";
+import { AnimatedStats } from "@/components/animated-stats";
 import { faq, reviews } from "@/lib/data";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 import { getPublicSettings } from "@/lib/platform-settings";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 export default async function Home() {
   const [institutions, courses, settings] = await Promise.all([getInstitutionsCatalog(), getCoursesCatalog(), getPublicSettings()]);
@@ -23,10 +24,10 @@ export default async function Home() {
   const universityPreview = featuredUniversities.length ? featuredUniversities : institutions.slice(0, 6);
   const coursePreview = featuredCourses.length ? featuredCourses : courses.slice(0, 6);
   const platformStats = [
-    { value: String(institutions.length), label: "جامعة وكلية وجهة تقنية" },
-    { value: String(courses.length), label: "مادة منشورة" },
+    { value: institutions.length, label: "جامعة وكلية وجهة تقنية" },
+    { value: courses.length, label: "مادة منشورة" },
     { value: "24/7", label: "مساعد مراس الذكي" },
-    { value: "جميع الأجهزة", label: "تصميم متجاوب" },
+    { value: "100%", label: "تجربة متجاوبة" },
   ];
   return (
     <main>
@@ -62,9 +63,7 @@ export default async function Home() {
             <div className="floating-orbit orbit-one" /><div className="floating-orbit orbit-two" />
           </div>
         </div>
-        <div className="container stats-strip">
-          {platformStats.map((stat) => <div key={stat.label}><strong>{stat.value}</strong><span>{stat.label}</span></div>)}
-        </div>
+        <div className="container"><AnimatedStats items={platformStats} /></div>
       </section>
 
       <section className="section universities-preview">
@@ -111,7 +110,7 @@ export default async function Home() {
           <div className="player-demo-shell">
             <div className="player-demo-screen">
               <span className="player-demo-watermark">محمد أ. · M-1048</span>
-              <div className="player-demo-logo"><img src="/brand/logo-dark.png" alt="" /></div>
+              <div className="player-demo-logo"><img src="/brand/logo-dark.png" alt="" width={496} height={289} loading="lazy" decoding="async" /></div>
               <div className="player-demo-content"><span>Discrete Structures</span><strong>Truth Tables</strong><small>الوحدة الأولى · الدرس 3</small></div>
               <div className="big-play"><Play size={26} fill="currentColor" /></div>
               <div className="player-controls-demo"><div className="player-timeline"><i /></div><div><span>18:32 / 31:44</span><p><b>1×</b><b>1080p</b><b>⛶</b></p></div></div>

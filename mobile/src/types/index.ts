@@ -25,7 +25,7 @@ export type Institution = {
   featured?: boolean;
 };
 
-export type Lesson = { id: string; title: string; duration: string; free: boolean; type: "video" };
+export type Lesson = { id: string; title: string; duration: string; free: boolean; type: "video" | "pdf" };
 export type CourseUnit = { title: string; lessons: Lesson[] };
 export type Course = {
   slug: string;
@@ -49,6 +49,7 @@ export type Course = {
   featured?: boolean;
   access: string;
   units: CourseUnit[];
+  updatedAt?: string;
 };
 
 export type Catalog = { ok: true; institutions: Institution[]; courses: Course[] };
@@ -84,6 +85,8 @@ export type PublicSettings = {
   social_instagram: string;
   social_tiktok: string;
   social_telegram: string;
+  social_youtube: string;
+  social_linkedin: string;
   announcement: string;
 };
 

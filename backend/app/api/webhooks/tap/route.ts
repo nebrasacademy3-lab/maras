@@ -1,15 +1,20 @@
+import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, ne, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { couponsDb, courseAccess, invoices, orders, paymentEvents } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 
+type TapReference = { order?: string; transaction?: string; gateway?: string; payment?: string };
 type TapCharge = {
   id?: string;
   status?: string;
   amount?: number;
   currency?: string;
+  updated?: string;
+  created?: string;
+  transaction?: { created?: string };
   metadata?: { order_number?: string; course_slug?: string };
-  reference?: { order?: string; transaction?: string };
+  reference?: TapReference;
   customer?: { email?: string };
 };
 
@@ -21,22 +26,53 @@ function orderState(status: string) {
   return status.toLowerCase() || "pending";
 }
 
+function amountDecimals(currency: string) {
+  return ["BHD", "JOD", "KWD", "OMR"].includes(currency.toUpperCase()) ? 3 : 2;
+}
+
+function hashValue(value: TapCharge, secret: string) {
+  const id = cleanText(value.id, 160);
+  const currency = cleanText(value.currency, 10).toUpperCase();
+  const amount = typeof value.amount === "number" && Number.isFinite(value.amount) ? value.amount.toFixed(amountDecimals(currency)) : "";
+  const gatewayReference = cleanText(value.reference?.gateway, 160);
+  const paymentReference = cleanText(value.reference?.payment, 160);
+  const status = cleanText(value.status, 60);
+  const created = cleanText(value.transaction?.created || value.created, 100);
+  const source = `x_id${id}x_amount${amount}x_currency${currency}x_gateway_reference${gatewayReference}x_payment_reference${paymentReference}x_status${status}x_created${created}`;
+  return createHmac("sha256", secret).update(source, "utf8").digest("hex");
+}
+
+function secureEquals(expected: string, actual: string) {
+  const left = Buffer.from(expected.trim().toLowerCase(), "utf8");
+  const right = Buffer.from(actual.trim().toLowerCase(), "utf8");
+  return left.length === right.length && timingSafeEqual(left, right);
+}
+
 export async function POST(request: Request) {
   const tapSecretKey = process.env.TAP_SECRET_KEY?.trim();
-  if (!tapSecretKey) return jsonError("Tap webhook غير مفعّل", 503);
+  const webhookSecret = process.env.TAP_WEBHOOK_SECRET?.trim() || tapSecretKey;
+  if (!tapSecretKey || !webhookSecret) return jsonError("Tap webhook غير مفعّل", 503);
+  const contentLength = Number(request.headers.get("content-length") || 0);
+  if (Number.isFinite(contentLength) && contentLength > 256 * 1024) return jsonError("حمولة Tap كبيرة جدًا", 413);
 
   let posted: TapCharge;
   try {
-    posted = await request.json() as TapCharge;
+    const raw = await request.text();
+    if (raw.length > 256 * 1024) return jsonError("حمولة Tap كبيرة جدًا", 413);
+    posted = JSON.parse(raw) as TapCharge;
   } catch {
     return jsonError("حمولة Tap غير صالحة");
   }
+
+  const hashString = request.headers.get("hashstring") || request.headers.get("x-hashstring") || "";
+  if (!hashString || !secureEquals(hashValue(posted, webhookSecret), hashString)) return jsonError("توقيع Tap غير صالح", 401);
 
   const chargeId = cleanText(posted.id, 160);
   if (!chargeId) return jsonError("معرّف العملية مفقود");
 
   const verifiedResponse = await fetch(`https://api.tap.company/v2/charges/${encodeURIComponent(chargeId)}`, {
     headers: { authorization: `Bearer ${tapSecretKey}`, accept: "application/json" },
+    signal: AbortSignal.timeout(10_000),
   });
   if (!verifiedResponse.ok) return jsonError("تعذر التحقق من العملية لدى Tap", 502);
   const verified = await verifiedResponse.json() as TapCharge;
@@ -80,28 +116,9 @@ export async function POST(request: Request) {
   }
 
   if (newlyPaid) {
-    await db.insert(courseAccess).values({
-      userEmail: order.customerEmail,
-      courseSlug: order.courseSlug,
-      source: "tap",
-      orderNumber: order.orderNumber,
-      startsAt: now,
-    }).onConflictDoUpdate({
-      target: [courseAccess.userEmail, courseAccess.courseSlug],
-      set: { source: "tap", orderNumber: order.orderNumber, revokedAt: null, expiresAt: null, startsAt: now },
-    });
-    await db.insert(invoices).values({
-      invoiceNumber: `INV-${order.orderNumber}`,
-      orderNumber: order.orderNumber,
-      customerEmail: order.customerEmail,
-      total: order.total,
-      taxAmount: Math.round((order.total * 15 / 115) * 100) / 100,
-      currency: order.currency,
-      issuedAt: now,
-    }).onConflictDoNothing({ target: invoices.orderNumber });
-    if (order.couponCode) {
-      await db.update(couponsDb).set({ usedCount: sql`${couponsDb.usedCount} + 1` }).where(eq(couponsDb.code, order.couponCode));
-    }
+    await db.insert(courseAccess).values({ userEmail: order.customerEmail, courseSlug: order.courseSlug, source: "tap", orderNumber: order.orderNumber, startsAt: now }).onConflictDoUpdate({ target: [courseAccess.userEmail, courseAccess.courseSlug], set: { source: "tap", orderNumber: order.orderNumber, revokedAt: null, expiresAt: null, startsAt: now } });
+    await db.insert(invoices).values({ invoiceNumber: `INV-${order.orderNumber}`, orderNumber: order.orderNumber, customerEmail: order.customerEmail, total: order.total, taxAmount: Math.round((order.total * 15 / 115) * 100) / 100, currency: order.currency, issuedAt: now }).onConflictDoNothing({ target: invoices.orderNumber });
+    if (order.couponCode) await db.update(couponsDb).set({ usedCount: sql`${couponsDb.usedCount} + 1` }).where(eq(couponsDb.code, order.couponCode));
   }
 
   return Response.json({ ok: true, received: true, matched: true, status: nextStatus });
