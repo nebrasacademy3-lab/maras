@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AppButton, Card, Field, Screen } from "@/src/components/ui";
 import { api, ApiError, jsonBody } from "@/src/lib/api";

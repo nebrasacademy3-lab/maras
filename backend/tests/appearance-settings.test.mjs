@@ -44,7 +44,8 @@ test("Expo appearance preferences are persisted and mounted for all roles", asyn
   assert.match(provider, /meras_font_scale/);
   assert.match(settings, /setPalette/);
   assert.match(settings, /setFontScale/);
-  assert.match(screen, /fontScale/);
+  assert.match(screen, /ScaledText as Text/);
+  assert.doesNotMatch(screen, /scaleStyle|scale:\s*fontScale/);
   assert.match(account, /<AppearanceSettings\s*\/>/);
   assert.match(admin, /<AppearanceSettings\s*\/>/);
   assert.match(supervisor, /<AppearanceSettings\s*\/>/);

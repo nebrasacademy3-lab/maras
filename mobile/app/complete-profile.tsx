@@ -1,7 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { StyleSheet, Text } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { StyleSheet } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
 import { SearchPicker } from "@/src/components/SearchPicker";
 import { AppButton, Field, LoadingState, Screen } from "@/src/components/ui";

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRealtimeSync } from "@/components/realtime-sync";
 import Link from "next/link";
 import { Check, Search, SlidersHorizontal, Sparkles, UserRound, X } from "lucide-react";
 import type { Course, Institution } from "@/lib/data";
@@ -12,6 +13,8 @@ const ALL = "__all__";
 
 export function CourseCatalog({ courses, institutions }: { courses: Course[]; institutions: Institution[] }) {
   const initialQuery = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("q") || "" : "";
+  const [liveCourses, setLiveCourses] = useState(courses);
+  const [liveInstitutions, setLiveInstitutions] = useState(institutions);
   const [query, setQuery] = useState(initialQuery);
   const [university, setUniversity] = useState(ALL);
   const [specialty, setSpecialty] = useState(ALL);
@@ -20,6 +23,13 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
   const [profileLoaded, setProfileLoaded] = useState(false);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [programsSlug, setProgramsSlug] = useState("");
+
+  useRealtimeSync(() => {
+    fetch("/api/mobile/catalog", { cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { courses?: Course[]; institutions?: Institution[] } : null).then((payload) => {
+      if (payload?.courses) setLiveCourses(payload.courses);
+      if (payload?.institutions) setLiveInstitutions(payload.institutions);
+    }).catch(() => undefined);
+  });
 
   useEffect(() => {
     const controller = new AbortController();
@@ -46,24 +56,24 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
     return () => controller.abort();
   }, [university]);
 
-  const universityOptions = useMemo(() => institutions.map((item) => [item.slug, item.name] as const).sort((a, b) => a[1].localeCompare(b[1], "ar")), [institutions]);
-  const courseSpecialties = useMemo(() => [...new Set(courses.map((course) => course.specialty).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")), [courses]);
+  const universityOptions = useMemo(() => liveInstitutions.map((item) => [item.slug, item.name] as const).sort((a, b) => a[1].localeCompare(b[1], "ar")), [liveInstitutions]);
+  const courseSpecialties = useMemo(() => [...new Set(liveCourses.map((course) => course.specialty).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")), [liveCourses]);
   const specialtyOptions = useMemo(() => {
     if (university !== ALL) return [...new Set(programs.flatMap((program) => [program.name, ...(program.aliases || [])]))].sort((a, b) => a.localeCompare(b, "ar"));
     return courseSpecialties;
   }, [courseSpecialties, programs, university]);
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ar");
-    const rows = courses.filter((course) =>
+    const rows = liveCourses.filter((course) =>
       (!needle || `${course.title} ${course.titleEn} ${course.code || ""} ${course.university} ${course.specialty}`.toLocaleLowerCase("ar").includes(needle)) &&
       (university === ALL || course.universitySlug === university) &&
       (specialty === ALL || course.specialty === specialty),
     );
     return [...rows].sort((a, b) => sort === "الأعلى تقييمًا" ? b.rating - a.rating : sort === "السعر الأقل" ? a.price - b.price : b.students - a.students);
-  }, [courses, query, university, specialty, sort]);
+  }, [liveCourses, query, university, specialty, sort]);
   const personalFilterActive = Boolean(profile?.universitySlug || profile?.specialty) && university !== ALL;
   const programsLoading = university !== ALL && programsSlug !== university;
-  const selectedUniversity = institutions.find((item) => item.slug === university);
+  const selectedUniversity = liveInstitutions.find((item) => item.slug === university);
 
   function showAll() { setUniversity(ALL); setSpecialty(ALL); }
   function showPersonal() { setUniversity(profile?.universitySlug || ALL); setSpecialty(profile?.specialty || ALL); }
@@ -77,7 +87,7 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
     </div>
     <div className="filter-bar">
       <label className="filter-search"><Search size={19} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم المادة أو رمزها أو الجامعة..." aria-label="بحث المواد" /></label>
-      <select value={university} onChange={(event) => chooseUniversity(event.target.value)} aria-label="الجامعة"><option value={ALL}>كل الجامعات ({institutions.length})</option>{universityOptions.map(([slug, name]) => <option key={slug} value={slug}>{name}</option>)}</select>
+      <select value={university} onChange={(event) => chooseUniversity(event.target.value)} aria-label="الجامعة"><option value={ALL}>كل الجامعات ({liveInstitutions.length})</option>{universityOptions.map(([slug, name]) => <option key={slug} value={slug}>{name}</option>)}</select>
       <select value={specialty} onChange={(event) => setSpecialty(event.target.value)} aria-label="التخصص" disabled={programsLoading}><option value={ALL}>{programsLoading ? "جارٍ تحميل تخصصات الجامعة..." : university === ALL ? "كل التخصصات" : `كل تخصصات ${selectedUniversity?.name || "الجامعة"}`}</option>{specialtyOptions.map((item) => <option key={item} value={item}>{item}</option>)}</select>
       <select value={sort} onChange={(event) => setSort(event.target.value)} aria-label="الترتيب"><option>الأكثر طلبًا</option><option>الأعلى تقييمًا</option><option>السعر الأقل</option></select>
       <button type="button" className="filter-reset" onClick={clearFilters} aria-label="مسح الفلاتر"><X size={17} /><span>مسح</span></button><span className="filter-icon"><SlidersHorizontal size={18} /></span>

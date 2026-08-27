@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { Modal, Pressable, StyleSheet, View } from "react-native";
 import { api } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
 

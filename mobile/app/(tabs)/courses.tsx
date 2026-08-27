@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
 import { CourseCard } from "@/src/components/CourseCard";
 import { LoadingState, Screen, SearchBox } from "@/src/components/ui";

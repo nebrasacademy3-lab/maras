@@ -1,7 +1,8 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { StyleSheet, View } from "react-native";
 import { BrandLogo, BrandMark } from "@/src/components/Brand";
 import { AppButton, FadeIn, Screen } from "@/src/components/ui";
 import { useTheme } from "@/src/providers/ThemeProvider";

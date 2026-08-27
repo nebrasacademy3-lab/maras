@@ -46,8 +46,8 @@ test("auth headers expose the requested desktop and mobile layout", async () => 
     read(new URL("../mobile/app/(auth)/register.tsx", root)),
     read(new URL("../mobile/src/components/AppHeader.tsx", root)),
   ]);
-  assert.match(webAuth, /auth-top-actions/);
-  assert.match(webAuth, /ThemeToggle compact/);
+  assert.match(webAuth, /<SiteHeader \/>/);
+  assert.match(webAuth, /className="auth-page"/);
   assert.match(mobileLogin, /auth \/>/);
   assert.match(mobileRegister, /auth \/>/);
   assert.match(mobileHeader, /accessibilityLabel=\{dark \? "الوضع الفاتح" : "الوضع الليلي"\}/);

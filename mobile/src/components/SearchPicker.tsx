@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import React, { useMemo, useState } from "react";
-import { FlatList, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { FlatList, Modal, Pressable, StyleSheet, View } from "react-native";
 import { SearchBox } from "@/src/components/ui";
 import { useTheme } from "@/src/providers/ThemeProvider";
 

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { StyleSheet, Text } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { StyleSheet } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AppButton, Card, Field, Screen } from "@/src/components/ui";
 import { api, ApiError, jsonBody } from "@/src/lib/api";

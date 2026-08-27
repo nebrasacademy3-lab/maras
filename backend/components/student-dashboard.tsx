@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Bell, BookOpen, CheckCircle2, FileUp, LayoutDashboard, LifeBuoy, LogOut, Play, Receipt, Settings, Sparkles, TrendingUp, UserRound } from "lucide-react";
 import type { Institution } from "@/lib/data";
 import { useAcademicPrograms } from "@/components/use-academic-programs";
 import { AppearanceSettings } from "@/components/theme-provider";
+import { useRealtimeSync } from "@/components/realtime-sync";
 
 export type DashboardUser = { id:number; fullName:string; email:string; phone:string; universitySlug:string; specialty:string };
 export type DashboardCourse = { slug:string; title:string; university:string; color:string; icon:string; progress:number; current:string; remaining:string };
@@ -27,7 +28,19 @@ const nav = [
 
 export function StudentDashboard({ initialView = "overview", user, owned, orders, requests, notices, tickets, institutions, recommended }: { initialView?:string; user:DashboardUser; owned:DashboardCourse[]; orders:DashboardOrder[]; requests:DashboardRequest[]; notices:DashboardNotice[]; tickets:DashboardTicket[]; institutions:Institution[]; recommended:DashboardRecommendation[] }) {
   const [active, setActive] = useState(initialView);
+  const [live, setLive] = useState({ user, owned, orders, requests, notices, tickets, institutions, recommended });
   const [noticeRows, setNoticeRows] = useState(notices);
+  const refresh = useCallback(async () => {
+    try {
+      const response = await fetch("/api/mobile/dashboard", { credentials: "same-origin", cache: "no-store" });
+      if (!response.ok) return;
+      const payload = await response.json() as Partial<typeof live> & { user?: DashboardUser; owned?: DashboardCourse[]; orders?: DashboardOrder[]; requests?: DashboardRequest[]; notifications?: Array<DashboardNotice & { readAt?: string | null }>; tickets?: DashboardTicket[]; institutions?: Institution[]; recommended?: DashboardRecommendation[] };
+      const nextNotices = payload.notifications?.map((item) => ({ ...item, read: typeof item.read === "boolean" ? item.read : Boolean(item.readAt) }));
+      if (nextNotices) setNoticeRows(nextNotices);
+      setLive((current) => ({ user: payload.user || current.user, owned: payload.owned || current.owned, orders: payload.orders || current.orders, requests: payload.requests || current.requests, notices: nextNotices || current.notices, tickets: payload.tickets || current.tickets, institutions: payload.institutions || current.institutions, recommended: payload.recommended || current.recommended }));
+    } catch { /* Keep the last known snapshot when the network is temporarily unavailable. */ }
+  }, []);
+  useRealtimeSync(() => { void refresh(); });
   const unread = noticeRows.filter((item) => !item.read).length;
   useEffect(() => {
     if (active !== "notifications") return;
@@ -44,10 +57,17 @@ export function StudentDashboard({ initialView = "overview", user, owned, orders
       .catch(() => undefined);
     return () => controller.abort();
   }, [active]);
-  const institution = institutions.find((item) => item.slug === user.universitySlug);
-  const content = active === "overview" ? <Overview user={user} owned={owned} requests={requests} recommended={recommended} setActive={setActive} /> : active === "courses" ? <MyCourses owned={owned} /> : active === "requests" ? <Requests rows={requests} /> : active === "orders" ? <Orders rows={orders} /> : active === "notifications" ? <Notifications rows={noticeRows} onRead={(id) => setNoticeRows((rows) => rows.map((item) => item.id === id ? { ...item, read: true } : item))} /> : active === "support" ? <Support rows={tickets} /> : <Account user={user} institutions={institutions} />;
+  const institution = live.institutions.find((item) => item.slug === live.user.universitySlug);
+  let content: React.ReactNode;
+  if (active === "overview") content = <Overview user={live.user} owned={live.owned} requests={live.requests} recommended={live.recommended} setActive={setActive} />;
+  else if (active === "courses") content = <MyCourses owned={live.owned} />;
+  else if (active === "requests") content = <Requests rows={live.requests} />;
+  else if (active === "orders") content = <Orders rows={live.orders} />;
+  else if (active === "notifications") content = <Notifications rows={noticeRows} onRead={(id) => setNoticeRows((rows) => rows.map((item) => item.id === id ? { ...item, read: true } : item))} />;
+  else if (active === "support") content = <Support rows={live.tickets} />;
+  else content = <Account user={live.user} institutions={live.institutions} />;
   const logout = async () => { await fetch("/api/auth/logout", { method:"POST" }); window.location.assign("/"); };
-  return <div className="student-app"><aside className="student-sidebar"><div className="student-profile-mini"><div>{user.fullName[0]}</div><span><strong>{user.fullName}</strong><small>{institution?.name || "مراس العلم"}</small></span></div><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={active===item.id?"active":""} onClick={() => setActive(item.id)}><Icon size={18} />{item.label}{item.id==="notifications"&&unread>0&&<i>{unread}</i>}</button>; })}</nav><div className="student-sidebar-help"><LifeBuoy size={21} /><strong>تحتاج مساعدة؟</strong><small>فريق مراس معك</small><button onClick={() => setActive("support")}>تواصل معنا</button></div><button className="student-logout" onClick={logout}><LogOut size={17} /> تسجيل الخروج</button></aside><div className="student-content"><div className="student-mobile-tabs">{nav.slice(0,5).map((item)=>{const Icon=item.icon;return <button key={item.id} onClick={()=>setActive(item.id)} className={active===item.id?"active":""}><Icon size={18}/><span>{item.label}</span></button>;})}</div>{content}</div></div>;
+  return <div className="student-app"><aside className="student-sidebar"><div className="student-profile-mini"><div>{live.user.fullName[0]}</div><span><strong>{live.user.fullName}</strong><small>{institution?.name || "مراس العلم"}</small></span></div><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={active===item.id?"active":""} onClick={() => setActive(item.id)}><Icon size={18} />{item.label}{item.id==="notifications"&&unread>0&&<i>{unread}</i>}</button>; })}</nav><div className="student-sidebar-help"><LifeBuoy size={21} /><strong>تحتاج مساعدة؟</strong><small>فريق مراس معك</small><button onClick={() => setActive("support")}>تواصل معنا</button></div><button className="student-logout" onClick={logout}><LogOut size={17} /> تسجيل الخروج</button></aside><div className="student-content"><div className="student-mobile-tabs">{nav.slice(0,5).map((item)=>{const Icon=item.icon;return <button key={item.id} onClick={()=>setActive(item.id)} className={active===item.id?"active":""}><Icon size={18}/><span>{item.label}</span></button>;})}</div>{content}</div></div>;
 }
 
 function DashboardTitle({ eyebrow,title,description,action }: {eyebrow?:string;title:string;description?:string;action?:React.ReactNode}) { return <div className="dashboard-title"><div>{eyebrow&&<span>{eyebrow}</span>}<h1>{title}</h1>{description&&<p>{description}</p>}</div>{action}</div>; }

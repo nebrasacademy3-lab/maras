@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Animated, Easing, Pressable, StyleSheet, Text, View } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { Animated, Easing, Pressable, StyleSheet, View } from "react-native";
 import { BrandMark } from "@/src/components/Brand";
 import { AppButton, Card, Screen } from "@/src/components/ui";
 import { api } from "@/src/lib/api";

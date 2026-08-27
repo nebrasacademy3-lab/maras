@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import { BrandLogo } from "@/components/brand-logo";
 import { AppearanceSettings, ThemeToggle } from "@/components/theme-provider";
+import { useRealtimeSync } from "@/components/realtime-sync";
 import { courseSlug as makeCourseSlug, institutionSlug as makeInstitutionSlug } from "@/lib/catalog-templates";
 
 type Institution = { slug:string; name:string; nameEn:string; region:string; type:string; logo?:string; domain?:string; specialties:number; courses:number; featured?:boolean; status?:string; directorySourceUrl?:string; aliases?:string[]; verificationStatus?:string };
@@ -56,6 +57,7 @@ export function AdminDashboard({ adminName }: { adminName:string }) {
   const [data,setData]=useState<ConsoleData|null>(null); const [loading,setLoading]=useState(true); const [error,setError]=useState(""); const [toast,setToast]=useState(""); const [dialog,setDialog]=useState<Dialog>(null); const [deleteRequest,setDeleteRequest]=useState<DeleteRequest|null>(null);
   const load=useCallback(async()=>{setLoading(true);setError("");try{const response=await fetch("/api/admin/console",{credentials:"same-origin"});const result=await response.json() as ConsoleData&{error?:string};if(!response.ok)throw new Error(result.error||"تعذر تحميل لوحة الإدارة");setData(result);}catch(caught){setError(caught instanceof Error?caught.message:"تعذر التحميل");}finally{setLoading(false);}},[]);
   useEffect(()=>{const timer=window.setTimeout(()=>void load(),0);return()=>window.clearTimeout(timer);},[load]);
+  useRealtimeSync(() => { void load(); });
   const mutate=async(payload:Record<string,unknown>,success="تم حفظ التغييرات"):Promise<boolean>=>{try{const response=await fetch("/api/admin/console",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(payload)});const result=await response.json() as {error?:string};if(!response.ok)throw new Error(result.error||"تعذر الحفظ");setToast(success);setTimeout(()=>setToast(""),2800);await load();return true;}catch(caught){const message=caught instanceof Error?caught.message:"تعذر تنفيذ العملية";setToast(`تعذر التنفيذ: ${message}`);setTimeout(()=>setToast(""),4200);await load();return false;}};
   const openAdd=()=>{if(active==="institutions")setDialog({kind:"institution"});else if(active==="specialties")setDialog({kind:"specialty"});else if(active==="courses")setDialog({kind:"course"});else if(active==="staff")setDialog({kind:"staff"});};
   const requestDelete=(entityType:string,entityId:string|number,label:string,impact:string)=>setDeleteRequest({entityType,entityId:String(entityId),label,impact});

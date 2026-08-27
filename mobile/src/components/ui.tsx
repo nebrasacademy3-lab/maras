@@ -1,16 +1,17 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useState } from "react";
-import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, type StyleProp, type TextInputProps, View, type ViewStyle } from "react-native";
+import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
+import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, type StyleProp, type TextInputProps, View, type ViewStyle } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { metrics } from "@/src/theme/colors";
 import { MobileFooter } from "@/src/components/MobileFooter";
 
 export function Screen({ children, scroll = true, padded = true, keyboard = false, style }: { children: React.ReactNode; scroll?: boolean; padded?: boolean; keyboard?: boolean; style?: ViewStyle }) {
-  const { colors, fontScale } = useTheme();
-  const scaleStyle: ViewStyle | undefined = fontScale === 1 ? undefined : { transform: [{ scale: fontScale }], alignSelf: "center" };
-  const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, padded && styles.padded, style]}><View style={[styles.screenContent, scaleStyle]}>{children}<MobileFooter /></View></ScrollView> : <View style={[styles.flex, padded && styles.padded, style]}><View style={[styles.screenContent, scaleStyle]}>{children}<MobileFooter /></View></View>;
+  const { colors } = useTheme();
+  const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, padded && styles.padded, style]}><View style={[styles.screenContent]}>{children}<MobileFooter /></View></ScrollView> : <View style={[styles.flex, padded && styles.padded, style]}><View style={[styles.screenContent]}>{children}<MobileFooter /></View></View>;
   return <SafeAreaView edges={["top", "left", "right"]} style={[styles.flex, { backgroundColor: colors.background }]}>{keyboard ? <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>{content}</KeyboardAvoidingView> : content}</SafeAreaView>;
 }
 

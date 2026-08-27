@@ -1,17 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
+import { ScaledText as Text } from "@/src/components/ScaledText";
 import { Card, SectionTitle } from "@/src/components/ui";
 import { useTheme, type FontScale } from "@/src/providers/ThemeProvider";
 import { paletteLabels, type PaletteId } from "@/src/theme/colors";
 
-const palettes: Array<{ id: PaletteId; colors: [string, string] }> = [
+const palettes: { id: PaletteId; colors: [string, string] }[] = [
   { id: "official", colors: ["#155EEF", "#7445F5"] },
   { id: "violet", colors: ["#6D45E8", "#D86AF4"] },
   { id: "rose", colors: ["#D83F78", "#F08AAA"] },
   { id: "teal", colors: ["#078F96", "#35C6B2"] },
 ];
-const fontScales: Array<{ value: FontScale; label: string; icon: "remove" | "text" | "add" | "add-circle-outline" }> = [{ value: .9, label: "صغير", icon: "remove" }, { value: 1, label: "قياسي", icon: "text" }, { value: 1.1, label: "كبير", icon: "add" }, { value: 1.2, label: "أكبر", icon: "add-circle-outline" }];
+const fontScales: { value: FontScale; label: string; icon: "remove" | "text" | "add" | "add-circle-outline" }[] = [{ value: .9, label: "صغير", icon: "remove" }, { value: 1, label: "قياسي", icon: "text" }, { value: 1.1, label: "كبير", icon: "add" }, { value: 1.2, label: "أكبر", icon: "add-circle-outline" }];
 
 export function AppearanceSettings() {
   const { colors, dark, mode, palette, fontScale, setMode, setPalette, setFontScale } = useTheme();
