@@ -19,7 +19,7 @@ export async function SiteFooter() {
         <div className="footer-brand">
           <BrandLogo compact />
           <p>منصة سعودية تجمع شروحات المواد الجامعية في مكان واحد. ابحث، جرّب مجانًا، ثم تعلّم بثقة.</p>
-          <div className="socials" aria-label="حسابات مراس الاجتماعية">
+          <div className="socials" role="group" aria-label="حسابات مراس الاجتماعية">
             {socials.map((item) => <a key={item.label} href={item.href} target="_blank" rel="noreferrer" aria-label={item.label}>{item.icon}</a>)}
           </div>
         </div>

@@ -8,6 +8,7 @@ import type { Institution } from "@/lib/data";
 export function UniversityLogo({ institution, size = "md" }: { institution: Institution; size?: "sm" | "md" | "lg" }) {
   const sources = Array.from(new Set([
     institution.logo?.startsWith("/api/") ? institution.logo : "",
+    `/institutions/${institution.slug}.webp`,
     `/institutions/${institution.slug}.png`,
     institution.logo || "",
     institution.domain ? `https://www.google.com/s2/favicons?domain=${institution.domain}&sz=256` : "",

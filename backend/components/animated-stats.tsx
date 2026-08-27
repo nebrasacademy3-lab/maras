@@ -26,5 +26,5 @@ export function AnimatedStats({ items }: { items: Stat[] }) {
     return () => cancelAnimationFrame(frame);
   }, [items]);
 
-  return <div className="stats-strip" aria-label="إحصائيات المنصة">{items.map((item, index) => <div key={item.label}><strong>{typeof values[index] === "number" ? Number(values[index]).toLocaleString("ar-SA") : values[index]}</strong><span>{item.label}</span></div>)}</div>;
+  return <div className="stats-strip" role="group" aria-label="إحصائيات المنصة">{items.map((item, index) => <div key={item.label}><strong>{typeof values[index] === "number" ? Number(values[index]).toLocaleString("ar-SA") : values[index]}</strong><span>{item.label}</span></div>)}</div>;
 }

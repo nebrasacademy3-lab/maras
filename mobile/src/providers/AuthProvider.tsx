@@ -25,6 +25,11 @@ async function persistToken(value: string | null) {
   else await SecureStore.deleteItemAsync(TOKEN_KEY);
 }
 
+async function clearPersistedToken() {
+  setApiToken(null);
+  try { await SecureStore.deleteItemAsync(TOKEN_KEY); } catch { /* Local state is still cleared if the OS secure store is temporarily unavailable. */ }
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
@@ -50,7 +55,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(async (value: Registration) => accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) })), [accept]);
   const logout = useCallback(async () => {
     try { await api("/api/mobile/auth/logout", { method: "POST" }); } catch { /* Local logout must still succeed. */ }
-    await persistToken(null); setToken(null); setUser(null);
+    finally { await clearPersistedToken(); setToken(null); setUser(null); }
   }, []);
   const value = useMemo(() => ({ user, loading, token, login, register, logout, refresh, setUser }), [user, loading, token, login, register, logout, refresh]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

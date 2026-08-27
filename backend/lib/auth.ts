@@ -145,7 +145,13 @@ export async function createSession(userId: number, request: Request, remember =
 
 export async function revokeSession(request: Request) {
   const token = bearerToken(request.headers) || parseCookie(request.headers.get("cookie"), SESSION_COOKIE);
-  if (token) await getDb().update(authSessions).set({ revokedAt: new Date().toISOString() }).where(eq(authSessions.tokenHash, await sha256(token)));
+  if (token) {
+    try {
+      await getDb().update(authSessions).set({ revokedAt: new Date().toISOString() }).where(eq(authSessions.tokenHash, await sha256(token)));
+    } catch {
+      // Always clear the browser/device session locally, even when the database is temporarily unavailable.
+    }
+  }
   const secure = new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
   return `${SESSION_COOKIE}=; Path=/; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Max-Age=0`;
 }
@@ -167,12 +173,18 @@ export function validSaudiPhone(value: string) {
 }
 
 export function sameOriginRequest(request: Request) {
-  const origin = request.headers.get("origin");
+  const origin = request.headers.get("origin")?.trim();
   if (!origin) return request.headers.get("sec-fetch-site") !== "cross-site";
-  const accepted = new Set([new URL(request.url).origin]);
+  const accepted = new Set<string>();
+  try { accepted.add(new URL(request.url).origin); } catch { /* Invalid request URL is rejected below. */ }
   for (const configured of [process.env.APP_URL, process.env.NEXT_PUBLIC_SITE_URL, process.env.MOBILE_APP_URL]) {
     if (!configured) continue;
     try { accepted.add(new URL(configured).origin); } catch { /* Ignore malformed optional URLs. */ }
+  }
+  const host = request.headers.get("host")?.trim();
+  if (host && /^[a-zA-Z0-9.-]+(?::\d{1,5})?$/.test(host)) {
+    accepted.add(`https://${host}`);
+    if (process.env.NODE_ENV !== "production") accepted.add(`http://${host}`);
   }
   return accepted.has(origin);
 }
