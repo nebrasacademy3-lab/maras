@@ -115,11 +115,7 @@ export async function getSessionUserFromHeaders(requestHeaders: Headers): Promis
     if (row) return sessionUserFromRow(row.user);
   }
 
-  const trustChatGptHeaders = process.env.TRUST_CHATGPT_AUTH_HEADERS === "true";
-  const trustedEmail = trustChatGptHeaders ? requestHeaders.get("oai-authenticated-user-email")?.trim().toLowerCase() : "";
-  if (!trustedEmail) return null;
-  const [trustedUser] = await db.select().from(users).where(and(eq(users.email, trustedEmail), eq(users.status, "active"))).limit(1);
-  return trustedUser ? sessionUserFromRow(trustedUser) : null;
+  return null;
 }
 
 export function getSessionUser(request: Request) {
@@ -173,6 +169,9 @@ export function sameOriginRequest(request: Request) {
   const origin = request.headers.get("origin");
   if (!origin) return request.headers.get("sec-fetch-site") !== "cross-site";
   const accepted = new Set([new URL(request.url).origin]);
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0].trim();
+  const forwardedProto = request.headers.get("x-forwarded-proto")?.split(",")[0].trim();
+  if (forwardedHost && (forwardedProto === "http" || forwardedProto === "https")) accepted.add(`${forwardedProto}://${forwardedHost}`);
   for (const configured of [process.env.APP_URL, process.env.NEXT_PUBLIC_SITE_URL]) {
     if (!configured) continue;
     try { accepted.add(new URL(configured).origin); } catch { /* Ignore malformed optional URLs. */ }

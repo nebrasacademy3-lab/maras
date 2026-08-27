@@ -1,21 +1,16 @@
-import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { catalogInstitutions } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
-
-type StoredLogo = { body: ReadableStream; httpMetadata?: { contentType?: string }; size?: number };
-type LogoBucket = { get(key: string): Promise<StoredLogo | null> };
+import { getObject } from "@/lib/storage";
 
 export async function GET(_: Request, context: { params: Promise<{ slug: string }> }) {
   const slug = cleanText((await context.params).slug, 80).toLowerCase();
   const [row] = await getDb().select({ logoUrl: catalogInstitutions.logoUrl }).from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
   if (!row?.logoUrl?.startsWith("r2:")) return jsonError("الشعار غير موجود", 404);
-  const bucket = (env as unknown as { BUCKET?: LogoBucket }).BUCKET;
-  if (!bucket) return jsonError("مخزن الشعارات غير متاح", 503);
-  const object = await bucket.get(row.logoUrl.slice(3));
+  const object = await getObject(row.logoUrl.slice(3));
   if (!object) return jsonError("الشعار غير موجود", 404);
-  const headers = new Headers({ "content-type": object.httpMetadata?.contentType || "image/png", "cache-control": "public, max-age=86400, stale-while-revalidate=604800", "x-content-type-options": "nosniff" });
+  const headers = new Headers({ "content-type": "image/png", "cache-control": "public, max-age=86400, stale-while-revalidate=604800", "x-content-type-options": "nosniff" });
   if (object.size) headers.set("content-length", String(object.size));
   return new Response(object.body, { headers });
 }

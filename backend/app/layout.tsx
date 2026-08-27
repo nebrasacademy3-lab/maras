@@ -6,7 +6,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { MerasAssistant } from "@/components/meras-assistant";
 import { MotionOrchestrator } from "@/components/motion-orchestrator";
 
-const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "https://meras-alelm.glossy-sun-8084.chatgpt.site";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),

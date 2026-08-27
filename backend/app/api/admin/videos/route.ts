@@ -1,14 +1,10 @@
-import { env } from "cloudflare:workers";
 import { getDb } from "@/db";
 import { supervisorAssignments, videoAssets } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { getCourseCatalog } from "@/lib/catalog-store";
-
-type PrivateBucket = {
-  put(key: string, value: ReadableStream, options: { httpMetadata: { contentType: string }; customMetadata: Record<string, string> }): Promise<unknown>;
-};
+import { putObject } from "@/lib/storage";
 
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
@@ -17,8 +13,6 @@ export async function POST(request: Request) {
   const user = await getSessionUser(request);
   const hasToken = Boolean(configuredToken && suppliedToken === configuredToken);
   if (!hasToken && !roleAllowed(user, ["admin", "supervisor"])) return jsonError("غير مصرح برفع الفيديو", 401);
-  const bucket = (env as unknown as { BUCKET?: PrivateBucket }).BUCKET;
-  if (!bucket) return jsonError("مخزن الفيديو غير متاح", 503);
 
   const form = await request.formData();
   const file = form.get("file");
@@ -36,10 +30,7 @@ export async function POST(request: Request) {
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-100) || "lesson.mp4";
   const objectKey = `private/${courseSlug}/${lessonId}/${crypto.randomUUID()}-${safeName}`;
-  await bucket.put(objectKey, file.stream(), {
-    httpMetadata: { contentType: file.type || "video/mp4" },
-    customMetadata: { courseSlug, lessonId, visibility: "private" },
-  });
+  await putObject(objectKey, file.stream(), file.type || "video/mp4");
   const now = new Date().toISOString();
   const [asset] = await getDb().insert(videoAssets).values({
     courseSlug,

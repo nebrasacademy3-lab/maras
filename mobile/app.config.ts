@@ -29,6 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   plugins: [
     "expo-router",
     "expo-secure-store",
+    "expo-video",
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#155EEF", defaultChannel: "updates" }],
     ["expo-splash-screen", {
       image: "./assets/splash-icon.png",
@@ -39,7 +40,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     }]
   ],
   extra: {
-    apiUrl: process.env.EXPO_PUBLIC_API_URL || "https://meras-alelm.glossy-sun-8084.chatgpt.site",
+    apiUrl: process.env.EXPO_PUBLIC_API_URL || "http://localhost:3000",
     storeMode: process.env.EXPO_PUBLIC_STORE_MODE || "reader",
     eas: { projectId: process.env.EXPO_PUBLIC_EAS_PROJECT_ID || undefined },
   },

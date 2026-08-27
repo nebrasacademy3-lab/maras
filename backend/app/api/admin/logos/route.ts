@@ -1,20 +1,17 @@
-import { env } from "cloudflare:workers";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, catalogInstitutions } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { getInstitutionCatalog } from "@/lib/catalog-store";
+import { putObject } from "@/lib/storage";
 
-type LogoBucket = { put(key: string, value: ReadableStream, options: { httpMetadata: { contentType: string }; customMetadata: Record<string, string> }): Promise<unknown> };
 const allowedTypes = new Map([["image/png", "png"], ["image/jpeg", "jpg"], ["image/webp", "webp"]]);
 
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!roleAllowed(user, ["admin"]) && !isAdminRequest(request)) return jsonError("غير مصرح", 403);
-  const bucket = (env as unknown as { BUCKET?: LogoBucket }).BUCKET;
-  if (!bucket) return jsonError("مخزن الشعارات غير متاح", 503);
   const form = await request.formData();
   const slug = cleanText(form.get("slug"), 80).toLowerCase();
   const file = form.get("file");
@@ -24,7 +21,7 @@ export async function POST(request: Request) {
   if (file.size <= 0 || file.size > 4 * 1024 * 1024) return jsonError("حجم الشعار يجب ألا يتجاوز 4 ميجابايت", 413);
   const extension = allowedTypes.get(file.type)!;
   const objectKey = `logos/${slug}/${crypto.randomUUID()}.${extension}`;
-  await bucket.put(objectKey, file.stream(), { httpMetadata: { contentType: file.type }, customMetadata: { institutionSlug: slug, visibility: "public-logo" } });
+  await putObject(objectKey, file.stream(), file.type);
   const db = getDb();
   const [existing] = await db.select().from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
   const now = new Date().toISOString();

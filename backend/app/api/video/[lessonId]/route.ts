@@ -1,19 +1,10 @@
-import { env } from "cloudflare:workers";
 import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, videoAssets } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 import { getSessionUser } from "@/lib/auth";
 import { verifyVideoToken } from "@/lib/video-token";
-
-type PrivateBucket = {
-  get(key: string, options?: { range?: { offset: number; length: number } }): Promise<null | {
-    body: ReadableStream;
-    size: number;
-    etag: string;
-    writeHttpMetadata(headers: Headers): void;
-  }>;
-};
+import { getObject } from "@/lib/storage";
 
 export async function GET(request: Request, context: { params: Promise<{ lessonId: string }> }) {
   const secret = process.env.VIDEO_SIGNING_SECRET?.trim();
@@ -36,9 +27,6 @@ export async function GET(request: Request, context: { params: Promise<{ lessonI
 
   const [asset] = await getDb().select().from(videoAssets).where(and(eq(videoAssets.courseSlug, courseSlug), eq(videoAssets.lessonId, lessonId), eq(videoAssets.status, "ready"))).orderBy(desc(videoAssets.createdAt)).limit(1);
   if (!asset) return jsonError("ملف الفيديو غير جاهز", 404);
-  const bucket = (env as unknown as { BUCKET?: PrivateBucket }).BUCKET;
-  if (!bucket) return jsonError("مخزن الفيديو غير متاح", 503);
-
   const rangeHeader = request.headers.get("range");
   let range: { offset: number; length: number } | undefined;
   if (rangeHeader) {
@@ -50,10 +38,9 @@ export async function GET(request: Request, context: { params: Promise<{ lessonI
     range = { offset: start, length: end - start + 1 };
   }
 
-  const object = await bucket.get(asset.objectKey, range ? { range } : undefined);
+  const object = await getObject(asset.objectKey, range);
   if (!object) return jsonError("ملف الفيديو غير موجود", 404);
   const headers = new Headers();
-  object.writeHttpMetadata(headers);
   headers.set("Content-Type", asset.contentType);
   headers.set("Content-Disposition", "inline");
   headers.set("Accept-Ranges", "bytes");

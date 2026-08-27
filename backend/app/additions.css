@@ -445,3 +445,10 @@ html:not(.dark) .university-logo img { mix-blend-mode: multiply; filter: none; }
   *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
   .motion-ready .motion-reveal { opacity: 1; transform: none; }
 }
+
+/* Auth escape route and tactile interactions */
+.auth-top-brand { display: flex; align-items: center; gap: 10px; }
+.auth-home-link { display: inline-flex; align-items: center; gap: 7px; min-height: 38px; padding: 0 12px; border: 1px solid var(--line); border-radius: 12px; color: var(--text-soft); background: color-mix(in srgb, var(--surface) 88%, transparent); font-size: 11px; font-weight: 800; transition: transform .16s cubic-bezier(.23,1,.32,1), border-color .16s ease, color .16s ease, background .16s ease; }
+.auth-home-link:hover { color: var(--primary); border-color: color-mix(in srgb, var(--primary) 35%, var(--line)); background: var(--surface); transform: translateY(-2px); }
+.button:active, .auth-home-link:active { transform: scale(.97); }
+@media (max-width: 520px) { .auth-top { padding: 0 16px; } .auth-home-link { min-height: 34px; padding: 0 9px; font-size: 10px; } .auth-top-brand { gap: 6px; } }

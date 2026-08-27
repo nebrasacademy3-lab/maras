@@ -14,7 +14,7 @@ export function Screen({ children, scroll = true, padded = true, keyboard = fals
 
 export function FadeIn({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: ViewStyle }) {
   const [value] = useState(() => new Animated.Value(0));
-  useEffect(() => { Animated.spring(value, { toValue: 1, delay, useNativeDriver: true, damping: 18, stiffness: 120 }).start(); }, [delay, value]);
+  useEffect(() => { Animated.timing(value, { toValue: 1, delay, duration: 260, useNativeDriver: true }).start(); return () => value.stopAnimation(); }, [delay, value]);
   return <Animated.View style={[style, { opacity: value, transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }] }]}>{children}</Animated.View>;
 }
 
@@ -22,7 +22,7 @@ export function AppButton({ title, onPress, icon, variant = "primary", disabled 
   const { colors } = useTheme();
   const contentColor = variant === "primary" || variant === "danger" ? "#FFFFFF" : colors.primary;
   const background = variant === "primary" ? colors.primary : variant === "danger" ? colors.danger : variant === "soft" ? colors.surfaceAlt : "transparent";
-  return <Pressable accessibilityRole="button" disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, opacity: disabled ? .45 : pressed ? .8 : 1 }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
+  return <Pressable accessibilityRole="button" disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, opacity: disabled ? .45 : pressed ? .8 : 1, transform: [{ scale: pressed ? .97 : 1 }] }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
 }
 
 export function Field({ label, error, icon, ...props }: TextInputProps & { label: string; error?: string; icon?: React.ComponentProps<typeof Ionicons>["name"] }) {

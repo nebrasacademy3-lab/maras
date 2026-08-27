@@ -1,4 +1,3 @@
-import { env } from "cloudflare:workers";
 import { eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
@@ -9,6 +8,7 @@ import {
 import { getSessionUser, verifyPassword } from "@/lib/auth";
 import { jsonError } from "@/lib/api";
 import { isMobileRequest, mobileNoStoreHeaders } from "@/lib/mobile-api";
+import { deleteObject } from "@/lib/storage";
 
 export async function DELETE(request: Request) {
   if (!isMobileRequest(request)) return jsonError("طلب تطبيق غير صالح", 403);
@@ -26,8 +26,7 @@ export async function DELETE(request: Request) {
   const requestRows = await db.select({ id: courseRequests.id }).from(courseRequests).where(eq(courseRequests.userId, current.id));
   const requestIds = requestRows.map((row) => row.id);
   const fileRows = requestIds.length ? await db.select({ objectKey: courseRequestFiles.objectKey }).from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, requestIds)) : [];
-  const bucket = (env as unknown as { BUCKET?: { delete(keys: string | string[]): Promise<unknown> } }).BUCKET;
-  if (bucket && fileRows.length) await bucket.delete(fileRows.map((row) => row.objectKey)).catch(() => undefined);
+  if (fileRows.length) await Promise.all(fileRows.map((row) => deleteObject(row.objectKey).catch(() => undefined)));
   if (requestIds.length) {
     await db.delete(courseRequestFiles).where(inArray(courseRequestFiles.requestId, requestIds));
     await db.delete(courseRequests).where(inArray(courseRequests.id, requestIds));

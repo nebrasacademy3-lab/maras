@@ -23,7 +23,3 @@ export function isAdminRequest(request: Request) {
   const direct = request.headers.get("x-admin-token")?.trim();
   return bearer === expected || direct === expected;
 }
-
-export function authenticatedEmail(request: Request) {
-  return cleanText(request.headers.get("oai-authenticated-user-email"), 180).toLowerCase();
-}

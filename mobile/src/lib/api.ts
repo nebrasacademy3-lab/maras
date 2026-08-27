@@ -1,7 +1,7 @@
 import Constants from "expo-constants";
 
 const configured = String(Constants.expoConfig?.extra?.apiUrl || "").replace(/\/$/, "");
-export const API_URL = configured || "https://meras-alelm.glossy-sun-8084.chatgpt.site";
+export const API_URL = configured || "http://localhost:3000";
 export const STORE_MODE = String(Constants.expoConfig?.extra?.storeMode || "reader");
 
 let sessionToken = "";

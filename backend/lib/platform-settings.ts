@@ -42,7 +42,13 @@ export function whatsappHref(settings: Pick<PublicSettings, "whatsapp_number" | 
 
 export async function getPublicSettings(): Promise<PublicSettings> {
   const output = { ...PUBLIC_SETTING_DEFAULTS } as PublicSettings;
-  const rows = await getDb().select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.isPublic, true));
+  if (!process.env.DATABASE_URL) return output;
+  let rows;
+  try {
+    rows = await getDb().select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.isPublic, true));
+  } catch {
+    return output;
+  }
   for (const row of rows) {
     if (row.key in output) output[row.key as PublicSettingKey] = row.value;
   }

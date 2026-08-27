@@ -1,7 +1,7 @@
 import type { MetadataRoute } from "next";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 
-const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://meras-alelm.glossy-sun-8084.chatgpt.site").replace(/\/$/, "");
+const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [courses, institutions] = await Promise.all([getCoursesCatalog(), getInstitutionsCatalog()]);
   const staticPaths = ["", "/universities", "/courses", "/how-it-works", "/request-course", "/support", "/contact", "/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility"];

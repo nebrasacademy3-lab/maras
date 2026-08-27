@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, Eye, EyeOff, GraduationCap, LockKeyhole, Mail, Phone, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Eye, EyeOff, GraduationCap, House, LockKeyhole, Mail, Phone, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
 import { ThemeToggle } from "./theme-provider";
 import type { Institution } from "@/lib/data";
@@ -30,7 +30,7 @@ export function LoginForm() {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ identifier: form.get("identifier"), password: form.get("password"), remember: form.get("remember") === "on" }),
       });
-      const data = await response.json() as { error?: string; next?: string };
+      const data = await readAuthResponse(response);
       if (!response.ok) throw new Error(data.error || "تعذر تسجيل الدخول");
       const returnTo = safeReturnTo();
       if (returnTo && data.next !== "/onboarding" && data.next !== "/complete-profile") window.location.assign(returnTo);
@@ -78,7 +78,7 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
     setLoading(true);
     try {
       const response = await fetch("/api/auth/register", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(data) });
-      const result = await response.json() as { error?: string; next?: string };
+      const result = await readAuthResponse(response);
       if (!response.ok) throw new Error(result.error || "تعذر إنشاء الحساب");
       const returnTo = safeReturnTo();
       if (returnTo) sessionStorage.setItem("meras_return_to", returnTo);
@@ -117,7 +117,16 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
 }
 
 export function AuthShell({ children, mode }: { children: React.ReactNode; mode: "login" | "register" }) {
-  return <main className="auth-page"><div className="auth-top"><BrandLogo compact /><ThemeToggle compact /></div><div className="auth-grid"><section className="auth-panel">{children}</section><aside className="auth-visual"><div className="auth-visual-glow" /><div className="auth-visual-content"><span className="auth-visual-badge"><Sparkles size={15} /> تعلّم بثقة</span><h2>{mode === "login" ? "كل تقدمك محفوظ، وكأنك ما توقفت." : "حساب واحد لكل رحلتك الجامعية."}</h2><p>{mode === "login" ? "ارجع إلى آخر ثانية شاهدتها، وكمّل دروسك من أي جهاز." : "موادك ومشترياتك وطلبات المحتوى وفواتيرك مرتبطة بملفك الدراسي."}</p><div className="auth-proof-card"><div className="auth-proof-art">∑<i><PlayCircleIcon /></i></div><div><small>تكمل الآن</small><strong>الهياكل المتقطعة</strong><span>68% مكتمل</span><div><i /></div></div></div><ul><li><CheckCircle2 size={17} /> محتوى مرتبط بجامعتك وتخصصك</li><li><CheckCircle2 size={17} /> دفع آمن وتفعيل تلقائي</li><li><CheckCircle2 size={17} /> مشغل خاص وتقدم محفوظ</li></ul></div><p className="auth-quote">“شرح واضح، تجربة مرتبة، ودرس مجاني قبل الاشتراك.”</p></aside></div></main>;
+  return <main className="auth-page"><div className="auth-top"><Link href="/" className="auth-home-link"><House size={16} /> الرئيسية</Link><div className="auth-top-brand"><BrandLogo compact /><ThemeToggle compact /></div></div><div className="auth-grid"><section className="auth-panel">{children}</section><aside className="auth-visual"><div className="auth-visual-glow" /><div className="auth-visual-content"><span className="auth-visual-badge"><Sparkles size={15} /> تعلّم بثقة</span><h2>{mode === "login" ? "كل تقدمك محفوظ، وكأنك ما توقفت." : "حساب واحد لكل رحلتك الجامعية."}</h2><p>{mode === "login" ? "ارجع إلى آخر ثانية شاهدتها، وكمّل دروسك من أي جهاز." : "موادك ومشترياتك وطلبات المحتوى وفواتيرك مرتبطة بملفك الدراسي."}</p><div className="auth-proof-card"><div className="auth-proof-art">∑<i><PlayCircleIcon /></i></div><div><small>تكمل الآن</small><strong>الهياكل المتقطعة</strong><span>68% مكتمل</span><div><i /></div></div></div><ul><li><CheckCircle2 size={17} /> محتوى مرتبط بجامعتك وتخصصك</li><li><CheckCircle2 size={17} /> دفع آمن وتفعيل تلقائي</li><li><CheckCircle2 size={17} /> مشغل خاص وتقدم محفوظ</li></ul></div><p className="auth-quote">“شرح واضح، تجربة مرتبة، ودرس مجاني قبل الاشتراك.”</p></aside></div></main>;
+}
+
+async function readAuthResponse(response: Response): Promise<{ error?: string; next?: string }> {
+  const text = await response.text();
+  try {
+    return text ? JSON.parse(text) as { error?: string; next?: string } : {};
+  } catch {
+    return { error: response.status >= 500 ? "الخادم غير متاح مؤقتًا. تحقق من إعدادات Railway ثم حاول مرة أخرى." : `تعذر إكمال الطلب (رمز ${response.status}).` };
+  }
 }
 
 function PlayCircleIcon() { return <span>▶</span>; }

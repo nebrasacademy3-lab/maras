@@ -1,51 +1,61 @@
-# حزمة مراس العلم الكاملة — الإصدار 6
+# مراس العلم
 
-تتضمن هذه الحزمة مشروع المنصة والخادم الجاهز للنشر على Railway، وتطبيق Expo/React Native لنظامي Android وiOS. يشترك التطبيق والموقع في الحسابات والكتالوج والصلاحيات والطلبات والدعم والإشعارات والفيديو.
+منصة تعليم جامعي عربية تعمل بواجهة ويب وتطبيق Expo/React Native، وتشترك جميع القنوات في حسابات المستخدمين والكتالوج والصلاحيات والطلبات والدعم والإشعارات والتقدم الدراسي.
 
-## المجلدات
+## البنية
 
-- `backend/`: موقع مراس العلم، واجهات API، قاعدة البيانات، الدفع، الفيديو، لوحات الطالب والمشرف والإدارة، وملفات Railway.
-- `mobile/`: تطبيق Android وiOS، أيقونة M البيضاء، الوضعان الفاتح والليلي، المشغل، المساعد، ولوحات الأدوار.
+| المجلد | المحتوى |
+|---|---|
+| `backend/` | تطبيق Next.js، واجهات API، المصادقة، PostgreSQL عبر Drizzle، الدفع، المساعد، الفيديو، ولوحات الطالب والمشرف والإدارة. |
+| `mobile/` | تطبيق Expo/React Native لنظامي Android وiOS ونسخة الويب، مرتبط بواجهات `/api/mobile/*`. |
 
-## النسخة المنشورة
+## تشغيل الخادم محليًا
 
-https://meras-alelm.glossy-sun-8084.chatgpt.site
-
-## تشغيل الخادم
-
-يتطلب Node.js 22.13 أو أحدث. ابدأ من مجلد `backend`:
+يتطلب Node.js 22 أو أحدث وPostgreSQL 14 أو أحدث.
 
 ```bash
+cd backend
 npm ci
 cp .env.example .env
+# عدّل DATABASE_URL وبقية المتغيرات السرية
+npm run db:migrate
 npm run dev
 ```
 
-للنشر على Railway ارفع مجلد `backend` وحده، وأضف متغيرات `.env.example` إلى إعدادات الخدمة، ثم أضف Volume دائمًا على `/data`. يكتشف Railway ملف `Dockerfile`، ويطبق `scripts/start-railway.sh` الهجرات تلقائيًا قبل بدء الخدمة.
+يفتح الخادم عادة على `http://localhost:3000`. عند غياب قاعدة البيانات أثناء `npm run build` تستخدم الصفحات العامة بيانات العرض المضمنة، بينما تعيد واجهة `/api/health` حالة واضحة حتى تضبط `DATABASE_URL`.
 
 ## تشغيل التطبيق
 
-ابدأ من مجلد `mobile`:
-
 ```bash
+cd mobile
 npm ci
 cp .env.example .env
 npm start
 ```
 
-غيّر `EXPO_PUBLIC_API_URL` إلى نطاق Railway النهائي. إعداد الإنتاج الافتراضي `reader` حتى لا يظهر رابط شراء محتوى رقمي داخل نسخة المتجر. أوامر بناء APK/AAB وIPA والإرسال إلى المتاجر موثقة في `mobile/README.md`، وتتطلب حسابات Apple وGoogle وExpo الخاصة بالمالك.
+اضبط `EXPO_PUBLIC_API_URL` على عنوان Railway النهائي، مثل `https://your-service.up.railway.app`. لا تضع أي مفتاح Tap أو Gemini أو سر جلسات داخل التطبيق.
 
-## تحقق الإصدار
+## النشر على Railway
 
-- TypeScript: ناجح.
-- ESLint: ناجح.
-- Metro Android export: ناجح.
-- Metro iOS export: ناجح.
-- أيقونة التطبيق: PNG بمقاس 1024×1024، علامة M فقط فوق خلفية بيضاء.
-- نشر الويب الإنتاجي: ناجح.
+النشر المقصود هو مجلد `backend`؛ يحتوي على `Dockerfile` و`start-railway.sh`. أنشئ خدمة Railway من هذا المجلد، أضف خدمة PostgreSQL أو اربط قاعدة PostgreSQL الموجودة، ثم أضف متغيرات `.env.example` إلى Variables. يجب أن تكون `DATABASE_URL` هي قيمة اتصال PostgreSQL التي يوفرها Railway.
 
-## قبل استقبال مستخدمين ومدفوعات حقيقية
+أضف Volume دائمًا واربطه بالمسار `/data` حتى تبقى الفيديوهات والمرفقات والشعارات محفوظة. يبدأ الخادم عبر `start-railway.sh`، يطبق `drizzle-kit migrate` تلقائيًا، ثم يشغل Next.js على `0.0.0.0:$PORT`. استخدم `/api/health` كمسار فحص الصحة.
 
-أدخل مفاتيح Tap وResend وGemini وسر توقيع الفيديو في الخادم فقط، وأنشئ حساب الإدارة من واجهة الخادم الموثقة، وأكمل بيانات المنشأة والسياسات والضريبة والنسخ الاحتياطي والمراقبة. لا تضع أي مفتاح سري في مشروع التطبيق.
+## الخدمات الاختيارية
 
-راجع `backend/README.md` و`mobile/README.md` للتفاصيل الكاملة والأوامر وخيارات الحماية وحدود منع نسخ الفيديو.
+يعمل المساعد بقاعدة معرفة محلية عندما لا يوجد مفتاح مزود خارجي، ويمكن تفعيله سياقيًا عبر Gemini بوضع `ASSISTANT_PROVIDER=gemini` و`GEMINI_API_KEY`. الدفع يحتاج مفاتيح Tap الحقيقية، وإرسال استعادة كلمة المرور يحتاج Resend. جميع الأسرار تبقى في الخادم.
+
+## التحقق قبل النشر
+
+```bash
+cd backend
+npm run lint
+npm run build
+npm test
+
+cd ../mobile
+npm run typecheck
+npx expo export --platform web --output-dir dist-web
+```
+
+لا ترفع ملفات `.env` أو مجلدات `node_modules` و`.next` و`dist-web` إلى المستودع. بعد أول نشر أنشئ حساب الإدارة باستخدام واجهة `POST /api/admin/staff` الموثقة داخل `backend/README.md`، ثم اختبر التسجيل والدخول وتفعيل المادة والرفع والدعم من بيئة Railway نفسها.

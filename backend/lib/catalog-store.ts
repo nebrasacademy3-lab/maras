@@ -14,6 +14,7 @@ const themes: Record<string, string> = {
 
 const publicLogo = (slug: string, value: string | null | undefined) => value?.startsWith("r2:") ? `/api/logos/${slug}` : value || undefined;
 const bundledLogo = (slug: string) => `/institutions/${slug}.png`;
+const staticInstitutionFallback = () => staticInstitutions.map((item) => ({ ...item, logo: bundledLogo(item.slug) }));
 
 function secondsLabel(total: number) {
   const minutes = Math.max(1, Math.round(total / 60));
@@ -24,6 +25,7 @@ function secondsLabel(total: number) {
 }
 
 export async function getInstitutionsCatalog(includeHidden = false): Promise<Institution[]> {
+  if (!process.env.DATABASE_URL) return staticInstitutionFallback();
   const db = getDb();
   const [rows, specialties, courseRows] = await Promise.all([
     db.select().from(catalogInstitutions).orderBy(asc(catalogInstitutions.sortOrder), asc(catalogInstitutions.name)),
@@ -71,6 +73,10 @@ export async function getInstitutionCatalog(slug: string, includeHidden = false)
 }
 
 export async function getProgramsCatalog(institutionSlug: string): Promise<{ programs: AcademicProgram[]; sourceUrl: string; liveVerified: boolean }> {
+  if (!process.env.DATABASE_URL) {
+    const institution = staticInstitutionFallback().find((item) => item.slug === institutionSlug);
+    return getVerifiedInstitutionPrograms(institutionSlug, institution?.domain);
+  }
   const db = getDb();
   const [links, specialties, institution] = await Promise.all([
     db.select().from(institutionSpecialties).where(eq(institutionSpecialties.institutionSlug, institutionSlug)).orderBy(asc(institutionSpecialties.sortOrder)),
@@ -87,6 +93,7 @@ export async function getProgramsCatalog(institutionSlug: string): Promise<{ pro
 }
 
 export async function getCoursesCatalog(includeDraft = false): Promise<Course[]> {
+  if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item }));
   const db = getDb();
   const [managed, units, lessons, specialties, institutions, reviews, accessRows] = await Promise.all([
     db.select().from(catalogCourses),

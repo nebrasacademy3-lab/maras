@@ -1,1 +1,0 @@
-CREATE UNIQUE INDEX `payment_events_provider_event_unique` ON `payment_events` (`provider_event_id`);
