@@ -12,5 +12,9 @@ export function ScaledText({ style, ...props }: TextProps) {
     fontSize: baseFontSize * fontScale,
     ...(typeof flattened?.lineHeight === "number" ? { lineHeight: flattened.lineHeight * fontScale } : {}),
   };
-  return <NativeText {...props} style={[style, scaledStyle]} />;
+  return <NativeText {...props} style={[styles.rtl, style, scaledStyle]} />;
 }
+
+const styles = StyleSheet.create({
+  rtl: { writingDirection: "rtl", textAlign: "right" },
+});

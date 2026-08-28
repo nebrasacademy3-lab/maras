@@ -1,9 +1,10 @@
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, lessonProgress, lessonsDb } from "@/db/schema";
-import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { checkRateLimit, getSessionUser } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { getCourseCatalog } from "@/lib/catalog-store";
+import { isMobileRequest } from "@/lib/mobile-api";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -16,7 +17,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!isMobileRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول لحفظ التقدم", 401);
   if (!await checkRateLimit("lesson-progress", `user:${user.id}`, 180, 60)) return jsonError("تحديثات كثيرة. حاول بعد قليل.", 429);

@@ -5,27 +5,29 @@ import React from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
-import { AppButton, Card, EmptyState, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
+import { useAuthRestoreState } from "@/src/components/AuthRestoreState";
+import { AppButton, Card, EmptyState, ErrorState, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
 import { api } from "@/src/lib/api";
-import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { Dashboard } from "@/src/types";
 
-const orderLabels: Record<string, string> = { paid: "مدفوع", initiated: "بانتظار التأكيد", pending: "قيد البدء", failed: "لم يكتمل", canceled: "ملغي" };
+const orderLabels: Record<string, string> = { paid: "مدفوع", creating: "جارٍ إنشاء الدفع", initiated: "بانتظار التأكيد", pending: "قيد البدء", failed: "لم يكتمل", canceled: "ملغي", cancelled: "ملغي", voided: "مُبطل", expired: "منتهي", refunded: "مسترد بالكامل", partially_refunded: "مسترد جزئيًا", reversed: "معكوس", chargeback: "اعتراض مالي" };
 
 export default function Orders() {
-  const { user } = useAuth();
+  const { user, authReady, restoration } = useAuthRestoreState({ title: "الطلبات والفواتير", loadingLabel: "جارٍ استعادة سجلك المالي...", back: true });
   const { colors } = useTheme();
-  const dashboard = useQuery({ queryKey: ["dashboard", user?.id], queryFn: () => api<Dashboard>("/api/mobile/dashboard"), enabled: Boolean(user) });
-  if (!user) return <Screen><AppHeader title="الطلبات والفواتير" back /><EmptyState icon="receipt-outline" title="الحساب مطلوب" text="سجّل الدخول لعرض سجل اشتراكاتك وفواتيرك." action={<AppButton title="تسجيل الدخول" onPress={() => router.push("/(auth)/login")} />} /></Screen>;
+  const dashboard = useQuery({ queryKey: ["dashboard", user?.id], queryFn: () => api<Dashboard>("/api/mobile/dashboard"), enabled: authReady && Boolean(user), refetchOnMount: "always" });
+  if (restoration) return restoration;
+  if (!user) return <Screen><AppHeader title="الطلبات والفواتير" back /><EmptyState icon="receipt-outline" title="الحساب مطلوب" text="سجّل الدخول لعرض سجل اشتراكاتك وفواتيرك." action={<AppButton title="تسجيل الدخول" onPress={() => router.push("/(auth)/login?return_to=%2Forders")} />} /></Screen>;
   if (dashboard.isLoading) return <Screen><LoadingState /></Screen>;
+  if (dashboard.isError || !dashboard.data) return <Screen><AppHeader title="الطلبات والفواتير" back /><ErrorState title="تعذر تحميل السجل المالي" text="لم نتمكن من مزامنة الطلبات والفواتير الآن." onRetry={() => void dashboard.refetch()} /></Screen>;
   const orders = dashboard.data?.orders || [];
   const invoices = dashboard.data?.invoices || [];
   return <Screen>
     <AppHeader title="الطلبات والفواتير" subtitle="سجل مرتبط بحسابك" back />
     <SectionTitle title="الطلبات" subtitle={`${orders.length} عملية`} />
     {orders.length ? orders.map((order) => <Card key={order.orderNumber} style={styles.card}>
-      <View style={styles.row}><View style={[styles.status, { backgroundColor: order.status === "paid" ? `${colors.success}18` : colors.surfaceAlt }]}><Text style={{ color: order.status === "paid" ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{orderLabels[order.status] || order.status}</Text></View><Text style={[styles.title, { color: colors.text }]}>{order.courseTitle}</Text></View>
+      <View style={styles.row}><View style={[styles.status, { backgroundColor: order.status === "paid" ? `${colors.success}18` : colors.surfaceAlt }]}><Text style={{ color: order.status === "paid" ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{orderLabels[order.status] || "حالة غير معروفة"}</Text></View><Text style={[styles.title, { color: colors.text }]}>{order.courseTitle}</Text></View>
       <View style={styles.details}><Text style={[styles.amount, { color: colors.text }]}>{order.total.toLocaleString("ar-SA")} ر.س</Text><Text style={[styles.meta, { color: colors.textSoft }]}>#{order.orderNumber} · {new Date(order.createdAt).toLocaleDateString("ar-SA")}</Text></View>
     </Card>) : <EmptyState icon="cart-outline" title="لا توجد طلبات" text="ستظهر هنا عمليات الاشتراك بعد إنشائها من موقع مراس." />}
     <SectionTitle title="الفواتير" subtitle="تُنشأ بعد تأكيد الدفع من مزود الدفع" />

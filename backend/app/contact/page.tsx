@@ -3,7 +3,7 @@ import Link from "next/link";
 import { ArrowLeft, Clock3, ExternalLink, Facebook, Headphones, Instagram, Linkedin, Mail, MessageCircle, Music2, Send, ShieldCheck, Youtube } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { getPublicSettings, whatsappHref } from "@/lib/platform-settings";
+import { getFailClosedPublicSettings, whatsappHref } from "@/lib/platform-settings";
 
 export const metadata: Metadata = { title: "تواصل معنا" };
 
@@ -20,7 +20,7 @@ const socialChannels = [
 ] as const;
 
 export default async function ContactPage() {
-  const settings = await getPublicSettings();
+  const settings = await getFailClosedPublicSettings();
   const whatsapp = whatsappHref(settings);
   const social = socialChannels.flatMap((channel) => {
     const url = settings[channel.key];

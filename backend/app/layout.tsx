@@ -24,7 +24,14 @@ export const metadata: Metadata = {
     images: [{ url: "/og.png", width: 1728, height: 910, alt: "مراس العلم — شرح جامعتك في مكان واحد" }],
   },
   twitter: { card: "summary_large_image", title: "مراس العلم", description: "شرح جامعتك، في مكان واحد.", images: ["/og.png"] },
-  icons: { icon: [{ url: "/brand/mark-m.png", type: "image/png", sizes: "1920x1920" }], shortcut: "/brand/mark-m.png", apple: "/brand/mark-m.png" },
+  icons: {
+    icon: [
+      { url: "/brand/app-icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/brand/app-icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    shortcut: "/brand/app-icon-192.png",
+    apple: [{ url: "/brand/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
+  },
   manifest: "/manifest.webmanifest",
 };
 

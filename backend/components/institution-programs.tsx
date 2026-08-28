@@ -2,30 +2,59 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, BookMarked, BookOpen, GraduationCap, Search, Sparkles } from "lucide-react";
+import { ArrowLeft, BadgeCheck, BookMarked, BookOpen, ChevronDown, ExternalLink, GraduationCap, Search, Sparkles, X } from "lucide-react";
 import { getProgramCourses, type AcademicProgram } from "@/lib/academic-data";
+import { usePlatformControls } from "./use-platform-controls";
+
+const ALL_AREAS = "الكل";
 
 export function InstitutionPrograms({ programs, institutionName }: { programs: AcademicProgram[]; institutionName: string }) {
   const [query, setQuery] = useState("");
-  const [area, setArea] = useState("الكل");
-  const areas = useMemo(() => ["الكل", ...Array.from(new Set(programs.map((item) => item.area)))], [programs]);
+  const [area, setArea] = useState(ALL_AREAS);
+  const controls = usePlatformControls();
+  const areas = useMemo(() => [ALL_AREAS, ...Array.from(new Set(programs.map((item) => item.area))).sort((a, b) => a.localeCompare(b, "ar"))], [programs]);
   const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return programs.filter((item) => (area === "الكل" || item.area === area) && (!needle || `${item.name} ${item.area} ${item.degree}`.toLowerCase().includes(needle)));
+    const needle = query.trim().toLocaleLowerCase("ar");
+    return programs.filter((item) => {
+      const searchable = `${item.name} ${item.area} ${item.degree} ${(item.aliases || []).join(" ")}`.toLocaleLowerCase("ar");
+      return (area === ALL_AREAS || item.area === area) && (!needle || searchable.includes(needle));
+    });
   }, [programs, query, area]);
 
-  return <div className="program-browser">
-    <div className="program-browser-tools">
-      <label><Search size={18} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`ابحث في برامج ${institutionName}...`} /></label>
-      <div className="program-area-tabs" aria-label="تصفية التخصصات">{areas.map((item) => <button type="button" key={item} className={area === item ? "active" : ""} onClick={() => setArea(item)}>{item}</button>)}</div>
-    </div>
-    <div className="program-results-note"><Sparkles size={15} /><span>نعرض {filtered.length} من {programs.length} برنامجًا. نميّز البرامج المستخرجة من مصدر رسمي عن خريطة الاكتشاف العامة، ولا نعدّ المادة منشورة إلا إذا كانت لها دروس فعلية.</span></div>
-    {filtered.length ? <div className="program-grid">{filtered.map((program) => {
-      const courseNames = getProgramCourses(program);
-      return <details className="program-card" key={`${program.name}-${program.degree}`}>
-        <summary><i><GraduationCap size={20} /></i><span><small>{program.area} · {program.degree} · {program.verificationStatus === "official-program" ? "موثق من المصدر الرسمي" : program.verificationStatus === "pending-review" ? "قيد المراجعة" : "خريطة اكتشاف"}</small><strong>{program.name}</strong><em>{courseNames.length} مواد مقترحة <ArrowLeft size={14} /></em></span></summary>
-        <div className="program-card-body"><div className="program-courses-title"><BookOpen size={16} /><strong>مواد تأسيسية ومقترحة</strong></div><p className="program-disclaimer">هذه أسماء إرشادية للمساعدة في طلب المادة وليست خطة دراسية رسمية أو دورة منشورة. المواد المتاحة فعلًا تظهر في فهرس المواد بعد اعتماد الوحدات والدروس.</p>{program.sourceUrl&&program.verificationStatus==="official-program"?<a className="catalog-source" href={program.sourceUrl} target="_blank" rel="noreferrer">فتح مصدر البرنامج الرسمي <ArrowLeft size={14}/></a>:null}<div className="program-course-chips">{courseNames.map((course) => <Link key={course} href={`/courses?q=${encodeURIComponent(course)}`}><BookMarked size={13} />{course}</Link>)}</div><footer><p>لا تجد المادة التي تحتاجها؟ أرسل السلايدات أو توصيف المقرر ليصل الطلب إلى المشرف.</p><Link className="button button-soft" href="/request-course">اطلب شرح مادة <ArrowLeft size={15} /></Link></footer></div>
-      </details>;
-    })}</div> : <div className="program-empty"><Search size={27} /><h3>لا توجد نتيجة مطابقة</h3><p>جرّب اسمًا أقصر أو اختر «الكل».</p></div>}
-  </div>;
+  function clearFilters() { setQuery(""); setArea(ALL_AREAS); }
+
+  return (
+    <section className="program-browser" aria-labelledby="program-browser-title">
+      <div className="program-browser-tools">
+        <label className="program-primary-search">
+          <Search size={19} aria-hidden="true" />
+          <span className="sr-only" id="program-browser-title">البحث في برامج {institutionName}</span>
+          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={`ابحث في تخصصات ${institutionName}`} type="search" />
+          {query && <button type="button" onClick={() => setQuery("")} aria-label="مسح البحث"><X size={15} /></button>}
+        </label>
+        <label className="program-area-select"><span>المجال</span><select value={area} onChange={(event) => setArea(event.target.value)} aria-label="تصفية التخصصات حسب المجال">{areas.map((item) => <option key={item}>{item === ALL_AREAS ? "كل المجالات" : item}</option>)}</select></label>
+      </div>
+
+      <div className="program-results-note" role="status" aria-live="polite"><Sparkles size={15} /><span><strong>{filtered.length} برنامجًا</strong> من أصل {programs.length} في دليل الجهة</span>{(query || area !== ALL_AREAS) && <button type="button" onClick={clearFilters}>مسح التصفية</button>}</div>
+
+      {filtered.length ? <div className="program-grid">{filtered.map((program) => {
+        const courseNames = getProgramCourses(program);
+        const isOfficial = program.verificationStatus === "official-program";
+        const status = isOfficial ? "موثق من المصدر الرسمي" : program.verificationStatus === "pending-review" ? "قيد المراجعة" : "دليل استكشافي";
+        return <details className="program-card" key={`${program.name}-${program.degree}`}>
+          <summary>
+            <i><GraduationCap size={21} /></i>
+            <span><small>{program.area} · {program.degree}</small><strong>{program.name}</strong><em className={isOfficial ? "official" : ""}>{isOfficial && <BadgeCheck size={13} />}{status}</em></span>
+            <span className="program-summary-tail"><b>{courseNames.length} مواد مقترحة</b><ChevronDown size={17} aria-hidden="true" /></span>
+          </summary>
+          <div className="program-card-body">
+            <div className="program-courses-title"><BookOpen size={16} /><div><strong>مواد مرتبطة بالبرنامج</strong><small>للبحث والطلب، وليست بديلًا عن الخطة الدراسية الرسمية.</small></div></div>
+            {isOfficial && program.sourceUrl && <a className="catalog-source" href={program.sourceUrl} target="_blank" rel="noreferrer"><ExternalLink size={15} /><span><strong>فتح مصدر البرنامج الرسمي</strong><small>يفتح في نافذة جديدة</small></span><ArrowLeft size={14} /></a>}
+            <div className="program-course-chips">{courseNames.map((course) => <Link key={course} href={`/courses?q=${encodeURIComponent(course)}`}><BookMarked size={13} />{course}</Link>)}</div>
+            <footer><p>إذا لم تظهر مادتك في الفهرس، أرسل اسمها أو توصيفها ليصل الطلب إلى فريق المحتوى.</p>{controls.courseRequests ? <Link className="button button-soft" href="/request-course">اطلب شرح مادة <ArrowLeft size={15} /></Link> : <span className="button button-disabled" aria-disabled="true">الطلبات متوقفة مؤقتًا</span>}</footer>
+          </div>
+        </details>;
+      })}</div> : <div className="program-empty"><Search size={27} /><h3>لا توجد نتيجة مطابقة</h3><p>جرّب اسمًا أقصر أو اعرض كل المجالات.</p><button type="button" className="button button-ghost" onClick={clearFilters}>إعادة ضبط البحث</button></div>}
+    </section>
+  );
 }

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, catalogInstitutions } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
@@ -43,23 +43,28 @@ export async function POST(request: Request) {
   try {
     await putObject(objectKey, file.stream(), detectedType);
     const db = getDb();
-    const [existing] = await db.select().from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
     const now = new Date().toISOString();
-    const values = {
-      slug,
-      name: existing?.name || institution.name,
-      nameEn: existing?.nameEn || institution.nameEn,
-      region: existing?.region || institution.region,
-      type: existing?.type || institution.type,
-      logoUrl: `r2:${objectKey}`,
-      domain: existing?.domain || institution.domain || null,
-      status: existing?.status || "published",
-      sortOrder: existing?.sortOrder || 0,
-      updatedAt: now,
-    };
-    await db.insert(catalogInstitutions).values({ ...values, createdAt: existing?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
-    await db.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "institution_logo", entityId: slug, beforeJson: existing?.logoUrl || null, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
-    if (existing?.logoUrl?.startsWith("r2:")) await deleteObject(existing.logoUrl.slice(3)).catch((error) => console.warn("[logo-upload] previous object cleanup failed", error instanceof Error ? error.message : "unknown"));
+    const previousLogoUrl = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT slug FROM catalog_institutions WHERE slug = ${slug} FOR UPDATE`);
+      const [existing] = await tx.select().from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
+      const previous = existing?.logoUrl || null;
+      const values = {
+        slug,
+        name: existing?.name || institution.name,
+        nameEn: existing?.nameEn || institution.nameEn,
+        region: existing?.region || institution.region,
+        type: existing?.type || institution.type,
+        logoUrl: `r2:${objectKey}`,
+        domain: existing?.domain || institution.domain || null,
+        status: existing?.status || "published",
+        sortOrder: existing?.sortOrder || 0,
+        updatedAt: now,
+      };
+      await tx.insert(catalogInstitutions).values({ ...values, createdAt: existing?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
+      await tx.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "institution_logo", entityId: slug, beforeJson: previous, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
+      return previous;
+    });
+    if (previousLogoUrl?.startsWith("r2:")) await deleteObject(previousLogoUrl.slice(3)).catch((error) => console.warn("[logo-upload] previous object cleanup failed", error instanceof Error ? error.message : "unknown"));
     invalidateCatalogCache();
     return Response.json({ ok: true, logoUrl: `/api/logos/${slug}` }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch {

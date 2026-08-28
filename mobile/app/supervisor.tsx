@@ -3,12 +3,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
+import { Redirect } from "expo-router";
 import React, { useMemo, useState } from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AppearanceSettings } from "@/src/components/AppearanceSettings";
-import { AppButton, Card, EmptyState, Field, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
+import { SearchPicker } from "@/src/components/SearchPicker";
+import { AppButton, Card, EmptyState, ErrorState, Field, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
 import { absoluteUrl, api, ApiError, getApiToken, jsonBody } from "@/src/lib/api";
 import { assetMimeType } from "@/src/lib/file-types";
 import { useAuth } from "@/src/providers/AuthProvider";
@@ -27,15 +29,15 @@ const statuses = ["assigned", "reviewing", "planned", "producing", "available", 
 const labels: Record<string, string> = { assigned: "مسند", reviewing: "مراجعة", planned: "مخطط", producing: "إنتاج", available: "متاح", declined: "متعذر" };
 
 export default function Supervisor() {
-  const { user } = useAuth();
+  const { user, loading: authLoading, offline, token, authError, refresh: refreshAuth } = useAuth();
   const { colors } = useTheme();
   const client = useQueryClient();
   const allowed = user?.role === "supervisor" || user?.role === "admin";
   const [tab, setTab] = useState<Tab>("requests");
   const [feedback, setFeedback] = useState("");
   const [openingFile, setOpeningFile] = useState<number | null>(null);
-  const workspace = useQuery({ queryKey: ["supervisor-workspace"], queryFn: () => api<Workspace>("/api/supervisor/workspace"), enabled: allowed });
-  const requests = useQuery({ queryKey: ["supervisor-requests"], queryFn: () => api<RequestsPayload>("/api/supervisor/requests"), enabled: allowed });
+  const workspace = useQuery({ queryKey: ["supervisor-workspace", user?.id], queryFn: () => api<Workspace>("/api/supervisor/workspace"), enabled: !authLoading && allowed });
+  const requests = useQuery({ queryKey: ["supervisor-requests", user?.id], queryFn: () => api<RequestsPayload>("/api/supervisor/requests"), enabled: !authLoading && allowed });
 
   const refresh = async () => {
     await Promise.all([
@@ -49,6 +51,9 @@ export default function Supervisor() {
     catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر تنفيذ الإجراء"); }
   };
 
+  if (authLoading) return <Screen><LoadingState label="جارٍ التحقق من صلاحية الإشراف..." /></Screen>;
+  if (!user && offline && token) return <Screen><AppHeader title="مساحة المشرف" back /><ErrorState title="تعذر استعادة الجلسة" text={authError || "تحقق من اتصالك ثم أعد المحاولة."} onRetry={() => void refreshAuth()} /></Screen>;
+  if (!user) return <Redirect href="/(auth)/login?return_to=%2Fsupervisor" />;
   if (!allowed) return <Screen><AppHeader title="مساحة المشرف" back /><EmptyState icon="lock-closed-outline" title="غير مصرح" text="هذه المساحة تظهر فقط للمشرفين الذين عيّنتهم الإدارة." /></Screen>;
   if (workspace.isLoading || requests.isLoading) return <Screen><LoadingState label="جارٍ تجهيز مساحة الإشراف..." /></Screen>;
   if (workspace.isError || requests.isError || !workspace.data || !requests.data) return <Screen><AppHeader title="مساحة المشرف" back /><EmptyState icon="cloud-offline-outline" title="تعذر تحميل مساحة الإشراف" text="تحقق من الاتصال ثم أعد المحاولة." action={<AppButton title="إعادة المحاولة" onPress={() => { void workspace.refetch(); void requests.refetch(); }} />} /></Screen>;
@@ -76,7 +81,7 @@ function RequestQueue({ rows, colors, run, openingFile, onOpenFile }: { rows: Re
       {row.notes ? <Text style={[styles.notes, { color: colors.text }]}>{row.notes}</Text> : null}
       <Text style={[styles.meta, { color: colors.textSoft }]}>{row.attachmentsCount} مرفقات · {new Date(row.createdAt).toLocaleDateString("ar-SA")}</Text>
       {row.files?.map((file) => <Pressable key={file.id} accessibilityRole="button" accessibilityLabel={`فتح المرفق ${file.originalName}`} onPress={() => void onOpenFile(file)} disabled={openingFile === file.id} style={[styles.file, { borderColor: colors.border, opacity: openingFile === file.id ? .55 : 1 }]}><Ionicons name={openingFile === file.id ? "hourglass-outline" : "document-outline"} size={17} color={colors.primary} /><Text numberOfLines={1} style={[styles.fileName, { color: colors.text }]}>{file.originalName}</Text><Text style={[styles.fileSize, { color: colors.textSoft }]}>{openingFile === file.id ? "جارٍ الفتح" : `${Math.ceil(file.sizeBytes / 1024)} KB`}</Text></Pressable>)}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statuses}>{statuses.map((status) => <Pressable key={status} onPress={() => run(() => api("/api/supervisor/requests", { method: "PATCH", body: jsonBody({ id: row.id, status }) }), "تم تحديث الطلب وإشعار الطالب")} style={[styles.status, { backgroundColor: row.status === status ? colors.primary : colors.surfaceAlt }]}><Text style={{ color: row.status === status ? "#FFF" : colors.text, fontSize: 8, fontWeight: "800" }}>{labels[status]}</Text></Pressable>)}</ScrollView>
+      <SearchPicker label="حالة الطلب" value={row.status} placeholder="اختر الحالة التالية" items={statuses.map((status) => ({ key: status, label: labels[status] || "حالة غير معروفة" }))} onSelect={(item) => void run(() => api("/api/supervisor/requests", { method: "PATCH", body: jsonBody({ id: row.id, status: item.key }) }), "تم تحديث الطلب وإشعار الطالب")} />
     </Card>) : <EmptyState icon="checkmark-done-circle-outline" title="الطابور فارغ" text="لا توجد طلبات جديدة ضمن نطاق إشرافك الآن." />}
   </>;
 }
@@ -127,7 +132,7 @@ function ContentManager({ data, colors, run }: { data: Workspace; colors: Return
   if (!data.courses.length) return <EmptyState icon="albums-outline" title="لا توجد مواد مسندة" text="تحتاج الإدارة إلى ربط حسابك بجامعة أو تخصص أو مادة قابلة للتحرير." />;
   return <>
     <SectionTitle title="المادة المسندة" subtitle="أنشئ الوحدات والدروس وارفع الفيديو إلى المخزن الخاص" />
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.courses}>{data.courses.map((course) => <Pressable key={course.slug} onPress={() => changeCourse(course.slug)} style={[styles.courseChip, { backgroundColor: courseSlug === course.slug ? colors.primary : colors.surface, borderColor: courseSlug === course.slug ? colors.primary : colors.border }]}><Text style={{ color: courseSlug === course.slug ? "#FFF" : colors.text, fontSize: 9, fontWeight: "900" }}>{course.code || course.title}</Text></Pressable>)}</ScrollView>
+    <SearchPicker label="المادة المسندة" value={courseSlug} placeholder="اختر المادة التي تريد إدارتها" items={data.courses.map((course) => ({ key: course.slug, label: course.title, detail: `${course.university} · ${course.specialty}` }))} onSelect={(item) => changeCourse(item.key)} />
     {selected ? <Card><Text style={[styles.title, { color: colors.text }]}>{selected.title}</Text><Text style={[styles.meta, { color: colors.textSoft }]}>{selected.university} · {selected.specialty}</Text></Card> : null}
     <SectionTitle title="إضافة وحدة" />
     <Card><Field label="عنوان الوحدة" value={unitTitle} onChangeText={setUnitTitle} placeholder="مثال: أساسيات الفصل الأول" /><AppButton title="إنشاء الوحدة" icon="add-circle-outline" disabled={!courseSlug || unitTitle.trim().length < 2} onPress={addUnit} /></Card>

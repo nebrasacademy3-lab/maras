@@ -5,17 +5,18 @@ import React from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { Image, Pressable, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
-import { Card, EmptyState, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
+import { useAuthRestoreState } from "@/src/components/AuthRestoreState";
+import { AppButton, Card, EmptyState, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
 import { absoluteUrl, api } from "@/src/lib/api";
-import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { Catalog, Dashboard } from "@/src/types";
 
 export default function LearningRoom() {
-  const { slug } = useLocalSearchParams<{ slug: string }>(); const { user } = useAuth(); const { colors } = useTheme();
+  const { slug } = useLocalSearchParams<{ slug: string }>(); const { user, authReady, restoration } = useAuthRestoreState({ title: "غرفة التعلم", loadingLabel: "جارٍ استعادة صلاحية المادة...", back: true }); const { colors } = useTheme();
   const catalog = useQuery({ queryKey: ["catalog"], queryFn: () => api<Catalog>("/api/mobile/catalog") });
-  const dashboard = useQuery({ queryKey: ["dashboard", user?.id], queryFn: () => api<Dashboard>("/api/mobile/dashboard"), enabled: Boolean(user) });
-  if (!user) return <Screen><AppHeader title="غرفة التعلم" back /><EmptyState title="سجّل الدخول" text="الوصول إلى المادة مرتبط بحساب الطالب." /></Screen>;
+  const dashboard = useQuery({ queryKey: ["dashboard", user?.id], queryFn: () => api<Dashboard>("/api/mobile/dashboard"), enabled: authReady && Boolean(user) });
+  if (restoration) return restoration;
+  if (!user) return <Screen><AppHeader title="غرفة التعلم" back /><EmptyState title="سجّل الدخول" text="الوصول إلى المادة مرتبط بحساب الطالب." action={<AppButton title="تسجيل الدخول والمتابعة" onPress={() => router.push({ pathname: "/(auth)/login", params: { return_to: `/learn/${slug}` } })} />} /></Screen>;
   if (catalog.isLoading || dashboard.isLoading) return <Screen><LoadingState /></Screen>;
   const course = catalog.data?.courses.find((item) => item.slug === slug); const owned = dashboard.data?.owned.find((item) => item.slug === slug); const progress = dashboard.data?.progress.filter((row) => row.courseSlug === slug) || [];
   if (!course || !owned) return <Screen><AppHeader title="غرفة التعلم" back /><EmptyState title="لا توجد صلاحية نشطة" text="فعّل المادة من حسابك ثم أعد المحاولة." /></Screen>;

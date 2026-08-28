@@ -17,13 +17,14 @@ test("assistant is excluded from web and Expo admin surfaces", async () => {
   assert.doesNotMatch(webAdmin, /<MerasAssistant/);
 });
 
-test("commerce controls use server-backed state and live badges", async () => {
-  const [state, actions, header, mobileHeader, course] = await Promise.all([
+test("commerce controls use server-backed state and keep saved courses reachable", async () => {
+  const [state, actions, header, mobileHeader, course, mobileAccount] = await Promise.all([
     read("components/commerce-state.tsx"),
     read("components/course-actions.tsx"),
     read("components/site-header.tsx"),
     read(new URL("../mobile/src/components/AppHeader.tsx", root)),
     read(new URL("../mobile/app/course/[slug].tsx", root)),
+    read(new URL("../mobile/app/(tabs)/account.tsx", root)),
   ]);
   assert.match(state, /syncCommerce/);
   assert.match(state, /setFavorite/);
@@ -33,8 +34,12 @@ test("commerce controls use server-backed state and live badges", async () => {
   assert.match(actions, /is-added/);
   assert.match(header, /cartSlugs\.length/);
   assert.match(header, /favoriteSlugs\.length/);
+  assert.match(mobileHeader, /queryKey:\s*\["cart"/);
   assert.match(mobileHeader, /cartCount/);
-  assert.match(mobileHeader, /favoriteCount/);
+  assert.match(mobileHeader, /badge\(unread\)/);
+  assert.match(course, /queryKey:\s*\["favorites"/);
+  assert.match(course, /\/api\/mobile\/favorites/);
+  assert.match(mobileAccount, /router\.push\("\/favorites"\)/);
   assert.match(course, /onMutate: async/);
   assert.match(course, /active: !inCart/);
 });

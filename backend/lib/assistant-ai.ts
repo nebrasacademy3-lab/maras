@@ -7,16 +7,49 @@ type ChatResponse = { choices?: Array<{ message?: { content?: string | Array<{ t
 
 const INTERNAL_ROUTES = [
   "/", "/login", "/register", "/forgot-password", "/dashboard", "/courses", "/universities",
-  "/request-course", "/support", "/contact", "/how-it-works", "/terms", "/privacy", "/refund-policy",
+  "/request-course", "/support", "/contact", "/cart", "/favorites", "/how-it-works", "/terms", "/privacy", "/refund-policy",
   "/content-policy", "/accessibility", "/notifications", "/supervisor", "/admin",
-];
+] as const;
 
-function safeInternalHref(href: string, user: SessionUser | null) {
-  if (!href.startsWith("/") || href.startsWith("//") || href.includes("\\")) return false;
-  const path = href.split(/[?#]/)[0];
-  if (!INTERNAL_ROUTES.some((route) => path === route || path.startsWith(`${route}/`))) return false;
-  if (path.startsWith("/admin") && user?.role !== "admin") return false;
-  if (path.startsWith("/supervisor") && !user?.role?.match(/admin|supervisor/)) return false;
+const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;
+const SAFE_SLUG = /^[a-z0-9][a-z0-9._-]{0,79}$/i;
+const STATIC_INTERNAL_ROUTES = new Set<string>(INTERNAL_ROUTES);
+const DASHBOARD_VIEWS = new Set(["overview", "courses", "learning", "requests", "orders", "notifications", "support", "account"]);
+
+function singleQueryValue(query: string, key: string) {
+  if (!query || query.includes("?")) return null;
+  const entries = Array.from(new URLSearchParams(query).entries());
+  return entries.length === 1 && entries[0]?.[0] === key ? entries[0][1] : null;
+}
+
+function safeDynamicRoute(path: string) {
+  for (const prefix of ["/courses/", "/universities/", "/learn/"] as const) {
+    if (!path.startsWith(prefix)) continue;
+    const encodedSlug = path.slice(prefix.length);
+    if (!encodedSlug || encodedSlug.includes("/")) return false;
+    try { return SAFE_SLUG.test(decodeURIComponent(encodedSlug)); } catch { return false; }
+  }
+  return false;
+}
+
+export function safeInternalHref(href: string, user: SessionUser | null) {
+  if (!href || href.length > 500 || href !== href.trim() || !href.startsWith("/") || href.startsWith("//") || href.includes("\\") || href.includes("#") || CONTROL_CHARACTER.test(href)) return false;
+  const queryIndex = href.indexOf("?");
+  const path = queryIndex === -1 ? href : href.slice(0, queryIndex);
+  const query = queryIndex === -1 ? null : href.slice(queryIndex + 1);
+  let allowed = false;
+  if (query === null) allowed = STATIC_INTERNAL_ROUTES.has(path) || safeDynamicRoute(path);
+  else if (path === "/dashboard") {
+    const view = singleQueryValue(query, "view");
+    allowed = Boolean(view && DASHBOARD_VIEWS.has(view));
+  } else if (path === "/supervisor") allowed = singleQueryValue(query, "view") === "requests";
+  else if (path === "/courses") {
+    const q = singleQueryValue(query, "q");
+    allowed = Boolean(q && q.trim() === q && q.length <= 120 && !CONTROL_CHARACTER.test(q));
+  }
+  if (!allowed) return false;
+  if (path === "/admin" && user?.role !== "admin") return false;
+  if (path === "/supervisor" && user?.role !== "admin" && user?.role !== "supervisor") return false;
   return true;
 }
 

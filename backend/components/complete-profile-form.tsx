@@ -5,6 +5,7 @@ import { ArrowLeft, GraduationCap, Phone, Sparkles, UserRound } from "lucide-rea
 import type { Institution } from "@/lib/data";
 import { useAcademicPrograms } from "@/components/use-academic-programs";
 import { ACADEMIC_LEVELS } from "@/lib/academic-levels";
+import { safeInternalReturnPath } from "@/lib/internal-return-route";
 
 export function CompleteProfileForm({ initial, institutions }: { initial: { fullName: string; phone: string; universitySlug: string; specialty: string; academicLevel?: string | null }; institutions: Institution[] }) {
   const [form, setForm] = useState(initial);
@@ -16,10 +17,19 @@ export function CompleteProfileForm({ initial, institutions }: { initial: { full
     event.preventDefault();
     setLoading(true);
     setError("");
+    const queryTarget = safeInternalReturnPath(new URLSearchParams(window.location.search).get("return_to"));
     const response = await fetch("/api/profile", { method: "PATCH", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(form) });
     const data = await response.json() as { error?: string; next?: string };
     if (!response.ok) { setError(data.error || "تعذر حفظ البيانات"); setLoading(false); return; }
-    window.location.assign(data.next || "/onboarding");
+    if (queryTarget) sessionStorage.setItem("meras_return_to", queryTarget);
+    const next = safeInternalReturnPath(data.next, "/onboarding");
+    if (next === "/onboarding") {
+      window.location.assign(next);
+      return;
+    }
+    const storedTarget = queryTarget || sessionStorage.getItem("meras_return_to");
+    sessionStorage.removeItem("meras_return_to");
+    window.location.assign(safeInternalReturnPath(storedTarget, next));
   };
 
   return <form className="auth-form" onSubmit={submit}>

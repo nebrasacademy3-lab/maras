@@ -28,10 +28,12 @@ test("production server serves public web/mobile contracts and reports database 
   t.after(() => child.kill("SIGTERM"));
   await waitForServer(`${base}/login`, child);
 
-  for (const path of ["/", "/login", "/register", "/courses", "/universities", "/api/catalog/search", "/api/mobile/catalog", "/api/catalog/programs?institution=ksu", "/api/public/settings"]) {
+  for (const path of ["/", "/login", "/register", "/courses", "/universities", "/api/catalog/search", "/api/mobile/catalog", "/api/public/settings"]) {
     const response = await fetch(`${base}${path}`);
     assert.equal(response.status, 200, `${path} should be public and healthy`);
   }
+  const missingInstitutionPrograms = await fetch(`${base}/api/catalog/programs?institution=ksu`);
+  assert.equal(missingInstitutionPrograms.status, 404, "production without a database must not synthesize demo institution programs");
 
   const page = await fetch(`${base}/login`);
   assert.match(await page.text(), /تسجيل الدخول/);

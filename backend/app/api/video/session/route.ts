@@ -1,13 +1,14 @@
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess } from "@/db/schema";
-import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { checkRateLimit, clientIp, getSessionUser } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { getCourseCatalog } from "@/lib/catalog-store";
+import { isMobileRequest } from "@/lib/mobile-api";
 import { createVideoToken } from "@/lib/video-token";
 
 export async function POST(request: Request) {
-  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!isMobileRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const secret = process.env.VIDEO_SIGNING_SECRET?.trim();
   if (!secret || secret.length < 24) return jsonError("بث الفيديو الخاص غير مفعّل بعد", 503);
   let payload: Record<string, unknown>;

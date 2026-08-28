@@ -2,8 +2,10 @@ import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { cartItems, courseAccess } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
-import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { checkRateLimit, getSessionUser } from "@/lib/auth";
 import { getCoursesCatalog } from "@/lib/catalog-store";
+import { isMobileRequest } from "@/lib/mobile-api";
+import { getMutationPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 async function cartFor(userEmail: string) {
   const [rows, accessRows, courses] = await Promise.all([
@@ -25,12 +27,19 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!isMobileRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول لإضافة المواد إلى السلة", 401);
+  if (user.role !== "student") return jsonError("السلة متاحة لحساب الطالب فقط", 403);
   if (!await checkRateLimit("cart-write", `user:${user.id}`, 120, 60)) return jsonError("تحديثات كثيرة للسلة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات السلة غير صالحة"); }
+  if (payload.clear !== true && payload.active !== false) {
+    let platformSettings;
+    try { platformSettings = await getMutationPublicSettings(); }
+    catch { return jsonError("تعذر التحقق من حالة الشراء الآن. لم تُضف المادة.", 503); }
+    if (!settingEnabled(platformSettings.purchases_enabled)) return jsonError(platformSettings.maintenance_message || "إضافة المواد والشراء متوقفان مؤقتًا.", 503);
+  }
   const db = getDb();
   if (payload.clear === true) {
     await db.delete(cartItems).where(eq(cartItems.userEmail, user.email));

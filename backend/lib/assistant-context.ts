@@ -1,7 +1,7 @@
 import type { SessionUser } from "@/lib/auth";
 import { and, count, desc, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseAccess, courseRequests, lessonProgress, notificationsDb, orders, supervisorAssignments, supportReplies, supportTickets, users } from "@/db/schema";
+import { courseAccess, courseRequests, lessonProgress, notificationsDb, orderItems, orders, supervisorAssignments, supportReplies, supportTickets, users } from "@/db/schema";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 import type { PublicSettings } from "@/lib/platform-settings";
 import { whatsappHref } from "@/lib/platform-settings";
@@ -34,7 +34,14 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     const replyRows = ticketRows.length
       ? await db.select().from(supportReplies).where(and(eq(supportReplies.internal, false), inArray(supportReplies.ticketId, ticketRows.map((ticket) => ticket.id)))).orderBy(desc(supportReplies.createdAt)).limit(100)
       : [];
+    const orderItemRows = orderRows.length
+      ? await db.select({ orderNumber: orderItems.orderNumber, courseSlug: orderItems.courseSlug }).from(orderItems).where(inArray(orderItems.orderNumber, orderRows.map((order) => order.orderNumber)))
+      : [];
     const title = (slug: string) => courses.find((course) => course.slug === slug)?.title || slug;
+    const orderTitles = (order: (typeof orderRows)[number]) => {
+      const slugs = orderItemRows.filter((item) => item.orderNumber === order.orderNumber).map((item) => item.courseSlug);
+      return (slugs.length ? slugs : [order.courseSlug]).map(title).join(" + ");
+    };
     const tickets = ticketRows.map((ticket) => {
       const replies = replyRows.filter((reply) => reply.ticketId === ticket.id);
       return `${ticket.ticketNumber}:${ticket.title}:${ticket.status}${replies[0] ? `:آخر رد=${replies[0].body.slice(0, 220)}` : ""}`;
@@ -42,7 +49,7 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     privateContext = `\nبيانات حساب المستخدم الحالي فقط (لا تعرض بريدًا أو رقمًا إلا إذا طلب المستخدم تأكيد بيانات حسابه):
 المواد المفعلة=${accessRows.map((row) => `${title(row.courseSlug)}${row.expiresAt ? ` حتى ${row.expiresAt}` : ""}`).join("، ") || "لا توجد"}.
 التقدم=${progressRows.length ? progressRows.map((row) => `${title(row.courseSlug)}:${row.completed ? "مكتمل" : `${row.watchedSeconds} ثانية`}`).slice(0, 20).join("، ") : "لا يوجد"}.
-الطلبات المالية=${orderRows.map((row) => `${row.orderNumber}:${title(row.courseSlug)}:${row.status}:${row.total} ${row.currency}`).join("، ") || "لا توجد"}.
+الطلبات المالية=${orderRows.map((row) => `${row.orderNumber}:${orderTitles(row)}:${row.status}:${row.total} ${row.currency}`).join("، ") || "لا توجد"}.
 طلبات المواد=${requestRows.map((row) => `#${row.id}:${row.courseName}:${row.status}`).join("، ") || "لا توجد"}.
 تذاكر الدعم=${tickets.join("، ") || "لا توجد"}.
 الإشعارات=${noticeRows.map((row) => `${row.title}:${row.body.slice(0, 180)}`).join("، ") || "لا توجد"}.`;

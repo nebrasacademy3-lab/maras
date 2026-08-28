@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("طلب غير مسموح", 403);
   const user = await getSessionUser(request);
-  const releaseConnection = acquireSyncConnection(`${user?.id || "public"}:${clientIp(request)}`, user ? 5 : 100);
+  const releaseConnection = acquireSyncConnection(`${user?.id || "public"}:${clientIp(request)}`, user ? 5 : 2);
   if (!releaseConnection) return jsonError("عدد اتصالات التحديث الفوري كبير", 429);
 
   const allowed = new Set(syncChannelsForUser(user));

@@ -8,6 +8,7 @@ import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollVie
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BrandMark } from "@/src/components/Brand";
 import { api, ApiError, jsonBody } from "@/src/lib/api";
+import { resolveAssistantRoute } from "@/src/lib/assistantRoute";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 
@@ -16,30 +17,11 @@ type Reply = { answer: string; actions: Action[]; suggestions?: string[] };
 type Message = { id: string; role: "user" | "assistant"; text: string; actions?: Action[]; suggestions?: string[] };
 const initial: Message = { id: "welcome", role: "assistant", text: "أهلًا بك، أنا مساعد مراس الذكي. اسألني عن الجامعات والتخصصات والمواد والتسجيل والدفع والمشغل وطلب مادة والدعم.", suggestions: ["ما لقيت مادتي", "كيف أشاهد درسًا مجانيًا؟", "كيف أتواصل مع الدعم؟"] };
 
-function mobileRoute(href: string) {
-  if (/^https:\/\//.test(href)) return href;
-  const path = href.split(/[?#]/)[0] || "/"; const query = new URLSearchParams(href.split("?")[1] || "");
-  if (path === "/request-course" || query.get("view") === "requests") return "/requests";
-  if (path === "/support") return "/support";
-  if (path === "/contact") return "/contact";
-  if (path === "/cart") return "/cart";
-  if (path === "/favorites") return "/favorites";
-  if (path === "/dashboard") { const view = query.get("view"); if (view === "notifications") return "/notifications"; if (view === "account") return "/profile"; if (view === "requests") return "/requests"; if (view === "orders") return "/(tabs)/account"; return "/(tabs)/learning"; }
-  if (path === "/courses") return "/(tabs)/courses";
-  if (path.startsWith("/courses/")) return path.replace("/courses/", "/course/");
-  if (path.startsWith("/learn/")) return path.replace("/learn/", "/course/");
-  if (path === "/universities") return "/(tabs)/universities";
-  if (path.startsWith("/universities/")) return path.replace("/universities/", "/university/");
-  if (["/login", "/register"].includes(path)) return `/(auth)${path}`;
-  if (["/admin", "/supervisor", "/notifications"].includes(path)) return path;
-  return "/support";
-}
-
 export default function Assistant() {
   const { colors, dark } = useTheme(); const { user } = useAuth(); const [messages, setMessages] = useState<Message[]>([initial]); const [input, setInput] = useState(""); const [sending, setSending] = useState(false); const scroll = useRef<ScrollView>(null);
   const history = useMemo(() => messages.slice(-8).map((item) => ({ role: item.role, text: item.text })), [messages]);
   const send = async (question = input) => { const text = question.trim(); if (text.length < 2 || sending) return; setInput(""); const userMessage: Message = { id: `u-${Date.now()}`, role: "user", text }; setMessages((rows) => [...rows, userMessage]); setSending(true); try { const reply = await api<Reply>("/api/assistant", { method: "POST", body: jsonBody({ question: text, history }) }); setMessages((rows) => [...rows, { id: `a-${Date.now()}`, role: "assistant", text: reply.answer, actions: reply.actions, suggestions: reply.suggestions }]); } catch (reason) { setMessages((rows) => [...rows, { id: `e-${Date.now()}`, role: "assistant", text: reason instanceof ApiError ? reason.message : "تعذر الوصول للمساعد الآن. يمكنك فتح الدعم مباشرة." }]); } finally { setSending(false); setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 120); } };
-  const openAction = async (href: string) => { const route = mobileRoute(href); if (/^https:\/\//.test(route)) await Linking.openURL(route); else router.push(route as never); };
+  const openAction = async (href: string) => { const route = resolveAssistantRoute(href); if (!route) { router.push("/support"); return; } if (typeof route === "string" && /^https:\/\//.test(route)) await Linking.openURL(route); else router.push(route as never); };
   return <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}><View style={[styles.header, { borderBottomColor: colors.border }]}><Pressable onPress={() => router.back()} style={[styles.close, { backgroundColor: colors.surface }]}><Ionicons name="close" size={23} color={colors.text} /></Pressable><View style={styles.headCopy}><Text style={[styles.title, { color: colors.text }]}>مساعد مراس</Text><Text style={[styles.online, { color: colors.success }]}>● متصل بسياق المنصة{user ? " وحسابك" : ""}</Text></View><BrandMark size={52} whiteTile={!dark} /></View><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}><ScrollView ref={scroll} contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>{messages.map((message) => <View key={message.id} style={[styles.bubble, message.role === "user" ? styles.userBubble : styles.assistantBubble, { backgroundColor: message.role === "user" ? colors.primary : colors.surface, borderColor: colors.border }]}>{message.role === "assistant" && <View style={styles.assistantLabel}><BrandMark size={29} /><Text style={{ color: colors.primary, fontSize: 9, fontWeight: "900" }}>مراس</Text></View>}<Text style={[styles.messageText, { color: message.role === "user" ? "#FFFFFF" : colors.text }]}>{message.text}</Text>{message.actions?.length ? <View style={styles.actions}>{message.actions.map((action) => <Pressable key={`${message.id}-${action.href}`} onPress={() => openAction(action.href)} style={[styles.action, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="arrow-back" size={14} color={colors.primary} /><Text style={{ color: colors.primary, fontSize: 10, fontWeight: "800" }}>{action.label}</Text></Pressable>)}</View> : null}{message.suggestions?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestions}>{message.suggestions.map((suggestion) => <Pressable key={`${message.id}-${suggestion}`} onPress={() => send(suggestion)} style={[styles.suggestion, { borderColor: colors.border }]}><Text style={{ color: colors.textSoft, fontSize: 9 }}>{suggestion}</Text></Pressable>)}</ScrollView> : null}</View>)}{sending && <View style={[styles.typing, { backgroundColor: colors.surface }]}><ActivityIndicator size="small" color={colors.primary} /><Text style={{ color: colors.textSoft, fontSize: 10 }}>يفكر في أفضل إجابة...</Text></View>}</ScrollView><View style={[styles.composer, { backgroundColor: colors.surface, borderColor: colors.border }]}><Pressable disabled={input.trim().length < 2 || sending} onPress={() => send()} style={[styles.send, { backgroundColor: input.trim().length >= 2 ? colors.primary : colors.surfaceAlt }]}><Ionicons name="arrow-up" size={21} color={input.trim().length >= 2 ? "#FFF" : colors.textSoft} /></Pressable><TextInput multiline value={input} onChangeText={setInput} placeholder="اسأل عن أي شيء في مراس..." placeholderTextColor={colors.textSoft} style={[styles.input, { color: colors.text }]} textAlign="right" maxLength={500} /></View></KeyboardAvoidingView></SafeAreaView>;
 }
 

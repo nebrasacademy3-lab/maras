@@ -4,7 +4,9 @@ import { StyleSheet, View } from "react-native";
 import { useTheme } from "@/src/providers/ThemeProvider";
 
 export function BrandMark({ size = 58, whiteTile = false }: { size?: number; whiteTile?: boolean }) {
-  return <View style={[styles.markTile, { width: size, height: size, borderRadius: size * .28 }, whiteTile && styles.whiteTile]}><Image source={require("@/assets/icon.png")} style={{ width: size, height: size, borderRadius: size * .28 }} contentFit="cover" /></View>;
+  const { dark } = useTheme();
+  const source = dark && !whiteTile ? require("@/assets/brand-mark-dark.png") : require("@/assets/brand-mark.png");
+  return <View accessibilityRole="image" accessibilityLabel="شعار مراس العلم" style={[styles.markTile, { width: size, height: size, borderRadius: size * .28 }, whiteTile && styles.whiteTile]}><Image source={source} style={{ width: size * .9, height: size * .56 }} contentFit="contain" cachePolicy="memory-disk" /></View>;
 }
 
 export function BrandLogo({ width = 170 }: { width?: number }) {
@@ -13,6 +15,6 @@ export function BrandLogo({ width = 170 }: { width?: number }) {
 }
 
 const styles = StyleSheet.create({
-  markTile: { alignItems: "center", justifyContent: "center" },
+  markTile: { alignItems: "center", justifyContent: "center", overflow: "visible" },
   whiteTile: { backgroundColor: "#FFFFFF", shadowColor: "#000", shadowOpacity: .08, shadowRadius: 12, shadowOffset: { width: 0, height: 5 }, elevation: 3 },
 });

@@ -11,28 +11,33 @@ import { HeroSearch } from "@/components/hero-search";
 import { UniversityCard } from "@/components/university-card";
 import { CourseCard } from "@/components/course-card";
 import { AnimatedStats } from "@/components/animated-stats";
+import { BrandMark } from "@/components/brand-mark";
 import { faq, reviews } from "@/lib/data";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
-import { getPublicSettings } from "@/lib/platform-settings";
+import { getFailClosedPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 export const revalidate = 60;
 
 export default async function Home() {
-  const [institutions, courses, settings] = await Promise.all([getInstitutionsCatalog(), getCoursesCatalog(), getPublicSettings()]);
+  const [institutions, courses, settings] = await Promise.all([getInstitutionsCatalog(), getCoursesCatalog(), getFailClosedPublicSettings()]);
   const featuredUniversities = institutions.filter((institution) => institution.featured).slice(0, 6);
   const featuredCourses = courses.filter((course) => course.featured).slice(0, 6);
   const universityPreview = featuredUniversities.length ? featuredUniversities : institutions.slice(0, 6);
   const coursePreview = featuredCourses.length ? featuredCourses : courses.slice(0, 6);
+  const registrationEnabled = settingEnabled(settings.registration_enabled);
+  const requestsEnabled = settingEnabled(settings.course_requests_enabled);
+  const supportEnabled = settingEnabled(settings.support_enabled);
+  const maintenanceMessage = settings.maintenance_message.trim();
   const platformStats = [
     { value: institutions.length, label: "جامعة وكلية وجهة تقنية" },
     { value: courses.length, label: "مادة منشورة" },
     { value: "24/7", label: "مساعد مراس الذكي" },
-    { value: "100%", label: "تجربة متجاوبة" },
+    { value: "RTL", label: "تجربة عربية متكاملة" },
   ];
   return (
-    <main>
-      <div className="top-announcement">
-        <div className="container"><span><Sparkles size={14} /> جديد مراس</span><p>{settings.announcement || "أول درس مجاني في كل مادة — جرّب قبل الاشتراك"}</p><Link href="/courses">استكشف المواد <ArrowLeft size={14} /></Link></div>
+    <main id="main-content">
+      <div className={`top-announcement ${maintenanceMessage ? "maintenance-announcement" : ""}`} role="status">
+        <div className="container"><span><Sparkles size={14} /> {maintenanceMessage ? "تنبيه تشغيلي" : "جديد مراس"}</span><p>{maintenanceMessage || settings.announcement || "أول درس مجاني في كل مادة — جرّب قبل الاشتراك"}</p>{!maintenanceMessage && <Link href="/courses">استكشف المواد <ArrowLeft size={14} /></Link>}</div>
       </div>
       <SiteHeader />
 
@@ -49,7 +54,7 @@ export default async function Home() {
 
           <div className="hero-visual" aria-label="تجربة الطالب داخل مراس">
             <div className="hero-dashboard-card">
-              <div className="mock-window-bar"><span /><span /><span /><i>لوحة الطالب</i></div>
+              <div className="mock-window-bar"><span /><span /><span /><BrandMark className="mock-brand-mark" /><i>لوحة الطالب</i></div>
               <div className="mock-welcome"><div><small>مساء الخير، محمد 👋</small><h3>كمّل رحلتك التعليمية</h3></div><span className="mock-bell">3</span></div>
               <div className="mock-progress-card">
                 <div className="mock-course-art"><span>∑</span><i><Play size={15} fill="currentColor" /></i></div>
@@ -123,7 +128,7 @@ export default async function Home() {
         <div className="container experience-grid">
           <div className="experience-card"><div className="experience-icon"><UsersRound size={25} /></div><h3>شرح يراعي محتوى جامعتك</h3><p>كل مادة مرتبطة بجامعتها وتخصصاتها، بدون قوائم مربكة أو محتوى عام بعيد عن مقرر الطالب.</p><Link href="/universities">اختر جامعتك <ArrowLeft size={15} /></Link></div>
           <div className="experience-card featured"><div className="experience-icon"><ShieldCheck size={25} /></div><h3>وصول موثوق ومحتوى محمي</h3><p>الدفع يُعتمد من الخادم، والصلاحية تُمنح بعد تأكيد Tap، والفيديو المدفوع لا يملك رابطًا عامًا.</p><Link href="/how-it-works">اعرف كيف نحمي حسابك <ArrowLeft size={15} /></Link></div>
-          <div className="experience-card"><div className="experience-icon"><Headphones size={25} /></div><h3>دعم يفهم مشكلة الطالب</h3><p>تذكرة للدفع أو الفيديو أو المادة مع حالة واضحة، وإشعار فور وصول رد فريق الدعم.</p><Link href="/support">تواصل مع الدعم <ArrowLeft size={15} /></Link></div>
+          <div className="experience-card"><div className="experience-icon"><Headphones size={25} /></div><h3>دعم يفهم مشكلة الطالب</h3><p>تذكرة للدفع أو الفيديو أو المادة مع حالة واضحة، وإشعار فور وصول رد فريق الدعم.</p>{supportEnabled ? <Link href="/support">تواصل مع الدعم <ArrowLeft size={15} /></Link> : <span className="inline-feature-disabled">استقبال التذاكر متوقف مؤقتًا</span>}</div>
         </div>
       </section>
 
@@ -138,15 +143,15 @@ export default async function Home() {
         <div className="container request-banner">
           <div className="request-banner-icon"><TrendingUp size={34} /></div>
           <div><span>نبني المحتوى حسب احتياجكم</span><h2>ما لقيت مادتك؟ اطلبها في أقل من دقيقة.</h2><p>سنجمع الطلبات حسب الجامعة والتخصص، ونخبرك عندما يبدأ تجهيز الشرح أو يصبح متاحًا.</p></div>
-          <Link href="/request-course" className="button button-white">اطلب توفير مادة <ArrowLeft size={17} /></Link>
+          {requestsEnabled ? <Link href="/request-course" className="button button-white">اطلب توفير مادة <ArrowLeft size={17} /></Link> : <span className="button button-disabled-light" aria-disabled="true">طلبات المواد متوقفة مؤقتًا</span>}
         </div>
       </section>
 
       <section className="section faq-section" id="faq">
-        <div className="container faq-grid"><div className="faq-intro"><span className="section-kicker">الأسئلة الشائعة</span><h2>إجابات مختصرة قبل أن تبدأ</h2><p>وإذا بقي عندك سؤال، فريق الدعم موجود لمساعدتك.</p><Link href="/support" className="button button-ghost">اسأل فريق مراس</Link></div><div className="faq-list">{faq.map((item, index) => <details key={item.q} open={index === 0}><summary>{item.q}<span>+</span></summary><p>{item.a}</p></details>)}</div></div>
+        <div className="container faq-grid"><div className="faq-intro"><span className="section-kicker">الأسئلة الشائعة</span><h2>إجابات مختصرة قبل أن تبدأ</h2><p>وإذا بقي عندك سؤال، فريق الدعم موجود لمساعدتك.</p>{supportEnabled ? <Link href="/support" className="button button-ghost">اسأل فريق مراس</Link> : <span className="button button-disabled" aria-disabled="true">الدعم متوقف مؤقتًا</span>}</div><div className="faq-list">{faq.map((item, index) => <details key={item.q} open={index === 0}><summary>{item.q}<span>+</span></summary><p>{item.a}</p></details>)}</div></div>
       </section>
 
-      <section className="final-cta-section"><div className="container final-cta"><div className="final-cta-glow" /><div><span><Sparkles size={16} /> ابدأ بالدرس المجاني</span><h2>مادتك أوضح عندما يكون الشرح على طريقتك.</h2><p>أنشئ حسابك، اختر جامعتك وتخصصك، وابدأ التجربة مجانًا.</p></div><div><Link href="/register" className="button button-white">أنشئ حسابك مجانًا <ArrowLeft size={17} /></Link><Link href="/courses" className="button button-outline-white">استكشف المواد</Link></div></div></section>
+      <section className="final-cta-section"><div className="container final-cta"><div className="final-cta-glow" /><div><span><Sparkles size={16} /> ابدأ بالدرس المجاني</span><h2>مادتك أوضح عندما يكون الشرح على طريقتك.</h2><p>{registrationEnabled ? "أنشئ حسابك، اختر جامعتك وتخصصك، وابدأ التجربة مجانًا." : "يمكنك استكشاف المواد الآن، وسنفتح التسجيل مجددًا عند جاهزيته."}</p></div><div>{registrationEnabled ? <Link href="/register" className="button button-white">أنشئ حسابك مجانًا <ArrowLeft size={17} /></Link> : <span className="button button-disabled-light" aria-disabled="true">التسجيل متوقف مؤقتًا</span>}<Link href="/courses" className="button button-outline-white">استكشف المواد</Link></div></div></section>
       <SiteFooter />
     </main>
   );
