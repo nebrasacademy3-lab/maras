@@ -29,14 +29,14 @@ test("web appearance preferences provide palettes, font scale, and early hydrati
 
 test("Expo appearance preferences are persisted and mounted for all roles", async () => {
   const [colors, provider, settings, screen, account, admin, supervisor, brand] = await Promise.all([
-    read(new URL("../mobile/src/theme/colors.ts", root)),
-    read(new URL("../mobile/src/providers/ThemeProvider.tsx", root)),
-    read(new URL("../mobile/src/components/AppearanceSettings.tsx", root)),
-    read(new URL("../mobile/src/components/ui.tsx", root)),
-    read(new URL("../mobile/app/(tabs)/account.tsx", root)),
-    read(new URL("../mobile/app/admin.tsx", root)),
-    read(new URL("../mobile/app/supervisor.tsx", root)),
-    read(new URL("../mobile/src/components/Brand.tsx", root)),
+    read(new URL("mobile/src/theme/colors.ts", root)),
+    read(new URL("mobile/src/providers/ThemeProvider.tsx", root)),
+    read(new URL("mobile/src/components/AppearanceSettings.tsx", root)),
+    read(new URL("mobile/src/components/ui.tsx", root)),
+    read(new URL("mobile/app/(tabs)/account.tsx", root)),
+    read(new URL("mobile/app/admin.tsx", root)),
+    read(new URL("mobile/app/supervisor.tsx", root)),
+    read(new URL("mobile/src/components/Brand.tsx", root)),
   ]);
   assert.match(colors, /PaletteId/);
   assert.match(colors, /rose/);

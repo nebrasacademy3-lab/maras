@@ -11,7 +11,7 @@ const ai = await read("lib/assistant-ai.ts");
 const context = await read("lib/assistant-context.ts");
 const route = await read("app/api/assistant/route.ts");
 const web = await read("components/meras-assistant.tsx");
-const mobile = await read("../mobile/app/assistant.tsx");
+const mobile = await read("mobile/app/assistant.tsx");
 
 test("assistant understands a broad Arabic intent vocabulary and has detailed fallbacks", () => {
   assert.match(knowledge, /export type AssistantIntent/);

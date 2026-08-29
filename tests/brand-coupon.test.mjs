@@ -24,8 +24,8 @@ test("coupon service validates active windows and preserves course scope", async
 test("web and Expo footers consume the same live public settings", async () => {
   const [footer, mobileFooter, screen, settingsRoute, brand, favicon, manifest] = await Promise.all([
     read("components/site-footer.tsx"),
-    read(new URL("../mobile/src/components/MobileFooter.tsx", root)),
-    read(new URL("../mobile/src/components/ui.tsx", root)),
+    read(new URL("mobile/src/components/MobileFooter.tsx", root)),
+    read(new URL("mobile/src/components/ui.tsx", root)),
     read("app/api/public/settings/route.ts"),
     read("components/brand-logo.tsx"),
     read("public/favicon.svg"),

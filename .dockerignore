@@ -5,3 +5,7 @@ node_modules
 !.env.example
 npm-debug.log*
 /data
+mobile
+*.zip
+.git
+.gitignore

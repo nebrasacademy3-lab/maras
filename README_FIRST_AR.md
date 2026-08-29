@@ -1,51 +1,43 @@
-# مراس العلم — النسخة الكاملة
+# مراس العلم — نسخة موحدة للنشر والبناء
 
-المجلد يحتوي كل المشروع في ملف واحد:
+هذه النسخة مصممة بحيث **جذر المجلد نفسه هو مشروع Railway**. لا تدخل إلى مجلد فرعي عند النشر.
 
-- `railway/` = الويب + Backend + API + الإدارة + PostgreSQL/Drizzle + الفيديو + الدفع + الإشعارات.
-- `mobile/` = تطبيق Expo Android/iOS الجاهز للبناء.
-
-## 1) رفع الويب والباك إند إلى Railway
-افتح PowerShell داخل المشروع ثم:
+## 1) نشر الويب والباك إند على Railway
+من جذر المشروع (حيث `Dockerfile` و`railway.json`):
 
 ```powershell
-cd railway
-railway login
-railway link
-railway up
+npx @railway/cli@latest login
+npx @railway/cli@latest link
+npx @railway/cli@latest status
+npx @railway/cli@latest up
 ```
 
-اربطه بخدمة مراس الحالية التي تستخدم `https://marase.up.railway.app`.
+اربط الخدمة الحالية الخاصة بـ `https://marase.up.railway.app`، وتأكد أن PostgreSQL مرتبط وأن `DATABASE_URL` يشير لخدمة Postgres.
 
-بعد نجاح النشر افتح:
-`https://marase.up.railway.app/api/health`
+اختبر بعد النشر:
 
-يجب أن ترى `ok: true` و`database: ready`.
+```powershell
+.\CHECK_BACKEND.ps1
+```
 
-## 2) بناء Android APK
-من جذر المشروع:
+- `/api/ping` يثبت أن Next.js نفسه يعمل ولا يعتمد على قاعدة البيانات.
+- `/api/health` يثبت أن Next.js + PostgreSQL يعملان معًا.
+
+## 2) بناء التطبيق
+التطبيق موجود داخل `mobile/`:
 
 ```powershell
 cd mobile
 npm ci
 npx expo-doctor
 npx expo config --type public
-```
-
-في ناتج Expo يجب أن يظهر:
-`apiUrl: 'https://marase.up.railway.app'`
-
-ثم:
-
-```powershell
 npx eas-cli@latest build --platform android --profile preview
 ```
 
-## إصلاح الاتصال في هذه النسخة
-تم إزالة `localhost:3000` كـfallback من التطبيق. رابط Railway مثبت في:
-- `mobile/app.config.ts`
-- `mobile/src/lib/api.ts`
-- `mobile/eas.json`
-- `mobile/.env.example`
+يجب أن يظهر `apiUrl: 'https://marase.up.railway.app'`.
 
-لذلك التطبيق سيستخدم Railway حتى لو لم تضبط `EXPO_PUBLIC_API_URL` يدويًا.
+## متغيرات Railway الأساسية
+انسخ `RAILWAY_VARIABLES.example` إلى Variables مع الاحتفاظ بقيم أسرارك الحقيقية. إذا كان اسم خدمة قاعدة البيانات ليس `Postgres`، غيّر مرجع `${{Postgres.DATABASE_URL}}` ليطابق اسم الخدمة.
+
+## التخزين
+إذا تستخدم الفيديوهات والملفات على Railway Volume، اربطه بالخدمة على `/data` وأبقِ `RAILWAY_RUN_UID=0`.

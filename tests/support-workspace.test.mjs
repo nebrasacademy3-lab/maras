@@ -22,8 +22,8 @@ test("web and Expo support surfaces open a selected conversation from cards", as
     read("components/student-dashboard.tsx"),
     read("components/support-form.tsx"),
     read("components/admin-dashboard.tsx"),
-    read(new URL("../mobile/app/support.tsx", backend)),
-    read(new URL("../mobile/app/admin.tsx", backend)),
+    read(new URL("mobile/app/support.tsx", backend)),
+    read(new URL("mobile/app/admin.tsx", backend)),
   ]);
   assert.match(studentDashboard, /support-ticket-card/);
   assert.match(studentDashboard, /\/support\?ticket=\$\{ticket\.id\}/);

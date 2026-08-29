@@ -39,7 +39,7 @@ test("web sync prefers server-sent events with adaptive polling fallback", async
 });
 
 test("Expo sync provider is foreground-only and invalidates query channels", async () => {
-  const source = await read("../mobile/src/providers/RealtimeSyncProvider.tsx");
+  const source = await read("mobile/src/providers/RealtimeSyncProvider.tsx");
   assert.match(source, /AppState\.addEventListener/);
   assert.match(source, /appState\.current !== "active"/);
   assert.match(source, /invalidateQueries/);

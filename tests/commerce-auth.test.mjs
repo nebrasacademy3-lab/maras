@@ -8,7 +8,7 @@ const read = (path) => readFile(new URL(path, root), "utf8");
 test("assistant is excluded from web and Expo admin surfaces", async () => {
   const [webEnhancements, mobileAssistant, webAdmin] = await Promise.all([
     read("components/deferred-enhancements.tsx"),
-    read(new URL("../mobile/src/components/AssistantFab.tsx", root)),
+    read(new URL("mobile/src/components/AssistantFab.tsx", root)),
     read("components/admin-dashboard.tsx"),
   ]);
   assert.match(webEnhancements, /pathname === "/);
@@ -22,8 +22,8 @@ test("commerce controls use server-backed state and live badges", async () => {
     read("components/commerce-state.tsx"),
     read("components/course-actions.tsx"),
     read("components/site-header.tsx"),
-    read(new URL("../mobile/src/components/AppHeader.tsx", root)),
-    read(new URL("../mobile/app/course/[slug].tsx", root)),
+    read(new URL("mobile/src/components/AppHeader.tsx", root)),
+    read(new URL("mobile/app/course/[slug].tsx", root)),
   ]);
   assert.match(state, /syncCommerce/);
   assert.match(state, /setFavorite/);
@@ -42,9 +42,9 @@ test("commerce controls use server-backed state and live badges", async () => {
 test("auth headers expose the requested desktop and mobile layout", async () => {
   const [webAuth, mobileLogin, mobileRegister, mobileHeader] = await Promise.all([
     read("components/auth-shell.tsx"),
-    read(new URL("../mobile/app/(auth)/login.tsx", root)),
-    read(new URL("../mobile/app/(auth)/register.tsx", root)),
-    read(new URL("../mobile/src/components/AppHeader.tsx", root)),
+    read(new URL("mobile/app/(auth)/login.tsx", root)),
+    read(new URL("mobile/app/(auth)/register.tsx", root)),
+    read(new URL("mobile/src/components/AppHeader.tsx", root)),
   ]);
   assert.match(webAuth, /<SiteHeader \/>/);
   assert.match(webAuth, /className="auth-page"/);

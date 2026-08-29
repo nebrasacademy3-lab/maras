@@ -9,11 +9,11 @@ const read = (relative) => readFile(join(here, "..", relative), "utf8");
 const webCss = await read("app/additions.css");
 const globalCss = await read("app/globals.css");
 const webTheme = await read("components/theme-provider.tsx");
-const mobileTheme = await read("../mobile/src/providers/ThemeProvider.tsx");
-const scaledText = await read("../mobile/src/components/ScaledText.tsx");
-const scaledTextInput = await read("../mobile/src/components/ScaledTextInput.tsx");
-const mobileUi = await read("../mobile/src/components/ui.tsx");
-const mobileSources = await Promise.all((await readFile(join(here, "../../mobile/app/assistant.tsx"), "utf8")).split("\n").slice(0, 8));
+const mobileTheme = await read("mobile/src/providers/ThemeProvider.tsx");
+const scaledText = await read("mobile/src/components/ScaledText.tsx");
+const scaledTextInput = await read("mobile/src/components/ScaledTextInput.tsx");
+const mobileUi = await read("mobile/src/components/ui.tsx");
+const mobileSources = await Promise.all((await readFile(join(here, "../mobile/app/assistant.tsx"), "utf8")).split("\n").slice(0, 8));
 
 test("web font scale is text-only and never zooms the page", () => {
   assert.match(webCss, /--font-scale/);
