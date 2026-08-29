@@ -15,10 +15,8 @@ test("coupon service validates active windows and preserves course scope", async
   assert.match(coupons, /coupon\.startsAt/);
   assert.match(coupons, /coupon\.expiresAt/);
   assert.match(coupons, /courseSlug: coupon\.courseSlug/);
-  assert.match(checkout, /function orderItemQuote\(/);
-  assert.match(checkout, /const eligible = !couponCourseSlug \|\| couponCourseSlug === course\.slug/);
-  assert.match(checkout, /eligible \? Math\.min\(unitPriceCents, remainingDiscountCents\) : 0/);
-  assert.match(checkout, /orderItemQuote\(selected, discount, couponQuote\?\.courseSlug, orderNumber\)/);
+  assert.match(checkout, /const discountIndex = couponQuote\?\.courseSlug/);
+  assert.match(checkout, /const itemDiscount = index === discountIndex \? discount : 0/);
   assert.match(admin, /\["active", "disabled"\]/);
   assert.match(admin, /المادة المحددة للكوبون غير موجودة/);
 });
@@ -40,8 +38,7 @@ test("web and Expo footers consume the same live public settings", async () => {
   assert.match(screen, /<MobileFooter \/>/);
   assert.match(settingsRoute, /cache-control.*no-store/);
   assert.match(brand, /brand-logo-mark-only/);
-  assert.match(favicon, /fill=["']#(?:fff|ffffff)["']/i);
-  assert.match(favicon, /<(?:path|image)\b/);
-  assert.match(manifest, /\/brand\/app-icon-512\.png/);
-  assert.match(manifest, /\/brand\/app-icon-maskable-512\.png/);
+  assert.match(favicon, /fill="#FFFFFF"/);
+  assert.match(favicon, /<path/);
+  assert.match(manifest, /\/brand\/mark-m\.png/);
 });

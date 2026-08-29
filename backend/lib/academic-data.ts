@@ -192,38 +192,19 @@ export function getProgramCourses(program: AcademicProgram | string): string[] {
 
 export const allPrograms = unique(Object.values(profiles).flat().concat(Object.values(exactOverrides).flat())).sort((a, b) => a.name.localeCompare(b.name, "ar"));
 
-const normalizeProgramName = (value: string) => value.normalize("NFKC").replace(/ـ/g, "").replace(/\s+/g, " ").trim();
-
-/** Returns the official name and every known alias as one equivalence set. */
-export function specialtyNameVariants(institutionSlug: string, value: string) {
-  const variants = new Set([normalizeProgramName(value)]);
-  const programs = [...getInstitutionPrograms(institutionSlug), ...allPrograms];
-  // Two passes close aliases that are declared only by one institution (for
-  // example الطب ↔ الطب والجراحة and الصيدلة ↔ دكتور صيدلة).
-  for (let pass = 0; pass < 2; pass += 1) {
-    for (const program of programs) {
-      const names = [program.name, ...(program.aliases || [])].map(normalizeProgramName);
-      if (names.some((name) => variants.has(name))) names.forEach((name) => variants.add(name));
-    }
-  }
-  variants.delete("");
-  return variants;
-}
-
-export function specialtiesEquivalent(leftInstitutionSlug: string, left: string, rightInstitutionSlug: string, right: string) {
-  const leftNames = specialtyNameVariants(leftInstitutionSlug, left);
-  const rightNames = specialtyNameVariants(rightInstitutionSlug, right);
-  return [...leftNames].some((name) => rightNames.has(name));
-}
-
-export const moeInstitutionDetails: Record<string, number> = {
-  "islamic-university": 1, "umm-al-qura": 3, iau: 4, imamu: 5, psau: 6, pnu: 7, bu: 8, ju: 9, nbu: 10,
-  tu: 11, qu: 12, mu: 13, kku: 14, ksu: 15, kau: 17, kfu: 19, ub: 20, ut: 21, jazanu: 22, uj: 23,
-  uoh: 24, uhb: 25, su: 26, taibahu: 27, nu: 28,
+export const studyInSaudiInstitutionIds: Record<string, string> = {
+  kku: "c2eadf85-ac97-438f-b389-5b1f91de6e80",
+  ksu: "42a01907-9232-4d4d-ab7c-7126dab57fde",
+  "umm-al-qura": "8976de05-5229-413f-8598-5ef91c44d61b",
+  kfu: "a617ab1e-d4d4-40a4-84cf-cd85b9342411",
+  alfaisal: "68345eb3-9cb5-4001-bc89-639791e2b484",
+  effat: "9e9ebeb7-1d6e-47af-b089-c4c547c9d548",
+  mustaqbal: "f67ede1d-c42d-474a-aa20-1d42df96fd57",
+  alyamamah: "c9bad0d5-0112-42ff-a07d-9837015423f1",
 };
 
 export function getOfficialProgramSource(institutionSlug: string, domain?: string) {
   if (institutionSlug === "seu") return "https://seu.edu.sa/ar/programs/";
-  const detailId = moeInstitutionDetails[institutionSlug];
-  return detailId ? `https://studyinsaudi.moe.gov.sa/Universities/Details/${detailId}` : domain ? `https://${domain}` : "https://studyinsaudi.moe.gov.sa/Universities";
+  const detailId = studyInSaudiInstitutionIds[institutionSlug];
+  return detailId ? `https://studyinsaudi.sa/ar/Institutions/Details/${detailId}` : domain ? `https://${domain}` : "https://studyinsaudi.sa/ar/Institutions";
 }

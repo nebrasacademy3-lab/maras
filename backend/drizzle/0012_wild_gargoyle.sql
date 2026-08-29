@@ -1,0 +1,1 @@
+ALTER TABLE "notifications" ADD COLUMN "push_delivered_at" text DEFAULT CURRENT_TIMESTAMP::text;

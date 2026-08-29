@@ -12,9 +12,5 @@ export function ScaledTextInput({ style, ...props }: TextInputProps) {
     fontSize: baseFontSize * fontScale,
     ...(typeof flattened?.lineHeight === "number" ? { lineHeight: flattened.lineHeight * fontScale } : {}),
   };
-  return <NativeTextInput {...props} textAlign={props.textAlign || "right"} style={[styles.rtl, style, scaledStyle]} />;
+  return <NativeTextInput {...props} style={[{ writingDirection: "rtl", textAlign: "right" }, style, scaledStyle]} />;
 }
-
-const styles = StyleSheet.create({
-  rtl: { writingDirection: "rtl", textAlign: "right" },
-});

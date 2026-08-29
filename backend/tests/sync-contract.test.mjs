@@ -5,16 +5,9 @@ import { readFile } from "node:fs/promises";
 const root = new URL("..", import.meta.url);
 const read = (relative) => readFile(new URL(relative, root), "utf8");
 
-test("sync endpoint accepts the native protocol, rejects supplied cross-site origins, and bounds its hot path", async () => {
-  const [source, guard, mobileApi] = await Promise.all([
-    read("app/api/sync/route.ts"),
-    read("lib/sync-guard.ts"),
-    read("lib/mobile-api.ts"),
-  ]);
-  assert.match(source, /isMobileRequest\(request\)/);
-  assert.match(mobileApi, /x-meras-client/);
-  assert.match(mobileApi, /if \(origin\) return false/);
-  assert.match(mobileApi, /if \(sameOriginRequest\(request\)\) return true/);
+test("sync endpoint enforces origin, session, and bounded hot-path limiting", async () => {
+  const [source, guard] = await Promise.all([read("app/api/sync/route.ts"), read("lib/sync-guard.ts")]);
+  assert.match(source, /sameOriginRequest\(request\)/);
   assert.match(source, /getSessionUser\(request\)/);
   assert.match(source, /allowSyncRequest\(identity\)/);
   assert.match(guard, /SYNC_WINDOW_MS/);

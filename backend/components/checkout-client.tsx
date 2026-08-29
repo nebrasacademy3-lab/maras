@@ -5,15 +5,8 @@ import Link from "next/link";
 import { BadgeCheck, Check, CreditCard, Gift, LockKeyhole, ShieldCheck } from "lucide-react";
 import type { Course } from "@/lib/data";
 import { CourseCoverImage } from "./course-cover-image";
-import { usePlatformControls } from "./use-platform-controls";
-import { checkoutIntent, clearCheckoutAttempt, getCheckoutAttemptKey } from "@/lib/checkout-attempt-client";
-
-type CheckoutResult = { checkoutUrl?: string; mode?: string; pending?: boolean; error?: string; newAttemptRequired?: boolean };
-
-const wait = (milliseconds: number) => new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 
 export function CheckoutClient({ course, user }: { course: Course; user:{fullName:string;email:string;phone:string} }) {
-  const controls = usePlatformControls();
   const [coupon, setCoupon] = useState("");
   const [discount, setDiscount] = useState(0);
   const [couponMessage, setCouponMessage] = useState("");
@@ -24,10 +17,6 @@ export function CheckoutClient({ course, user }: { course: Course; user:{fullNam
   const total = Math.max(0, course.price - discount);
 
   const applyCoupon = async () => {
-    if (controls.loading || controls.error || !controls.purchases) {
-      setCouponMessage(controls.maintenanceMessage || "الشراء واستخدام الأكواد متوقفان مؤقتًا");
-      return;
-    }
     const code = coupon.trim().toUpperCase();
     if (!code) return;
     setCouponMessage("جارٍ التحقق...");
@@ -47,44 +36,22 @@ export function CheckoutClient({ course, user }: { course: Course; user:{fullNam
 
   const pay = async () => {
     if (!accepted || loading) return;
-    if (controls.loading || controls.error || !controls.purchases) {
-      setError(controls.maintenanceMessage || (controls.error ? "تعذر التحقق من حالة الدفع الآن" : "الشراء متوقف مؤقتًا بقرار الإدارة"));
-      return;
-    }
     setLoading(true);
     setError("");
-    const intent = checkoutIntent([course.slug], appliedCoupon);
-    const attemptKey = getCheckoutAttemptKey(intent);
     try {
-      for (let retry = 0; retry < 4; retry += 1) {
-        const response = await fetch("/api/checkout", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json", "idempotency-key": attemptKey },
-          body: JSON.stringify({ courseSlug: course.slug, coupon: appliedCoupon || undefined }),
-        });
-        const data = await response.json() as CheckoutResult;
-        if (!response.ok && response.status !== 202) {
-          if (data.newAttemptRequired) clearCheckoutAttempt(intent);
-          throw new Error(data.error || "تعذر بدء الدفع");
-        }
-        if (data.mode === "complete") {
-          clearCheckoutAttempt(intent);
-          window.location.assign("/dashboard?view=learning&checkout=complete");
-          return;
-        }
-        if (data.checkoutUrl && data.mode === "live") {
-          window.location.assign(data.checkoutUrl);
-          return;
-        }
-        if (response.status === 202 || data.pending) {
-          setError("تم تثبيت محاولة الدفع، وجارٍ استعادة رابطها الآمن...");
-          await wait(1500 + retry * 500);
-          continue;
-        }
-        throw new Error("لم تُرجع بوابة الدفع رابطًا صالحًا");
+      const response = await fetch("/api/checkout", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ courseSlug: course.slug, coupon: appliedCoupon || undefined }),
+      });
+      const data = await response.json() as { checkoutUrl?: string; mode?: string; error?: string };
+      if (!response.ok) throw new Error(data.error || "تعذر بدء الدفع");
+      if (data.checkoutUrl && data.mode === "live") {
+        window.location.assign(data.checkoutUrl);
+        return;
       }
-      throw new Error("تم حفظ محاولة الدفع بأمان. أعد الضغط لاستعادة الرابط نفسه دون إنشاء مطالبة جديدة.");
+      throw new Error("لم تُرجع بوابة الدفع رابطًا صالحًا");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر بدء الدفع. حاول مرة أخرى.");
     } finally {
@@ -92,7 +59,6 @@ export function CheckoutClient({ course, user }: { course: Course; user:{fullNam
     }
   };
 
-  const purchasesBlocked = controls.loading || controls.error || !controls.purchases;
   return <div className="checkout-grid">
     <section className="checkout-main">
       <div className="checkout-title"><span><LockKeyhole size={15} /> دفع آمن ومشفّر</span><h1>إتمام الاشتراك</h1><p>راجع تفاصيل الطلب ثم انتقل إلى صفحة Tap الآمنة لإتمام الدفع.</p></div>
@@ -111,10 +77,10 @@ export function CheckoutClient({ course, user }: { course: Course; user:{fullNam
       <h2>ملخص الطلب</h2>
       <div className={`summary-course-art bg-gradient-to-br ${course.color}`}><span className="course-cover-grid" />{course.coverImage ? <CourseCoverImage src={course.coverImage} alt={`غلاف ${course.title}`} sizes="(max-width: 900px) 100vw, 360px" /> : <strong>{course.icon}</strong>}</div>
       <div className="summary-course-info"><small>{course.university}</small><h3>{course.title}</h3><p>{course.lessons} درسًا · {course.duration}</p><span><BadgeCheck size={14} /> وصول {course.access}</span></div>
-      <div className="coupon-box"><label><Gift size={17} /><input value={coupon} onChange={(event) => { setCoupon(event.target.value); setDiscount(0); setAppliedCoupon(""); setCouponMessage(""); }} placeholder="كود الخصم" dir="ltr" disabled={purchasesBlocked} /><button type="button" onClick={applyCoupon} disabled={purchasesBlocked}>تطبيق</button></label>{couponMessage && <p className={discount ? "success" : "error"}>{couponMessage}</p>}<small>{purchasesBlocked ? controls.maintenanceMessage || (controls.error ? "تعذر التحقق من حالة الشراء الآن" : "الشراء متوقف مؤقتًا بقرار الإدارة") : "تُنشأ أكواد الخصم وتُحدد صلاحيتها من لوحة الإدارة."}</small></div>
+      <div className="coupon-box"><label><Gift size={17} /><input value={coupon} onChange={(event) => { setCoupon(event.target.value); setDiscount(0); setAppliedCoupon(""); setCouponMessage(""); }} placeholder="كود الخصم" dir="ltr" /><button type="button" onClick={applyCoupon}>تطبيق</button></label>{couponMessage && <p className={discount ? "success" : "error"}>{couponMessage}</p>}<small>تُنشأ أكواد الخصم وتُحدد صلاحيتها من لوحة الإدارة.</small></div>
       <div className="summary-totals"><p><span>سعر المادة</span><b>{course.price} ر.س</b></p><p><span>الخصم</span><b className="discount">{discount ? `- ${discount} ر.س` : "0 ر.س"}</b></p><p><span>ضريبة القيمة المضافة</span><b>مشمولة</b></p><div><span>الإجمالي</span><strong>{total} <small>ر.س</small></strong></div></div>
       {error && <p className="checkout-error" role="alert">{error}</p>}
-      <button className="button button-primary pay-button" onClick={pay} disabled={!accepted || loading || purchasesBlocked}>{loading ? <span className="button-loader" /> : <><CreditCard size={17} /> {purchasesBlocked ? "الدفع متوقف مؤقتًا" : `المتابعة للدفع · ${total} ر.س`}</>}</button>
+      <button className="button button-primary pay-button" onClick={pay} disabled={!accepted || loading}>{loading ? <span className="button-loader" /> : <><CreditCard size={17} /> المتابعة للدفع · {total} ر.س</>}</button>
       <p className="summary-secure"><ShieldCheck size={14} /> اتصال مشفّر · تأكيد الدفع من الخادم</p>
     </aside>
   </div>;

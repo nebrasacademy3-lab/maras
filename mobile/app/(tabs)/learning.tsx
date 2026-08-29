@@ -6,20 +6,19 @@ import React from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { Pressable, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
-import { useAuthRestoreState } from "@/src/components/AuthRestoreState";
 import { courseGradient } from "@/src/components/CourseCard";
-import { AppButton, EmptyState, ErrorState, LoadingState, Screen } from "@/src/components/ui";
+import { AppButton, EmptyState, LoadingState, Screen } from "@/src/components/ui";
 import { api } from "@/src/lib/api";
+import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { Dashboard } from "@/src/types";
 
 export default function Learning() {
-  const { user, authReady, restoration } = useAuthRestoreState({ title: "موادي", loadingLabel: "جارٍ استعادة مساحتك التعليمية..." }); const { colors } = useTheme(); const dashboard = useQuery({ queryKey: ["dashboard", user?.id], queryFn: () => api<Dashboard>("/api/mobile/dashboard"), enabled: authReady && Boolean(user) });
-  if (restoration) return restoration;
-  if (!user) return <Screen><AppHeader title="موادي" subtitle="مساحتك التعليمية" /><EmptyState icon="lock-closed-outline" title="سجّل الدخول لعرض موادك" text="تقدمك وصلاحيات المواد محفوظة في حسابك وتعمل على جميع أجهزتك." action={<AppButton title="تسجيل الدخول" onPress={() => router.push("/(auth)/login?return_to=%2Flearning")} />} /></Screen>;
+  const { user } = useAuth(); const { colors } = useTheme(); const dashboard = useQuery({ queryKey: ["dashboard", user?.id], queryFn: () => api<Dashboard>("/api/mobile/dashboard"), enabled: Boolean(user) });
+  if (!user) return <Screen><AppHeader title="موادي" subtitle="مساحتك التعليمية" /><EmptyState icon="lock-closed-outline" title="سجّل الدخول لعرض موادك" text="تقدمك وصلاحيات المواد محفوظة في حسابك وتعمل على جميع أجهزتك." action={<AppButton title="تسجيل الدخول" onPress={() => router.push("/(auth)/login")} />} /></Screen>;
   if (dashboard.isLoading) return <Screen><LoadingState label="جارٍ تحميل موادك..." /></Screen>;
-  if (dashboard.isError || !dashboard.data) return <Screen><AppHeader title="موادي" /><ErrorState title="تعذر تحميل موادك" text="لم نتمكن من مزامنة تقدمك الآن." onRetry={() => void dashboard.refetch()} /></Screen>;
   const rows = dashboard.data?.owned || [];
   return <Screen><AppHeader title="موادي" subtitle={`${rows.length} مادة بصلاحية نشطة`} unread={dashboard.data?.notifications.filter((item) => !item.readAt).length || 0} />{rows.length ? <View style={styles.list}>{rows.map((course) => <Pressable key={course.slug} onPress={() => router.push({ pathname: "/learn/[slug]", params: { slug: course.slug } })} style={[styles.card, { backgroundColor: colors.surface, borderColor: colors.border }]}><LinearGradient colors={courseGradient(course.color)} style={styles.art}><Text style={styles.icon}>{course.icon}</Text><Ionicons name="play" size={23} color="#FFFFFF" /></LinearGradient><View style={styles.body}><Text style={[styles.context, { color: colors.primary }]}>{course.university}</Text><Text style={[styles.title, { color: colors.text }]}>{course.title}</Text><View style={[styles.track, { backgroundColor: colors.surfaceAlt }]}><View style={[styles.fill, { backgroundColor: colors.primary, width: `${course.progress}%` }]} /></View><View style={styles.footer}><Text style={[styles.soft, { color: colors.textSoft }]}>{course.expiresAt ? `حتى ${new Date(course.expiresAt).toLocaleDateString("ar-SA")}` : course.access}</Text><Text style={[styles.percent, { color: colors.primary }]}>{course.progress}%</Text></View></View></Pressable>)}</View> : <EmptyState icon="library-outline" title="لا توجد مواد مفعّلة" text="جرّب الدروس المجانية، ثم اشترك عبر موقع مراس أو اطلب مادة غير متوفرة." action={<AppButton title="استكشف المواد" onPress={() => router.push("/(tabs)/courses")} />} />}</Screen>;
 }
 const styles = StyleSheet.create({ list: { gap: 13 }, card: { borderWidth: 1, borderRadius: 22, overflow: "hidden", flexDirection: "row-reverse", minHeight: 150 }, art: { width: 112, padding: 14, alignItems: "center", justifyContent: "space-between" }, icon: { fontSize: 35 }, body: { flex: 1, padding: 15, alignItems: "flex-end" }, context: { fontSize: 9, fontWeight: "800" }, title: { fontSize: 16, lineHeight: 24, fontWeight: "900", textAlign: "right", marginTop: 5 }, track: { width: "100%", height: 7, borderRadius: 4, overflow: "hidden", marginTop: 15 }, fill: { height: 7, borderRadius: 4 }, footer: { width: "100%", flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", marginTop: 8 }, soft: { fontSize: 8 }, percent: { fontSize: 11, fontWeight: "900" } });
+

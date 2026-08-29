@@ -1,18 +1,12 @@
-import { checkRateLimit, getSessionUser } from "@/lib/auth";
+import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { getCoursesCatalog } from "@/lib/catalog-store";
 import { quoteCoupon, quoteCouponForCart } from "@/lib/coupons";
-import { isMobileRequest } from "@/lib/mobile-api";
-import { getMutationPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 export async function POST(request: Request) {
-  if (!isMobileRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
-  let settings;
-  try { settings = await getMutationPublicSettings(); }
-  catch { return jsonError("تعذر التحقق من حالة الشراء الآن", 503); }
-  if (!settingEnabled(settings.purchases_enabled)) return jsonError(settings.maintenance_message || "الشراء واستخدام الأكواد متوقفان مؤقتًا.", 503);
   if (!await checkRateLimit("coupon-quote", `user:${user.id}`, 60, 60)) return jsonError("محاولات كوبون كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; }

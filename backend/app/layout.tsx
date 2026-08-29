@@ -24,14 +24,7 @@ export const metadata: Metadata = {
     images: [{ url: "/og.png", width: 1728, height: 910, alt: "مراس العلم — شرح جامعتك في مكان واحد" }],
   },
   twitter: { card: "summary_large_image", title: "مراس العلم", description: "شرح جامعتك، في مكان واحد.", images: ["/og.png"] },
-  icons: {
-    icon: [
-      { url: "/brand/app-icon-192.png", type: "image/png", sizes: "192x192" },
-      { url: "/brand/app-icon-512.png", type: "image/png", sizes: "512x512" },
-    ],
-    shortcut: "/brand/app-icon-192.png",
-    apple: [{ url: "/brand/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
-  },
+  icons: { icon: [{ url: "/brand/app-icon.png", type: "image/png", sizes: "1024x1024" }], shortcut: "/brand/app-icon.png", apple: "/brand/app-icon.png" },
   manifest: "/manifest.webmanifest",
 };
 
@@ -48,7 +41,7 @@ const themeScript = `(function(){try{var t=localStorage.getItem('meras-theme');v
 const structuredData = {
   "@context": "https://schema.org",
   "@graph": [
-    { "@type": "Organization", name: "مراس العلم", url: siteUrl, logo: `${siteUrl}/brand/logo-light-hq.png`, email: "hello@meras.sa" },
+    { "@type": "Organization", name: "مراس العلم", url: siteUrl, logo: `${siteUrl}/brand/mark-official.png`, email: "hello@meras.sa" },
     { "@type": "WebSite", name: "مراس العلم", url: siteUrl, inLanguage: "ar-SA", potentialAction: { "@type": "SearchAction", target: `${siteUrl}/courses?q={search_term_string}`, "query-input": "required name=search_term_string" } },
   ],
 };

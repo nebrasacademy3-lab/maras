@@ -1,12 +1,9 @@
-import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { authRateLimits, authSessions, users } from "@/db/schema";
 
 export const SESSION_COOKIE = "meras_session";
 const PASSWORD_ITERATIONS = 210_000;
-// Fixed, syntactically valid PBKDF2 material used to make unknown-account
-// authentication perform the same expensive derivation as a known account.
-export const DUMMY_PASSWORD_HASH = `pbkdf2$${PASSWORD_ITERATIONS}$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`;
 
 export type UserRole = "student" | "supervisor" | "admin";
 
@@ -82,10 +79,7 @@ function parseCookie(cookieHeader: string | null, name: string) {
   if (!cookieHeader) return "";
   for (const item of cookieHeader.split(";")) {
     const [key, ...parts] = item.trim().split("=");
-    if (key === name) {
-      try { return decodeURIComponent(parts.join("=")); }
-      catch { return ""; }
-    }
+    if (key === name) return decodeURIComponent(parts.join("="));
   }
   return "";
 }
@@ -170,11 +164,7 @@ export async function revokeSession(request: Request) {
 }
 
 export function clientIp(request: Request) {
-  const trustProxy = process.env.TRUST_PROXY === "true" || Boolean(process.env.RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT_NAME || process.env.VERCEL);
-  const forwarded = trustProxy
-    ? request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]
-    : request.headers.get("cf-connecting-ip");
-  return (forwarded || "unknown").trim().slice(0, 80);
+  return (request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown").trim().slice(0, 80);
 }
 
 export function validPassword(password: string) {
@@ -191,16 +181,10 @@ export function validSaudiPhone(value: string) {
 
 export function sameOriginRequest(request: Request) {
   const origin = request.headers.get("origin")?.trim();
-  if (!origin) {
-    // Bearer tokens are explicit credentials and are not exposed to cookie
-    // CSRF, but a supplied Origin is still validated below before this bypass.
-    if (bearerToken(request.headers)) return true;
-    const fetchSite = request.headers.get("sec-fetch-site");
-    return process.env.NODE_ENV === "production" ? fetchSite === "same-origin" : fetchSite !== "cross-site";
-  }
+  if (!origin) return request.headers.get("sec-fetch-site") !== "cross-site";
   const accepted = new Set<string>();
   try { accepted.add(new URL(request.url).origin); } catch { /* Invalid request URL is rejected below. */ }
-  for (const configured of [process.env.APP_URL, process.env.NEXT_PUBLIC_SITE_URL, process.env.MOBILE_APP_URL]) {
+  for (const configured of [process.env.APP_URL, process.env.NEXT_PUBLIC_SITE_URL, process.env.MOBILE_APP_URL, process.env.EXPO_WEB_ORIGIN]) {
     if (!configured) continue;
     try { accepted.add(new URL(configured).origin); } catch { /* Ignore malformed optional URLs. */ }
   }
@@ -222,11 +206,6 @@ export async function checkRateLimit(scope: string, identity: string, limit: num
   const now = Date.now();
   const nowIso = new Date(now).toISOString();
   const expiryIso = new Date(now + windowSeconds * 1000).toISOString();
-  // Opportunistic TTL cleanup keeps unbounded identifier/IP churn from growing
-  // this table forever without adding a delete query to every request.
-  if (Number.parseInt(key.slice(0, 2), 16) < 4) {
-    await db.delete(authRateLimits).where(lt(authRateLimits.windowExpiresAt, nowIso));
-  }
   const [row] = await db.insert(authRateLimits).values({ key, attempts: 1, windowExpiresAt: expiryIso, updatedAt: nowIso }).onConflictDoUpdate({
     target: authRateLimits.key,
     set: {

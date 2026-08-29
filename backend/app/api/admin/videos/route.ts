@@ -6,7 +6,6 @@ import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginReques
 import { cleanText, jsonError } from "@/lib/api";
 import { getCourseCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { deleteObject, putObject } from "@/lib/storage";
-import { specialtiesEquivalent } from "@/lib/academic-data";
 
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska", "video/x-msvideo"]);
@@ -82,9 +81,7 @@ async function inspectUploadStream(input: ReadableStream<Uint8Array>) {
 export async function POST(request: Request) {
   const suppliedToken = request.headers.get("x-admin-upload-token")?.trim() || "";
   const uploadSecret = process.env.ADMIN_UPLOAD_TOKEN?.trim() || "";
-  const managementSecret = process.env.ADMIN_API_TOKEN?.trim() || "";
-  const separateStrongSecrets = uploadSecret.length >= 32 && managementSecret.length >= 32 && !secretEquals(uploadSecret, managementSecret);
-  const tokenAuthorized = Boolean(separateStrongSecrets && secretEquals(uploadSecret, suppliedToken));
+  const tokenAuthorized = Boolean(uploadSecret && secretEquals(uploadSecret, suppliedToken));
   if (!tokenAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
 
   const user = tokenAuthorized ? null : await getSessionUser(request);
@@ -141,7 +138,7 @@ export async function POST(request: Request) {
   if (!course?.units.some((unit) => unit.lessons.some((lesson) => lesson.id === lessonId))) { await discardRawUpload(); return jsonError("تعذر مطابقة المادة أو الدرس"); }
   if (!tokenAuthorized && user?.role === "supervisor") {
     const assignments = await getDb().select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId, user.id), eq(supervisorAssignments.active, true)));
-    const mayEdit = assignments.some((assignment) => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (!assignment.specialty || specialtiesEquivalent(assignment.institutionSlug || course.universitySlug, assignment.specialty, course.universitySlug, course.specialty)));
+    const mayEdit = assignments.some((assignment) => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (!assignment.specialty || assignment.specialty === course.specialty));
     if (!mayEdit) { await discardRawUpload(); return jsonError("هذه المادة غير مسندة لهذا المشرف", 403); }
   }
 

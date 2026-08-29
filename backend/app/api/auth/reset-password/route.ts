@@ -3,10 +3,9 @@ import { getDb } from "@/db";
 import { authSessions, passwordResetTokens, users } from "@/db/schema";
 import { checkRateLimit, clientIp, hashOpaqueToken, hashPassword, sameOriginRequest, validPassword } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
-import { isMobileRequest } from "@/lib/mobile-api";
 
 export async function POST(request: Request) {
-  if (!sameOriginRequest(request) && !isMobileRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   if (!await checkRateLimit("reset-password", clientIp(request), 8, 60 * 60)) return jsonError("محاولات كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }

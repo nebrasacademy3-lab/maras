@@ -54,7 +54,7 @@ export function MerasAssistant() {
       <div className="assistant-trust"><Sparkles size={14} /> اسأل بطريقتك — وسأعطيك الخطوة والرابط</div>
       <div className="assistant-messages" ref={listRef} aria-live="polite">{messages.map((message) => <article className={`assistant-message ${message.role}`} key={message.id}>
         {message.role === "assistant" && <i><Bot size={15} /></i>}<div><p>{message.text}</p>{message.actions?.length ? <nav>{message.actions.map((item) => <Link key={`${item.label}-${item.href}`} href={item.href} onClick={() => setOpen(false)}>{item.label}<ArrowLeft size={13} /></Link>)}</nav> : null}{message.suggestions?.length ? <div className="assistant-suggestions">{message.suggestions.map((item) => <button type="button" key={item} onClick={() => void ask(item)}>{item}</button>)}</div> : null}</div>
-      </article>)}{loading && <article className="assistant-message assistant"><i><Bot size={15} /></i><div className="assistant-thinking"><span /><span /><span /></div></article>}</div>
+      </article>)}{loading && <article className="assistant-message assistant"><i><Bot size={15} /></i><div className="assistant-thinking" role="status"><b>يراجع الكتالوج وسياق حسابك</b><span /><span /><span /></div></article>}</div>
       <form className="assistant-input" onSubmit={submit}><input value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={500} placeholder="اكتب سؤالك هنا..." aria-label="سؤالك للمساعد" /><button type="submit" disabled={loading || question.trim().length < 2} aria-label="إرسال"><Send size={18} /></button></form>
       <footer>لن يطلب منك المساعد كلمة المرور أو بيانات البطاقة</footer>
     </section>}

@@ -7,13 +7,11 @@ import { SiteHeader } from "./site-header";
 import type { Institution } from "@/lib/data";
 import { useAcademicPrograms } from "@/components/use-academic-programs";
 import { ACADEMIC_LEVELS } from "@/lib/academic-levels";
-import { usePlatformControls } from "@/components/use-platform-controls";
-import { safeInternalReturnPath } from "@/lib/internal-return-route";
 
 function safeReturnTo() {
   if (typeof window === "undefined") return "";
   const value = new URLSearchParams(window.location.search).get("return_to") || "";
-  return safeInternalReturnPath(value);
+  return value.startsWith("/") && !value.startsWith("//") ? value : "";
 }
 
 export function LoginForm() {
@@ -38,7 +36,7 @@ export function LoginForm() {
       if (returnTo && data.next !== "/onboarding" && data.next !== "/complete-profile") window.location.assign(returnTo);
       else {
         if (returnTo) sessionStorage.setItem("meras_return_to", returnTo);
-        window.location.assign(safeInternalReturnPath(data.next, "/dashboard"));
+        window.location.assign(data.next || "/dashboard");
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر تسجيل الدخول");
@@ -61,7 +59,6 @@ type RegisterData = { fullName: string; phone: string; email: string; password: 
 const emptyRegister: RegisterData = { fullName: "", phone: "", email: "", password: "", confirmPassword: "", universitySlug: "", specialty: "", academicLevel: "", termsAccepted: false };
 
 export function RegisterForm({ institutions }: { institutions: Institution[] }) {
-  const controls = usePlatformControls();
   const [step, setStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -74,10 +71,6 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
-    if (controls.loading || controls.error || !controls.registration) {
-      setError(controls.maintenanceMessage || (controls.error ? "تعذر التحقق من حالة التسجيل الآن" : "إنشاء الحسابات متوقف مؤقتًا بقرار الإدارة"));
-      return;
-    }
     if (step === 1 && data.password !== data.confirmPassword) { setError("تأكيد كلمة المرور غير مطابق"); return; }
     if (step === 2 && (!data.universitySlug || !data.specialty || !data.academicLevel || catalog.loading)) { setError(catalog.loading ? "انتظر تحميل تخصصات الجامعة" : "اختر الجامعة والتخصص"); return; }
     if (step < 3) { setStep(step + 1); return; }
@@ -89,7 +82,7 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
       if (!response.ok) throw new Error(result.error || "تعذر إنشاء الحساب");
       const returnTo = safeReturnTo();
       if (returnTo) sessionStorage.setItem("meras_return_to", returnTo);
-      window.location.assign(safeInternalReturnPath(result.next, "/onboarding"));
+      window.location.assign(result.next || "/onboarding");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر إنشاء الحساب");
       setLoading(false);
@@ -97,7 +90,6 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
   };
 
   return <form className="auth-form register-form" onSubmit={submit}>
-    {!controls.loading && (controls.error || !controls.registration) && <p className="form-error" role="alert">{controls.maintenanceMessage || (controls.error ? "تعذر التحقق من حالة التسجيل الآن. حاول لاحقًا." : "إنشاء الحسابات متوقف مؤقتًا بقرار الإدارة.")}</p>}
     <div className="auth-steps">{[1,2,3].map((item) => <span key={item} className={step >= item ? "active" : ""}><i>{step > item ? <CheckCircle2 size={13} /> : item}</i><small>{["بياناتك","دراستك","تأكيد"][item - 1]}</small></span>)}</div>
     {step === 1 && <>
       <div className="auth-heading"><span>انضم إلى مراس</span><h1>أنشئ حسابك الآمن</h1><p>كل الحقول مطلوبة حتى تُربط مشترياتك وموادك وطلباتك بحساب واحد.</p></div>
@@ -119,7 +111,7 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
       <label className="terms-check"><input required type="checkbox" checked={data.termsAccepted} onChange={(event) => update("termsAccepted", event.target.checked)} /> <span>أوافق على <Link href="/terms">الشروط والأحكام</Link> و<Link href="/privacy">سياسة الخصوصية</Link>.</span></label>
     </div>}
     {(error || catalog.error) && <p className="form-error" role="alert">{error || catalog.error}</p>}
-    <button className="button button-primary auth-submit" disabled={loading || controls.loading || controls.error || !controls.registration}>{loading || controls.loading ? <span className="button-loader" /> : <>{!controls.registration || controls.error ? "التسجيل متوقف مؤقتًا" : step === 3 ? "إنشاء الحساب وبدء الجولة" : "التالي"} <ArrowLeft size={17} /></>}</button>
+    <button className="button button-primary auth-submit" disabled={loading}>{loading ? <span className="button-loader" /> : <>{step === 3 ? "إنشاء الحساب وبدء الجولة" : "التالي"} <ArrowLeft size={17} /></>}</button>
     {step > 1 && <button type="button" className="back-step" onClick={() => { setError(""); setStep(step - 1); }}>العودة للخطوة السابقة</button>}
     {step === 1 && <p className="auth-switch">عندك حساب؟ <PreserveAuthLink path="/login">سجّل الدخول</PreserveAuthLink></p>}
   </form>;

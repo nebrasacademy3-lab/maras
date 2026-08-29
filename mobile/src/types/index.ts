@@ -64,26 +64,11 @@ export type Course = {
 };
 
 export type Catalog = { ok: true; institutions: Institution[]; courses: Course[] };
-export type ProgressRow = { courseSlug: string; lessonId: string; watchedSeconds: number; completed: boolean; updatedAt: string };
+export type ProgressRow = { id: number; courseSlug: string; lessonId: string; watchedSeconds: number; completed: boolean; updatedAt: string };
 export type OwnedCourse = Course & { progress: number; currentLessonId: string | null; expiresAt: string | null };
 export type CourseRequest = { id: number; courseName: string; university: string; specialty: string; status: string; attachmentsCount: number; createdAt: string; notes?: string };
-export type OrderItem = { courseSlug: string; courseTitle: string; unitPrice: number; discount: number; total: number };
-export type Order = {
-  orderNumber: string;
-  subtotal: number;
-  discount: number;
-  total: number;
-  currency: string;
-  status: string;
-  createdAt: string;
-  paidAt: string | null;
-  items: OrderItem[];
-  courseSlugs: string[];
-  courseTitle: string;
-  /** اسم المادة المفرد في الاستجابات القديمة قبل دعم الطلب متعدد المواد. */
-  courseSlug?: string;
-};
-export type Invoice = { id: number; invoiceNumber: string; orderNumber: string; total: number; currency: string; issuedAt: string };
+export type Order = { orderNumber: string; courseSlug: string; courseTitle: string; total: number; currency: string; status: string; createdAt: string };
+export type Invoice = { id: number; invoiceNumber: string; orderNumber: string; total: number; taxAmount: number; currency: string; issuedAt: string; pdfObjectKey: string | null };
 export type Notice = { id: number; title: string; body: string; actionUrl: string | null; actionLabel?: string | null; presentation?: "inbox" | "banner" | "modal" | "all"; pushEnabled?: boolean; dismissible?: boolean; readAt: string | null; createdAt: string };
 export type SupportFile = { id: number; originalName: string; contentType: string; sizeBytes: number; createdAt: string };
 export type SupportReply = { id: number; body: string; authorEmail?: string; authorRole?: string; internal?: boolean; createdAt: string; files?: SupportFile[] };
@@ -108,6 +93,11 @@ export type PublicSettings = {
   whatsapp_url: string;
   support_email: string;
   support_hours: string;
+  footer_description: string;
+  app_download_title: string;
+  app_download_description: string;
+  ios_app_url: string;
+  android_app_url: string;
   social_x: string;
   social_instagram: string;
   social_tiktok: string;

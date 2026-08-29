@@ -1,9 +1,8 @@
 import { eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
-import { checkRateLimit, clearRateLimit, clientIp, createSession, DUMMY_PASSWORD_HASH, sameOriginRequest, verifyPassword } from "@/lib/auth";
+import { checkRateLimit, clearRateLimit, clientIp, createSession, sameOriginRequest, verifyPassword } from "@/lib/auth";
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
-import { getPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 function phoneCandidate(value: string) {
   const digits = normalizePhone(value).replace(/\D/g, "");
@@ -24,16 +23,12 @@ export async function POST(request: Request) {
   if (!await checkRateLimit("login-ip", ipIdentity, 300, 15 * 60) || !await checkRateLimit("login-account", identifier, 8, 15 * 60)) return jsonError("تم إيقاف المحاولات مؤقتًا. حاول بعد 15 دقيقة.", 429);
 
   const [user] = await getDb().select().from(users).where(or(eq(users.email, identifier), eq(users.phone, phoneCandidate(identifier)))).limit(1);
-  const passwordMatches = await verifyPassword(password, user?.passwordHash || DUMMY_PASSWORD_HASH);
-  const valid = Boolean(user?.status === "active" && passwordMatches);
+  const valid = user?.status === "active" && await verifyPassword(password, user.passwordHash);
   if (!user || !valid) return jsonError("بيانات الدخول غير صحيحة", 401);
 
   await clearRateLimit("login-account", identifier);
-  const now = new Date().toISOString();
-  const onboardingEnabled = settingEnabled((await getPublicSettings()).onboarding_enabled);
-  const onboardingCompletedAt = !onboardingEnabled && user.profileCompletedAt ? user.onboardingCompletedAt || now : user.onboardingCompletedAt;
-  await getDb().update(users).set({ lastLoginAt: now, onboardingCompletedAt, updatedAt: now }).where(eq(users.id, user.id));
+  await getDb().update(users).set({ lastLoginAt: new Date().toISOString(), updatedAt: new Date().toISOString() }).where(eq(users.id, user.id));
   const session = await createSession(user.id, request, payload.remember !== false);
-  const next = user.profileCompletedAt ? (onboardingCompletedAt ? "/dashboard" : "/onboarding") : "/complete-profile";
+  const next = user.profileCompletedAt ? (user.onboardingCompletedAt ? "/dashboard" : "/onboarding") : "/complete-profile";
   return Response.json({ ok: true, next }, { headers: { "set-cookie": session.cookie, "cache-control": "no-store" } });
 }

@@ -19,18 +19,6 @@ const CHANNEL_KEYS: Record<string, readonly (readonly unknown[])[]> = {
   admin: [["admin-console"]],
 };
 
-const USER_SCOPED_QUERY_ROOTS = new Set([
-  "admin-console",
-  "announcements",
-  "cart",
-  "dashboard",
-  "favorites",
-  "notifications",
-  "support",
-  "supervisor-requests",
-  "supervisor-workspace",
-]);
-
 function invalidateChannels(queryClient: ReturnType<typeof useQueryClient>, changed: string[]) {
   const keys = new Map<string, readonly unknown[]>();
   for (const channel of changed) for (const key of CHANNEL_KEYS[channel] || []) keys.set(JSON.stringify(key), key);
@@ -41,25 +29,7 @@ export function RealtimeSyncProvider({ children }: { children: React.ReactNode }
   const queryClient = useQueryClient();
   const { token, user, loading, refresh } = useAuth();
   const previous = useRef<Record<string, string> | null>(null);
-  const previousIdentity = useRef<string | null>(null);
   const appState = useRef<AppStateStatus>(AppState.currentState);
-
-  useEffect(() => {
-    if (loading) return;
-    const identity = user ? `user:${user.id}` : "guest";
-    const lastIdentity = previousIdentity.current;
-    previousIdentity.current = identity;
-    if (lastIdentity === null || lastIdentity === identity) return;
-
-    queryClient.removeQueries({
-      predicate: (query) => {
-        const root = query.queryKey[0];
-        return typeof root === "string" && USER_SCOPED_QUERY_ROOTS.has(root);
-      },
-    });
-    queryClient.getMutationCache().clear();
-    previous.current = null;
-  }, [loading, queryClient, user]);
 
   useEffect(() => {
     if (loading) return;

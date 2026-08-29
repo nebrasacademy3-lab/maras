@@ -1,32 +1,30 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ArrowLeft, BellRing, CheckCircle2, FileText, LoaderCircle, Paperclip, Sparkles, UploadCloud, X } from "lucide-react";
-import { usePlatformControls } from "./use-platform-controls";
+import { uploadProgressLabel, uploadWithProgress, type UploadProgress } from "@/lib/upload-client";
 
 const MAX_FILES = 100;
 const MAX_TOTAL_FILE_BYTES = 100 * 1024 * 1024;
 
 export function RequestCourseForm({ universityName, specialty, studentName }: { universityName:string; specialty:string; studentName:string }) {
-  const controls = usePlatformControls();
   const [status, setStatus] = useState<"idle" | "loading" | "done">("idle");
   const [error, setError] = useState("");
   const [files,setFiles]=useState<File[]>([]);
+  const [progress,setProgress]=useState<UploadProgress|null>(null);
+  const abortRef=useRef<AbortController|null>(null);
   const choose=(list:FileList|null)=>{if(!list)return;const selected=Array.from(list);const total=selected.reduce((sum,file)=>sum+file.size,0);setFiles(selected);setError(selected.length>MAX_FILES?`يمكن إرفاق ${MAX_FILES} ملف كحد أقصى`:total>MAX_TOTAL_FILE_BYTES?"إجمالي حجم المرفقات يجب ألا يتجاوز 100 ميجابايت":"");};
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (controls.loading || controls.error || !controls.courseRequests) {
-      setError(controls.maintenanceMessage || (controls.error ? "تعذر التحقق من حالة الخدمة الآن" : "استقبال طلبات المواد متوقف مؤقتًا بقرار الإدارة"));
-      return;
-    }
     if(error)return;
     setStatus("loading"); setError("");
     const form = new FormData(event.currentTarget); files.forEach((file)=>form.append("files",file));
-    try { const response=await fetch("/api/course-requests",{method:"POST",body:form}); const result=await response.json() as {error?:string}; if(!response.ok)throw new Error(result.error||"تعذر إرسال الطلب"); setStatus("done"); }
+    const controller=new AbortController(); abortRef.current=controller; setProgress({loaded:0,total:files.reduce((sum,file)=>sum+file.size,0),percent:0,bytesPerSecond:0,remainingSeconds:null});
+    try { await uploadWithProgress<{ok?:boolean}>({url:"/api/course-requests",body:form,timeoutMs:20*60_000,signal:controller.signal,onProgress:setProgress}); setStatus("done"); }
     catch(caught){setError(caught instanceof Error?caught.message:"تعذر إرسال الطلب");setStatus("idle");}
+    finally{abortRef.current=null;setProgress(null);}
   };
   if(status==="done")return <div className="form-success-state"><div><CheckCircle2 size={37}/></div><span>وصل طلبك إلى المشرف</span><h2>يمكنك متابعة الحالة من لوحتك</h2><p>حُفظت بيانات المادة والمرفقات وربطت بحسابك. سنرسل إشعارًا عند تغيير الحالة.</p><button className="button button-primary" onClick={()=>{setStatus("idle");setFiles([]);}}>طلب مادة أخرى</button></div>;
-  if (!controls.loading && (controls.error || !controls.courseRequests)) return <div className="form-success-state" role="status"><div><BellRing size={34}/></div><span>تنبيه من إدارة مراس</span><h2>طلبات المواد متوقفة مؤقتًا</h2><p>{controls.maintenanceMessage || (controls.error ? "تعذر التحقق من حالة الخدمة الآن. حاول لاحقًا." : "ستعود الخدمة فور تفعيلها من الإدارة، ولن تفقد طلباتك السابقة.")}</p></div>;
   return <form className="request-form" onSubmit={submit} encType="multipart/form-data">
     <div className="request-profile-lock"><CheckCircle2 size={18}/><span><strong>{studentName}</strong><small>{universityName} · {specialty}</small></span><em>من ملفك المكتمل</em></div>
     <label>اسم المادة<div className="input-with-icon"><Sparkles size={18}/><input name="courseName" required minLength={3} maxLength={160} placeholder="مثال: علم الأدوية Pharmacology"/></div></label>
@@ -36,6 +34,7 @@ export function RequestCourseForm({ universityName, specialty, studentName }: { 
     {files.length>0&&<div className="request-file-list">{files.map((file,index)=><span key={`${file.name}-${file.size}-${index}`}><Paperclip size={14}/><b>{file.name}</b><small>{(file.size/1024/1024).toFixed(1)} MB</small><button type="button" onClick={()=>{const next=files.filter((_,item)=>item!==index);setFiles(next);setError(next.length>MAX_FILES?`يمكن إرفاق ${MAX_FILES} ملف كحد أقصى`:next.reduce((sum,item)=>sum+item.size,0)>MAX_TOTAL_FILE_BYTES?"إجمالي حجم المرفقات يجب ألا يتجاوز 100 ميجابايت":"");}} aria-label="حذف الملف"><X size={14}/></button></span>)}</div>}
     <label className="terms-check"><input type="checkbox" name="notify" defaultChecked/> أرسل لي إشعارًا عند إسناد الطلب أو بدء إنتاج المادة أو توفرها.</label>
     {error&&<p className="form-error" role="alert">{error}</p>}
-    <button className="button button-primary form-main-submit" disabled={status==="loading" || controls.loading}>{status==="loading" || controls.loading?<LoaderCircle size={18} className="spin"/>:<><BellRing size={17}/> إرسال الطلب والمرفقات <ArrowLeft size={16}/></>}</button>
+    {status==="loading"&&progress&&<div className="upload-progress-card" role="status"><div><span style={{width:`${progress.percent}%`}}/></div><small>{uploadProgressLabel(progress)}</small><button type="button" onClick={()=>abortRef.current?.abort()}><X size={14}/> إلغاء الرفع</button></div>}
+    <button className="button button-primary form-main-submit" disabled={status==="loading"}>{status==="loading"?<><LoaderCircle size={18} className="spin"/> جارٍ رفع المرفقات...</>:<><BellRing size={17}/> إرسال الطلب والمرفقات <ArrowLeft size={16}/></>}</button>
   </form>;
 }

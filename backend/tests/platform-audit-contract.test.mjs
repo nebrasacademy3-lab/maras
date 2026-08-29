@@ -22,8 +22,9 @@ test("checkout has abuse protection, atomic order creation, and an upstream time
   assert.match(checkout, /status: "failed"/);
 });
 
-test("unfinished course templates cannot enter the cart or payment flow", () => {
-  assert.match(catalogStore, /readyLessons === lessons\.length && hasReadyPreview/);
+test("published courses require at least one ready lesson before cart or payment", () => {
+  assert.match(catalogStore, /lessons\.length > 0 && readyLessons > 0/);
+  assert.doesNotMatch(catalogStore, /readyLessons === lessons\.length/);
   assert.match(cart, /!course\.availableForPurchase/);
   assert.match(checkout, /selected\.filter\(\(course\) => !course\.availableForPurchase\)/);
 });

@@ -1,9 +1,6 @@
-/* eslint-disable @next/next/no-img-element -- official uploaded artwork is served without runtime transforms */
+/* eslint-disable @next/next/no-img-element -- the official square source is already optimized for this small UI surface */
 export function BrandMark({ className = "" }: { className?: string }) {
-  return (
-    <span className={`brand-mark ${className}`.trim()} aria-hidden="true">
-      <img src="/brand/mark-light.png" alt="" width={1024} height={1024} className="brand-mark-light" decoding="async" />
-      <img src="/brand/mark-dark.png" alt="" width={1024} height={1024} className="brand-mark-dark" decoding="async" />
-    </span>
-  );
+  return <span className={`brand-mark ${className}`} aria-hidden="true">
+    <img src="/brand/mark-official.png" alt="" width={1920} height={1920} />
+  </span>;
 }

@@ -14,14 +14,7 @@ export function getApiToken() { return sessionToken; }
 
 export class ApiError extends Error {
   status: number;
-  code?: string;
-  newAttemptRequired: boolean;
-  constructor(message: string, status: number, details?: { code?: string; newAttemptRequired?: boolean }) {
-    super(message);
-    this.status = status;
-    this.code = details?.code;
-    this.newAttemptRequired = details?.newAttemptRequired === true;
-  }
+  constructor(message: string, status: number) { super(message); this.status = status; }
 }
 
 export function absoluteUrl(path?: string | null) {
@@ -46,14 +39,13 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   if (externalSignal?.aborted) controller.abort();
   else if (externalSignal) externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
   try {
-    const response = await fetch(absoluteUrl(path), { ...requestInit, headers, signal: controller.signal });
+    const response = await fetch(absoluteUrl(path), { credentials: "include", ...requestInit, headers, signal: controller.signal });
     const text = await response.text();
     let payload: unknown = {};
     try { payload = text ? JSON.parse(text) : {}; } catch { payload = {}; }
     if (!response.ok) {
       const error = payload && typeof payload === "object" && "error" in payload ? String((payload as { error: unknown }).error) : "تعذر الاتصال بخدمة مراس";
-      const details = payload && typeof payload === "object" ? payload as { code?: unknown; newAttemptRequired?: unknown } : {};
-      throw new ApiError(error, response.status, { code: typeof details.code === "string" ? details.code : undefined, newAttemptRequired: details.newAttemptRequired === true });
+      throw new ApiError(error, response.status);
     }
     return payload as T;
   } catch (reason) {
@@ -63,6 +55,60 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   } finally {
     clearTimeout(timeout);
   }
+}
+
+export type ApiUploadProgress = { loaded: number; total: number; percent: number; bytesPerSecond: number; remainingSeconds: number | null };
+export type ApiUploadOptions = { timeoutMs?: number; signal?: AbortSignal; onProgress?: (progress: ApiUploadProgress) => void };
+
+export function apiUpload<T>(path: string, body: FormData | Blob, options: ApiUploadOptions = {}): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    const startedAt = Date.now();
+    xhr.open("POST", absoluteUrl(path), true);
+    xhr.withCredentials = true;
+    xhr.timeout = Math.max(15_000, Math.min(options.timeoutMs || 15 * 60_000, 30 * 60_000));
+    xhr.setRequestHeader("accept", "application/json");
+    xhr.setRequestHeader("x-meras-client", "mobile-v1");
+    if (sessionToken) xhr.setRequestHeader("authorization", `Bearer ${sessionToken}`);
+    const abort = () => xhr.abort();
+    if (options.signal?.aborted) abort();
+    else options.signal?.addEventListener("abort", abort, { once: true });
+    xhr.upload.onprogress = (event) => {
+      const total = event.lengthComputable ? event.total : 0;
+      const elapsedSeconds = Math.max((Date.now() - startedAt) / 1000, 0.1);
+      const bytesPerSecond = event.loaded / elapsedSeconds;
+      options.onProgress?.({
+        loaded: event.loaded,
+        total,
+        percent: total > 0 ? Math.min(100, Math.round(event.loaded / total * 100)) : 0,
+        bytesPerSecond,
+        remainingSeconds: total > event.loaded && bytesPerSecond > 0 ? Math.ceil((total - event.loaded) / bytesPerSecond) : null,
+      });
+    };
+    const cleanup = () => options.signal?.removeEventListener("abort", abort);
+    xhr.onerror = () => { cleanup(); reject(new ApiError("تعذر الاتصال بالخادم أثناء الرفع. تحقق من الشبكة وحاول مرة أخرى.", 0)); };
+    xhr.ontimeout = () => { cleanup(); reject(new ApiError("استغرق الرفع وقتًا أطول من المتوقع. احتفظ بالتطبيق مفتوحًا ثم أعد المحاولة.", 408)); };
+    xhr.onabort = () => { cleanup(); reject(new ApiError("تم إلغاء الرفع.", 499)); };
+    xhr.onload = () => {
+      cleanup();
+      let payload: unknown = {};
+      try { payload = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch { payload = {}; }
+      if (xhr.status < 200 || xhr.status >= 300) {
+        const message = payload && typeof payload === "object" && "error" in payload ? String((payload as { error: unknown }).error) : "تعذر إكمال الرفع.";
+        reject(new ApiError(message, xhr.status));
+        return;
+      }
+      resolve(payload as T);
+    };
+    xhr.send(body);
+  });
+}
+
+export function formatUploadProgress(progress: ApiUploadProgress) {
+  const mb = (value: number) => `${(value / 1024 / 1024).toFixed(1)} م.ب`;
+  const speed = progress.bytesPerSecond > 0 ? `${mb(progress.bytesPerSecond)}/ث` : "جارٍ حساب السرعة";
+  const remaining = progress.remainingSeconds == null ? "" : progress.remainingSeconds < 60 ? ` · متبقٍ ${progress.remainingSeconds} ث` : ` · متبقٍ نحو ${Math.ceil(progress.remainingSeconds / 60)} د`;
+  return `${progress.percent}% · ${mb(progress.loaded)}${progress.total ? ` من ${mb(progress.total)}` : ""} · ${speed}${remaining}`;
 }
 
 export function jsonBody(value: unknown) { return JSON.stringify(value); }

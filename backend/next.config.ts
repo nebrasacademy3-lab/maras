@@ -22,6 +22,9 @@ const nextConfig: NextConfig = {
   compress: true,
   reactStrictMode: true,
   productionBrowserSourceMaps: false,
+  experimental: {
+    proxyClientMaxBodySize: "220mb",
+  },
   async headers() {
     return [
       {

@@ -25,7 +25,10 @@ test("model responses are instructed to be structured, detailed, and safe", () =
   assert.match(ai, /سؤال توضيح واحد/);
   assert.match(ai, /لا تكشف.*السياق الخام/);
   assert.match(ai, /answer.*4800/);
-  assert.match(ai, /response_format: \{ type: "json_object" \}/);
+  assert.match(ai, /type: "json_schema"/);
+  assert.match(ai, /strict: true/);
+  assert.match(ai, /additionalProperties: false/);
+  assert.match(ai, /reasoning: \{ effort: "minimal" \}/);
 });
 
 test("private support context is scoped to the current user's tickets", () => {
@@ -40,5 +43,5 @@ test("web and Expo expose the same answer actions and suggestions", () => {
   assert.match(web, /message\.actions/);
   assert.match(mobile, /reply\.suggestions/);
   assert.match(mobile, /reply\.actions/);
-  assert.match(mobile, /resolveAssistantRoute/);
+  assert.match(mobile, /mobileRoute/);
 });

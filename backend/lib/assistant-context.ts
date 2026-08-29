@@ -1,7 +1,7 @@
 import type { SessionUser } from "@/lib/auth";
 import { and, count, desc, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseAccess, courseRequests, lessonProgress, notificationsDb, orderItems, orders, supervisorAssignments, supportReplies, supportTickets, users } from "@/db/schema";
+import { courseAccess, courseRequests, lessonProgress, notificationsDb, orders, supervisorAssignments, supportReplies, supportTickets, users } from "@/db/schema";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 import type { PublicSettings } from "@/lib/platform-settings";
 import { whatsappHref } from "@/lib/platform-settings";
@@ -34,14 +34,7 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     const replyRows = ticketRows.length
       ? await db.select().from(supportReplies).where(and(eq(supportReplies.internal, false), inArray(supportReplies.ticketId, ticketRows.map((ticket) => ticket.id)))).orderBy(desc(supportReplies.createdAt)).limit(100)
       : [];
-    const orderItemRows = orderRows.length
-      ? await db.select({ orderNumber: orderItems.orderNumber, courseSlug: orderItems.courseSlug }).from(orderItems).where(inArray(orderItems.orderNumber, orderRows.map((order) => order.orderNumber)))
-      : [];
     const title = (slug: string) => courses.find((course) => course.slug === slug)?.title || slug;
-    const orderTitles = (order: (typeof orderRows)[number]) => {
-      const slugs = orderItemRows.filter((item) => item.orderNumber === order.orderNumber).map((item) => item.courseSlug);
-      return (slugs.length ? slugs : [order.courseSlug]).map(title).join(" + ");
-    };
     const tickets = ticketRows.map((ticket) => {
       const replies = replyRows.filter((reply) => reply.ticketId === ticket.id);
       return `${ticket.ticketNumber}:${ticket.title}:${ticket.status}${replies[0] ? `:آخر رد=${replies[0].body.slice(0, 220)}` : ""}`;
@@ -49,7 +42,7 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     privateContext = `\nبيانات حساب المستخدم الحالي فقط (لا تعرض بريدًا أو رقمًا إلا إذا طلب المستخدم تأكيد بيانات حسابه):
 المواد المفعلة=${accessRows.map((row) => `${title(row.courseSlug)}${row.expiresAt ? ` حتى ${row.expiresAt}` : ""}`).join("، ") || "لا توجد"}.
 التقدم=${progressRows.length ? progressRows.map((row) => `${title(row.courseSlug)}:${row.completed ? "مكتمل" : `${row.watchedSeconds} ثانية`}`).slice(0, 20).join("، ") : "لا يوجد"}.
-الطلبات المالية=${orderRows.map((row) => `${row.orderNumber}:${orderTitles(row)}:${row.status}:${row.total} ${row.currency}`).join("، ") || "لا توجد"}.
+الطلبات المالية=${orderRows.map((row) => `${row.orderNumber}:${title(row.courseSlug)}:${row.status}:${row.total} ${row.currency}`).join("، ") || "لا توجد"}.
 طلبات المواد=${requestRows.map((row) => `#${row.id}:${row.courseName}:${row.status}`).join("، ") || "لا توجد"}.
 تذاكر الدعم=${tickets.join("، ") || "لا توجد"}.
 الإشعارات=${noticeRows.map((row) => `${row.title}:${row.body.slice(0, 180)}`).join("، ") || "لا توجد"}.`;
@@ -69,9 +62,9 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     }
   }
   return `هوية المستخدم: الدور=${role}${user ? `، الاسم=${user.fullName}، الجامعة=${institution?.name || user.universitySlug || "غير محددة"}، التخصص=${user.specialty || "غير محدد"}، الملف=${user.profileCompleted ? "مكتمل" : "غير مكتمل"}` : "، غير مسجل الدخول"}.
-المسارات: التسجيل=/register، الدخول=/login، استعادة كلمة المرور=/forgot-password، لوحة الطالب=/dashboard، موادي=/dashboard?view=courses، الحساب=/dashboard?view=account، الطلبات=/dashboard?view=orders، الإشعارات=/dashboard?view=notifications، الجامعات=/universities، المواد=/courses، طلب مادة=/request-course، الدعم=/support، التواصل=/contact، السياسات=/terms و/privacy و/refund-policy و/content-policy.
+المسارات: التسجيل=/register، الدخول=/login، استعادة كلمة المرور=/forgot-password، لوحة الطالب=/dashboard، موادي=/dashboard?view=courses، الحساب=/dashboard?view=account، المشتريات والفواتير=/dashboard?view=orders، طلبات المواد ومتابعة حالتها=/dashboard?view=requests، الإشعارات=/dashboard?view=notifications، الجامعات=/universities، المواد=/courses، إنشاء طلب مادة=/request-course، الدعم=/support، التواصل=/contact، السياسات=/terms و/privacy و/refund-policy و/content-policy.
 التسجيل: الاسم والبريد والجوال السعودي وكلمة مرور قوية ثم الجامعة وتخصص مرتبط بها، وبعدها جولة البداية. الحساب المكتمل مطلوب للشراء وطلب المادة.
-طلب المادة: من /request-course، مع الاسم/الرمز والملاحظات وحتى 5 ملفات PDF أو PPT/PPTX أو DOC/DOCX أو PNG/JPG، 15MB لكل ملف. يصل الطلب للمشرف بحسب الجامعة والتخصص وتظهر حالته للطالب.
+طلب المادة: من /request-course، مع الاسم/الرمز والملاحظات وحتى 100 ملف PDF أو PPT/PPTX أو DOC/DOCX أو PNG/JPG، بإجمالي حتى 100MB. يظهر تقدم الرفع ويمكن إلغاء عملية الرفع قبل اكتمال الإرسال. يصل الطلب للمشرف بحسب الجامعة والتخصص وتظهر حالته للطالب في /dashboard?view=requests. طلب المادة ليس عملية شراء ولا يتطلب دفعًا. بعد إرسال الطلب لا توجد للطالب أزرار تعديل أو إلغاء الطلب أو تنزيل مرفقاته؛ لأي تعديل لاحق يفتح تذكرة دعم.
 الدفع: Tap من الخادم؛ لا تُمنح الصلاحية إلا بعد تأكيد CAPTURED من الخادم. لا تطلب بيانات البطاقة في الدعم.
 الفيديو: مشغل خاص، روابط مؤقتة مرتبطة بالحساب، صلاحية وصول يعاد التحقق منها، Range، علامة مائية، لا زر تنزيل. لا يمكن ضمان منع تسجيل الشاشة 100%.
 الدعم: البريد=${settings.support_email}، الساعات=${settings.support_hours}. الروابط=${social}.

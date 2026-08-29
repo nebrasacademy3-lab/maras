@@ -1,62 +1,17 @@
-/* eslint-disable @next/next/no-img-element -- official uploaded artwork is served without runtime transforms */
+/* eslint-disable @next/next/no-img-element -- theme-specific uploaded logos are already optimized assets */
 import Link from "next/link";
 
-type BrandLogoProps = {
-  href?: string;
-  compact?: boolean;
-  markOnly?: boolean;
-};
-
-export function BrandLogo({ href = "/", compact = false, markOnly = false }: BrandLogoProps) {
-  const classes = [
-    "brand-logo",
-    compact && "brand-logo-compact",
-    markOnly ? "brand-logo-mark-only" : "brand-logo-wordmark",
-  ].filter(Boolean).join(" ");
-
+export function BrandLogo({ href = "/", compact = false, markOnly = false }: { href?: string; compact?: boolean; markOnly?: boolean }) {
   return (
-    <Link href={href} className={classes} aria-label="مراس العلم — الانتقال إلى الرئيسية">
-      {markOnly ? (
-        <>
-          <img
-            src="/brand/mark-light.png"
-            alt="مراس العلم"
-            width={1024}
-            height={1024}
-            className="brand-mark-light"
-            decoding="async"
-          />
-          <img
-            src="/brand/mark-dark.png"
-            alt=""
-            aria-hidden="true"
-            width={1024}
-            height={1024}
-            className="brand-mark-dark"
-            decoding="async"
-          />
-        </>
-      ) : (
-        <>
-          <img
-            src="/brand/logo-light-hq.png"
-            alt="مراس العلم"
-            width={1984}
-            height={1156}
-            className="brand-logo-light"
-            decoding="async"
-          />
-          <img
-            src="/brand/logo-dark-hq.png"
-            alt=""
-            aria-hidden="true"
-            width={1984}
-            height={1156}
-            className="brand-logo-dark"
-            decoding="async"
-          />
-        </>
-      )}
+    <Link
+      href={href}
+      className={`brand-logo${compact ? " brand-logo-compact" : ""}${markOnly ? " brand-logo-mark-only" : ""}`}
+      aria-label="مراس العلم — الرئيسية"
+    >
+      {markOnly ? <img src="/brand/mark-official.png" alt="علامة مراس العلم" width={1920} height={1920} /> : <>
+        <img src="/brand/logo-light-hq.png" alt="مراس العلم" width={1984} height={1156} className="brand-logo-light" />
+        <img src="/brand/logo-dark-hq.png" alt="" aria-hidden="true" width={1984} height={1156} className="brand-logo-dark" />
+      </>}
     </Link>
   );
 }

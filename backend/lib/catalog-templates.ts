@@ -27,11 +27,11 @@ export const templateLessons = (courseName: string) => [
   `التقييم النهائي ومشروع ${courseName}`,
 ];
 
-export function templateUnitDescription(courseName: string, unitTitle: string) { return `${unitTitle} في مادة ${courseName}: مسار منظم يمهّد للمفاهيم والتطبيقات والتمارين. يمكن للإدارة تخصيص الوصف وإضافة الفيديوهات المعتمدة.`; }
-export function templateLessonDescription(courseName: string, lessonTitle: string) { return `درس تمهيدي ضمن ${courseName}: ${lessonTitle}. يُستكمل الشرح المرئي والملفات من لوحة الإدارة.`; }
+export function templateUnitDescription(courseName: string, unitTitle: string) { return `${unitTitle} في مادة ${courseName}: مسار منظم يمهّد للمفاهيم والتطبيقات والتمارين، وتصل تحديثات الدروس والمواد المساندة للمشترك تلقائيًا.`; }
+export function templateLessonDescription(courseName: string, lessonTitle: string) { return `درس ضمن ${courseName}: ${lessonTitle}. يُتاح الشرح المرئي والملفات المساندة تدريجيًا ضمن تحديثات المادة.`; }
 
 export function templateDescription(institutionName: string, program: AcademicProgram, courseName: string) {
-  return `قالب تعليمي منظم لمادة «${courseName}» ضمن تخصص «${program.name}» في ${institutionName}. يتضمن وحدات تأسيسية وتطبيقية وتمارين ومراجعة، ويُستكمل بإضافة فيديوهات الشرح من لوحة الإدارة.`;
+  return `مادة تعليمية منظمة لمقرر «${courseName}» ضمن تخصص «${program.name}» في ${institutionName}. تتضمن وحدات تأسيسية وتطبيقية وتمارين ومراجعة، وتُنشر شروحها المرئية تدريجيًا ضمن الاشتراك نفسه.`;
 }
 
 export function templateCourseCode(institutionSlug: string, program: AcademicProgram, courseName: string) {

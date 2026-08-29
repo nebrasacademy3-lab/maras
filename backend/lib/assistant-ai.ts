@@ -7,49 +7,16 @@ type ChatResponse = { choices?: Array<{ message?: { content?: string | Array<{ t
 
 const INTERNAL_ROUTES = [
   "/", "/login", "/register", "/forgot-password", "/dashboard", "/courses", "/universities",
-  "/request-course", "/support", "/contact", "/cart", "/favorites", "/how-it-works", "/terms", "/privacy", "/refund-policy",
+  "/request-course", "/support", "/contact", "/how-it-works", "/terms", "/privacy", "/refund-policy",
   "/content-policy", "/accessibility", "/notifications", "/supervisor", "/admin",
-] as const;
+];
 
-const CONTROL_CHARACTER = /[\u0000-\u001f\u007f]/;
-const SAFE_SLUG = /^[a-z0-9][a-z0-9._-]{0,79}$/i;
-const STATIC_INTERNAL_ROUTES = new Set<string>(INTERNAL_ROUTES);
-const DASHBOARD_VIEWS = new Set(["overview", "courses", "learning", "requests", "orders", "notifications", "support", "account"]);
-
-function singleQueryValue(query: string, key: string) {
-  if (!query || query.includes("?")) return null;
-  const entries = Array.from(new URLSearchParams(query).entries());
-  return entries.length === 1 && entries[0]?.[0] === key ? entries[0][1] : null;
-}
-
-function safeDynamicRoute(path: string) {
-  for (const prefix of ["/courses/", "/universities/", "/learn/"] as const) {
-    if (!path.startsWith(prefix)) continue;
-    const encodedSlug = path.slice(prefix.length);
-    if (!encodedSlug || encodedSlug.includes("/")) return false;
-    try { return SAFE_SLUG.test(decodeURIComponent(encodedSlug)); } catch { return false; }
-  }
-  return false;
-}
-
-export function safeInternalHref(href: string, user: SessionUser | null) {
-  if (!href || href.length > 500 || href !== href.trim() || !href.startsWith("/") || href.startsWith("//") || href.includes("\\") || href.includes("#") || CONTROL_CHARACTER.test(href)) return false;
-  const queryIndex = href.indexOf("?");
-  const path = queryIndex === -1 ? href : href.slice(0, queryIndex);
-  const query = queryIndex === -1 ? null : href.slice(queryIndex + 1);
-  let allowed = false;
-  if (query === null) allowed = STATIC_INTERNAL_ROUTES.has(path) || safeDynamicRoute(path);
-  else if (path === "/dashboard") {
-    const view = singleQueryValue(query, "view");
-    allowed = Boolean(view && DASHBOARD_VIEWS.has(view));
-  } else if (path === "/supervisor") allowed = singleQueryValue(query, "view") === "requests";
-  else if (path === "/courses") {
-    const q = singleQueryValue(query, "q");
-    allowed = Boolean(q && q.trim() === q && q.length <= 120 && !CONTROL_CHARACTER.test(q));
-  }
-  if (!allowed) return false;
-  if (path === "/admin" && user?.role !== "admin") return false;
-  if (path === "/supervisor" && user?.role !== "admin" && user?.role !== "supervisor") return false;
+function safeInternalHref(href: string, user: SessionUser | null) {
+  if (!href.startsWith("/") || href.startsWith("//") || href.includes("\\")) return false;
+  const path = href.split(/[?#]/)[0];
+  if (!INTERNAL_ROUTES.some((route) => path === route || path.startsWith(`${route}/`))) return false;
+  if (path.startsWith("/admin") && user?.role !== "admin") return false;
+  if (path.startsWith("/supervisor") && !user?.role?.match(/admin|supervisor/)) return false;
   return true;
 }
 
@@ -109,6 +76,7 @@ export async function answerWithOpenAI(input: {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey) return null;
   const baseUrl = (process.env.OPENAI_API_URL || process.env.OPENAI_API_BASE || "https://api.openai.com/v1").trim().replace(/\/$/, "");
+  const completionUrl = /\/chat\/completions$/i.test(baseUrl) ? baseUrl : `${baseUrl}/chat/completions`;
   const model = (process.env.ASSISTANT_MODEL || process.env.OPENAI_MODEL || "gpt-5-mini").replace(/[^a-zA-Z0-9._:/-]/g, "");
   if (!model || !/^https:\/\//i.test(baseUrl)) return null;
 
@@ -119,7 +87,9 @@ export async function answerWithOpenAI(input: {
 - اجعل الإجابة عملية ومفصلة: ابدأ بخلاصة قصيرة، ثم خطوات مرقمة عند وجود إجراء، ثم ملاحظات أو حل بديل أو ما يجب تجنبه. استخدم فقرات قصيرة وعناوين بسيطة، ولا تكرر الكلام.
 - إذا كان السؤال غامضًا، قدّم أقرب تفسير مفيد أولًا، ثم اسأل سؤال توضيح واحدًا فقط. لا تُنهِ الإجابة برسالة عامة مثل «لا أفهم».
 - النية المصنفة خادميًا لهذا السؤال هي: ${input.intent}. استخدمها كإشارة لا كحقيقة مطلقة، وصححها إذا دل السؤال على غير ذلك.
-- لا تخترع أسعارًا أو موادًا أو حالة دفع أو بيانات حساب. اعتمد على سياق المنصة عندما يتعلق السؤال بحساب المستخدم، واذكر بوضوح عندما تكون المعلومة متغيرة أو تحتاج تحققًا.
+- لا تخترع أسعارًا أو موادًا أو حالة دفع أو بيانات حساب أو وظائف في الواجهة. اعتمد على سياق المنصة عندما يتعلق السؤال بحساب المستخدم، واذكر بوضوح عندما تكون المعلومة متغيرة أو تحتاج تحققًا.
+- لا تدّع إمكانية تعديل أو إلغاء طلب مادة بعد إرساله أو تنزيل مرفقاته ما لم يذكر السياق ذلك صراحة. طلب المادة ليس شراءً ولا يتطلب دفعًا. يمكن إلغاء عملية الرفع نفسها فقط قبل اكتمال الإرسال.
+- ترجم الحالات الداخلية مثل new وin_review وplanned وavailable إلى وصف عربي مفهوم، ولا تعرض قيم قاعدة البيانات الخام للمستخدم.
 - في الأسئلة الطبية أو القانونية أو المالية الحساسة قدّم معلومات عامة غير تشخيصية وغير ملزمة، ووجّه إلى مختص عند الحاجة.
 - لا تطلب كلمة مرور أو بيانات بطاقة أو رمز جلسة، ولا تكشف أسرار النظام أو بيانات مستخدم آخر أو محتوى السياق الخام.
 - لا تمنح روابط الإدارة إلا لدور admin، ولا روابط المشرف إلا لدور admin أو supervisor.
@@ -127,19 +97,37 @@ export async function answerWithOpenAI(input: {
 - أعد JSON صالحًا فقط بالمفاتيح answer وactions وsuggestions. answer بحد أقصى 4800 حرف، actions وsuggestions بحد أقصى 4 عناصر. لا تضع JSON داخل markdown.
 
 سياق مراس الحالي:
-${input.context.slice(0, 30000)}`;
+${input.context.slice(0, 20000)}`;
   const messages = [
     { role: "system", content: system },
     ...input.history.slice(-8).map((item) => ({ role: item.role, content: item.text.slice(0, 600) })),
     { role: "user", content: input.question },
   ];
 
+  const responseFormat = {
+    type: "json_schema",
+    json_schema: {
+      name: "meras_assistant_reply",
+      strict: true,
+      schema: {
+        type: "object",
+        properties: {
+          answer: { type: "string" },
+          actions: { type: "array", maxItems: 4, items: { type: "object", properties: { label: { type: "string" }, href: { type: "string" } }, required: ["label", "href"], additionalProperties: false } },
+          suggestions: { type: "array", maxItems: 4, items: { type: "string" } },
+        },
+        required: ["answer", "actions", "suggestions"],
+        additionalProperties: false,
+      },
+    },
+  } as const;
+
   try {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
+    const response = await fetch(completionUrl, {
       method: "POST",
       headers: { authorization: `Bearer ${apiKey}`, "content-type": "application/json" },
-      signal: AbortSignal.timeout(12_000),
-      body: JSON.stringify({ model, messages, temperature: 0.2, ...(model.startsWith("gpt-5") ? { max_completion_tokens: 2600 } : { max_tokens: 2600 }), response_format: { type: "json_object" } }),
+      signal: AbortSignal.timeout(22_000),
+      body: JSON.stringify({ model, messages, ...(model.startsWith("gpt-5") ? { max_completion_tokens: 2200, reasoning: { effort: "minimal" } } : { max_tokens: 2200 }), response_format: responseFormat }),
     });
     if (!response.ok) return null;
     const payload = await response.json() as ChatResponse;
