@@ -1,0 +1,39 @@
+# الصقها في Railway > Service > Variables > Raw Editor
+# إذا كان اسم خدمة PostgreSQL لديك مختلفًا عن Postgres غيّر المرجع في أول سطر.
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+DATABASE_SSL=false
+DATABASE_SSL_REJECT_UNAUTHORIZED=true
+DATABASE_POOL_MAX=10
+
+NEXT_PUBLIC_SITE_URL=https://marase.up.railway.app
+APP_URL=https://marase.up.railway.app
+MOBILE_APP_URL=
+EXPO_WEB_ORIGIN=
+
+UPLOAD_DIR=/data/uploads
+RAILWAY_RUN_UID=0
+RUN_DB_MIGRATIONS=true
+AUTO_SEED_CATALOG=true
+CATALOG_SEED_MODE=core
+
+# احتفظ بقيمك الحالية في الإنتاج ولا تضع هذه النصوص الحرفية.
+ADMIN_API_TOKEN=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
+ADMIN_UPLOAD_TOKEN=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
+VIDEO_SIGNING_SECRET=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
+
+# موجود للتوافق مع إعدادات المشروع الحالية؛ اترك قيمة إنتاجك الحالية إن كنت قد عرّفتها.
+SESSION_SECRET=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
+SESSION_COOKIE_SECURE=true
+
+# Tap — اتركها فارغة حتى تفعيل الدفع الحقيقي.
+TAP_SECRET_KEY=
+TAP_WEBHOOK_SECRET=
+
+# البريد — اختياري.
+RESEND_API_KEY=
+EMAIL_FROM=
+
+# المساعد الخارجي — اختياري؛ المحرك المحلي يبقى فعالًا بدونه.
+OPENAI_API_KEY=
+OPENAI_API_URL=https://api.openai.com/v1
+ASSISTANT_MODEL=gpt-5-mini

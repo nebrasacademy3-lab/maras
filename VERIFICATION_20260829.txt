@@ -1,0 +1,19 @@
+Meras Al-Elm Railway verification — 2026-08-29
+- Static contract tests (excluding production smoke that requires a built Next server): PASS 38/38
+- Combined TypeScript/TSX syntax transpile: PASS (213 files, 0 syntax errors)
+- Requested-upgrade static contract scan: PASS 18/18
+- package.json / package-lock.json root dependency consistency: PASS
+- Migration 0014 is registered in drizzle/meta/_journal.json
+- Railway start script runs drizzle-kit migrate when RUN_DB_MIGRATIONS=true
+- Device limit default: 2 across web + mobile
+- Device session enforcement: same-device replacement + transaction + PostgreSQL advisory lock
+- Admin device list and single-session revocation: configured
+- Course request URL: HTTPS-only
+- Admin request ZIP: admin-session protected
+- Admin access grant: creates paid order + order item + admin payment event, so it is included in revenue/payment metrics
+- Admin announcements: templates + searchable specific-user targeting + internal course/external HTTPS actions + inbox/banner/modal/all + Push
+- Private/role announcement endpoint: scoped to signed-in user/role and no-store
+- Immediate web logout: 303 redirect + same-origin protection + session revocation
+- High-resolution brand assets used by header/brand component and video branding
+- No production secrets embedded in project env files; examples contain placeholders only
+- Full `next build` was not executed in this container because project node_modules are not installed here; Railway Dockerfile performs npm ci + next build during deployment.

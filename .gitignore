@@ -1,36 +1,14 @@
-# Dependencies and framework output
-**/node_modules/
-**/.next/
-**/.expo/
-**/dist/
-**/dist-*/
-**/coverage/
-
-# Runtime data and local uploads
-backend/.data/
-backend/data/
-backend/outputs/
-backend/work/
-test-artifacts/
-brand_generation/
-
-# Local environment and credentials
-**/.env
-**/.env.*
-!**/.env.example
+node_modules
+.next
+out
+dist
+coverage
+.env*
+!.env.example
 *.pem
-*.key
-*.p8
-*.p12
-*.jks
-*.keystore
-*.mobileprovision
-
-# Local logs, caches, and generated inventories
 *.log
 *.tsbuildinfo
-.DS_Store
-file_inventory.txt
-inspection_notes.md
-scripts/create_*_fixture.py
-scripts/inspect-program-response.mjs
+.vercel
+/data
+/outputs
+/work
