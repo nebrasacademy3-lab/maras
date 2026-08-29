@@ -34,14 +34,23 @@ export function isUniqueConstraintError(error: unknown) {
 }
 
 export function requestOrigin(request: Request) {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  if (configured) return configured;
-  return new URL(request.url).origin;
+  for (const configured of [process.env.APP_URL, process.env.NEXT_PUBLIC_SITE_URL]) {
+    if (!configured) continue;
+    try {
+      const url = new URL(configured);
+      if (process.env.NODE_ENV === "production" && url.protocol !== "https:") continue;
+      return url.origin;
+    } catch { /* Try the next explicitly configured origin. */ }
+  }
+  // Never build payment callbacks or password-reset links from an untrusted
+  // Host header in production.
+  if (process.env.NODE_ENV === "production") return "";
+  try { return new URL(request.url).origin; } catch { return ""; }
 }
 
 export function isAdminRequest(request: Request) {
   const expected = process.env.ADMIN_API_TOKEN?.trim();
-  if (!expected) return false;
+  if (!expected || expected.length < 32) return false;
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
   const direct = request.headers.get("x-admin-token")?.trim();
   return Boolean((bearer && secretEquals(expected, bearer)) || (direct && secretEquals(expected, direct)));

@@ -1,157 +1,97 @@
-import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Ionicons } from "@expo/vector-icons";
-import { ScaledText as Text } from "@/src/components/ScaledText";
-import { Pressable, StyleSheet, View } from "react-native";
+import { router, useLocalSearchParams } from "expo-router";
+import React, { useMemo, useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
+import { CatalogFilters, type CatalogScope } from "@/src/components/CatalogFilters";
 import { CourseCard } from "@/src/components/CourseCard";
-import { Card, EmptyState, LoadingState, Screen, SearchBox, SectionTitle } from "@/src/components/ui";
-import { SearchPicker } from "@/src/components/SearchPicker";
+import { AppButton, EmptyState, ErrorState, LoadingState, Screen, SearchBox, SectionTitle } from "@/src/components/ui";
 import { api } from "@/src/lib/api";
+import { sanitizeAssistantCourseQuery } from "@/src/lib/assistantRoute";
+import { catalogFilterContext, customizeCatalogFilters, resolveCatalogFilterState } from "@/src/lib/catalogFilterState";
 import { useAuth } from "@/src/providers/AuthProvider";
-import { useTheme } from "@/src/providers/ThemeProvider";
 import type { Catalog } from "@/src/types";
 
-const ALL_UNIVERSITIES = "كل الجامعات";
-const ALL_SPECIALTIES = "كل التخصصات";
-const scopeOptions = ["موادي", "جامعتي", "تخصصي", "الكل"] as const;
+const ALL_UNIVERSITIES = "__all_universities__";
+const ALL_SPECIALTIES = "__all_specialties__";
 
 export default function Courses() {
-  const { colors } = useTheme();
-  const { user } = useAuth();
-  const [query, setQuery] = useState("");
-  const [scopeOverride, setScopeOverride] = useState<string | null>(null);
-  const [universityOverride, setUniversityOverride] = useState<string | null>(null);
-  const [specialtyOverride, setSpecialtyOverride] = useState<string | null>(null);
+  const { user, loading: authLoading } = useAuth();
+  const params = useLocalSearchParams<{ q?: string | string[] }>();
+  const routedQuery = sanitizeAssistantCourseQuery(params.q);
+  const [search, setSearch] = useState(() => ({ source: routedQuery, value: routedQuery }));
+  const query = search.source === routedQuery ? search.value : routedQuery;
+  const setQuery = (value: string) => setSearch({ source: routedQuery, value });
+  const filterContext = useMemo(
+    () => catalogFilterContext(authLoading, user, ALL_UNIVERSITIES, ALL_SPECIALTIES),
+    [authLoading, user],
+  );
+  const [storedFilters, setStoredFilters] = useState(() => filterContext);
+  const filters = resolveCatalogFilterState(storedFilters, filterContext);
+  const { scope, university, specialty } = filters;
   const catalog = useQuery({ queryKey: ["catalog"], queryFn: () => api<Catalog>("/api/mobile/catalog") });
-  const activeScope = scopeOverride ?? (user ? "موادي" : "الكل");
-  const activeUniversity = universityOverride ?? (user?.universitySlug || ALL_UNIVERSITIES);
-  const activeSpecialty = specialtyOverride ?? (user?.specialty || ALL_SPECIALTIES);
-  const programs = useQuery({ queryKey: ["catalog-programs", activeUniversity], queryFn: () => api<{ programs: { name: string; aliases?: string[] }[] }>(`/api/catalog/programs?institution=${encodeURIComponent(activeUniversity)}`), enabled: activeUniversity !== ALL_UNIVERSITIES });
+  const programs = useQuery({
+    queryKey: ["catalog-programs", university],
+    queryFn: () => api<{ programs: { name: string; aliases?: string[]; degree?: string; area?: string }[] }>(`/api/catalog/programs?institution=${encodeURIComponent(university)}`),
+    enabled: university !== ALL_UNIVERSITIES,
+  });
 
-  const universities = useMemo(() => (catalog.data?.institutions || []).map((institution) => ({ key: institution.slug, label: institution.name, detail: institution.region })).sort((a, b) => a.label.localeCompare(b.label, "ar")), [catalog.data]);
-  const specialties = useMemo(() => {
-    if (activeUniversity !== ALL_UNIVERSITIES) {
-      return [...new Set((programs.data?.programs || []).flatMap((program) => [program.name, ...(program.aliases || [])]))].sort((a, b) => a.localeCompare(b, "ar"));
-    }
-    return [...new Set((catalog.data?.courses || []).map((course) => course.specialty))].sort((a, b) => a.localeCompare(b, "ar"));
-  }, [activeUniversity, catalog.data, programs.data]);
-
-  const rows = useMemo(() => (catalog.data?.courses || []).filter((course) => {
-    const matchesScope = activeScope === "الكل"
-      || (activeScope === "موادي" && course.universitySlug === user?.universitySlug && course.specialty === user?.specialty)
-      || (activeScope === "جامعتي" && course.universitySlug === user?.universitySlug)
-      || (activeScope === "تخصصي" && course.specialty === user?.specialty);
-    const matchesUniversity = activeUniversity === ALL_UNIVERSITIES || course.universitySlug === activeUniversity;
-    const matchesSpecialty = activeSpecialty === ALL_SPECIALTIES || course.specialty === activeSpecialty;
+  const universityOptions = useMemo(() => [
+    { key: ALL_UNIVERSITIES, label: "كل الجامعات والكليات", detail: "دون تقييد الجهة" },
+    ...(catalog.data?.institutions || []).map((item) => ({ key: item.slug, label: item.name, detail: `${item.region} · ${item.type}` })).sort((a, b) => a.label.localeCompare(b.label, "ar")),
+  ], [catalog.data]);
+  const specialtyOptions = useMemo(() => {
+    const names = university === ALL_UNIVERSITIES
+      ? (catalog.data?.courses || []).map((course) => course.specialty)
+      : (programs.data?.programs || []).flatMap((program) => [program.name, ...(program.aliases || [])]);
+    return [{ key: ALL_SPECIALTIES, label: "كل التخصصات", detail: "دون تقييد التخصص" }, ...[...new Set(names)].sort((a, b) => a.localeCompare(b, "ar")).map((name) => ({ key: name, label: name }))];
+  }, [catalog.data, programs.data, university]);
+  const rows = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("ar");
-    return matchesScope && matchesUniversity && matchesSpecialty && (!needle || `${course.title} ${course.titleEn} ${course.code || ""} ${course.university} ${course.specialty}`.toLocaleLowerCase("ar").includes(needle));
-  }), [activeScope, activeSpecialty, activeUniversity, catalog.data, query, user]);
+    return (catalog.data?.courses || []).filter((course) => {
+      const matchesUniversity = university === ALL_UNIVERSITIES || course.universitySlug === university;
+      const matchesSpecialty = specialty === ALL_SPECIALTIES || course.specialty === specialty;
+      const haystack = `${course.title} ${course.titleEn} ${course.code || ""} ${course.university} ${course.specialty}`.toLocaleLowerCase("ar");
+      return matchesUniversity && matchesSpecialty && (!needle || haystack.includes(needle));
+    });
+  }, [catalog.data, query, specialty, university]);
 
-  const selectedUniversityName = activeUniversity === ALL_UNIVERSITIES ? ALL_UNIVERSITIES : universities.find((item) => item.key === activeUniversity)?.label || ALL_UNIVERSITIES;
-  const selectedSpecialtyName = activeSpecialty;
-
-  function showAll() {
-    setScopeOverride("الكل");
-    setUniversityOverride(ALL_UNIVERSITIES);
-    setSpecialtyOverride(ALL_SPECIALTIES);
+  function chooseScope(next: CatalogScope) {
+    if (next === "personal") setStoredFilters(customizeCatalogFilters(filters, { scope: next, university: user?.universitySlug || ALL_UNIVERSITIES, specialty: user?.specialty || ALL_SPECIALTIES }));
+    if (next === "university") setStoredFilters(customizeCatalogFilters(filters, { scope: next, university: user?.universitySlug || ALL_UNIVERSITIES, specialty: ALL_SPECIALTIES }));
+    if (next === "specialty") setStoredFilters(customizeCatalogFilters(filters, { scope: next, university: ALL_UNIVERSITIES, specialty: user?.specialty || ALL_SPECIALTIES }));
+    if (next === "all") setStoredFilters(customizeCatalogFilters(filters, { scope: next, university: ALL_UNIVERSITIES, specialty: ALL_SPECIALTIES }));
   }
-
-  function showPersonal() {
-    setScopeOverride("موادي");
-    setUniversityOverride(user?.universitySlug || ALL_UNIVERSITIES);
-    setSpecialtyOverride(user?.specialty || ALL_SPECIALTIES);
-  }
-
-  function clearAll() {
-    setQuery("");
-    if (user) showPersonal();
-    else showAll();
-  }
+  function chooseUniversity(next: string) { setStoredFilters(customizeCatalogFilters(filters, { scope: "all", university: next, specialty: ALL_SPECIALTIES })); }
+  function chooseSpecialty(next: string) { setStoredFilters(customizeCatalogFilters(filters, { scope: "all", specialty: next })); }
+  function reset() { setQuery(""); setStoredFilters(filterContext); }
 
   if (catalog.isLoading) return <Screen><LoadingState label="نجهّز كتالوج المواد..." /></Screen>;
-
-  return (
-    <Screen>
-      <AppHeader title="المواد والشروحات" subtitle={`${rows.length} مادة مطابقة`} />
-
-      <Card style={[styles.hero, { backgroundColor: colors.surfaceAlt }]}> 
-        <View style={styles.heroHead}>
-          <View style={[styles.heroIcon, { backgroundColor: colors.surface }]}>
-            <Ionicons name="funnel-outline" size={22} color={colors.primary} />
-          </View>
-          <View style={styles.flexEnd}>
-            <Text style={[styles.heroTitle, { color: colors.text }]}>{user ? "بحث وفلترة بشكل أوضح" : "ابحث في كتالوج مراس"}</Text>
-            <Text style={[styles.heroCopy, { color: colors.textSoft }]}>{user ? "موادك تظهر أولًا، ويمكنك التبديل إلى كل الجامعات أو تخصيص البحث بسهولة." : "اختر الجامعة والتخصص ثم استعرض المواد بشكل مرتب وواضح."}</Text>
-          </View>
-        </View>
-      </Card>
-
-      <SearchBox value={query} onChangeText={setQuery} placeholder="اسم المادة، الرمز، الجامعة أو التخصص" />
-
-      {user && <View style={styles.scopeRow}>
-        <Pressable onPress={showPersonal} style={[styles.scopeButton, { backgroundColor: activeScope === "موادي" ? colors.primary : colors.surface, borderColor: activeScope === "موادي" ? colors.primary : colors.border }]}>
-          <Ionicons name="sparkles-outline" size={16} color={activeScope === "موادي" ? "#FFF" : colors.primary} />
-          <Text style={{ color: activeScope === "موادي" ? "#FFF" : colors.text, fontSize: 11, fontWeight: "800" }}>موادي المناسبة</Text>
-        </Pressable>
-        <Pressable onPress={showAll} style={[styles.scopeButton, { backgroundColor: activeScope === "الكل" && activeUniversity === ALL_UNIVERSITIES && activeSpecialty === ALL_SPECIALTIES ? colors.primary : colors.surface, borderColor: activeScope === "الكل" && activeUniversity === ALL_UNIVERSITIES && activeSpecialty === ALL_SPECIALTIES ? colors.primary : colors.border }]}>
-          <Ionicons name="grid-outline" size={16} color={activeScope === "الكل" && activeUniversity === ALL_UNIVERSITIES && activeSpecialty === ALL_SPECIALTIES ? "#FFF" : colors.primary} />
-          <Text style={{ color: activeScope === "الكل" && activeUniversity === ALL_UNIVERSITIES && activeSpecialty === ALL_SPECIALTIES ? "#FFF" : colors.text, fontSize: 11, fontWeight: "800" }}>عرض الكل</Text>
-        </Pressable>
-      </View>}
-
-      <SectionTitle title="الفلترة" subtitle="اختر النطاق ثم الجامعة والتخصص بطريقة مرتبة" />
-      <Card>
-        {user && <View style={styles.quickScopes}>
-          {scopeOptions.map((item) => (
-            <Pressable key={item} onPress={() => item === "الكل" ? showAll() : setScopeOverride(item)} style={[styles.quickScope, { backgroundColor: activeScope === item ? colors.primary : colors.surfaceAlt, borderColor: activeScope === item ? colors.primary : colors.border }]}>
-              <Text style={{ color: activeScope === item ? "#FFF" : colors.text, fontSize: 10, fontWeight: "800" }}>{item}</Text>
-            </Pressable>
-          ))}
-        </View>}
-
-        <SearchPicker label="الجامعة" value={activeUniversity === ALL_UNIVERSITIES ? undefined : activeUniversity} items={universities} placeholder={ALL_UNIVERSITIES} onSelect={(item) => { setScopeOverride("الكل"); setUniversityOverride(item.key); setSpecialtyOverride(ALL_SPECIALTIES); }} />
-        <SearchPicker label="التخصص" value={activeSpecialty === ALL_SPECIALTIES ? undefined : activeSpecialty} items={specialties.map((item) => ({ key: item, label: item }))} placeholder={programs.isLoading ? "نجهّز التخصصات..." : ALL_SPECIALTIES} onSelect={(item) => { setScopeOverride("الكل"); setSpecialtyOverride(item.key); }} disabled={activeUniversity !== ALL_UNIVERSITIES && programs.isLoading} />
-
-        <View style={styles.summaryWrap}>
-          <FilterPill label={`النطاق: ${activeScope}`} colors={colors} />
-          <FilterPill label={`الجامعة: ${selectedUniversityName}`} colors={colors} />
-          <FilterPill label={`التخصص: ${selectedSpecialtyName}`} colors={colors} />
-        </View>
-
-        <Pressable onPress={clearAll} style={[styles.clearButton, { borderColor: colors.border, backgroundColor: colors.surface }]}>
-          <Ionicons name="refresh-outline" size={16} color={colors.primary} />
-          <Text style={{ color: colors.primary, fontSize: 11, fontWeight: "800" }}>إعادة ضبط البحث والفلاتر</Text>
-        </Pressable>
-      </Card>
-
-      <SectionTitle title="نتائج المواد" subtitle={`${rows.length} مادة ظاهرة`} />
-      <View style={styles.list}>
-        {rows.map((course) => <CourseCard compact key={course.slug} course={course} />)}
-      </View>
-      {!rows.length && <EmptyState icon="search-outline" title="لا توجد نتائج بهذه الفلاتر" text="جرّب اختيار نطاق أوسع أو امسح الفلاتر لإظهار مواد أكثر." />}
-    </Screen>
-  );
-}
-
-function FilterPill({ label, colors }: { label: string; colors: ReturnType<typeof useTheme>["colors"] }) {
-  return <View style={[styles.pill, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}><Text numberOfLines={1} style={[styles.pillText, { color: colors.textSoft }]}>{label}</Text></View>;
+  if (catalog.isError || !catalog.data) return <Screen><AppHeader title="المواد والشروحات" /><ErrorState title="تعذر تحميل كتالوج المواد" text="لم نتمكن من جلب المواد الآن. تحقق من اتصالك ثم أعد المحاولة." onRetry={() => void catalog.refetch()} /></Screen>;
+  return <Screen>
+    <AppHeader title="المواد والشروحات" subtitle="ابحث ثم خصّص النتائج من مكان واحد" />
+    <SearchBox value={query} onChangeText={setQuery} placeholder="اسم المادة، الرمز، الجامعة أو التخصص" />
+    <CatalogFilters
+      scope={scope}
+      onScopeChange={chooseScope}
+      university={university}
+      specialty={specialty}
+      allUniversitiesKey={ALL_UNIVERSITIES}
+      allSpecialtiesKey={ALL_SPECIALTIES}
+      universities={universityOptions}
+      specialties={specialtyOptions}
+      onUniversityChange={chooseUniversity}
+      onSpecialtyChange={chooseSpecialty}
+      onReset={reset}
+      specialtiesLoading={programs.isFetching}
+      allowPersonal={Boolean(user)}
+    />
+    <SectionTitle title="النتائج" subtitle={`${rows.length} مادة مطابقة للبحث والفلاتر`} />
+    {rows.length ? <View style={styles.list}>{rows.map((course) => <CourseCard compact key={course.slug} course={course} />)}</View> : <EmptyState icon="search-outline" title="لم نجد مادة مطابقة" text="جرّب كلمة أقصر أو أعد ضبط الفلاتر. وإذا لم تكن المادة متوفرة يمكنك إرسال طلب جديد للإدارة." action={<View style={styles.emptyActions}><AppButton title="إعادة ضبط البحث والفلاتر" icon="refresh-outline" variant="soft" onPress={reset} />{user ? <AppButton title="طلب مادة جديدة" icon="cloud-upload-outline" variant="ghost" onPress={() => router.push("/requests")} /> : null}</View>} />}
+  </Screen>;
 }
 
 const styles = StyleSheet.create({
-  hero: { marginBottom: 12 },
-  heroHead: { flexDirection: "row-reverse", gap: 12, alignItems: "flex-start" },
-  heroIcon: { width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-  flexEnd: { flex: 1, alignItems: "flex-end" },
-  heroTitle: { fontSize: 14, fontWeight: "900", textAlign: "right", writingDirection: "rtl" },
-  heroCopy: { fontSize: 10, lineHeight: 18, textAlign: "right", writingDirection: "rtl", marginTop: 4 },
-  scopeRow: { flexDirection: "row-reverse", gap: 10, marginTop: 12 },
-  scopeButton: { flex: 1, minHeight: 44, borderRadius: 14, borderWidth: 1, flexDirection: "row-reverse", alignItems: "center", justifyContent: "center", gap: 7 },
-  quickScopes: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 14 },
-  quickScope: { minWidth: 76, minHeight: 36, paddingHorizontal: 13, borderWidth: 1, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  summaryWrap: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginTop: 6, marginBottom: 14 },
-  pill: { maxWidth: "100%", borderWidth: 1, borderRadius: 999, paddingHorizontal: 12, minHeight: 34, alignItems: "center", justifyContent: "center" },
-  pillText: { fontSize: 10, fontWeight: "800", textAlign: "right", writingDirection: "rtl" },
-  clearButton: { minHeight: 42, borderWidth: 1, borderRadius: 13, alignItems: "center", justifyContent: "center", flexDirection: "row-reverse", gap: 7 },
-  list: { marginTop: 2 },
+  list: { gap: 0 },
+  emptyActions: { width: "100%", gap: 8 },
 });

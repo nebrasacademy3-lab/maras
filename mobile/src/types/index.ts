@@ -64,11 +64,26 @@ export type Course = {
 };
 
 export type Catalog = { ok: true; institutions: Institution[]; courses: Course[] };
-export type ProgressRow = { id: number; courseSlug: string; lessonId: string; watchedSeconds: number; completed: boolean; updatedAt: string };
+export type ProgressRow = { courseSlug: string; lessonId: string; watchedSeconds: number; completed: boolean; updatedAt: string };
 export type OwnedCourse = Course & { progress: number; currentLessonId: string | null; expiresAt: string | null };
 export type CourseRequest = { id: number; courseName: string; university: string; specialty: string; status: string; attachmentsCount: number; createdAt: string; notes?: string };
-export type Order = { orderNumber: string; courseSlug: string; courseTitle: string; total: number; currency: string; status: string; createdAt: string };
-export type Invoice = { id: number; invoiceNumber: string; orderNumber: string; total: number; taxAmount: number; currency: string; issuedAt: string; pdfObjectKey: string | null };
+export type OrderItem = { courseSlug: string; courseTitle: string; unitPrice: number; discount: number; total: number };
+export type Order = {
+  orderNumber: string;
+  subtotal: number;
+  discount: number;
+  total: number;
+  currency: string;
+  status: string;
+  createdAt: string;
+  paidAt: string | null;
+  items: OrderItem[];
+  courseSlugs: string[];
+  courseTitle: string;
+  /** اسم المادة المفرد في الاستجابات القديمة قبل دعم الطلب متعدد المواد. */
+  courseSlug?: string;
+};
+export type Invoice = { id: number; invoiceNumber: string; orderNumber: string; total: number; currency: string; issuedAt: string };
 export type Notice = { id: number; title: string; body: string; actionUrl: string | null; actionLabel?: string | null; presentation?: "inbox" | "banner" | "modal" | "all"; pushEnabled?: boolean; dismissible?: boolean; readAt: string | null; createdAt: string };
 export type SupportFile = { id: number; originalName: string; contentType: string; sizeBytes: number; createdAt: string };
 export type SupportReply = { id: number; body: string; authorEmail?: string; authorRole?: string; internal?: boolean; createdAt: string; files?: SupportFile[] };
@@ -103,17 +118,6 @@ export type PublicSettings = {
   social_snapchat: string;
   social_threads: string;
   announcement: string;
-  home_hero_kicker: string;
-  home_hero_title: string;
-  home_hero_highlight: string;
-  home_hero_subtitle: string;
-  mobile_welcome_title: string;
-  mobile_welcome_subtitle: string;
-  assistant_enabled: string;
-  course_requests_enabled: string;
-  guest_browsing_enabled: string;
-  student_registration_enabled: string;
-  payments_enabled: string;
 };
 
 export type Review = { id: number; courseSlug: string; rating: number; body: string; createdAt: string; author: string; specialty: string; verifiedPurchase: true };

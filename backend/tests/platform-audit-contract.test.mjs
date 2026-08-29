@@ -22,10 +22,10 @@ test("checkout has abuse protection, atomic order creation, and an upstream time
   assert.match(checkout, /status: "failed"/);
 });
 
-test("published course templates remain purchasable while videos are added", () => {
-  assert.match(catalogStore, /availableForPurchase: true/);
-  assert.doesNotMatch(cart, /قيد التجهيز ولا يمكن إضافتها للسلة/);
-  assert.doesNotMatch(checkout, /قيد التجهيز ولا تقبل الدفع/);
+test("unfinished course templates cannot enter the cart or payment flow", () => {
+  assert.match(catalogStore, /readyLessons === lessons\.length && hasReadyPreview/);
+  assert.match(cart, /!course\.availableForPurchase/);
+  assert.match(checkout, /selected\.filter\(\(course\) => !course\.availableForPurchase\)/);
 });
 
 test("video upload requires detected container bytes and refreshes catalog state", () => {

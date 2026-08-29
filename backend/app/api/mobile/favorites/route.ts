@@ -3,14 +3,15 @@ import { getDb } from "@/db";
 import { favorites } from "@/db/schema";
 import { checkRateLimit, getSessionUser } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
-import { getCourseCatalog } from "@/lib/catalog-store";
+import { getCourseCatalog, getCoursesCatalog } from "@/lib/catalog-store";
 import { isMobileRequest, mobileNoStoreHeaders } from "@/lib/mobile-api";
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
   const rows = await getDb().select().from(favorites).where(eq(favorites.userEmail, user.email));
-  return Response.json({ ok: true, courseSlugs: rows.map((row) => row.courseSlug) }, { headers: mobileNoStoreHeaders });
+  const available = new Set((await getCoursesCatalog()).map((course) => course.slug));
+  return Response.json({ ok: true, courseSlugs: rows.map((row) => row.courseSlug).filter((slug) => available.has(slug)) }, { headers: mobileNoStoreHeaders });
 }
 
 export async function POST(request: Request) {
@@ -25,5 +26,7 @@ export async function POST(request: Request) {
   const db = getDb();
   if (payload.active === false) await db.delete(favorites).where(and(eq(favorites.userEmail, user.email), eq(favorites.courseSlug, courseSlug)));
   else await db.insert(favorites).values({ userEmail: user.email, courseSlug }).onConflictDoNothing();
-  return Response.json({ ok: true }, { headers: mobileNoStoreHeaders });
+  const rows = await db.select().from(favorites).where(eq(favorites.userEmail, user.email));
+  const available = new Set((await getCoursesCatalog()).map((course) => course.slug));
+  return Response.json({ ok: true, courseSlugs: rows.map((row) => row.courseSlug).filter((slug) => available.has(slug)) }, { headers: mobileNoStoreHeaders });
 }

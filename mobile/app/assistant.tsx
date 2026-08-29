@@ -1,86 +1,28 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useQuery } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import React, { useMemo, useRef, useState } from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
+import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { BrandMark } from "@/src/components/Brand";
-import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { AppButton, EmptyState, Screen } from "@/src/components/ui";
 import { api, ApiError, jsonBody } from "@/src/lib/api";
-import { openInternalRoute } from "@/src/lib/navigation";
+import { resolveAssistantRoute } from "@/src/lib/assistantRoute";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
-import type { PublicSettings } from "@/src/types";
 
 type Action = { label: string; href: string };
 type Reply = { answer: string; actions: Action[]; suggestions?: string[] };
 type Message = { id: string; role: "user" | "assistant"; text: string; actions?: Action[]; suggestions?: string[] };
-const initial: Message = { id: "welcome", role: "assistant", text: "أهلًا بك، أنا مساعد مراس الذكي. اسألني عن الجامعات والتخصصات والمواد والتسجيل والدفع والمشغل وطلب مادة والدعم.", suggestions: ["ما لقيت مادتي", "كيف أستعرض محتوى مادة؟", "كيف أتواصل مع الدعم؟"] };
+const initial: Message = { id: "welcome", role: "assistant", text: "أهلًا بك، أنا مساعد مراس الذكي. اسألني عن الجامعات والتخصصات والمواد والتسجيل والدفع والمشغل وطلب مادة والدعم.", suggestions: ["ما لقيت مادتي", "كيف أشاهد درسًا مجانيًا؟", "كيف أتواصل مع الدعم؟"] };
 
 export default function Assistant() {
-  const { colors, dark } = useTheme();
-  const { user } = useAuth();
-  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<{ settings: PublicSettings }>("/api/public/settings"), staleTime: 5_000 });
-  const [messages, setMessages] = useState<Message[]>([initial]);
-  const [input, setInput] = useState("");
-  const [sending, setSending] = useState(false);
-  const scroll = useRef<ScrollView>(null);
+  const { colors, dark } = useTheme(); const { user } = useAuth(); const [messages, setMessages] = useState<Message[]>([initial]); const [input, setInput] = useState(""); const [sending, setSending] = useState(false); const scroll = useRef<ScrollView>(null);
   const history = useMemo(() => messages.slice(-8).map((item) => ({ role: item.role, text: item.text })), [messages]);
-
-  if (settings.data?.settings.assistant_enabled === "false") {
-    return <Screen footer={false}><EmptyState icon="construct-outline" title="مساعد مراس متوقف مؤقتًا" text="أوقفت الإدارة المساعد حاليًا. تستطيع استخدام الدعم أو العودة للرئيسية." action={<View style={{ width: "100%", gap: 8 }}><AppButton title="العودة للرئيسية" onPress={() => router.replace("/(tabs)")} /><AppButton title="الدعم" variant="soft" onPress={() => router.push("/support")} /></View>} /></Screen>;
-  }
-
-  const send = async (question = input) => {
-    const text = question.trim();
-    if (text.length < 2 || sending) return;
-    setInput("");
-    const userMessage: Message = { id: `u-${Date.now()}`, role: "user", text };
-    setMessages((rows) => [...rows, userMessage]);
-    setSending(true);
-    try {
-      const reply = await api<Reply>("/api/assistant", { method: "POST", body: jsonBody({ question: text, history }) });
-      setMessages((rows) => [...rows, { id: `a-${Date.now()}`, role: "assistant", text: reply.answer, actions: reply.actions, suggestions: reply.suggestions }]);
-    } catch (reason) {
-      setMessages((rows) => [...rows, { id: `e-${Date.now()}`, role: "assistant", text: reason instanceof ApiError ? reason.message : "تعذر الوصول للمساعد الآن. يمكنك فتح الدعم مباشرة." }]);
-    } finally {
-      setSending(false);
-      setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 120);
-    }
-  };
-
-  const openAction = async (href: string) => {
-    if (/^https:\/\//.test(href)) await Linking.openURL(href);
-    else if (!openInternalRoute(href)) router.push("/support");
-  };
-
-  return <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}>
-    <View style={[styles.header, { borderBottomColor: colors.border }]}>
-      <Pressable onPress={() => router.back()} style={[styles.close, { backgroundColor: colors.surface }]}><Ionicons name="close" size={23} color={colors.text} /></Pressable>
-      <View style={styles.headCopy}><Text style={[styles.title, { color: colors.text }]}>مساعد مراس</Text><Text style={[styles.online, { color: colors.success }]}>● متصل بسياق المنصة{user ? " وحسابك" : ""}</Text></View>
-      <BrandMark size={52} whiteTile={!dark} />
-    </View>
-    <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
-      <ScrollView ref={scroll} contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
-        {messages.map((message) => <View key={message.id} style={[styles.bubble, message.role === "user" ? styles.userBubble : styles.assistantBubble, { backgroundColor: message.role === "user" ? colors.primary : colors.surface, borderColor: colors.border }]}>
-          {message.role === "assistant" && <View style={styles.assistantLabel}><BrandMark size={29} /><Text style={{ color: colors.primary, fontSize: 9, fontWeight: "900" }}>مراس</Text></View>}
-          <Text style={[styles.messageText, { color: message.role === "user" ? "#FFFFFF" : colors.text }]}>{message.text}</Text>
-          {message.actions?.length ? <View style={styles.actions}>{message.actions.map((action) => <Pressable key={`${message.id}-${action.href}`} onPress={() => openAction(action.href)} style={[styles.action, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="arrow-back" size={14} color={colors.primary} /><Text style={{ color: colors.primary, fontSize: 10, fontWeight: "800" }}>{action.label}</Text></Pressable>)}</View> : null}
-          {message.suggestions?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestions}>{message.suggestions.map((suggestion) => <Pressable key={`${message.id}-${suggestion}`} onPress={() => send(suggestion)} style={[styles.suggestion, { borderColor: colors.border }]}><Text style={{ color: colors.textSoft, fontSize: 9 }}>{suggestion}</Text></Pressable>)}</ScrollView> : null}
-        </View>)}
-        {sending && <View style={[styles.typing, { backgroundColor: colors.surface }]}><ActivityIndicator size="small" color={colors.primary} /><Text style={{ color: colors.textSoft, fontSize: 10 }}>يفكر في أفضل إجابة...</Text></View>}
-      </ScrollView>
-      <View style={[styles.composer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-        <Pressable disabled={input.trim().length < 2 || sending} onPress={() => send()} style={[styles.send, { backgroundColor: input.trim().length >= 2 ? colors.primary : colors.surfaceAlt }]}><Ionicons name="arrow-up" size={21} color={input.trim().length >= 2 ? "#FFF" : colors.textSoft} /></Pressable>
-        <TextInput multiline value={input} onChangeText={setInput} placeholder="اسأل عن أي شيء في مراس..." placeholderTextColor={colors.textSoft} style={[styles.input, { color: colors.text }]} textAlign="right" maxLength={500} />
-      </View>
-    </KeyboardAvoidingView>
-  </SafeAreaView>;
+  const send = async (question = input) => { const text = question.trim(); if (text.length < 2 || sending) return; setInput(""); const userMessage: Message = { id: `u-${Date.now()}`, role: "user", text }; setMessages((rows) => [...rows, userMessage]); setSending(true); try { const reply = await api<Reply>("/api/assistant", { method: "POST", body: jsonBody({ question: text, history }) }); setMessages((rows) => [...rows, { id: `a-${Date.now()}`, role: "assistant", text: reply.answer, actions: reply.actions, suggestions: reply.suggestions }]); } catch (reason) { setMessages((rows) => [...rows, { id: `e-${Date.now()}`, role: "assistant", text: reason instanceof ApiError ? reason.message : "تعذر الوصول للمساعد الآن. يمكنك فتح الدعم مباشرة." }]); } finally { setSending(false); setTimeout(() => scroll.current?.scrollToEnd({ animated: true }), 120); } };
+  const openAction = async (href: string) => { const route = resolveAssistantRoute(href); if (!route) { router.push("/support"); return; } if (typeof route === "string" && /^https:\/\//.test(route)) await Linking.openURL(route); else router.push(route as never); };
+  return <SafeAreaView style={[styles.safe, { backgroundColor: colors.background }]}><View style={[styles.header, { borderBottomColor: colors.border }]}><Pressable onPress={() => router.back()} style={[styles.close, { backgroundColor: colors.surface }]}><Ionicons name="close" size={23} color={colors.text} /></Pressable><View style={styles.headCopy}><Text style={[styles.title, { color: colors.text }]}>مساعد مراس</Text><Text style={[styles.online, { color: colors.success }]}>● متصل بسياق المنصة{user ? " وحسابك" : ""}</Text></View><BrandMark size={52} whiteTile={!dark} /></View><KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}><ScrollView ref={scroll} contentContainerStyle={styles.messages} keyboardShouldPersistTaps="handled" onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>{messages.map((message) => <View key={message.id} style={[styles.bubble, message.role === "user" ? styles.userBubble : styles.assistantBubble, { backgroundColor: message.role === "user" ? colors.primary : colors.surface, borderColor: colors.border }]}>{message.role === "assistant" && <View style={styles.assistantLabel}><BrandMark size={29} /><Text style={{ color: colors.primary, fontSize: 9, fontWeight: "900" }}>مراس</Text></View>}<Text style={[styles.messageText, { color: message.role === "user" ? "#FFFFFF" : colors.text }]}>{message.text}</Text>{message.actions?.length ? <View style={styles.actions}>{message.actions.map((action) => <Pressable key={`${message.id}-${action.href}`} onPress={() => openAction(action.href)} style={[styles.action, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="arrow-back" size={14} color={colors.primary} /><Text style={{ color: colors.primary, fontSize: 10, fontWeight: "800" }}>{action.label}</Text></Pressable>)}</View> : null}{message.suggestions?.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.suggestions}>{message.suggestions.map((suggestion) => <Pressable key={`${message.id}-${suggestion}`} onPress={() => send(suggestion)} style={[styles.suggestion, { borderColor: colors.border }]}><Text style={{ color: colors.textSoft, fontSize: 9 }}>{suggestion}</Text></Pressable>)}</ScrollView> : null}</View>)}{sending && <View style={[styles.typing, { backgroundColor: colors.surface }]}><ActivityIndicator size="small" color={colors.primary} /><Text style={{ color: colors.textSoft, fontSize: 10 }}>يفكر في أفضل إجابة...</Text></View>}</ScrollView><View style={[styles.composer, { backgroundColor: colors.surface, borderColor: colors.border }]}><Pressable disabled={input.trim().length < 2 || sending} onPress={() => send()} style={[styles.send, { backgroundColor: input.trim().length >= 2 ? colors.primary : colors.surfaceAlt }]}><Ionicons name="arrow-up" size={21} color={input.trim().length >= 2 ? "#FFF" : colors.textSoft} /></Pressable><TextInput multiline value={input} onChangeText={setInput} placeholder="اسأل عن أي شيء في مراس..." placeholderTextColor={colors.textSoft} style={[styles.input, { color: colors.text }]} textAlign="right" maxLength={500} /></View></KeyboardAvoidingView></SafeAreaView>;
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1 }, flex: { flex: 1 }, header: { minHeight: 72, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: "row-reverse", alignItems: "center", gap: 11 }, close: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" }, headCopy: { flex: 1, alignItems: "flex-end" }, title: { fontSize: 17, fontWeight: "900" }, online: { fontSize: 8, fontWeight: "700", marginTop: 3 }, messages: { padding: 16, paddingBottom: 28, gap: 12 }, bubble: { maxWidth: "90%", borderWidth: 1, borderRadius: 21, padding: 14 }, userBubble: { alignSelf: "flex-end", borderBottomRightRadius: 6 }, assistantBubble: { alignSelf: "flex-start", borderBottomLeftRadius: 6 }, assistantLabel: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 7 }, messageText: { fontSize: 12, lineHeight: 22, textAlign: "right", writingDirection: "rtl" }, actions: { gap: 7, marginTop: 12 }, action: { minHeight: 40, borderRadius: 12, paddingHorizontal: 11, flexDirection: "row-reverse", gap: 7, alignItems: "center", justifyContent: "center" }, suggestions: { gap: 7, marginTop: 11 }, suggestion: { minHeight: 34, borderWidth: 1, borderRadius: 12, paddingHorizontal: 11, alignItems: "center", justifyContent: "center" }, typing: { alignSelf: "flex-start", minHeight: 42, borderRadius: 16, paddingHorizontal: 13, flexDirection: "row", gap: 8, alignItems: "center" }, composer: { marginHorizontal: 12, marginBottom: 9, minHeight: 58, borderWidth: 1, borderRadius: 21, padding: 7, flexDirection: "row", alignItems: "flex-end", gap: 7 }, input: { flex: 1, maxHeight: 120, minHeight: 42, paddingHorizontal: 8, paddingTop: 10, fontSize: 12, writingDirection: "rtl" }, send: { width: 43, height: 43, borderRadius: 15, alignItems: "center", justifyContent: "center" },
-});
+const styles = StyleSheet.create({ safe: { flex: 1 }, flex: { flex: 1 }, header: { minHeight: 72, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: "row-reverse", alignItems: "center", gap: 11 }, close: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" }, headCopy: { flex: 1, alignItems: "flex-end" }, title: { fontSize: 17, fontWeight: "900" }, online: { fontSize: 8, fontWeight: "700", marginTop: 3 }, messages: { padding: 16, paddingBottom: 28, gap: 12 }, bubble: { maxWidth: "90%", borderWidth: 1, borderRadius: 21, padding: 14 }, userBubble: { alignSelf: "flex-end", borderBottomRightRadius: 6 }, assistantBubble: { alignSelf: "flex-start", borderBottomLeftRadius: 6 }, assistantLabel: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 7 }, messageText: { fontSize: 12, lineHeight: 22, textAlign: "right", writingDirection: "rtl" }, actions: { gap: 7, marginTop: 12 }, action: { minHeight: 40, borderRadius: 12, paddingHorizontal: 11, flexDirection: "row-reverse", gap: 7, alignItems: "center", justifyContent: "center" }, suggestions: { gap: 7, marginTop: 11 }, suggestion: { minHeight: 34, borderWidth: 1, borderRadius: 12, paddingHorizontal: 11, alignItems: "center", justifyContent: "center" }, typing: { alignSelf: "flex-start", minHeight: 42, borderRadius: 16, paddingHorizontal: 13, flexDirection: "row", gap: 8, alignItems: "center" }, composer: { marginHorizontal: 12, marginBottom: 9, minHeight: 58, borderWidth: 1, borderRadius: 21, padding: 7, flexDirection: "row", alignItems: "flex-end", gap: 7 }, input: { flex: 1, maxHeight: 120, minHeight: 42, paddingHorizontal: 8, paddingTop: 10, fontSize: 12, writingDirection: "rtl" }, send: { width: 43, height: 43, borderRadius: 15, alignItems: "center", justifyContent: "center" } });

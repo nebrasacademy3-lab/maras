@@ -5,6 +5,7 @@ import { checkRateLimit, getSessionUser, sameOriginRequest, validSaudiPhone } fr
 import { cleanText, isUniqueConstraintError, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
 import { validAcademicLevel } from "@/lib/academic-levels";
+import { getPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 function canonicalPhone(value: string) {
   const digits = normalizePhone(value).replace(/\D/g, "");
@@ -48,5 +49,7 @@ export async function PATCH(request: Request) {
     if (isUniqueConstraintError(error)) return jsonError("رقم الجوال مستخدم في حساب آخر", 409);
     return jsonError("تعذر تحديث الملف حاليًا", 503);
   }
-  return Response.json({ ok: true, next: current.onboardingCompleted ? "/dashboard" : "/onboarding" });
+  const onboardingEnabled = settingEnabled((await getPublicSettings()).onboarding_enabled);
+  if (!onboardingEnabled && !current.onboardingCompleted) await db.update(users).set({ onboardingCompletedAt: now, updatedAt: now }).where(eq(users.id, current.id));
+  return Response.json({ ok: true, next: current.onboardingCompleted || !onboardingEnabled ? "/dashboard" : "/onboarding" });
 }

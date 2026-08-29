@@ -7,6 +7,7 @@ import { courses as staticCourses, type Course, type CourseUnit } from "@/lib/da
 import { courseSlug, lessonId, specialtySlug, templateDescription, templateLessonDescription, templateLessons, templateUnitDescription, templateUnits, templateCourseCode } from "@/lib/catalog-templates";
 
 export type CatalogSeedMode = "core" | "full";
+const TEMPLATE_STATUS = "draft" as const;
 
 const chunk = <T,>(rows: T[], size = 400) => Array.from({ length: Math.ceil(rows.length / size) }, (_, index) => rows.slice(index * size, (index + 1) * size));
 
@@ -50,7 +51,7 @@ function completeStaticOutline(course: Course): CourseUnit[] {
       id: lessonId(course.slug, index + 1, title),
       title,
       description: templateLessonDescription(course.title, title),
-      duration: "درس",
+      duration: "بانتظار الفيديو",
     });
   }
   return units;
@@ -61,6 +62,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
   const now = new Date().toISOString();
   const institutions = await getInstitutionsCatalog(true);
   const institutionBySlug = new Map(institutions.map((institution) => [institution.slug, institution]));
+  const coreTemplates = staticCourses.filter((course) => institutionBySlug.has(course.universitySlug));
   const existingInstitutions = await db.select({ slug: catalogInstitutions.slug }).from(catalogInstitutions);
   const existingInstitutionSlugs = new Set(existingInstitutions.map((row) => row.slug));
   const institutionRows = institutions.filter((institution) => !existingInstitutionSlugs.has(institution.slug)).map((institution, index) => ({
@@ -101,7 +103,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
         verificationStatus: program?.verificationStatus || "discovery",
         faculty: null,
         degree: program?.degree || "بكالوريوس",
-        status: "published",
+        status: TEMPLATE_STATUS,
         createdAt: now,
         updatedAt: now,
       };
@@ -115,7 +117,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
     const key = `${institutionSlug}:${specialty.slug}`;
     if (!linked.has(key)) {
       linked.add(key);
-      linkRows.push({ institutionSlug, specialtySlug: specialty.slug, sortOrder, status: "published" });
+      linkRows.push({ institutionSlug, specialtySlug: specialty.slug, sortOrder, status: TEMPLATE_STATUS });
     }
     return specialty;
   };
@@ -128,11 +130,11 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
       const key = `${institution.slug}:${specialty.slug}`;
       if (!linked.has(key)) {
         linked.add(key);
-        linkRows.push({ institutionSlug: institution.slug, specialtySlug: specialty.slug, sortOrder: index, status: "published" });
+        linkRows.push({ institutionSlug: institution.slug, specialtySlug: specialty.slug, sortOrder: index, status: TEMPLATE_STATUS });
       }
     }
   }
-  for (const course of staticCourses) ensureLink(course.universitySlug, course.specialty, 0);
+  for (const course of coreTemplates) ensureLink(course.universitySlug, course.specialty, 0);
   await insertChunks(specialtyRows, async (batch) => db.insert(catalogSpecialties).values(batch).onConflictDoNothing());
   await insertChunks(linkRows, async (batch) => db.insert(institutionSpecialties).values(batch).onConflictDoNothing());
 
@@ -142,7 +144,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
   const courseRows: typeof catalogCourses.$inferInsert[] = [];
   const targetCourseSlugs = new Set<string>();
 
-  for (const [index, course] of staticCourses.entries()) {
+  for (const [index, course] of coreTemplates.entries()) {
     targetCourseSlugs.add(course.slug);
     if (existingCourseSlugs.has(course.slug)) continue;
     const specialty = ensureSpecialty(course.specialty, undefined, institutionBySlug.get(course.universitySlug));
@@ -159,7 +161,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
       accessLabel: course.access,
       sourceUrl: institutionBySlug.get(course.universitySlug)?.directorySourceUrl || null,
       verifiedAt: now.slice(0, 10),
-      status: "published",
+      status: TEMPLATE_STATUS,
       featured: Boolean(course.featured),
       coverTheme: courseTheme(course, index),
       createdAt: now,
@@ -190,7 +192,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
             accessLabel: "90 يومًا",
             sourceUrl: programSource(program, institution) as string | null,
             verifiedAt: now.slice(0, 10),
-            status: "published",
+            status: TEMPLATE_STATUS,
             featured: false,
             coverTheme: "blue-violet",
             createdAt: now,
@@ -207,7 +209,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
   const existingUnits = await db.select().from(courseUnitsDb).orderBy(asc(courseUnitsDb.position));
   const unitCount = new Map<string, number>();
   for (const unit of existingUnits) unitCount.set(unit.courseSlug, (unitCount.get(unit.courseSlug) || 0) + 1);
-  const staticBySlug = new Map(staticCourses.map((course) => [course.slug, course]));
+  const staticBySlug = new Map(coreTemplates.map((course) => [course.slug, course]));
   const unitRows: typeof courseUnitsDb.$inferInsert[] = [];
   for (const course of allManagedCourses) {
     if ((unitCount.get(course.slug) || 0) > 0) continue;
@@ -218,7 +220,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
       title: unit.title,
       description: unit.description || templateUnitDescription(course.title, unit.title),
       position,
-      status: "published",
+      status: TEMPLATE_STATUS,
       createdAt: now,
       updatedAt: now,
     }));
@@ -254,7 +256,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
           durationSeconds: durationSeconds(lesson.duration),
           freePreview: Boolean(lesson.free),
           videoAssetId: null,
-          status: "published",
+          status: TEMPLATE_STATUS,
           createdAt: now,
           updatedAt: now,
         });
@@ -275,7 +277,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
         durationSeconds: 0,
         freePreview: index === 0,
         videoAssetId: null,
-        status: "published",
+        status: TEMPLATE_STATUS,
         createdAt: now,
         updatedAt: now,
       });
@@ -293,6 +295,6 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
     units: unitRows.length,
     lessons: lessonsRows.length,
     totalInstitutions: institutions.length,
-    coreCourses: staticCourses.length,
+    coreCourses: coreTemplates.length,
   };
 }

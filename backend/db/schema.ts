@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, foreignKey, index, integer, numeric, pgTable, primaryKey, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -73,25 +73,31 @@ export const orders = pgTable("orders", {
   customerName: text("customer_name").notNull(),
   customerPhone: text("customer_phone"),
   courseSlug: text("course_slug").notNull(),
-  subtotal: real("subtotal").notNull(),
-  discount: real("discount").notNull().default(0),
+  subtotal: numeric("subtotal", { precision: 12, scale: 2, mode: "number" }).notNull(),
+  discount: numeric("discount", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   couponCode: text("coupon_code"),
-  total: real("total").notNull(),
+  couponReserved: boolean("coupon_reserved").notNull().default(false),
+  couponReservationExpiresAt: text("coupon_reservation_expires_at"),
+  total: numeric("total", { precision: 12, scale: 2, mode: "number" }).notNull(),
   currency: text("currency").notNull().default("SAR"),
   status: text("status").notNull().default("pending"),
   tapChargeId: text("tap_charge_id"),
+  checkoutAttemptHash: text("checkout_attempt_hash"),
+  checkoutRequestHash: text("checkout_request_hash"),
+  checkoutUrl: text("checkout_url"),
+  checkoutExpiresAt: text("checkout_expires_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   paidAt: text("paid_at"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("orders_number_unique").on(table.orderNumber), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
+}, (table) => [uniqueIndex("orders_number_unique").on(table.orderNumber), uniqueIndex("orders_checkout_attempt_unique").on(table.checkoutAttemptHash), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), index("orders_coupon_reservation_idx").on(table.couponReserved, table.couponReservationExpiresAt), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
 
 export const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
   orderNumber: text("order_number").notNull(),
   courseSlug: text("course_slug").notNull(),
-  unitPrice: real("unit_price").notNull(),
-  discount: real("discount").notNull().default(0),
-  total: real("total").notNull(),
+  unitPrice: numeric("unit_price", { precision: 12, scale: 2, mode: "number" }).notNull(),
+  discount: numeric("discount", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  total: numeric("total", { precision: 12, scale: 2, mode: "number" }).notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [uniqueIndex("order_items_order_course_unique").on(table.orderNumber, table.courseSlug), index("order_items_order_idx").on(table.orderNumber), index("order_items_course_idx").on(table.courseSlug)]);
 
@@ -216,8 +222,8 @@ export const catalogCourses = pgTable("catalog_courses", {
   code: text("code"),
   description: text("description").notNull().default(""),
   coverImageUrl: text("cover_image_url"),
-  price: real("price").notNull().default(0),
-  oldPrice: real("old_price"),
+  price: numeric("price", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
+  oldPrice: numeric("old_price", { precision: 12, scale: 2, mode: "number" }),
   accessLabel: text("access_label").notNull().default("90 يومًا"),
   sourceUrl: text("source_url"),
   verifiedAt: text("verified_at"),
@@ -300,7 +306,7 @@ export const authRateLimits = pgTable("auth_rate_limits", {
   attempts: integer("attempts").notNull().default(0),
   windowExpiresAt: text("window_expires_at").notNull(),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-});
+}, (table) => [index("auth_rate_limits_expiry_idx").on(table.windowExpiresAt)]);
 
 export const syncRevisions = pgTable("sync_revisions", {
   channel: text("channel").notNull(),
@@ -391,15 +397,18 @@ export const notificationsDb = pgTable("notifications", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience)]);
 
+// Read state belongs to a user, not to the notification campaign itself. Keeping
+// it in a separate table prevents one student from marking a role-wide or public
+// announcement as read for every other account.
 export const notificationReads = pgTable("notification_reads", {
-  id: serial("id").primaryKey(),
   notificationId: integer("notification_id").notNull(),
-  userEmail: text("user_email").notNull(),
+  userId: integer("user_id").notNull(),
   readAt: text("read_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [
-  uniqueIndex("notification_reads_notification_user_unique").on(table.notificationId, table.userEmail),
-  index("notification_reads_user_idx").on(table.userEmail, table.readAt),
+  primaryKey({ name: "notification_reads_pk", columns: [table.notificationId, table.userId] }),
+  index("notification_reads_user_idx").on(table.userId, table.readAt),
   foreignKey({ name: "notification_reads_notification_fk", columns: [table.notificationId], foreignColumns: [notificationsDb.id] }).onDelete("cascade"),
+  foreignKey({ name: "notification_reads_user_fk", columns: [table.userId], foreignColumns: [users.id] }).onDelete("cascade"),
 ]);
 
 export const pushDevices = pgTable("push_devices", {
@@ -417,7 +426,7 @@ export const couponsDb = pgTable("coupons", {
   id: serial("id").primaryKey(),
   code: text("code").notNull(),
   type: text("type").notNull().default("percent"),
-  value: real("value").notNull(),
+  value: numeric("value", { precision: 12, scale: 2, mode: "number" }).notNull(),
   courseSlug: text("course_slug"),
   usageLimit: integer("usage_limit"),
   usedCount: integer("used_count").notNull().default(0),
@@ -432,8 +441,8 @@ export const invoices = pgTable("invoices", {
   invoiceNumber: text("invoice_number").notNull(),
   orderNumber: text("order_number").notNull(),
   customerEmail: text("customer_email").notNull(),
-  total: real("total").notNull(),
-  taxAmount: real("tax_amount").notNull().default(0),
+  total: numeric("total", { precision: 12, scale: 2, mode: "number" }).notNull(),
+  taxAmount: numeric("tax_amount", { precision: 12, scale: 2, mode: "number" }).notNull().default(0),
   currency: text("currency").notNull().default("SAR"),
   issuedAt: text("issued_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   pdfObjectKey: text("pdf_object_key"),

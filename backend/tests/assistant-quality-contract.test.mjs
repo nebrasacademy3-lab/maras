@@ -40,5 +40,5 @@ test("web and Expo expose the same answer actions and suggestions", () => {
   assert.match(web, /message\.actions/);
   assert.match(mobile, /reply\.suggestions/);
   assert.match(mobile, /reply\.actions/);
-  assert.match(mobile, /openInternalRoute/);
+  assert.match(mobile, /resolveAssistantRoute/);
 });

@@ -9,7 +9,6 @@ import { CourseCard } from "@/components/course-card";
 import { InstitutionPrograms } from "@/components/institution-programs";
 import { institutions } from "@/lib/data";
 import { getCoursesCatalog, getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
-import { getPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -28,14 +27,13 @@ export default async function UniversityPage({ params }: Props) {
   if (!institution) notFound();
   const courses = await getCoursesCatalog();
   const institutionCourses = courses.filter((course) => course.universitySlug === institution.slug);
-  const [catalog, settings] = await Promise.all([getProgramsCatalog(institution.slug), getPublicSettings()]);
-  const requestsEnabled = settingEnabled(settings.course_requests_enabled);
+  const catalog = await getProgramsCatalog(institution.slug);
   return <main><SiteHeader />
     <section className="university-detail-hero"><div className="container"><div className="breadcrumbs"><Link href="/">الرئيسية</Link><ChevronLeft size={13} /><Link href="/universities">الجامعات</Link><ChevronLeft size={13} /><span>{institution.name}</span></div><div className="university-identity"><UniversityLogo institution={institution} size="lg" /><div><span className={`type-pill type-${institution.type}`}>{institution.type}</span><h1>{institution.name}</h1><p>{institution.nameEn}</p><div><span><MapPin size={14} /> {institution.region}</span><span><GraduationCap size={14} /> {catalog.programs.length} برنامجًا</span><span><BookOpen size={14} /> {institutionCourses.length ? `${institutionCourses.length} مواد متاحة` : "مواد قادمة"}</span></div></div></div></div></section>
     <section className="content-page"><div className="container">
       <div className="university-tools"><div><span className="section-kicker">الدليل الأكاديمي</span><h2>التخصصات والمواد</h2><p>قائمة خاصة بهذه الجهة وليست تدويرًا عشوائيًا من فهرس عام.</p></div><a className="catalog-source" href={catalog.sourceUrl} target="_blank" rel="noreferrer"><CheckCircle2 size={16} /><span><strong>{catalog.liveVerified ? "مطابق للمصدر الرسمي الآن" : "المصدر الرسمي للجهة"}</strong><small>راجع أحدث شروط القبول والخطط</small></span><ExternalLink size={15} /></a></div>
-      <InstitutionPrograms programs={catalog.programs} institutionName={institution.name} requestsEnabled={requestsEnabled} />
-      <div className="section-head university-courses-head"><div><span className="section-kicker">شرح جامعتك</span><h2>المواد المتوفرة الآن</h2><p>استعرض وصف المادة ووحداتها، وإذا كانت لها معاينة مجانية جاهزة فستظهر داخل صفحة المادة.</p></div></div>
-      {institutionCourses.length ? <div className="courses-grid">{institutionCourses.map((course) => <CourseCard key={course.slug} course={course} />)}</div> : <div className="university-coming-soon"><div><BellRing size={29} /></div><h3>لا توجد مواد منشورة لهذه الجهة الآن</h3><p>{requestsEnabled?"إذا كانت مادتك غير موجودة، أرسل طلبًا باسمها ومرفقاتها وسيتابعها فريق المحتوى.":"تابع الكتالوج أو تواصل مع الدعم، وستظهر المواد هنا مباشرة عند نشرها من الإدارة."}</p>{requestsEnabled?<Link href={`/request-course?university=${encodeURIComponent(institution.name)}`} className="button button-primary">اطلب توفير مادة <ArrowLeft size={16} /></Link>:<Link href="/support" className="button button-primary">تواصل مع الدعم <ArrowLeft size={16} /></Link>}</div>}
+      <InstitutionPrograms programs={catalog.programs} institutionName={institution.name} />
+      <div className="section-head university-courses-head"><div><span className="section-kicker">شرح جامعتك</span><h2>المواد المتوفرة الآن</h2><p>شاهد الدرس التجريبي وتأكد أن الشرح يناسبك قبل الاشتراك.</p></div></div>
+      {institutionCourses.length ? <div className="courses-grid">{institutionCourses.map((course) => <CourseCard key={course.slug} course={course} />)}</div> : <div className="university-coming-soon"><div><BellRing size={29} /></div><h3>شروحات {institution.name} قادمة قريبًا</h3><p>سجّل المادة التي تحتاجها وسنخبرك تلقائيًا عندما يبدأ تجهيزها أو تصبح متاحة.</p><Link href={`/request-course?university=${encodeURIComponent(institution.name)}`} className="button button-primary">اطلب توفير مادة <ArrowLeft size={16} /></Link></div>}
     </div></section><SiteFooter /></main>;
 }

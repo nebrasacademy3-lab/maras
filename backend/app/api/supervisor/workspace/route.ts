@@ -5,6 +5,7 @@ import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { getCoursesCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { lessonId as makeLessonId } from "@/lib/catalog-templates";
+import { specialtiesEquivalent } from "@/lib/academic-data";
 
 async function scopeFor(request: Request) {
   const user = await getSessionUser(request);
@@ -15,7 +16,7 @@ async function scopeFor(request: Request) {
 
 function assigned(course: { universitySlug:string; specialty:string }, scope: Awaited<ReturnType<typeof scopeFor>>) {
   if (!scope) return false;
-  return scope.user.role === "admin" || scope.assignments.some((item) => (!item.institutionSlug || item.institutionSlug === course.universitySlug) && (!item.specialty || item.specialty === course.specialty));
+  return scope.user.role === "admin" || scope.assignments.some((item) => (!item.institutionSlug || item.institutionSlug === course.universitySlug) && (!item.specialty || specialtiesEquivalent(item.institutionSlug || course.universitySlug, item.specialty, course.universitySlug, course.specialty)));
 }
 
 export async function GET(request: Request) {

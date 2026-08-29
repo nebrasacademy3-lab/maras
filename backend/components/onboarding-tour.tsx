@@ -1,24 +1,103 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
-import { ArrowLeft, BookOpen, CheckCircle2, FileUp, GraduationCap, PlayCircle, ShieldCheck, Sparkles, UserRound } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ArrowLeft, BookOpen, CheckCircle2, FileUp, GraduationCap, LoaderCircle, PlayCircle, RefreshCw, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
+import { BrandMark } from "./brand-mark";
 import { ThemeToggle } from "./theme-provider";
+import { usePlatformControls } from "./use-platform-controls";
+import { safeInternalReturnPath } from "@/lib/internal-return-route";
 
 const steps = [
-  { icon: UserRound, kicker: "ملفك الدراسي", title: "مرحبًا بك في مساحة تعلم صُممت لك", text: "كلما اكتمل ملفك الدراسي، أصبحت توصيات مراس أدق وأسهل في الوصول. لا تحتاج إلى إعادة ضبط تفضيلاتك كل مرة.", points: ["اقتراحات بحسب الجامعة والتخصص", "حساب واحد على الويب والتطبيق", "بياناتك محفوظة ومحمية"] },
-  { icon: GraduationCap, kicker: "اكتشاف أسرع", title: "ابدأ من موادك، ثم توسّع كما تريد", text: "ستظهر لك المواد الأقرب إلى مسارك أولًا، مع إمكانية تغيير الجامعة والتخصص والبحث في كامل الكتالوج متى رغبت.", points: ["فلترة تلقائية ذكية", "بحث في جميع الجامعات", "مفضلة وسلة وتقدم موحّد"] },
-  { icon: PlayCircle, kicker: "تعلّم بلا انقطاع", title: "مشغل يحفظ رحلتك من آخر ثانية", text: "استعرض محتوى المادة، وإذا كانت لها معاينة مجانية جاهزة يمكنك تشغيلها قبل الاشتراك. بعد التفعيل تواصل دروسك من أي جهاز ويحفظ الخادم تقدمك تلقائيًا.", points: ["استكمال المشاهدة تلقائيًا", "سرعات وجودات متعددة", "وصول آمن بعد الدفع"] },
-  { icon: FileUp, kicker: "مادة غير موجودة؟", title: "اطلبها وتابعها مع مشرفك", text: "أرسل اسم المادة ورمزها وارفع التوصيف أو السلايدات. تظهر الحالة في حسابك ويصلك إشعار عند كل خطوة.", points: ["حتى 5 مرفقات خاصة", "محادثة دعم مرتبطة بالحساب", "تنبيه مباشر عند التوفير"] },
-  { icon: ShieldCheck, kicker: "أنت جاهز", title: "رحلتك الجامعية تبدأ الآن", text: "أصبح لديك طريق واضح للاستكشاف، والمشاهدة، والشراء، وطلب المواد، والتواصل مع فريق مراس من مكان واحد.", points: ["دفع مؤكد من الخادم", "إشعارات تفاعلية", "صلاحيات منفصلة لكل دور"] },
+  { icon: UserRound, kicker: "ملفك الدراسي", title: "تجربة تبدأ من جامعتك وتخصصك", text: "يستخدم مراس بيانات ملفك الدراسي لترتيب المواد الأقرب لك، مع بقاء كامل الفهرس متاحًا متى احتجته.", points: ["اقتراحات مرتبطة بالجامعة والتخصص", "حساب واحد على الويب والتطبيق", "إعداداتك وتقدمك محفوظان"] },
+  { icon: GraduationCap, kicker: "اكتشاف مرتب", title: "ابحث أولًا، ثم ضيّق النتائج عند الحاجة", text: "اكتب اسم المادة أو رمزها مباشرة. الفلاتر الإضافية تبقى مرتبة وبعيدة عن الواجهة حتى تطلبها.", points: ["بحث عربي سريع وواضح", "فلاتر جامعة وتخصص اختيارية", "مفضلة وسلة متزامنتان"] },
+  { icon: PlayCircle, kicker: "تعلّم بلا انقطاع", title: "شاهد المجاني وواصل من آخر ثانية", text: "جرّب الدرس المتاح قبل الاشتراك، ثم تابع تقدمك من أي جهاز داخل مشغل مراس المحمي.", points: ["استكمال المشاهدة تلقائيًا", "سرعات وجودات متعددة", "وصول آمن بعد تأكيد الدفع"] },
+  { icon: FileUp, kicker: "مادة غير موجودة؟", title: "أرسل طلبًا واضحًا وتابع حالته", text: "أضف اسم المادة ورمزها وارفع التوصيف أو السلايدات، ثم تابع تحديثات فريق المحتوى من لوحتك.", points: ["مرفقات خاصة مرتبطة بالطلب", "حالة واضحة لكل مرحلة", "إشعار عند كل تحديث مهم"] },
+  { icon: ShieldCheck, kicker: "أنت جاهز", title: "كل ما تحتاجه في رحلة واحدة", text: "يمكنك الآن الاستكشاف والمشاهدة والاشتراك وطلب المواد والتواصل مع الفريق من واجهة عربية موحدة.", points: ["دفع مؤكد من الخادم", "إشعارات مرتبطة بحسابك", "صلاحيات منفصلة لكل دور"] },
 ];
 
-export function OnboardingTour({ firstName, requestsEnabled = true }: { firstName: string; requestsEnabled?: boolean }) {
+function returnTarget() {
+  const queryTarget = safeInternalReturnPath(new URLSearchParams(window.location.search).get("return_to"));
+  const storedTarget = safeInternalReturnPath(sessionStorage.getItem("meras_return_to"));
+  return queryTarget || storedTarget;
+}
+
+export function OnboardingTour({ firstName }: { firstName: string }) {
   const [step, setStep] = useState(0);
-  const [loading, setLoading] = useState(false);
-  const activeSteps = requestsEnabled ? steps : steps.map((item,index)=>index===3?{...item,kicker:"المساعدة والمحتوى",title:"تحتاج مادة أو مساعدة؟",text:"ابحث في الكتالوج أولًا، وإذا احتجت متابعة خاصة افتح الدعم الفني من حسابك. عندما تعيد الإدارة تفعيل طلبات المواد ستظهر الخدمة تلقائيًا.",points:["بحث مرتب في الكتالوج","دعم مرتبط بالحساب","تحديثات تظهر مباشرة"]}:index===4?{...item,text:"أصبح لديك طريق واضح للاستكشاف، والمشاهدة، والشراء، والتواصل مع فريق مراس من مكان واحد."}:item);
-  const current = activeSteps[step]; const Icon = current.icon; const progress = ((step + 1) / activeSteps.length) * 100;
-  const finish = async () => { setLoading(true); const response = await fetch("/api/profile/onboarding", { method: "POST" }); if (response.ok) { const target = sessionStorage.getItem("meras_return_to") || "/dashboard"; sessionStorage.removeItem("meras_return_to"); window.location.assign(target); } else setLoading(false); };
-  return <main className="onboarding-page"><header><BrandLogo compact /><div className="onboarding-header-actions"><span><ShieldCheck size={14} /> تجربة آمنة ومخصصة</span><ThemeToggle compact /></div></header><section className="onboarding-shell"><aside><div className="onboarding-welcome"><span className="onboarding-avatar"><Sparkles size={18} /></span><div><span>مرحبًا</span><strong>{firstName}</strong></div></div><h1>دليل البداية</h1><p>رحلة قصيرة لتجعل مراس أقرب إلى طريقتك في التعلم.</p><div className="onboarding-progress"><div><span>تقدم الإعداد</span><b>{step + 1} / {activeSteps.length}</b></div><i><em style={{ width: `${progress}%` }} /></i></div><nav>{activeSteps.map((item, index) => <button type="button" key={item.title} className={index === step ? "active" : index < step ? "done" : ""} onClick={() => setStep(index)}><i>{index < step ? <CheckCircle2 size={16} /> : index + 1}</i><span><strong>{item.kicker}</strong><small>{item.title}</small></span></button>)}</nav><div className="onboarding-aside-note"><ShieldCheck size={16} /><span>لا نطلب منك كلمة مرور أو بيانات بطاقة في هذه الرحلة.</span></div></aside><article><div className="onboarding-visual" key={current.title}><span /><span /><i><Icon size={45} /></i><b>{String(step + 1).padStart(2, "0")}</b><small>مراس العلم</small></div><div className="onboarding-copy"><span className="onboarding-kicker">{current.kicker}</span><h2>{current.title}</h2><p>{current.text}</p><ul>{current.points.map((point) => <li key={point}><CheckCircle2 size={17} />{point}</li>)}</ul>{step === 1 && <Link href="/courses" className="onboarding-inline-link"><BookOpen size={17} /> استكشف الكتالوج الآن</Link>}{step === 3 && (requestsEnabled?<Link href="/request-course" className="onboarding-inline-link"><FileUp size={17} /> فتح نموذج طلب المادة</Link>:<Link href="/support" className="onboarding-inline-link"><FileUp size={17} /> فتح الدعم الفني</Link>)}<footer><button type="button" className="button button-ghost" disabled={step === 0} onClick={() => setStep(step - 1)}>السابق</button>{step < activeSteps.length - 1 ? <button type="button" className="button button-primary" onClick={() => setStep(step + 1)}>التالي <ArrowLeft size={16} /></button> : <button type="button" className="button button-primary" disabled={loading} onClick={finish}>{loading ? "جارٍ تجهيز لوحتك..." : "ابدأ في لوحتي"} <BookOpen size={16} /></button>}</footer></div></article></section></main>;
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
+  const controls = usePlatformControls();
+  const current = steps[step];
+  const Icon = current.icon;
+  const progress = ((step + 1) / steps.length) * 100;
+
+  useEffect(() => {
+    if (controls.loading || controls.error || controls.onboarding) return;
+    const controller = new AbortController();
+    fetch("/api/auth/me", { credentials: "include", cache: "no-store", signal: controller.signal })
+      .finally(() => { if (!controller.signal.aborted) window.location.replace(returnTarget() || "/dashboard"); });
+    return () => controller.abort();
+  }, [controls.error, controls.loading, controls.onboarding]);
+
+  async function finish() {
+    setSubmitting(true);
+    setSubmitError("");
+    try {
+      const response = await fetch("/api/profile/onboarding", { method: "POST", credentials: "include" });
+      const payload = await response.json().catch(() => ({})) as { error?: string; message?: string; next?: string };
+      if (!response.ok) throw new Error(payload.error || payload.message || "تعذّر حفظ إعداد البداية.");
+      const storedTarget = returnTarget() || payload.next || "/dashboard";
+      sessionStorage.removeItem("meras_return_to");
+      const target = safeInternalReturnPath(storedTarget, "/dashboard");
+      window.location.assign(target);
+    } catch (error) {
+      setSubmitError(error instanceof Error ? error.message : "تعذّر حفظ إعداد البداية. حاول مجددًا.");
+      setSubmitting(false);
+    }
+  }
+
+  if (controls.loading || (!controls.onboarding && !controls.error)) {
+    return <main className="onboarding-page onboarding-gate"><header><BrandLogo compact /><ThemeToggle compact /></header><section><BrandMark /><LoaderCircle className="spin" size={22} /><h1>نجهّز لوحتك</h1><p>{controls.loading ? "نتحقق من إعداد تجربة البداية..." : "تم تجاوز دليل البداية وفق إعدادات المنصة، وسيتم فتح لوحتك الآن."}</p></section></main>;
+  }
+
+  if (controls.error) {
+    return <main className="onboarding-page onboarding-gate"><header><BrandLogo compact /><ThemeToggle compact /></header><section><BrandMark /><h1>تعذّر التحقق من إعداد البداية</h1><p>لم نتمكن من قراءة إعدادات المنصة الآن. لم نفقد أي بيانات، ويمكنك إعادة المحاولة.</p><button type="button" className="button button-primary" onClick={() => void controls.refresh()}><RefreshCw size={16} /> إعادة المحاولة</button></section></main>;
+  }
+
+  return (
+    <main className="onboarding-page" onKeyDown={(event) => {
+      if (event.key === "ArrowLeft" && step < steps.length - 1) setStep((value) => value + 1);
+      if (event.key === "ArrowRight" && step > 0) setStep((value) => value - 1);
+    }}>
+      <header><BrandLogo compact /><div className="onboarding-header-actions"><span><ShieldCheck size={14} /> تجربة آمنة ومخصصة</span><ThemeToggle compact /></div></header>
+      {controls.maintenanceMessage && <div className="onboarding-maintenance" role="status">{controls.maintenanceMessage}</div>}
+      <section className="onboarding-shell">
+        <aside>
+          <div className="onboarding-welcome"><span className="onboarding-avatar"><Sparkles size={18} /></span><div><span>أهلًا بك</span><strong>{firstName}</strong></div></div>
+          <h1>دليل البداية</h1>
+          <p>خمس محطات قصيرة توضّح لك أهم ما تحتاجه داخل مراس.</p>
+          <div className="onboarding-progress">
+            <div><span>تقدم الجولة</span><b>{step + 1} من {steps.length}</b></div>
+            <i role="progressbar" aria-label="تقدم دليل البداية" aria-valuemin={1} aria-valuemax={steps.length} aria-valuenow={step + 1}><em style={{ width: `${progress}%` }} /></i>
+          </div>
+          <nav aria-label="خطوات دليل البداية">{steps.map((item, index) => <button type="button" key={item.title} className={index === step ? "active" : index < step ? "done" : ""} onClick={() => setStep(index)} aria-current={index === step ? "step" : undefined} disabled={submitting}><i>{index < step ? <CheckCircle2 size={16} /> : index + 1}</i><span><strong>{item.kicker}</strong><small>{item.title}</small></span></button>)}</nav>
+          <div className="onboarding-aside-note"><ShieldCheck size={16} /><span>هذه الجولة تعريفية فقط؛ لن نطلب فيها كلمة مرور أو بيانات دفع.</span></div>
+        </aside>
+        <article aria-live="polite">
+          <div className="onboarding-visual" key={current.title}><span /><span /><BrandMark className="onboarding-official-mark" /><i><Icon size={45} /></i><b>{String(step + 1).padStart(2, "0")}</b></div>
+          <div className="onboarding-copy">
+            <span className="onboarding-kicker">{current.kicker}</span>
+            <h2>{current.title}</h2>
+            <p>{current.text}</p>
+            <ul>{current.points.map((point) => <li key={point}><CheckCircle2 size={17} />{point}</li>)}</ul>
+            {submitError && <p className="onboarding-error" role="alert">{submitError}</p>}
+            <footer>
+              <button type="button" className="button button-ghost" disabled={step === 0 || submitting} onClick={() => setStep((value) => value - 1)}>السابق</button>
+              {step < steps.length - 1 ? <button type="button" className="button button-primary" onClick={() => setStep((value) => value + 1)}>التالي <ArrowLeft size={16} /></button> : <button type="button" className="button button-primary" disabled={submitting} onClick={() => void finish()}>{submitting ? <><LoaderCircle size={16} className="spin" /> جارٍ تجهيز لوحتك...</> : <>ابدأ في لوحتي <BookOpen size={16} /></>}</button>}
+            </footer>
+          </div>
+        </article>
+      </section>
+    </main>
+  );
 }

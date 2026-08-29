@@ -1,17 +1,14 @@
 import type { SessionUser } from "@/lib/auth";
 import { and, count, desc, eq, inArray, isNull, notInArray, or } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseAccess, courseRequests, lessonProgress, notificationsDb, orders, supervisorAssignments, supportReplies, supportTickets, users } from "@/db/schema";
+import { courseAccess, courseRequests, lessonProgress, notificationsDb, orderItems, orders, supervisorAssignments, supportReplies, supportTickets, users } from "@/db/schema";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 import type { PublicSettings } from "@/lib/platform-settings";
-import { settingEnabled, whatsappHref } from "@/lib/platform-settings";
+import { whatsappHref } from "@/lib/platform-settings";
 
 export async function buildAssistantContext(user: SessionUser | null, settings: PublicSettings) {
   const [institutions, courses] = await Promise.all([getInstitutionsCatalog(), getCoursesCatalog()]);
   const role = user?.role || "زائر";
-  const registrationEnabled = settingEnabled(settings.student_registration_enabled);
-  const requestsEnabled = settingEnabled(settings.course_requests_enabled);
-  const paymentsEnabled = settingEnabled(settings.payments_enabled);
   const institution = institutions.find((item) => item.slug === user?.universitySlug);
   const social = [
     settings.whatsapp_number ? `واتساب=${whatsappHref(settings)}` : "",
@@ -37,7 +34,14 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     const replyRows = ticketRows.length
       ? await db.select().from(supportReplies).where(and(eq(supportReplies.internal, false), inArray(supportReplies.ticketId, ticketRows.map((ticket) => ticket.id)))).orderBy(desc(supportReplies.createdAt)).limit(100)
       : [];
+    const orderItemRows = orderRows.length
+      ? await db.select({ orderNumber: orderItems.orderNumber, courseSlug: orderItems.courseSlug }).from(orderItems).where(inArray(orderItems.orderNumber, orderRows.map((order) => order.orderNumber)))
+      : [];
     const title = (slug: string) => courses.find((course) => course.slug === slug)?.title || slug;
+    const orderTitles = (order: (typeof orderRows)[number]) => {
+      const slugs = orderItemRows.filter((item) => item.orderNumber === order.orderNumber).map((item) => item.courseSlug);
+      return (slugs.length ? slugs : [order.courseSlug]).map(title).join(" + ");
+    };
     const tickets = ticketRows.map((ticket) => {
       const replies = replyRows.filter((reply) => reply.ticketId === ticket.id);
       return `${ticket.ticketNumber}:${ticket.title}:${ticket.status}${replies[0] ? `:آخر رد=${replies[0].body.slice(0, 220)}` : ""}`;
@@ -45,7 +49,7 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     privateContext = `\nبيانات حساب المستخدم الحالي فقط (لا تعرض بريدًا أو رقمًا إلا إذا طلب المستخدم تأكيد بيانات حسابه):
 المواد المفعلة=${accessRows.map((row) => `${title(row.courseSlug)}${row.expiresAt ? ` حتى ${row.expiresAt}` : ""}`).join("، ") || "لا توجد"}.
 التقدم=${progressRows.length ? progressRows.map((row) => `${title(row.courseSlug)}:${row.completed ? "مكتمل" : `${row.watchedSeconds} ثانية`}`).slice(0, 20).join("، ") : "لا يوجد"}.
-الطلبات المالية=${orderRows.map((row) => `${row.orderNumber}:${title(row.courseSlug)}:${row.status}:${row.total} ${row.currency}`).join("، ") || "لا توجد"}.
+الطلبات المالية=${orderRows.map((row) => `${row.orderNumber}:${orderTitles(row)}:${row.status}:${row.total} ${row.currency}`).join("، ") || "لا توجد"}.
 طلبات المواد=${requestRows.map((row) => `#${row.id}:${row.courseName}:${row.status}`).join("، ") || "لا توجد"}.
 تذاكر الدعم=${tickets.join("، ") || "لا توجد"}.
 الإشعارات=${noticeRows.map((row) => `${row.title}:${row.body.slice(0, 180)}`).join("، ") || "لا توجد"}.`;
@@ -65,16 +69,15 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     }
   }
   return `هوية المستخدم: الدور=${role}${user ? `، الاسم=${user.fullName}، الجامعة=${institution?.name || user.universitySlug || "غير محددة"}، التخصص=${user.specialty || "غير محدد"}، الملف=${user.profileCompleted ? "مكتمل" : "غير مكتمل"}` : "، غير مسجل الدخول"}.
-حالة الخصائص التي تتحكم بها الإدارة الآن: التسجيل=${registrationEnabled ? "مفعّل" : "متوقف"}، طلبات المواد=${requestsEnabled ? "مفعّلة" : "متوقفة"}، الدفع والاشتراكات الجديدة=${paymentsEnabled ? "مفعّل" : "متوقف"}، التصفح كضيف=${settingEnabled(settings.guest_browsing_enabled) ? "مفعّل" : "متوقف"}.
 المسارات: التسجيل=/register، الدخول=/login، استعادة كلمة المرور=/forgot-password، لوحة الطالب=/dashboard، موادي=/dashboard?view=courses، الحساب=/dashboard?view=account، الطلبات=/dashboard?view=orders، الإشعارات=/dashboard?view=notifications، الجامعات=/universities، المواد=/courses، طلب مادة=/request-course، الدعم=/support، التواصل=/contact، السياسات=/terms و/privacy و/refund-policy و/content-policy.
-التسجيل: ${registrationEnabled ? "مفتوح" : "متوقف مؤقتًا من الإدارة"}. عند فتحه: الاسم والبريد والجوال السعودي وكلمة مرور قوية ثم الجامعة وتخصص مرتبط بها، وبعدها جولة البداية.
-طلب المادة: ${requestsEnabled ? "مفعّل من /request-course، مع الاسم/الرمز والملاحظات والملفات المسموحة. يصل الطلب للمشرف بحسب الجامعة والتخصص وتظهر حالته للطالب." : "متوقف مؤقتًا من الإدارة؛ لا توجّه المستخدم إلى /request-course، ووجّهه إلى /support عند الحاجة."}
-الدفع: ${paymentsEnabled ? "Tap من الخادم؛ لا تُمنح الصلاحية إلا بعد تأكيد CAPTURED من الخادم." : "متوقف مؤقتًا من الإدارة؛ لا تطلب من المستخدم بدء عملية شراء جديدة."} لا تطلب بيانات البطاقة في الدعم.
+التسجيل: الاسم والبريد والجوال السعودي وكلمة مرور قوية ثم الجامعة وتخصص مرتبط بها، وبعدها جولة البداية. الحساب المكتمل مطلوب للشراء وطلب المادة.
+طلب المادة: من /request-course، مع الاسم/الرمز والملاحظات وحتى 5 ملفات PDF أو PPT/PPTX أو DOC/DOCX أو PNG/JPG، 15MB لكل ملف. يصل الطلب للمشرف بحسب الجامعة والتخصص وتظهر حالته للطالب.
+الدفع: Tap من الخادم؛ لا تُمنح الصلاحية إلا بعد تأكيد CAPTURED من الخادم. لا تطلب بيانات البطاقة في الدعم.
 الفيديو: مشغل خاص، روابط مؤقتة مرتبطة بالحساب، صلاحية وصول يعاد التحقق منها، Range، علامة مائية، لا زر تنزيل. لا يمكن ضمان منع تسجيل الشاشة 100%.
 الدعم: البريد=${settings.support_email}، الساعات=${settings.support_hours}. الروابط=${social}.
 دور الطالب: يرى مواد جامعته وتخصصه كتوصيات، ويستطيع تصفح وشراء مواد الجهات والتخصصات الأخرى من الفهرس.
   دور المشرف: /supervisor لإدارة الطلبات المسندة ونطاق الجامعة/التخصص ورفع الفيديو. دور الإدارة: /admin لإدارة الكتالوج والطلاب والطلبات والدعم والتقييمات والتواصل والإعدادات.${privateContext}
   الجامعات والكليات المنشورة (${institutions.length}): ${institutions.map((item) => item.name).join("، ")}.
   المواد المنشورة (${courses.length}):
-  ${courseRows || (requestsEnabled ? "لا توجد مواد منشورة حاليًا؛ وجّه الطالب إلى طلب مادة." : "لا توجد مواد منشورة حاليًا؛ وجّه الطالب إلى الدعم أو متابعة الكتالوج.")}${courses.length > 140 ? `\nيوجد ${courses.length - 140} مادة أخرى في الكتالوج؛ استخدم البحث الخادمي عند الحاجة.` : ""}`;
+  ${courseRows || "لا توجد مواد منشورة حاليًا؛ وجّه الطالب إلى طلب مادة."}${courses.length > 140 ? `\nيوجد ${courses.length - 140} مادة أخرى في الكتالوج؛ استخدم البحث الخادمي عند الحاجة.` : ""}`;
 }

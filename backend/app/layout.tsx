@@ -12,7 +12,7 @@ const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
   title: { default: "مراس العلم | شرح جامعتك في مكان واحد", template: "%s | مراس العلم" },
-  description: "منصة تعليم جامعي سعودية تجمع شروحات المواد حسب الجامعة والتخصص في تجربة مترابطة بين الويب والتطبيق.",
+  description: "منصة تعليم جامعي سعودية تجمع شروحات المواد حسب الجامعة والتخصص، مع درس تجريبي مجاني قبل الاشتراك.",
   keywords: ["مراس العلم", "شروحات جامعية", "جامعات السعودية", "شرح مواد الجامعة", "دروس جامعية"],
   openGraph: {
     type: "website",
@@ -20,11 +20,18 @@ export const metadata: Metadata = {
     url: siteUrl,
     siteName: "مراس العلم",
     title: "مراس العلم | شرح جامعتك في مكان واحد",
-    description: "اختر جامعتك وتخصصك، واستعرض محتوى المواد وابدأ تعلّمك بخطوات واضحة.",
+    description: "اختر جامعتك وتخصصك، وشاهد شرحًا مجانيًا قبل الاشتراك.",
     images: [{ url: "/og.png", width: 1728, height: 910, alt: "مراس العلم — شرح جامعتك في مكان واحد" }],
   },
   twitter: { card: "summary_large_image", title: "مراس العلم", description: "شرح جامعتك، في مكان واحد.", images: ["/og.png"] },
-  icons: { icon: [{ url: "/brand/app-icon-light.png", type: "image/png", sizes: "1024x1024" }], shortcut: "/brand/app-icon-light.png", apple: "/brand/app-icon-light.png" },
+  icons: {
+    icon: [
+      { url: "/brand/app-icon-192.png", type: "image/png", sizes: "192x192" },
+      { url: "/brand/app-icon-512.png", type: "image/png", sizes: "512x512" },
+    ],
+    shortcut: "/brand/app-icon-192.png",
+    apple: [{ url: "/brand/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
+  },
   manifest: "/manifest.webmanifest",
 };
 

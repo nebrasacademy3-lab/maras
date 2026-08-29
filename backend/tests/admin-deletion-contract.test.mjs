@@ -38,6 +38,18 @@ test("financial and audit records are protected from deletion", () => {
   assert.doesNotMatch(helper, /tx\.delete\(paymentEvents/);
 });
 
+test("paid course content cannot be deleted through a child entity", () => {
+  assert.match(helper, /orderItems\.orderNumber/);
+  assert.match(helper, /row\.status === "paid"/);
+  assert.match(helper, /input\.entityType === "course"\) await ensureCourseDeletable/);
+  for (const entity of ["unit", "lesson", "video"]) {
+    const start = helper.indexOf(`if (input.entityType === "${entity}")`);
+    assert.ok(start >= 0, `${entity} deletion guard is missing`);
+    const block = helper.slice(start, helper.indexOf("\n  if (input.entityType === ", start + 10));
+    assert.match(block, /ensureCourseDeletable/, `${entity} deletion bypasses paid/access protection`);
+  }
+});
+
 test("account safety and storage cleanup contracts are present", () => {
   assert.match(helper, /لا يمكنك حذف حسابك الإداري الحالي/);
   assert.match(helper, /لا يمكن حذف آخر مدير نشط/);
@@ -46,4 +58,12 @@ test("account safety and storage cleanup contracts are present", () => {
   assert.match(helper, /supportReplyFiles/);
   assert.match(helper, /courseRequestFiles/);
   assert.match(helper, /children-first|children-first/i);
+});
+
+test("the current or last active administrator cannot be deleted", () => {
+  assert.match(helper, /target\.email === input\.actor/);
+  assert.match(helper, /eq\(users\.role, "admin"\)/);
+  assert.match(helper, /eq\(users\.status, "active"\)/);
+  assert.match(helper, /activeAdmins\.length <= 1/);
+  assert.match(helper, /لا يمكن حذف آخر مدير نشط/);
 });

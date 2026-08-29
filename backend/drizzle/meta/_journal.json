@@ -82,8 +82,15 @@
     {
       "idx": 11,
       "version": "7",
-      "when": 1788005318282,
-      "tag": "0011_notification_read_state",
+      "when": 1787883226117,
+      "tag": "0011_api_contract_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1787884727517,
+      "tag": "0012_checkout_idempotency",
       "breakpoints": true
     }
   ]

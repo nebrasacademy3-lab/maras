@@ -130,6 +130,20 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
   const now = nowIso();
 
   if (input.entityType === "course") await ensureCourseDeletable(db, input.entityId);
+  if (input.entityType === "unit") {
+    const unitId = Number(input.entityId);
+    const [unit] = Number.isSafeInteger(unitId) ? await db.select({ courseSlug: courseUnitsDb.courseSlug }).from(courseUnitsDb).where(eq(courseUnitsDb.id, unitId)).limit(1) : [];
+    if (unit) await ensureCourseDeletable(db, unit.courseSlug);
+  }
+  if (input.entityType === "lesson") {
+    const [lesson] = await db.select({ courseSlug: lessonsDb.courseSlug }).from(lessonsDb).where(eq(lessonsDb.id, input.entityId)).limit(1);
+    if (lesson) await ensureCourseDeletable(db, lesson.courseSlug);
+  }
+  if (input.entityType === "video") {
+    const videoId = Number(input.entityId);
+    const [video] = Number.isSafeInteger(videoId) ? await db.select({ courseSlug: videoAssets.courseSlug }).from(videoAssets).where(eq(videoAssets.id, videoId)).limit(1) : [];
+    if (video) await ensureCourseDeletable(db, video.courseSlug);
+  }
   if (input.entityType === "institution") {
     const usersAtInstitution = await db.select({ id: users.id }).from(users).where(eq(users.universitySlug, input.entityId));
     const requestsAtInstitution = await db.select({ id: courseRequests.id }).from(courseRequests).where(eq(courseRequests.universitySlug, input.entityId));
@@ -196,7 +210,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       before = { id: row.id, courseSlug: row.courseSlug, title: row.title };
       const lessons = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(eq(lessonsDb.unitId, unitId));
       const lessonIds = lessons.map((lesson) => lesson.id);
-      await deleteVideoRows(tx, row.courseSlug, lessonIds.length ? lessonIds : null, cleanup);
+      if (lessonIds.length) await deleteVideoRows(tx, row.courseSlug, lessonIds, cleanup);
       if (lessonIds.length) { await tx.delete(lessonNotes).where(inArray(lessonNotes.lessonId, lessonIds)); await tx.delete(lessonProgress).where(inArray(lessonProgress.lessonId, lessonIds)); await tx.delete(lessonsDb).where(inArray(lessonsDb.id, lessonIds)); }
       await tx.delete(courseUnitsDb).where(eq(courseUnitsDb.id, unitId));
       deletedRows = lessons.length + 1;
@@ -253,7 +267,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       await tx.delete(lessonProgress).where(eq(lessonProgress.userEmail, row.email));
       await tx.delete(courseReviews).where(eq(courseReviews.userEmail, row.email));
       await tx.delete(courseAccess).where(eq(courseAccess.userEmail, row.email));
-      await tx.delete(notificationReads).where(eq(notificationReads.userEmail, row.email));
+      await tx.delete(notificationReads).where(eq(notificationReads.userId, targetId));
       await tx.delete(notificationsDb).where(eq(notificationsDb.userEmail, row.email));
       await tx.delete(analyticsEvents).where(eq(analyticsEvents.userEmail, row.email));
       await tx.delete(users).where(eq(users.id, targetId));
@@ -321,4 +335,3 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
   }
   return { entityType: input.entityType, entityId: input.entityId, deleted: true, deletedRows, cleanupFailures };
 }
-

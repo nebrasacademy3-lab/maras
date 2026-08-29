@@ -1,12 +1,14 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseRequestFiles, courseRequests, notificationsDb, supervisorAssignments, users } from "@/db/schema";
-import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
+import { checkRateLimit, clientIp, getSessionUser, roleAllowed } from "@/lib/auth";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { getInstitutionCatalog } from "@/lib/catalog-store";
-import { getPublicSettings, settingEnabled } from "@/lib/platform-settings";
 import { sendPushNotification } from "@/lib/push";
 import { deleteStoredMultipartFiles, parseStoredMultipart } from "@/lib/multipart-upload";
+import { isMobileRequest } from "@/lib/mobile-api";
+import { getMutationPublicSettings, settingEnabled } from "@/lib/platform-settings";
+import { specialtyNameVariants } from "@/lib/academic-data";
 
 const MAX_TOTAL_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_FILE_BYTES = MAX_TOTAL_FILE_BYTES;
@@ -25,20 +27,31 @@ function matchesSignature(type: string, bytes: Uint8Array) {
 
 async function supervisorFor(institutionSlug: string, specialty: string) {
   const db = getDb();
-  const assignments = await db.select().from(supervisorAssignments).where(eq(supervisorAssignments.active, true));
-  const match = assignments.find((item) => (!item.institutionSlug || item.institutionSlug === institutionSlug) && (!item.specialty || item.specialty === specialty));
-  if (match) return match.supervisorId;
-  const [staff] = await db.select({ id: users.id }).from(users).where(inArray(users.role, ["supervisor", "admin"])).limit(1);
-  return staff?.id || null;
+  const specialtyNames = [...specialtyNameVariants(institutionSlug, specialty)];
+  const [match] = await db.select({ supervisorId: supervisorAssignments.supervisorId }).from(supervisorAssignments)
+    .innerJoin(users, eq(users.id, supervisorAssignments.supervisorId))
+    .where(and(
+      eq(supervisorAssignments.active, true),
+      eq(users.status, "active"),
+      eq(users.role, "supervisor"),
+      or(isNull(supervisorAssignments.institutionSlug), eq(supervisorAssignments.institutionSlug, ""), eq(supervisorAssignments.institutionSlug, institutionSlug)),
+      or(isNull(supervisorAssignments.specialty), eq(supervisorAssignments.specialty, ""), inArray(supervisorAssignments.specialty, specialtyNames)),
+    ))
+    .orderBy(sql`(CASE WHEN ${supervisorAssignments.institutionSlug} = ${institutionSlug} THEN 2 ELSE 0 END + CASE WHEN ${supervisorAssignments.specialty} = ${specialty} THEN 1 ELSE 0 END) DESC`, supervisorAssignments.id)
+    .limit(1);
+  return match?.supervisorId || null;
 }
 
 
 export async function POST(request: Request) {
-  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!isMobileRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول لطلب مادة", 401);
-  const settings = await getPublicSettings();
-  if (!settingEnabled(settings.course_requests_enabled)) return jsonError("خدمة طلب المواد متوقفة مؤقتًا من إدارة المنصة", 503);
+  if (user.role !== "student") return jsonError("طلب المواد متاح لحساب الطالب فقط", 403);
+  let platformSettings;
+  try { platformSettings = await getMutationPublicSettings(); }
+  catch { return jsonError("تعذر التحقق من حالة طلبات المواد الآن. حاول لاحقًا.", 503); }
+  if (!settingEnabled(platformSettings.course_requests_enabled)) return jsonError(platformSettings.maintenance_message || "طلبات المواد متوقفة مؤقتًا.", 503);
   if (!user.profileCompleted || !user.phone || !user.universitySlug || !user.specialty || !user.academicLevel) return jsonError("أكمل ملفك الدراسي ومستواك أولًا", 409);
   if (!await checkRateLimit("course-request", `user:${user.id}`, 10, 60 * 60)) return jsonError("طلبات كثيرة. حاول بعد ساعة.", 429);
   const declaredLength = Number(request.headers.get("content-length"));
@@ -63,6 +76,7 @@ export async function POST(request: Request) {
   const courseName = cleanText(fields.courseName, 160);
   const courseCode = cleanText(fields.courseCode, 40);
   const notes = cleanText(fields.notes, 1500);
+  const notify = !["false", "0", "off", "no"].includes(String(fields.notify ?? "true").trim().toLowerCase());
   if (courseName.length < 3) { await discardFiles(); return jsonError("أدخل اسم المادة بصورة صحيحة"); }
 
   const institution = await getInstitutionCatalog(user.universitySlug);
@@ -75,7 +89,7 @@ export async function POST(request: Request) {
   let row: { id: number; status: string };
   try {
     row = await db.transaction(async (tx) => {
-      const [created] = await tx.insert(courseRequests).values({ userId: user.id, university: institution.name, universitySlug: user.universitySlug!, specialty: user.specialty!, courseName: courseCode ? `${courseName} (${courseCode})` : courseName, name: user.fullName, phone: user.phone!, notes, notify: fields.notify !== undefined, status: assignedSupervisorId ? "assigned" : "new", assignedSupervisorId, attachmentsCount: files.length, createdAt: now, updatedAt: now }).returning({ id: courseRequests.id, status: courseRequests.status });
+      const [created] = await tx.insert(courseRequests).values({ userId: user.id, university: institution.name, universitySlug: user.universitySlug!, specialty: user.specialty!, courseName: courseCode ? `${courseName} (${courseCode})` : courseName, name: user.fullName, phone: user.phone!, notes, notify, status: assignedSupervisorId ? "assigned" : "new", assignedSupervisorId, attachmentsCount: files.length, createdAt: now, updatedAt: now }).returning({ id: courseRequests.id, status: courseRequests.status });
       if (files.length) await tx.insert(courseRequestFiles).values(files.map((file) => ({ requestId: created.id, userId: user.id, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes })));
       return created;
     });
@@ -87,7 +101,7 @@ export async function POST(request: Request) {
   const studentTitle = "تم استلام طلب المادة";
   const studentBody = `استلمنا طلب «${courseName}»${files.length ? ` مع ${files.length} مرفقات` : ""}.`;
   await db.insert(notificationsDb).values({ userEmail: user.email, audience: "student", title: studentTitle, body: studentBody, actionUrl: "/dashboard?view=requests", actionLabel: "متابعة الطلب" }).catch(() => undefined);
-  await sendPushNotification({ userEmail: user.email }, studentTitle, studentBody, { route: "/requests" });
+  if (notify) await sendPushNotification({ userEmail: user.email }, studentTitle, studentBody, { route: "/requests" });
   if (assignedSupervisorId) {
     try {
       const [supervisor] = await db.select({ email: users.email }).from(users).where(eq(users.id, assignedSupervisorId)).limit(1);
