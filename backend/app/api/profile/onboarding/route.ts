@@ -8,7 +8,6 @@ export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
-  if (user.role === "student" && !user.profileCompleted) return jsonError("أكمل ملفك الدراسي قبل إنهاء التهيئة", 409);
   if (!await checkRateLimit("onboarding-complete", `user:${user.id}`, 10, 60 * 60)) return jsonError("محاولات كثيرة. حاول لاحقًا.", 429);
   const now = new Date().toISOString();
   await getDb().update(users).set({ onboardingCompletedAt: now, updatedAt: now }).where(eq(users.id, user.id));

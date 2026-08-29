@@ -11,33 +11,32 @@ import { HeroSearch } from "@/components/hero-search";
 import { UniversityCard } from "@/components/university-card";
 import { CourseCard } from "@/components/course-card";
 import { AnimatedStats } from "@/components/animated-stats";
-import { BrandMark } from "@/components/brand-mark";
 import { faq, reviews } from "@/lib/data";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
-import { getFailClosedPublicSettings, settingEnabled } from "@/lib/platform-settings";
+import { getPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 export const revalidate = 60;
 
 export default async function Home() {
-  const [institutions, courses, settings] = await Promise.all([getInstitutionsCatalog(), getCoursesCatalog(), getFailClosedPublicSettings()]);
+  const [institutions, courses, settings] = await Promise.all([getInstitutionsCatalog(), getCoursesCatalog(), getPublicSettings()]);
+  const requestsEnabled = settingEnabled(settings.course_requests_enabled);
+  const registrationEnabled = settingEnabled(settings.student_registration_enabled);
+  const paymentsEnabled = settingEnabled(settings.payments_enabled);
+  const assistantEnabled = settingEnabled(settings.assistant_enabled);
   const featuredUniversities = institutions.filter((institution) => institution.featured).slice(0, 6);
   const featuredCourses = courses.filter((course) => course.featured).slice(0, 6);
   const universityPreview = featuredUniversities.length ? featuredUniversities : institutions.slice(0, 6);
   const coursePreview = featuredCourses.length ? featuredCourses : courses.slice(0, 6);
-  const registrationEnabled = settingEnabled(settings.registration_enabled);
-  const requestsEnabled = settingEnabled(settings.course_requests_enabled);
-  const supportEnabled = settingEnabled(settings.support_enabled);
-  const maintenanceMessage = settings.maintenance_message.trim();
   const platformStats = [
     { value: institutions.length, label: "جامعة وكلية وجهة تقنية" },
     { value: courses.length, label: "مادة منشورة" },
-    { value: "24/7", label: "مساعد مراس الذكي" },
-    { value: "RTL", label: "تجربة عربية متكاملة" },
+    { value: assistantEnabled ? "24/7" : "—", label: assistantEnabled ? "مساعد مراس الذكي" : "المساعد متوقف مؤقتًا" },
+    { value: "100%", label: "تجربة متجاوبة" },
   ];
   return (
-    <main id="main-content">
-      <div className={`top-announcement ${maintenanceMessage ? "maintenance-announcement" : ""}`} role="status">
-        <div className="container"><span><Sparkles size={14} /> {maintenanceMessage ? "تنبيه تشغيلي" : "جديد مراس"}</span><p>{maintenanceMessage || settings.announcement || "أول درس مجاني في كل مادة — جرّب قبل الاشتراك"}</p>{!maintenanceMessage && <Link href="/courses">استكشف المواد <ArrowLeft size={14} /></Link>}</div>
+    <main>
+      <div className="top-announcement">
+        <div className="container"><span><Sparkles size={14} /> جديد مراس</span><p>{settings.announcement || "مواد جامعتك وتخصصك في تجربة واحدة مرتبة"}</p><Link href="/courses">استكشف المواد <ArrowLeft size={14} /></Link></div>
       </div>
       <SiteHeader />
 
@@ -45,16 +44,16 @@ export default async function Home() {
         <div className="hero-glow hero-glow-one" /><div className="hero-glow hero-glow-two" />
         <div className="container hero-grid">
           <div className="hero-copy">
-            <div className="eyebrow"><span><BadgeCheck size={16} /></span> منصة تعليم جامعي سعودية</div>
-            <h1>شرح جامعتك،<br /><span>في مكان واحد.</span></h1>
-            <p>اختر جامعتك وتخصصك، شاهد شرحًا مجانيًا قبل الاشتراك، وابدأ التعلّم بخطوات واضحة حتى الاختبار.</p>
-            <HeroSearch courses={courses} institutions={institutions} />
+            <div className="eyebrow"><span><BadgeCheck size={16} /></span> {settings.home_hero_kicker}</div>
+            <h1>{settings.home_hero_title}<br /><span>{settings.home_hero_highlight}</span></h1>
+            <p>{settings.home_hero_subtitle}</p>
+            <HeroSearch courses={courses} institutions={institutions} requestsEnabled={requestsEnabled} />
             <div className="hero-trust"><div className="avatar-stack"><span>ج</span><span>ك</span><span>ت</span><span>+{institutions.length}</span></div><div><div className="stars">جامعات · كليات · تدريب تقني</div><p>فهرس سعودي مترابط وقابل للإدارة والتحديث</p></div></div>
           </div>
 
           <div className="hero-visual" aria-label="تجربة الطالب داخل مراس">
             <div className="hero-dashboard-card">
-              <div className="mock-window-bar"><span /><span /><span /><BrandMark className="mock-brand-mark" /><i>لوحة الطالب</i></div>
+              <div className="mock-window-bar"><span /><span /><span /><i>لوحة الطالب</i></div>
               <div className="mock-welcome"><div><small>مساء الخير، محمد 👋</small><h3>كمّل رحلتك التعليمية</h3></div><span className="mock-bell">3</span></div>
               <div className="mock-progress-card">
                 <div className="mock-course-art"><span>∑</span><i><Play size={15} fill="currentColor" /></i></div>
@@ -63,8 +62,8 @@ export default async function Home() {
               <div className="mock-stats"><div><i><BookOpenCheck size={17} /></i><strong>4</strong><small>موادي</small></div><div><i><Clock3 size={17} /></i><strong>26h</strong><small>تعلمت</small></div><div><i><TrendingUp size={17} /></i><strong>73%</strong><small>متوسط التقدم</small></div></div>
               <div className="mock-next"><span><CheckCircle2 size={16} /> الدرس التالي</span><strong>Logical Equivalences</strong><button>متابعة <ChevronLeft size={14} /></button></div>
             </div>
-            <div className="floating-card floating-free"><span><CirclePlay size={20} /></span><div><strong>جرّب مجانًا</strong><small>قبل ما تشترك</small></div></div>
-            <div className="floating-card floating-secure"><span><ShieldCheck size={20} /></span><div><strong>دفع آمن</strong><small>عبر Tap</small></div></div>
+            <div className="floating-card floating-free"><span><CirclePlay size={20} /></span><div><strong>استكشف المحتوى</strong><small>قبل الاشتراك</small></div></div>
+            <div className="floating-card floating-secure"><span><ShieldCheck size={20} /></span><div><strong>{paymentsEnabled?"دفع آمن":"اشتراك متوقف"}</strong><small>{paymentsEnabled?"عبر Tap":"مؤقتًا"}</small></div></div>
             <div className="floating-orbit orbit-one" /><div className="floating-orbit orbit-two" />
           </div>
         </div>
@@ -80,7 +79,7 @@ export default async function Home() {
 
       <section className="section courses-section">
         <div className="container">
-          <div className="section-head"><div><span className="section-kicker">الأكثر طلبًا</span><h2>مواد يبدأ بها الطلاب الآن</h2><p>شروحات مرتبة حسب محتوى المقرر مع درس تجريبي مجاني.</p></div><Link href="/courses" className="button button-ghost">تصفّح كل المواد <ArrowLeft size={16} /></Link></div>
+          <div className="section-head"><div><span className="section-kicker">الأكثر طلبًا</span><h2>مواد يبدأ بها الطلاب الآن</h2><p>شروحات مرتبة حسب محتوى المقرر، وتظهر المعاينة المجانية عندما تكون متوفرة.</p></div><Link href="/courses" className="button button-ghost">تصفّح كل المواد <ArrowLeft size={16} /></Link></div>
           <div className="courses-grid">{coursePreview.map((course) => <CourseCard key={course.slug} course={course} />)}</div>
         </div>
       </section>
@@ -90,8 +89,8 @@ export default async function Home() {
           <div className="center-head"><span className="section-kicker">رحلة بسيطة وواضحة</span><h2>من البحث إلى الفهم في أربع خطوات</h2><p>صممنا مراس لتصل إلى شرح مادتك بأقل عدد ممكن من الخطوات.</p></div>
           <div className="steps-grid">
             <article><b>01</b><i><SearchCheck size={25} /></i><h3>ابحث</h3><p>اكتب اسم الجامعة أو التخصص أو المادة واحصل على نتائج فورية.</p></article>
-            <article><b>02</b><i><MonitorPlay size={25} /></i><h3>جرّب مجانًا</h3><p>شاهد درسًا حقيقيًا لتتأكد من جودة الصوت والشرح والأسلوب.</p></article>
-            <article><b>03</b><i><CreditCard size={25} /></i><h3>اشترك بأمان</h3><p>أكمل الدفع عبر Tap وتظهر المادة تلقائيًا داخل حسابك.</p></article>
+            <article><b>02</b><i><MonitorPlay size={25} /></i><h3>راجع المحتوى</h3><p>اطّلع على الوحدات والدروس، وشاهد المعاينة المجانية إذا كانت متوفرة.</p></article>
+            <article><b>03</b><i><CreditCard size={25} /></i><h3>{paymentsEnabled?"اشترك بأمان":"احفظ اختيارك"}</h3><p>{paymentsEnabled?"أكمل الدفع عبر Tap وتظهر المادة تلقائيًا داخل حسابك.":"يمكنك تصفح المادة وحفظها حتى تعيد الإدارة فتح الاشتراكات."}</p></article>
             <article><b>04</b><i><GraduationCap size={25} /></i><h3>تعلّم وتقدّم</h3><p>أكمل من نفس الثانية وتابع إنجازك حتى نهاية المادة.</p></article>
           </div>
         </div>
@@ -110,12 +109,12 @@ export default async function Home() {
               <li><CheckCircle2 size={18} /> علامة مائية متحركة باسم الطالب</li>
               <li><CheckCircle2 size={18} /> جلسات مشاهدة وروابط قصيرة الصلاحية</li>
             </ul>
-            <Link href="/courses/discrete-structures" className="button button-primary">شاهد الدرس التجريبي <CirclePlay size={17} /></Link>
+            <Link href="/courses" className="button button-primary">استكشف محتوى المواد <CirclePlay size={17} /></Link>
           </div>
           <div className="player-demo-shell">
             <div className="player-demo-screen">
               <span className="player-demo-watermark">محمد أ. · M-1048</span>
-              <div className="player-demo-logo"><img src="/brand/logo-dark.png" alt="" width={496} height={289} loading="lazy" decoding="async" /></div>
+              <div className="player-demo-logo"><img src="/brand/logo-dark-hq.png" alt="" width={496} height={289} loading="lazy" decoding="async" /></div>
               <div className="player-demo-content"><span>Discrete Structures</span><strong>Truth Tables</strong><small>الوحدة الأولى · الدرس 3</small></div>
               <div className="big-play"><Play size={26} fill="currentColor" /></div>
               <div className="player-controls-demo"><div className="player-timeline"><i /></div><div><span>18:32 / 31:44</span><p><b>1×</b><b>1080p</b><b>⛶</b></p></div></div>
@@ -128,30 +127,30 @@ export default async function Home() {
         <div className="container experience-grid">
           <div className="experience-card"><div className="experience-icon"><UsersRound size={25} /></div><h3>شرح يراعي محتوى جامعتك</h3><p>كل مادة مرتبطة بجامعتها وتخصصاتها، بدون قوائم مربكة أو محتوى عام بعيد عن مقرر الطالب.</p><Link href="/universities">اختر جامعتك <ArrowLeft size={15} /></Link></div>
           <div className="experience-card featured"><div className="experience-icon"><ShieldCheck size={25} /></div><h3>وصول موثوق ومحتوى محمي</h3><p>الدفع يُعتمد من الخادم، والصلاحية تُمنح بعد تأكيد Tap، والفيديو المدفوع لا يملك رابطًا عامًا.</p><Link href="/how-it-works">اعرف كيف نحمي حسابك <ArrowLeft size={15} /></Link></div>
-          <div className="experience-card"><div className="experience-icon"><Headphones size={25} /></div><h3>دعم يفهم مشكلة الطالب</h3><p>تذكرة للدفع أو الفيديو أو المادة مع حالة واضحة، وإشعار فور وصول رد فريق الدعم.</p>{supportEnabled ? <Link href="/support">تواصل مع الدعم <ArrowLeft size={15} /></Link> : <span className="inline-feature-disabled">استقبال التذاكر متوقف مؤقتًا</span>}</div>
+          <div className="experience-card"><div className="experience-icon"><Headphones size={25} /></div><h3>دعم يفهم مشكلة الطالب</h3><p>تذكرة للدفع أو الفيديو أو المادة مع حالة واضحة، وإشعار فور وصول رد فريق الدعم.</p><Link href="/support">تواصل مع الدعم <ArrowLeft size={15} /></Link></div>
         </div>
       </section>
 
       <section className="section reviews-section">
         <div className="container">
           <div className="center-head"><span className="section-kicker">معايير التجربة</span><h2>ما الذي تحصل عليه داخل مراس؟</h2><p>وعود قابلة للتحقق داخل المنتج، بلا أرقام أو شهادات مستخدمين غير موثقة.</p></div>
-          <div className="reviews-grid">{reviews.map((review) => <article key={review.name}><div className="review-stars"><CheckCircle2 size={18} /> مدمج في المنصة</div><p>{review.text}</p><div><span>{review.name[0]}</span><strong>{review.name}<small>{review.university}</small></strong></div></article>)}</div>
+          <div className="reviews-grid">{reviews.filter((review)=>requestsEnabled||review.name!=="طلب مادة منظم").map((review) => <article key={review.name}><div className="review-stars"><CheckCircle2 size={18} /> مدمج في المنصة</div><p>{review.text}</p><div><span>{review.name[0]}</span><strong>{review.name}<small>{review.university}</small></strong></div></article>)}</div>
         </div>
       </section>
 
-      <section className="section request-banner-section">
+      {requestsEnabled&&<section className="section request-banner-section">
         <div className="container request-banner">
           <div className="request-banner-icon"><TrendingUp size={34} /></div>
           <div><span>نبني المحتوى حسب احتياجكم</span><h2>ما لقيت مادتك؟ اطلبها في أقل من دقيقة.</h2><p>سنجمع الطلبات حسب الجامعة والتخصص، ونخبرك عندما يبدأ تجهيز الشرح أو يصبح متاحًا.</p></div>
-          {requestsEnabled ? <Link href="/request-course" className="button button-white">اطلب توفير مادة <ArrowLeft size={17} /></Link> : <span className="button button-disabled-light" aria-disabled="true">طلبات المواد متوقفة مؤقتًا</span>}
+          <Link href="/request-course" className="button button-white">اطلب توفير مادة <ArrowLeft size={17} /></Link>
         </div>
-      </section>
+      </section>}
 
       <section className="section faq-section" id="faq">
-        <div className="container faq-grid"><div className="faq-intro"><span className="section-kicker">الأسئلة الشائعة</span><h2>إجابات مختصرة قبل أن تبدأ</h2><p>وإذا بقي عندك سؤال، فريق الدعم موجود لمساعدتك.</p>{supportEnabled ? <Link href="/support" className="button button-ghost">اسأل فريق مراس</Link> : <span className="button button-disabled" aria-disabled="true">الدعم متوقف مؤقتًا</span>}</div><div className="faq-list">{faq.map((item, index) => <details key={item.q} open={index === 0}><summary>{item.q}<span>+</span></summary><p>{item.a}</p></details>)}</div></div>
+        <div className="container faq-grid"><div className="faq-intro"><span className="section-kicker">الأسئلة الشائعة</span><h2>إجابات مختصرة قبل أن تبدأ</h2><p>وإذا بقي عندك سؤال، فريق الدعم موجود لمساعدتك.</p><Link href="/support" className="button button-ghost">اسأل فريق مراس</Link></div><div className="faq-list">{faq.map((item, index) => <details key={item.q} open={index === 0}><summary>{item.q}<span>+</span></summary><p>{item.q==="ماذا أفعل إذا لم أجد مادتي؟"&&!requestsEnabled?"تابع كتالوج المواد أو تواصل مع الدعم. عند إعادة تفعيل طلبات المواد ستظهر الخدمة تلقائيًا في حسابك.":item.a}</p></details>)}</div></div>
       </section>
 
-      <section className="final-cta-section"><div className="container final-cta"><div className="final-cta-glow" /><div><span><Sparkles size={16} /> ابدأ بالدرس المجاني</span><h2>مادتك أوضح عندما يكون الشرح على طريقتك.</h2><p>{registrationEnabled ? "أنشئ حسابك، اختر جامعتك وتخصصك، وابدأ التجربة مجانًا." : "يمكنك استكشاف المواد الآن، وسنفتح التسجيل مجددًا عند جاهزيته."}</p></div><div>{registrationEnabled ? <Link href="/register" className="button button-white">أنشئ حسابك مجانًا <ArrowLeft size={17} /></Link> : <span className="button button-disabled-light" aria-disabled="true">التسجيل متوقف مؤقتًا</span>}<Link href="/courses" className="button button-outline-white">استكشف المواد</Link></div></div></section>
+      <section className="final-cta-section"><div className="container final-cta"><div className="final-cta-glow" /><div><span><Sparkles size={16} /> ابدأ من جامعتك</span><h2>مادتك أوضح عندما يكون المحتوى مرتبًا حول مسارك.</h2><p>{registrationEnabled?"أنشئ حسابك، اختر جامعتك وتخصصك، وابدأ تجربتك في مراس.":"استكشف الجامعات والمواد، وسجّل الدخول إذا كان لديك حساب حالي."}</p></div><div>{registrationEnabled&&<Link href="/register" className="button button-white">أنشئ حسابك <ArrowLeft size={17} /></Link>}<Link href="/courses" className="button button-outline-white">استكشف المواد</Link></div></div></section>
       <SiteFooter />
     </main>
   );

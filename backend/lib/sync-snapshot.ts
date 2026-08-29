@@ -29,8 +29,8 @@ export function syncChannelsForUser(user: SessionUser | null): SyncChannel[] {
   const channels: SyncChannel[] = ["catalog", "settings", "announcements"];
   if (!user) return channels;
   if (user.role === "student") channels.push("account", "commerce", "support", "notifications", "requests");
-  if (user.role === "supervisor") channels.push("account", "support", "notifications", "supervisor");
-  if (user.role === "admin") channels.push("account", "support", "notifications", "admin");
+  if (user.role === "supervisor") channels.push("support", "supervisor");
+  if (user.role === "admin") channels.push("admin");
   return channels;
 }
 

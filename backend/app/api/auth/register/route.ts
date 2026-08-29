@@ -5,7 +5,7 @@ import { checkRateLimit, clientIp, createSession, hashPassword, sameOriginReques
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
 import { validAcademicLevel } from "@/lib/academic-levels";
-import { getMutationPublicSettings, settingEnabled } from "@/lib/platform-settings";
+import { getPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 function canonicalPhone(value: string) {
   const digits = value.replace(/\D/g, "").replace(/^00966/, "966");
@@ -15,11 +15,9 @@ function canonicalPhone(value: string) {
 }
 
 export async function POST(request: Request) {
+  const settings = await getPublicSettings();
+  if (!settingEnabled(settings.student_registration_enabled)) return jsonError("إنشاء الحسابات الجديدة متوقف مؤقتًا من إدارة المنصة", 503);
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
-  let platformSettings;
-  try { platformSettings = await getMutationPublicSettings(); }
-  catch { return jsonError("تعذر التحقق من حالة التسجيل الآن. حاول لاحقًا.", 503); }
-  if (!settingEnabled(platformSettings.registration_enabled)) return jsonError(platformSettings.maintenance_message || "إنشاء الحسابات متوقف مؤقتًا. حاول لاحقًا.", 503);
   if (!await checkRateLimit("register-ip", clientIp(request), 100, 60 * 60)) return jsonError("محاولات كثيرة. حاول بعد ساعة.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات التسجيل غير صالحة"); }
@@ -48,7 +46,6 @@ export async function POST(request: Request) {
   const [existing] = await db.select({ id: users.id }).from(users).where(or(eq(users.email, email), eq(users.phone, phone))).limit(1);
   if (existing) return jsonError("يوجد حساب مرتبط بالبريد أو رقم الجوال", 409);
   const now = new Date().toISOString();
-  const onboardingEnabled = settingEnabled(platformSettings.onboarding_enabled);
   const [created] = await db.insert(users).values({
     email,
     phone,
@@ -59,12 +56,11 @@ export async function POST(request: Request) {
     specialty,
     academicLevel,
     profileCompletedAt: now,
-    onboardingCompletedAt: onboardingEnabled ? null : now,
     status: "active",
     createdAt: now,
     updatedAt: now,
   }).onConflictDoNothing().returning({ id: users.id, email: users.email, fullName: users.fullName });
   if (!created) return jsonError("يوجد حساب مرتبط بالبريد أو رقم الجوال", 409);
   const session = await createSession(created.id, request, true);
-  return Response.json({ ok: true, user: created, next: onboardingEnabled ? "/onboarding" : "/dashboard" }, { status: 201, headers: { "set-cookie": session.cookie, "cache-control": "no-store" } });
+  return Response.json({ ok: true, user: created, next: "/onboarding" }, { status: 201, headers: { "set-cookie": session.cookie, "cache-control": "no-store" } });
 }

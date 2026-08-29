@@ -3,12 +3,11 @@ import { answerAssistant, detectAssistantIntent } from "@/lib/assistant-knowledg
 import { buildAssistantContext } from "@/lib/assistant-context";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
-import { getPublicSettings, PUBLIC_SETTING_DEFAULTS } from "@/lib/platform-settings";
+import { getPublicSettings, PUBLIC_SETTING_DEFAULTS, settingEnabled } from "@/lib/platform-settings";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
-import { isMobileRequest } from "@/lib/mobile-api";
 
 export async function POST(request: Request) {
-  if (!sameOriginRequest(request) && !isMobileRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   if (!await checkRateLimit("assistant", clientIp(request), 50, 10 * 60)) return jsonError("أرسلت أسئلة كثيرة بسرعة. انتظر قليلًا ثم حاول مجددًا.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("صيغة السؤال غير صالحة"); }
@@ -27,6 +26,7 @@ export async function POST(request: Request) {
     getInstitutionsCatalog().catch(() => []),
     getCoursesCatalog().catch(() => []),
   ]);
+  if (!settingEnabled(settings.assistant_enabled)) return jsonError("مساعد مراس متوقف مؤقتًا من إدارة المنصة", 503);
   const intent = detectAssistantIntent(question);
   let reply = null;
   try {

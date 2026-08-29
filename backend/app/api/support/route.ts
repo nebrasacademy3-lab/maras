@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, notificationsDb, supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
@@ -6,8 +6,6 @@ import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/l
 import { deleteObject } from "@/lib/storage";
 import { deleteStoredMultipartFiles, parseStoredMultipart, type StoredMultipartFile } from "@/lib/multipart-upload";
 import { sendPushNotification } from "@/lib/push";
-import { isMobileRequest } from "@/lib/mobile-api";
-import { getMutationPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_FILES = 5;
@@ -22,10 +20,6 @@ function isManager(user: Awaited<ReturnType<typeof getSessionUser>>) {
   return Boolean(user && (user.role === "admin" || user.role === "supervisor"));
 }
 
-function canManageTicket(user: NonNullable<Awaited<ReturnType<typeof getSessionUser>>>, ticket: { assignedTo: string | null }) {
-  return user.role === "admin" || (user.role === "supervisor" && (!ticket.assignedTo || ticket.assignedTo === user.email));
-}
-
 function hasValidSignature(type: string, bytes: Uint8Array) {
   if (type === "application/pdf") return bytes.length >= 5 && String.fromCharCode(...bytes.slice(0, 5)) === "%PDF-";
   if (type === "image/png") return bytes.length >= 8 && bytes.slice(0, 8).every((value, index) => value === [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a][index]);
@@ -38,15 +32,9 @@ function hasValidSignature(type: string, bytes: Uint8Array) {
 }
 
 export async function POST(request: Request) {
-  if (!isMobileRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
   if (!current) return jsonError("سجّل الدخول أولًا للدعم", 401);
-  if (!isManager(current)) {
-    let settings;
-    try { settings = await getMutationPublicSettings(); }
-    catch { return jsonError("تعذر التحقق من حالة الدعم الآن. حاول لاحقًا.", 503); }
-    if (!settingEnabled(settings.support_enabled)) return jsonError(settings.maintenance_message || "فتح محادثات الدعم وإرسال الردود متوقف مؤقتًا.", 503);
-  }
   if (!await checkRateLimit("support-write", `${current.id}:${clientIp(request)}`, 30, 60 * 60)) return jsonError("تم إرسال طلبات كثيرة. حاول لاحقًا.", 429);
   const db = getDb();
   const multipart = (request.headers.get("content-type") || "").includes("multipart/form-data");
@@ -74,7 +62,7 @@ export async function POST(request: Request) {
   if (ticketId) {
     const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
     if (!ticket) { await discardFiles(); return jsonError("التذكرة غير موجودة", 404); }
-    if ((!isManager(current) && ticket.userEmail !== current.email) || (current.role === "supervisor" && !canManageTicket(current, ticket))) { await discardFiles(); return jsonError("غير مصرح", 403); }
+    if (!isManager(current) && ticket.userEmail !== current.email) { await discardFiles(); return jsonError("غير مصرح", 403); }
     if (!body && !files.length) { await discardFiles(); return jsonError("اكتب رسالة أو أرفق ملفًا"); }
     const internal = isManager(current) && (values.internal === true || values.internal === "true");
     const nextStatus = !isManager(current) && ["closed", "resolved"].includes(ticket.status) ? "open" : ticket.status;
@@ -128,47 +116,24 @@ export async function GET(request: Request) {
   if (!current && !isAdminRequest(request)) return jsonError("سجّل الدخول لمتابعة التذاكر", 401);
   const db = getDb();
   if (current?.role === "admin" || current?.role === "supervisor" || isAdminRequest(request)) {
-    const tickets = current?.role === "supervisor"
-      ? await db.select().from(supportTickets).where(or(isNull(supportTickets.assignedTo), eq(supportTickets.assignedTo, current.email))).orderBy(desc(supportTickets.updatedAt)).limit(300)
-      : await db.select().from(supportTickets).orderBy(desc(supportTickets.updatedAt)).limit(300);
-    const ticketIds = tickets.map((ticket) => ticket.id);
-    const replies = ticketIds.length ? await db.select().from(supportReplies).where(inArray(supportReplies.ticketId, ticketIds)).orderBy(desc(supportReplies.createdAt)).limit(3000) : [];
-    const replyIds = replies.map((reply) => reply.id);
-    const files = replyIds.length ? await db.select().from(supportReplyFiles).where(inArray(supportReplyFiles.replyId, replyIds)).limit(5000) : [];
+    const tickets = await db.select().from(supportTickets).orderBy(desc(supportTickets.updatedAt)).limit(300);
+    const replies = await db.select().from(supportReplies).orderBy(desc(supportReplies.createdAt)).limit(1000);
+    const files = await db.select().from(supportReplyFiles).limit(2000);
     return Response.json({ ok: true, tickets: tickets.map((ticket) => ({ ...ticket, replies: replies.filter((reply) => reply.ticketId === ticket.id).map((reply) => ({ ...reply, files: files.filter((file) => file.replyId === reply.id).map((file) => ({ id: file.id, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })) })) }, { headers: { "cache-control": "no-store" } });
   }
   if (!current) return jsonError("سجّل الدخول لمتابعة التذاكر", 401);
   const tickets = await db.select().from(supportTickets).where(eq(supportTickets.userEmail, current.email)).orderBy(desc(supportTickets.updatedAt)).limit(100);
-  const ticketIds = tickets.map((ticket) => ticket.id);
-  const replies = ticketIds.length ? await db.select().from(supportReplies).where(and(eq(supportReplies.internal, false), inArray(supportReplies.ticketId, ticketIds))).orderBy(desc(supportReplies.createdAt)).limit(2000) : [];
-  const replyIds = replies.map((reply) => reply.id);
-  const files = replyIds.length ? await db.select().from(supportReplyFiles).where(inArray(supportReplyFiles.replyId, replyIds)).limit(3000) : [];
-  return Response.json({ ok: true, tickets: tickets.map((ticket) => ({
-    id: ticket.id,
-    ticketNumber: ticket.ticketNumber,
-    category: ticket.category,
-    priority: ticket.priority,
-    title: ticket.title,
-    message: ticket.message,
-    contactChannel: ticket.contactChannel,
-    status: ticket.status,
-    createdAt: ticket.createdAt,
-    updatedAt: ticket.updatedAt,
-    replies: replies.filter((reply) => reply.ticketId === ticket.id).map((reply) => ({
-      id: reply.id,
-      authorRole: reply.authorRole,
-      body: reply.body,
-      createdAt: reply.createdAt,
-      files: files.filter((file) => file.replyId === reply.id).map((file) => ({ id: file.id, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })),
-    })),
-  })) }, { headers: { "cache-control": "no-store" } });
+  const ids = new Set(tickets.map((ticket) => ticket.id));
+  const replies = (await db.select().from(supportReplies).where(eq(supportReplies.internal, false)).orderBy(desc(supportReplies.createdAt)).limit(600)).filter((reply) => ids.has(reply.ticketId));
+  const files = await db.select().from(supportReplyFiles).limit(1200);
+  return Response.json({ ok: true, tickets: tickets.map((ticket) => ({ ...ticket, replies: replies.filter((reply) => reply.ticketId === ticket.id).map((reply) => ({ ...reply, files: files.filter((file) => file.replyId === reply.id).map((file) => ({ id: file.id, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })) })) }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function DELETE(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
   const machineAuthorized = isAdminRequest(request);
-  if (!machineAuthorized && current?.role !== "admin") return jsonError("حذف التذاكر من صلاحية الإدارة فقط", 403);
+  if (!machineAuthorized && !isManager(current)) return jsonError("غير مصرح بحذف التذاكر", 403);
   const actor = current?.email || "admin-api-token";
   if (!await checkRateLimit("support-delete", `${actor}:${clientIp(request)}`, 10, 60 * 60)) return jsonError("طلبات حذف كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
@@ -190,10 +155,9 @@ export async function DELETE(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  if (!isMobileRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
   if (!current) return jsonError("سجّل الدخول أولًا", 401);
-  if (!await checkRateLimit("support-status-write", `user:${current.id}:${clientIp(request)}`, 60, 60 * 60)) return jsonError("تحديثات كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
   const ticketId = Math.floor(Number(payload.ticketId));
@@ -202,13 +166,7 @@ export async function PATCH(request: Request) {
   const db = getDb();
   const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
-  if ((!isManager(current) && ticket.userEmail !== current.email) || (current.role === "supervisor" && !canManageTicket(current, ticket))) return jsonError("غير مصرح", 403);
-  if (!isManager(current)) {
-    let settings;
-    try { settings = await getMutationPublicSettings(); }
-    catch { return jsonError("تعذر التحقق من حالة الدعم الآن. حاول لاحقًا.", 503); }
-    if (!settingEnabled(settings.support_enabled)) return jsonError(settings.maintenance_message || "إعادة فتح محادثات الدعم متوقفة مؤقتًا.", 503);
-  }
+  if (!isManager(current) && ticket.userEmail !== current.email) return jsonError("غير مصرح", 403);
   if (action === "close" && !isManager(current)) return jsonError("إغلاق التذكرة من صلاحية المشرف", 403);
   const status = action === "close" ? "closed" : "open";
   const now = new Date().toISOString();

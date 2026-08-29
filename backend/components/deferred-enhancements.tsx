@@ -10,6 +10,8 @@ const DeferredMotion = dynamic(() => import("@/components/motion-orchestrator").
 export function DeferredEnhancements() {
   const pathname = usePathname();
   const [ready, setReady] = useState(false);
+  const [assistantEnabled, setAssistantEnabled] = useState(true);
+
   useEffect(() => {
     const activate = () => setReady(true);
     if ("requestIdleCallback" in window) {
@@ -19,6 +21,18 @@ export function DeferredEnhancements() {
     const timeout = setTimeout(activate, 900);
     return () => clearTimeout(timeout);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/public/settings", { cache: "no-store", credentials: "same-origin" })
+      .then((response) => response.ok ? response.json() : null)
+      .then((result: { settings?: { assistant_enabled?: string } } | null) => {
+        if (active && result?.settings?.assistant_enabled === "false") setAssistantEnabled(false);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
+
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
-  return ready ? <><DeferredMotion />{!isAdmin && <DeferredAssistant />}</> : null;
+  return ready ? <><DeferredMotion />{!isAdmin && assistantEnabled ? <DeferredAssistant /> : null}</> : null;
 }

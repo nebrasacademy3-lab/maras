@@ -14,14 +14,7 @@ export function getApiToken() { return sessionToken; }
 
 export class ApiError extends Error {
   status: number;
-  code?: string;
-  newAttemptRequired: boolean;
-  constructor(message: string, status: number, details?: { code?: string; newAttemptRequired?: boolean }) {
-    super(message);
-    this.status = status;
-    this.code = details?.code;
-    this.newAttemptRequired = details?.newAttemptRequired === true;
-  }
+  constructor(message: string, status: number) { super(message); this.status = status; }
 }
 
 export function absoluteUrl(path?: string | null) {
@@ -52,8 +45,7 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
     try { payload = text ? JSON.parse(text) : {}; } catch { payload = {}; }
     if (!response.ok) {
       const error = payload && typeof payload === "object" && "error" in payload ? String((payload as { error: unknown }).error) : "تعذر الاتصال بخدمة مراس";
-      const details = payload && typeof payload === "object" ? payload as { code?: unknown; newAttemptRequired?: unknown } : {};
-      throw new ApiError(error, response.status, { code: typeof details.code === "string" ? details.code : undefined, newAttemptRequired: details.newAttemptRequired === true });
+      throw new ApiError(error, response.status);
     }
     return payload as T;
   } catch (reason) {

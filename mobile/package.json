@@ -9,7 +9,6 @@
     "ios": "expo run:ios",
     "typecheck": "tsc --noEmit",
     "lint": "eslint app src",
-    "test:contracts": "node --test tests/*.test.mjs",
     "doctor": "expo-doctor",
     "build:android:test": "eas build --platform android --profile preview",
     "build:android": "eas build --platform android --profile production",

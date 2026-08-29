@@ -18,12 +18,17 @@ export const PUBLIC_SETTING_DEFAULTS = {
   social_snapchat: "",
   social_threads: "",
   announcement: "",
-  registration_enabled: "true",
-  purchases_enabled: "true",
+  home_hero_kicker: "منصة تعليم جامعي سعودية",
+  home_hero_title: "شرح جامعتك،",
+  home_hero_highlight: "في مكان واحد.",
+  home_hero_subtitle: "اختر جامعتك وتخصصك، استعرض محتوى المادة، وابدأ التعلّم بخطوات واضحة حتى الاختبار.",
+  mobile_welcome_title: "كل شيء أوضح، أرتب، وأقرب لك",
+  mobile_welcome_subtitle: "تجربة عربية من اليمين لليسار، مواد منظّمة، بحث أسهل، ومساعد مراس معك في كل خطوة.",
+  assistant_enabled: "true",
   course_requests_enabled: "true",
-  support_enabled: "true",
-  onboarding_enabled: "true",
-  maintenance_message: "",
+  guest_browsing_enabled: "true",
+  student_registration_enabled: "true",
+  payments_enabled: "true",
 } as const;
 
 export type PublicSettingKey = keyof typeof PUBLIC_SETTING_DEFAULTS;
@@ -44,25 +49,22 @@ export const SETTING_META: Record<PublicSettingKey, { label: string; category: s
   social_snapchat: { label: "رابط Snapchat", category: "social" },
   social_threads: { label: "رابط Threads", category: "social" },
   announcement: { label: "تنبيه عام", category: "general" },
-  registration_enabled: { label: "السماح بإنشاء الحسابات", category: "operations" },
-  purchases_enabled: { label: "السماح بالشراء", category: "operations" },
-  course_requests_enabled: { label: "السماح بطلب المواد", category: "operations" },
-  support_enabled: { label: "السماح بمحادثات الدعم الجديدة", category: "operations" },
-  onboarding_enabled: { label: "عرض التهيئة للمستخدمين", category: "operations" },
-  maintenance_message: { label: "رسالة الصيانة", category: "operations" },
+  home_hero_kicker: { label: "وسم الواجهة الرئيسية", category: "appearance" },
+  home_hero_title: { label: "عنوان الواجهة الرئيسي", category: "appearance" },
+  home_hero_highlight: { label: "تكملة العنوان البارزة", category: "appearance" },
+  home_hero_subtitle: { label: "وصف الواجهة الرئيسية", category: "appearance" },
+  mobile_welcome_title: { label: "عنوان ترحيب التطبيق", category: "appearance" },
+  mobile_welcome_subtitle: { label: "وصف ترحيب التطبيق", category: "appearance" },
+  assistant_enabled: { label: "تفعيل مساعد مراس", category: "features" },
+  course_requests_enabled: { label: "تفعيل طلبات المواد", category: "features" },
+  guest_browsing_enabled: { label: "السماح بالتصفح كضيف", category: "features" },
+  student_registration_enabled: { label: "إنشاء حسابات الطلاب", category: "features" },
+  payments_enabled: { label: "الدفع والاشتراكات الجديدة", category: "features" },
 };
 
-export type PlatformFeatureKey = "registration_enabled" | "purchases_enabled" | "course_requests_enabled" | "support_enabled" | "onboarding_enabled";
-
-export function settingEnabled(value: string | null | undefined, fallback = true) {
-  const normalized = value?.trim().toLowerCase();
-  if (normalized === "true" || normalized === "1" || normalized === "yes" || normalized === "on") return true;
-  if (normalized === "false" || normalized === "0" || normalized === "no" || normalized === "off") return false;
-  return fallback;
-}
-
-export async function platformFeatureEnabled(key: PlatformFeatureKey) {
-  return settingEnabled((await getPublicSettings())[key], true);
+export function settingEnabled(value: string | undefined, fallback = true) {
+  if (value == null || value === "") return fallback;
+  return !["0", "false", "off", "no", "disabled"].includes(value.trim().toLowerCase());
 }
 
 export function whatsappHref(settings: Pick<PublicSettings, "whatsapp_number" | "whatsapp_message">) {
@@ -72,67 +74,30 @@ export function whatsappHref(settings: Pick<PublicSettings, "whatsapp_number" | 
   return `https://wa.me/${international}?text=${encodeURIComponent(settings.whatsapp_message)}`;
 }
 
-type PublicSettingsSnapshot = {
-  value: PublicSettings;
-  available: boolean;
-};
-
-let publicSettingsCache: { expiresAt: number; snapshot: PublicSettingsSnapshot } | null = null;
-let publicSettingsInFlight: Promise<PublicSettingsSnapshot> | null = null;
+let publicSettingsCache: { expiresAt: number; value: PublicSettings } | null = null;
+let publicSettingsInFlight: Promise<PublicSettings> | null = null;
 const SETTINGS_CACHE_TTL = 5_000;
 
 export function invalidatePublicSettingsCache() {
   publicSettingsCache = null;
 }
 
-async function loadPublicSettings(): Promise<PublicSettingsSnapshot> {
+export async function getPublicSettings(): Promise<PublicSettings> {
   noStore();
-  if (publicSettingsCache && publicSettingsCache.expiresAt > Date.now()) return publicSettingsCache.snapshot;
+  if (publicSettingsCache && publicSettingsCache.expiresAt > Date.now()) return publicSettingsCache.value;
   if (publicSettingsInFlight) return publicSettingsInFlight;
   const load = async () => {
     const output = { ...PUBLIC_SETTING_DEFAULTS } as PublicSettings;
-    // Local/demo builds without a configured database intentionally use the
-    // documented defaults. Once DATABASE_URL is configured, however, a read
-    // failure must be distinguishable so sensitive mutations can fail closed.
-    if (!process.env.DATABASE_URL) return { value: output, available: true };
+    if (!process.env.DATABASE_URL) return output;
     try {
       const rows = await getDb().select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.isPublic, true));
       for (const row of rows) if (row.key in output) output[row.key as PublicSettingKey] = row.value;
     } catch {
-      return { value: output, available: false };
+      return output;
     }
-    const snapshot = { value: output, available: true };
-    publicSettingsCache = { expiresAt: Date.now() + SETTINGS_CACHE_TTL, snapshot };
-    return snapshot;
+    publicSettingsCache = { expiresAt: Date.now() + SETTINGS_CACHE_TTL, value: output };
+    return output;
   };
   publicSettingsInFlight = load();
   try { return await publicSettingsInFlight; } finally { publicSettingsInFlight = null; }
-}
-
-export async function getPublicSettings(): Promise<PublicSettings> {
-  return (await loadPublicSettings()).value;
-}
-
-/**
- * Reads operational controls for a state-changing endpoint. In production a
- * configured-but-unreachable database is not equivalent to "all enabled".
- */
-export async function getMutationPublicSettings(): Promise<PublicSettings> {
-  const snapshot = await loadPublicSettings();
-  if (!snapshot.available) throw new Error("PLATFORM_SETTINGS_UNAVAILABLE");
-  return snapshot.value;
-}
-
-export async function getFailClosedPublicSettings(): Promise<PublicSettings> {
-  const snapshot = await loadPublicSettings();
-  if (snapshot.available) return snapshot.value;
-  return {
-    ...snapshot.value,
-    registration_enabled: "false",
-    purchases_enabled: "false",
-    course_requests_enabled: "false",
-    support_enabled: "false",
-    onboarding_enabled: "false",
-    maintenance_message: "تعذر التحقق من حالة خدمات المنصة مؤقتًا. لم تُفعّل أي عملية جديدة.",
-  };
 }

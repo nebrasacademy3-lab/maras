@@ -1,4 +1,11 @@
-<svg width="64" height="64" viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
-  <rect width="64" height="64" rx="14" fill="#fff"/>
-  <image href="/brand/app-icon-512.png" x="0" y="0" width="64" height="64" preserveAspectRatio="xMidYMid meet"/>
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="mark" x1="8" y1="18" x2="57" y2="47" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#075BEA"/>
+      <stop offset=".56" stop-color="#154BD3"/>
+      <stop offset="1" stop-color="#B447F4"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" fill="#FFFFFF"/>
+  <path d="M7 47 18.2 26.8c2.8-5 9.2-5.7 12.9-1.3l4.1 4.9 3.1-4.4c3.7-5.1 11.4-4.8 14.7.6L58 33.5v13.2h-6.2L46 35c-1-2-3.5-2.1-4.7-.3L34.7 45 25 33.8c-1.2-1.5-3.3-1.2-4.2.4L13.5 47H7Z" fill="url(#mark)"/>
 </svg>

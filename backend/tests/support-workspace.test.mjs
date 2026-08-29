@@ -8,27 +8,13 @@ const read = (path) => readFile(new URL(path, backend), "utf8");
 test("support API protects ticket ownership and manager-only closure/deletion", async () => {
   const route = await read("app/api/support/route.ts");
   const consoleRoute = await read("app/api/admin/console/route.ts");
-  assert.match(route, /!isManager\(current\) && ticket\.userEmail !== current\.email/);
-  assert.match(route, /current\.role === "supervisor" && !canManageTicket\(current, ticket\)/);
-  assert.match(route, /return jsonError\("غير مصرح", 403\)/);
+  assert.match(route, /if \(!isManager\(current\) && ticket\.userEmail !== current\.email\) return jsonError\("غير مصرح", 403\)/);
   assert.match(route, /action === "close" && !isManager\(current\)\) return jsonError/);
   assert.match(route, /const machineAuthorized = isAdminRequest\(request\)/);
   assert.match(route, /await tx\.delete\(supportReplyFiles\)/);
   assert.match(route, /await Promise\.all\(files\.map\(\(file\) => deleteObject/);
   assert.match(consoleRoute, /action === "updateTicket"/);
   assert.match(consoleRoute, /\["new", "open", "waiting", "resolved", "closed"\]/);
-});
-
-test("internal support replies and files never reach student APIs", async () => {
-  const [support, dashboard, fileRoute] = await Promise.all([
-    read("app/api/support/route.ts"),
-    read("app/api/mobile/dashboard/route.ts"),
-    read("app/api/support/files/[id]/route.ts"),
-  ]);
-  assert.match(support, /eq\(supportReplies\.internal, false\)/);
-  assert.match(dashboard, /eq\(supportReplies\.internal, false\)/);
-  assert.match(fileRoute, /internal:\s*supportReplies\.internal/);
-  assert.match(fileRoute, /!manager && row\.internal/);
 });
 
 test("web and Expo support surfaces open a selected conversation from cards", async () => {

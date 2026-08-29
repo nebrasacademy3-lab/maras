@@ -1,10 +1,9 @@
 import { eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
-import { checkRateLimit, clearRateLimit, clientIp, createSession, DUMMY_PASSWORD_HASH, sessionUserFromRow, verifyPassword } from "@/lib/auth";
+import { checkRateLimit, clearRateLimit, clientIp, createSession, sessionUserFromRow, verifyPassword } from "@/lib/auth";
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
 import { isMobileRequest, mobileNoStoreHeaders } from "@/lib/mobile-api";
-import { getPublicSettings, settingEnabled } from "@/lib/platform-settings";
 
 function phoneCandidate(value: string) {
   const digits = normalizePhone(value).replace(/\D/g, "");
@@ -25,16 +24,13 @@ export async function POST(request: Request) {
   if (!await checkRateLimit("mobile-login-ip", ipIdentity, 300, 15 * 60) || !await checkRateLimit("mobile-login-account", identifier, 8, 15 * 60)) return jsonError("تم إيقاف المحاولات مؤقتًا. حاول بعد 15 دقيقة.", 429);
   const db = getDb();
   const [row] = await db.select().from(users).where(or(eq(users.email, identifier), eq(users.phone, phoneCandidate(identifier)))).limit(1);
-  const passwordMatches = await verifyPassword(password, row?.passwordHash || DUMMY_PASSWORD_HASH);
-  const valid = Boolean(row?.status === "active" && passwordMatches);
+  const valid = row?.status === "active" && await verifyPassword(password, row.passwordHash);
   if (!row || !valid) return jsonError("بيانات الدخول غير صحيحة", 401);
   await clearRateLimit("mobile-login-account", identifier);
   const now = new Date().toISOString();
-  const onboardingEnabled = settingEnabled((await getPublicSettings()).onboarding_enabled);
-  const onboardingCompletedAt = !onboardingEnabled && row.profileCompletedAt ? row.onboardingCompletedAt || now : row.onboardingCompletedAt;
-  await db.update(users).set({ lastLoginAt: now, onboardingCompletedAt, updatedAt: now }).where(eq(users.id, row.id));
+  await db.update(users).set({ lastLoginAt: now, updatedAt: now }).where(eq(users.id, row.id));
   const session = await createSession(row.id, request, payload.remember !== false);
-  const user = sessionUserFromRow({ ...row, onboardingCompletedAt });
+  const user = sessionUserFromRow(row);
   const next = user.profileCompleted ? (user.onboardingCompleted ? "/home" : "/onboarding") : "/complete-profile";
   return Response.json({ ok: true, token: session.token, expiresAt: session.expiresAt, user, next }, { headers: mobileNoStoreHeaders });
 }

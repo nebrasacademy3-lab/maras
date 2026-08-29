@@ -9,7 +9,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   ...config,
   name: "مراس العلم",
   slug: "meras-alelm",
-  version: "1.1.0",
+  version: "1.0.0",
   scheme: "merasalelm",
   orientation: "default",
   icon: "./assets/icon.png",
@@ -27,11 +27,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   },
   android: {
     package: "sa.merasalelm.app",
-    adaptiveIcon: {
-      foregroundImage: "./assets/adaptive-icon.png",
-      monochromeImage: "./assets/monochrome-icon.png",
-      backgroundColor: "#ffffff",
-    },
+    adaptiveIcon: { foregroundImage: "./assets/adaptive-icon.png", backgroundColor: "#ffffff" },
     predictiveBackGestureEnabled: true,
     permissions: ["POST_NOTIFICATIONS"],
   },
@@ -44,7 +40,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     ["expo-notifications", { icon: "./assets/notification-icon.png", color: "#155EEF", defaultChannel: "updates" }],
     ["expo-splash-screen", {
       image: "./assets/splash-icon.png",
-      imageWidth: 260,
+      imageWidth: 220,
       resizeMode: "contain",
       backgroundColor: "#ffffff",
       dark: { image: "./assets/splash-icon-dark.png", backgroundColor: "#071127" }

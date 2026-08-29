@@ -1,34 +1,38 @@
 import { router } from "expo-router";
-import * as SecureStore from "expo-secure-store";
-import React, { useEffect, useRef } from "react";
-import { LaunchScreen } from "@/src/components/LaunchScreen";
-import { FIRST_RUN_ONBOARDING_KEY, usePlatformControls } from "@/src/components/PlatformControls";
-import { ErrorState, Screen } from "@/src/components/ui";
-import { reconcileOnboardingCompletion } from "@/src/lib/onboardingSync";
+import React, { useEffect } from "react";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { BrandLogo, BrandMark } from "@/src/components/Brand";
+import { HeroGradient, LoadingState, Screen } from "@/src/components/ui";
 import { useAuth } from "@/src/providers/AuthProvider";
+import { StyleSheet, View } from "react-native";
 
 export default function Index() {
-  const { user, loading, offline, token, authError, refresh } = useAuth();
-  const controls = usePlatformControls();
-  const routed = useRef(false);
-  const onboardingEnabled = !controls.ready || controls.enabled("onboarding");
+  const { user, loading } = useAuth();
+
   useEffect(() => {
-    if (loading || controls.loading || routed.current || (offline && token && !user)) return;
-    let active = true;
-    void (async () => {
-      const startedAt = Date.now();
-      if (user) void reconcileOnboardingCompletion(user);
-      let onboardingSeen = false;
-      try { onboardingSeen = Boolean(await SecureStore.getItemAsync(FIRST_RUN_ONBOARDING_KEY)); } catch { /* Continue with a safe first-run experience. */ }
-      const remaining = Math.max(0, 850 - (Date.now() - startedAt));
-      if (remaining) await new Promise((resolve) => setTimeout(resolve, remaining));
-      if (!active) return;
-      routed.current = true;
-      if (onboardingEnabled && !onboardingSeen) { router.replace({ pathname: "/onboarding", params: { entry: "first-run" } }); return; }
-      router.replace(user ? (user.profileCompleted ? "/(tabs)" : "/complete-profile") : "/(auth)/welcome");
-    })();
-    return () => { active = false; };
-  }, [controls.loading, loading, offline, onboardingEnabled, token, user]);
-  if (!loading && offline && token && !user) return <Screen footer={false}><ErrorState title="تعذر استعادة جلستك" text={authError || "تعذر التحقق من الحساب المحفوظ. تحقق من الشبكة ثم حاول مجددًا."} onRetry={() => void refresh()} /></Screen>;
-  return <LaunchScreen />;
+    if (!loading) {
+      router.replace(user ? (user.profileCompleted ? (user.onboardingCompleted ? "/(tabs)" : "/onboarding") : "/complete-profile") : "/(auth)/welcome");
+    }
+  }, [loading, user]);
+
+  return (
+    <Screen scroll={false} footer={false} style={styles.screen}>
+      <HeroGradient>
+        <View style={styles.heroContent}>
+          <BrandMark size={102} whiteTile />
+          <BrandLogo width={172} />
+          <Text style={styles.title}>تجربة تعليمية مرتبة{`\n`}من أول لحظة</Text>
+          <Text style={styles.copy}>نجهّز لك حسابك، موادك، وتحديثاتك مباشرة من مراس العلم.</Text>
+        </View>
+      </HeroGradient>
+      <LoadingState label="جاري تجهيز التطبيق وربط بياناتك..." />
+    </Screen>
+  );
 }
+
+const styles = StyleSheet.create({
+  screen: { alignItems: "center", justifyContent: "center", gap: 18 },
+  heroContent: { alignItems: "center", justifyContent: "center", gap: 12, minHeight: 280 },
+  title: { color: "#FFFFFF", fontSize: 28, fontWeight: "900", textAlign: "center", writingDirection: "rtl", lineHeight: 40 },
+  copy: { color: "#D9E5FF", fontSize: 12, textAlign: "center", writingDirection: "rtl", lineHeight: 22, maxWidth: 290 },
+});

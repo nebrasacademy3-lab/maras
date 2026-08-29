@@ -1,4 +1,4 @@
-import { eq, sql } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, catalogCourses } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
@@ -48,17 +48,10 @@ export async function POST(request: Request) {
     if (!existing) return jsonError("حوّل المادة إلى سجل قابل للإدارة قبل رفع الغلاف", 409);
     await putObject(objectKey, file.stream(), detectedType);
     const coverImageUrl = `r2:${objectKey}`;
-    const previousCoverUrl = await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT slug FROM catalog_courses WHERE slug = ${slug} FOR UPDATE`);
-      const [current] = await tx.select({ coverImageUrl: catalogCourses.coverImageUrl }).from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
-      if (!current) throw new Error("course-update-failed");
-      const previous = current.coverImageUrl;
-      const updated = await tx.update(catalogCourses).set({ coverImageUrl, updatedAt: new Date().toISOString() }).where(eq(catalogCourses.slug, slug)).returning({ slug: catalogCourses.slug });
-      if (!updated.length) throw new Error("course-update-failed");
-      await tx.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "course_cover", entityId: slug, beforeJson: previous, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
-      return previous;
-    });
-    if (previousCoverUrl?.startsWith("r2:")) await deleteObject(previousCoverUrl.slice(3)).catch(() => undefined);
+    const updated = await db.update(catalogCourses).set({ coverImageUrl, updatedAt: new Date().toISOString() }).where(eq(catalogCourses.slug, slug)).returning({ slug: catalogCourses.slug });
+    if (!updated.length) throw new Error("course-update-failed");
+    if (existing?.coverImageUrl?.startsWith("r2:")) await deleteObject(existing.coverImageUrl.slice(3)).catch(() => undefined);
+    await db.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "course_cover", entityId: slug, beforeJson: existing?.coverImageUrl || null, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
     invalidateCatalogCache();
     return Response.json({ ok: true, coverImageUrl: `/api/covers/${slug}` }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch {

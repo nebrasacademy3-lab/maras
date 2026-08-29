@@ -5,25 +5,23 @@ import React from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { Pressable, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
-import { useAuthRestoreState } from "@/src/components/AuthRestoreState";
 import { CourseCard } from "@/src/components/CourseCard";
-import { FeatureDisabledNotice, usePlatformControls } from "@/src/components/PlatformControls";
-import { AppButton, EmptyState, ErrorState, LoadingState, Screen } from "@/src/components/ui";
+import { AppButton, EmptyState, LoadingState, Screen } from "@/src/components/ui";
 import { api, ApiError, jsonBody } from "@/src/lib/api";
+import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
-import type { Catalog } from "@/src/types";
+import type { Catalog, PublicSettings } from "@/src/types";
 
 export default function Favorites() {
-  const { user, authReady, restoration } = useAuthRestoreState({ title: "المفضلة", loadingLabel: "جارٍ استعادة موادك المفضلة...", back: true });
+  const { user } = useAuth();
   const { colors } = useTheme();
-  const controls = usePlatformControls(); const registrationEnabled = controls.enabled("registration");
   const client = useQueryClient();
   const catalog = useQuery({ queryKey: ["catalog"], queryFn: () => api<Catalog>("/api/mobile/catalog") });
-  const favorites = useQuery({ queryKey: ["favorites", user?.id], queryFn: () => api<{ courseSlugs: string[] }>("/api/mobile/favorites"), enabled: authReady && Boolean(user) });
-  if (restoration) return restoration;
-  if (!user) return <Screen><AppHeader title="المفضلة" subtitle="الدخول إلى مراس" back /><EmptyState icon="heart-outline" title="سجّل الدخول لحفظ المواد" text={registrationEnabled ? "أنشئ حسابًا لتبقى موادك المفضلة متزامنة بين الويب والتطبيق." : "سجّل الدخول إلى حسابك الحالي لمزامنة المواد المفضلة."} action={<View style={styles.actions}><AppButton title="تسجيل الدخول" onPress={() => router.push("/(auth)/login?return_to=%2Ffavorites")} />{registrationEnabled ? <AppButton title="إنشاء حساب" variant="soft" disabled={controls.loading} onPress={() => router.push("/(auth)/register?return_to=%2Ffavorites")} /> : <FeatureDisabledNotice title="التسجيل غير متاح الآن" message={controls.messageFor("يمكنك تصفح المواد والعودة إلى حسابك الحالي.")} />}</View>} /></Screen>;
+  const favorites = useQuery({ queryKey: ["favorites", user?.id], queryFn: () => api<{ courseSlugs: string[] }>("/api/mobile/favorites"), enabled: Boolean(user) });
+  const settings = useQuery({ queryKey: ["settings"], queryFn: () => api<{ settings: PublicSettings }>("/api/public/settings"), staleTime: 5_000 });
+  const registrationEnabled = settings.data?.settings.student_registration_enabled !== "false";
+  if (!user) return <Screen><AppHeader title="المفضلة" subtitle="الدخول إلى مراس" back /><EmptyState icon="heart-outline" title="سجّل الدخول لحفظ المواد" text={registrationEnabled?"أنشئ حسابًا لتبقى موادك المفضلة متزامنة بين الويب والتطبيق.":"سجّل الدخول إلى حسابك الحالي لعرض المواد المحفوظة ومزامنتها بين أجهزتك."} action={<View style={styles.actions}><AppButton title="تسجيل الدخول" onPress={() => router.push("/(auth)/login")} />{registrationEnabled?<AppButton title="إنشاء حساب" variant="soft" onPress={() => router.push("/(auth)/register")} />:null}</View>} /></Screen>;
   if (catalog.isLoading || favorites.isLoading) return <Screen><LoadingState label="نستدعي موادك المفضلة..." /></Screen>;
-  if (catalog.isError || favorites.isError) return <Screen><AppHeader title="المفضلة" back /><ErrorState title="تعذر تحميل المفضلة" text="لم نتمكن من مزامنة المواد المحفوظة." onRetry={() => { void catalog.refetch(); void favorites.refetch(); }} /></Screen>;
   const saved = (catalog.data?.courses || []).filter((course) => favorites.data?.courseSlugs.includes(course.slug));
   async function remove(slug: string) { try { await api("/api/mobile/favorites", { method: "POST", body: jsonBody({ courseSlug: slug, active: false }) }); await client.invalidateQueries({ queryKey: ["favorites"] }); } catch (reason) { if (reason instanceof ApiError) console.warn(reason.message); } }
   if (!saved.length) return <Screen><AppHeader title="المفضلة" subtitle="موادك المحفوظة" back /><EmptyState icon="heart-outline" title="لم تحفظ مواد بعد" text="اضغط على القلب في تفاصيل أي مادة لتعود إليها بسهولة." action={<AppButton title="استكشف المواد" onPress={() => router.push("/(tabs)/courses")} />} /></Screen>;
