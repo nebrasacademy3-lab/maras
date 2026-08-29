@@ -23,7 +23,11 @@ function sanitizeDeviceId(value: string | null) {
 }
 
 function sanitizeDeviceLabel(value: string | null) {
-  return (value || "").replace(/[\r\n\t]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
+  let decoded = value || "";
+  // Mobile apps percent-encode the label so Android/OkHttp never receives
+  // non-ASCII header bytes. Keep backward compatibility with plain ASCII values.
+  try { decoded = decodeURIComponent(decoded); } catch { /* keep the raw value */ }
+  return decoded.replace(/[\r\n\t]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
 }
 
 function platformFromRequest(request: Request) {

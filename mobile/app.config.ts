@@ -11,7 +11,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   ...config,
   name: "مراس العلم",
   slug: "meras-alelm",
-  version: "1.0.0",
+  version: "1.0.1",
   scheme: "merasalelm",
   orientation: "default",
   icon: "./assets/icon.png",

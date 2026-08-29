@@ -41,3 +41,14 @@ npx eas-cli@latest build --platform android --profile preview
 
 ## التخزين
 إذا تستخدم الفيديوهات والملفات على Railway Volume، اربطه بالخدمة على `/data` وأبقِ `RAILWAY_RUN_UID=0`.
+
+## إصلاح اتصال Android - 2026-08-30
+تم إصلاح سبب كان يمنع React Native/Android من إرسال الطلب قبل وصوله إلى Railway: اسم الجهاز كان يوضع مباشرة في `x-meras-device-label` ويحتوي رمز `·` أو أحرف عربية/Unicode. أصبح الاسم يرمز إلى ASCII-safe قبل الإرسال ثم يفك ترميزه في الباك إند. كما أن طلبات Android/iOS Native لم تعد تعتمد على فحص Origin الخاص بالمتصفح، والمصادقة Native تستخدم Bearer Token بدون cookie credentials.
+
+بعد رفع الجذر إلى Railway، ابنِ APK جديدًا من هذا الملف بالأمر:
+
+```powershell
+.\BUILD_ANDROID.ps1
+```
+
+نسخة التطبيق أصبحت 1.0.1 وPreview يستخدم `autoIncrement` لمسح الالتباس مع APK قديم.

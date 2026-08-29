@@ -1,4 +1,5 @@
 import Constants from "expo-constants";
+import { Platform } from "react-native";
 
 const defaultApiUrl = "https://marase.up.railway.app";
 const configured = String(Constants.expoConfig?.extra?.apiUrl || defaultApiUrl).replace(/\/$/, "");
@@ -7,6 +8,14 @@ if (!/^https:\/\//i.test(configured)) {
 }
 export const API_URL = configured;
 export const STORE_MODE = String(Constants.expoConfig?.extra?.storeMode || "reader");
+
+// OkHttp (Android) only accepts ASCII values in HTTP headers. Device names may
+// contain Arabic/emoji and the UI label intentionally contains a middle dot, so
+// encode it before placing it in a header. The backend decodes it safely.
+function safeHeaderText(value: string) {
+  const compact = Array.from(String(value || "").trim()).slice(0, 32).join("");
+  return encodeURIComponent(compact);
+}
 
 let sessionToken = "";
 let deviceIdentity: { id: string; label: string; platform: string } | null = null;
@@ -34,7 +43,7 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   headers.set("x-meras-client", "mobile-v1");
   if (deviceIdentity) {
     headers.set("x-meras-device-id", deviceIdentity.id);
-    headers.set("x-meras-device-label", deviceIdentity.label);
+    headers.set("x-meras-device-label", safeHeaderText(deviceIdentity.label));
     headers.set("x-meras-platform", deviceIdentity.platform);
   }
   if (sessionToken) headers.set("authorization", `Bearer ${sessionToken}`);
@@ -46,19 +55,22 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   if (externalSignal?.aborted) controller.abort();
   else if (externalSignal) externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
   try {
-    const response = await fetch(absoluteUrl(path), { credentials: "include", ...requestInit, headers, signal: controller.signal });
+    const response = await fetch(absoluteUrl(path), { credentials: Platform.OS === "web" ? "include" : "omit", ...requestInit, headers, signal: controller.signal });
     const text = await response.text();
     let payload: unknown = {};
     try { payload = text ? JSON.parse(text) : {}; } catch { payload = {}; }
     if (!response.ok) {
-      const error = payload && typeof payload === "object" && "error" in payload ? String((payload as { error: unknown }).error) : "تعذر الاتصال بخدمة مراس";
+      const error = payload && typeof payload === "object" && "error" in payload
+        ? String((payload as { error: unknown }).error)
+        : `تعذر إكمال الطلب من خدمة مراس (HTTP ${response.status}).`;
       throw new ApiError(error, response.status);
     }
     return payload as T;
   } catch (reason) {
     if (reason instanceof ApiError) throw reason;
     if (reason instanceof Error && reason.name === "AbortError") throw new ApiError("انتهت مهلة الاتصال. تحقق من الشبكة وحاول مرة أخرى.", 408);
-    throw new ApiError("تعذر الاتصال بخدمة مراس. حاول مرة أخرى.", 0);
+    const detail = reason instanceof Error && reason.message ? ` (${reason.message})` : "";
+    throw new ApiError(`تعذر الاتصال بخدمة مراس${detail}. حاول مرة أخرى.`, 0);
   } finally {
     clearTimeout(timeout);
   }
@@ -72,13 +84,13 @@ export function apiUpload<T>(path: string, body: FormData | Blob, options: ApiUp
     const xhr = new XMLHttpRequest();
     const startedAt = Date.now();
     xhr.open("POST", absoluteUrl(path), true);
-    xhr.withCredentials = true;
+    xhr.withCredentials = Platform.OS === "web";
     xhr.timeout = Math.max(15_000, Math.min(options.timeoutMs || 15 * 60_000, 30 * 60_000));
     xhr.setRequestHeader("accept", "application/json");
     xhr.setRequestHeader("x-meras-client", "mobile-v1");
     if (deviceIdentity) {
       xhr.setRequestHeader("x-meras-device-id", deviceIdentity.id);
-      xhr.setRequestHeader("x-meras-device-label", deviceIdentity.label);
+      xhr.setRequestHeader("x-meras-device-label", safeHeaderText(deviceIdentity.label));
       xhr.setRequestHeader("x-meras-platform", deviceIdentity.platform);
     }
     if (sessionToken) xhr.setRequestHeader("authorization", `Bearer ${sessionToken}`);
