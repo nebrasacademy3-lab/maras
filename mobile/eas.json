@@ -1,0 +1,44 @@
+{
+  "cli": {
+    "version": ">= 16.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "env": {
+        "EXPO_PUBLIC_STORE_MODE": "external",
+        "EXPO_PUBLIC_API_URL": "https://marase.up.railway.app",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
+      }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_STORE_MODE": "external",
+        "EXPO_PUBLIC_API_URL": "https://marase.up.railway.app",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
+      }
+    },
+    "production": {
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_STORE_MODE": "reader",
+        "EXPO_PUBLIC_API_URL": "https://marase.up.railway.app",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
+      }
+    }
+  },
+  "submit": {
+    "production": {
+      "android": {
+        "track": "internal"
+      },
+      "ios": {}
+    }
+  }
+}

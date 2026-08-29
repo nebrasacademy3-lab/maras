@@ -1,0 +1,21 @@
+import { Ionicons } from "@expo/vector-icons";
+import React, { useMemo, useState } from "react";
+import { ScaledText as Text } from "@/src/components/ScaledText";
+import { FlatList, Modal, Pressable, StyleSheet, View } from "react-native";
+import { SearchBox } from "@/src/components/ui";
+import { useTheme } from "@/src/providers/ThemeProvider";
+import { useLanguage } from "@/src/providers/LanguageProvider";
+
+type PickerItem = { key: string; label: string; detail?: string };
+export function SearchPicker({ label, value, items, placeholder, onSelect, disabled = false }: { label: string; value?: string; items: PickerItem[]; placeholder: string; onSelect: (item: PickerItem) => void; disabled?: boolean }) {
+  const { colors } = useTheme();
+  const { direction, rowDirection, textAlign } = useLanguage();
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const selected = items.find((item) => item.key === value);
+  const rows = useMemo(() => items.filter((item) => `${item.label} ${item.detail || ""}`.toLowerCase().includes(query.toLowerCase())), [items, query]);
+  return <View style={[styles.wrap, { direction }]}><Text style={[styles.label, { color: colors.text, textAlign }]}>{label}</Text><Pressable disabled={disabled} onPress={() => setOpen(true)} style={[styles.select, { direction, flexDirection: rowDirection, backgroundColor: colors.surface, borderColor: colors.border, opacity: disabled ? .5 : 1 }]}><Text numberOfLines={1} style={[styles.selectText, { textAlign, marginEnd: 10, marginStart: 0, color: selected ? colors.text : colors.textSoft }]}>{selected?.label || placeholder}</Text><Ionicons name="chevron-down" size={18} color={colors.textSoft} /></Pressable><Modal visible={open} animationType="slide" transparent onRequestClose={() => setOpen(false)}><View style={[styles.modalShade, { direction, backgroundColor: colors.overlay }]}><View style={[styles.sheet, { direction, backgroundColor: colors.background }]}><View style={[styles.sheetHead, { flexDirection: rowDirection }]}><Pressable onPress={() => setOpen(false)}><Ionicons name="close" size={25} color={colors.text} /></Pressable><Text style={[styles.sheetTitle, { color: colors.text }]}>{label}</Text><View style={{ width: 25 }} /></View><SearchBox value={query} onChangeText={setQuery} placeholder={`ابحث في ${label}`} /><FlatList data={rows} keyExtractor={(item) => item.key} keyboardShouldPersistTaps="handled" contentContainerStyle={styles.list} renderItem={({ item }) => <Pressable onPress={() => { onSelect(item); setOpen(false); setQuery(""); }} style={[styles.row, { direction, flexDirection: rowDirection, backgroundColor: colors.surface, borderColor: colors.border }]}><View style={{ flex: 1 }}><Text style={[styles.rowTitle, { textAlign, color: colors.text }]}>{item.label}</Text>{item.detail && <Text style={[styles.rowDetail, { textAlign, color: colors.textSoft }]}>{item.detail}</Text>}</View>{value === item.key && <Ionicons name="checkmark-circle" size={22} color={colors.primary} />}</Pressable>} ListEmptyComponent={<Text style={[styles.empty, { color: colors.textSoft }]}>لا توجد نتائج مطابقة</Text>} /></View></View></Modal></View>;
+}
+
+const styles = StyleSheet.create({ wrap: { gap: 7, marginBottom: 14 }, label: { fontSize: 12, fontWeight: "800", textAlign: "right" }, select: { minHeight: 52, borderWidth: 1, borderRadius: 15, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, selectText: { flex: 1, textAlign: "right", fontSize: 13, marginStart: 10, writingDirection: "rtl" }, modalShade: { flex: 1, justifyContent: "flex-end" }, sheet: { height: "82%", borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 18, paddingTop: 16 }, sheetHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }, sheetTitle: { fontSize: 18, fontWeight: "900" }, list: { paddingVertical: 14, paddingBottom: 40 }, row: { minHeight: 64, borderWidth: 1, borderRadius: 16, padding: 13, marginBottom: 9, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, rowTitle: { fontSize: 13, fontWeight: "800", textAlign: "right" }, rowDetail: { fontSize: 10, marginTop: 3, textAlign: "right" }, empty: { textAlign: "center", marginTop: 40 },
+});

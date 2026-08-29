@@ -1,0 +1,14 @@
+Meras Al-Elm mobile verification — 2026-08-29
+- Combined TypeScript/TSX syntax transpile: PASS (213 files, 0 syntax errors)
+- Static Arabic UI localization coverage: PASS (0 discovered static Arabic literals/JSX text left unmapped)
+- package.json / package-lock.json root dependency consistency: PASS
+- Requested-upgrade static contract scan: PASS (18/18 across app + Railway)
+- EAS preview: Android APK profile configured
+- EAS projectId: configured (684cf9e9-bf33-40bf-89a7-afba498cf90e)
+- Railway API URL: configured in EAS profiles (https://marase.up.railway.app)
+- Adaptive icon: 1024x1024, full M + star inside a safe margin
+- High-resolution light/dark wordmark assets: 1984x1156
+- Password fields: LTR + non-overlapping trailing eye control
+- Arabic RTL / English LTR language provider: configured and persisted
+- google-services.json: intentionally account-specific; auto-detected when supplied
+- Full EAS cloud build was not executed in this container because Android signing/FCM credentials belong to the user's Expo/Firebase account.

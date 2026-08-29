@@ -1,0 +1,113 @@
+export type UserRole = "student" | "supervisor" | "admin";
+
+export type SessionUser = {
+  id: number;
+  email: string;
+  phone: string | null;
+  fullName: string;
+  universitySlug: string | null;
+  specialty: string | null;
+  academicLevel: string | null;
+  role: UserRole;
+  profileCompleted: boolean;
+  onboardingCompleted: boolean;
+};
+
+export type Institution = {
+  slug: string;
+  name: string;
+  nameEn: string;
+  region: string;
+  type: string;
+  logo?: string;
+  domain?: string;
+  specialties: number;
+  courses: number;
+  featured?: boolean;
+  directorySourceUrl?: string;
+  aliases?: string[];
+  verificationStatus?: "official-directory" | "pending-review";
+};
+
+export type Lesson = { id: string; title: string; description?: string; ready?: boolean; duration: string; free: boolean; type: "video" | "pdf" };
+export type CourseUnit = { title: string; description?: string; lessons: Lesson[] };
+export type Course = {
+  slug: string;
+  title: string;
+  titleEn: string;
+  code?: string;
+  university: string;
+  universitySlug: string;
+  specialty: string;
+  description: string;
+  coverImage?: string;
+  specialtySlug?: string;
+  coverTheme?: string;
+  price: number;
+  oldPrice?: number;
+  rating: number;
+  ratingsCount: number;
+  students: number;
+  duration: string;
+  lessons: number;
+  instructor: string;
+  color: string;
+  icon: string;
+  featured?: boolean;
+  access: string;
+  units: CourseUnit[];
+  updatedAt?: string;
+  sourceUrl?: string;
+  verifiedAt?: string;
+  readyLessons?: number;
+  availableForPurchase?: boolean;
+};
+
+export type Catalog = { ok: true; institutions: Institution[]; courses: Course[] };
+export type ProgressRow = { id: number; courseSlug: string; lessonId: string; watchedSeconds: number; completed: boolean; updatedAt: string };
+export type OwnedCourse = Course & { progress: number; currentLessonId: string | null; expiresAt: string | null };
+export type CourseRequest = { id: number; courseName: string; university: string; specialty: string; status: string; attachmentsCount: number; createdAt: string; notes?: string };
+export type Order = { orderNumber: string; courseSlug: string; courseTitle: string; total: number; currency: string; status: string; createdAt: string };
+export type Invoice = { id: number; invoiceNumber: string; orderNumber: string; total: number; taxAmount: number; currency: string; issuedAt: string; pdfObjectKey: string | null };
+export type Notice = { id: number; title: string; body: string; actionUrl: string | null; actionLabel?: string | null; presentation?: "inbox" | "banner" | "modal" | "all"; pushEnabled?: boolean; dismissible?: boolean; readAt: string | null; createdAt: string };
+export type SupportFile = { id: number; originalName: string; contentType: string; sizeBytes: number; createdAt: string };
+export type SupportReply = { id: number; body: string; authorEmail?: string; authorRole?: string; internal?: boolean; replyToId?: number | null; createdAt: string; files?: SupportFile[] };
+export type SupportTicket = { id: number; ticketNumber: string; category: string; title: string; message: string; contactChannel?: string; status: string; createdAt: string; updatedAt?: string; replies: SupportReply[] };
+export type Dashboard = {
+  ok: true;
+  user: SessionUser;
+  owned: OwnedCourse[];
+  progress: ProgressRow[];
+  orders: Order[];
+  invoices: Invoice[];
+  requests: CourseRequest[];
+  notifications: Notice[];
+  tickets: SupportTicket[];
+  recommended: Course[];
+  institutions: Institution[];
+};
+
+export type PublicSettings = {
+  whatsapp_number: string;
+  whatsapp_message: string;
+  whatsapp_url: string;
+  support_email: string;
+  support_hours: string;
+  footer_description: string;
+  app_download_title: string;
+  app_download_description: string;
+  ios_app_url: string;
+  android_app_url: string;
+  social_x: string;
+  social_instagram: string;
+  social_tiktok: string;
+  social_telegram: string;
+  social_youtube: string;
+  social_linkedin: string;
+  social_facebook: string;
+  social_snapchat: string;
+  social_threads: string;
+  announcement: string;
+};
+
+export type Review = { id: number; courseSlug: string; rating: number; body: string; createdAt: string; author: string; specialty: string; verifiedPurchase: true };

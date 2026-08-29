@@ -1,0 +1,7 @@
+Meras Al-Elm complete delivery
+Date: 2026-08-30
+Backend/Web: railway/
+Expo Mobile: mobile/
+Default API URL: https://marase.up.railway.app
+EAS Project ID: 684cf9e9-bf33-40bf-89a7-afba498cf90e
+Package: sa.merasalelm.app
