@@ -1,10 +1,11 @@
-import { asc, eq, isNull } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { catalogCourses, catalogInstitutions, catalogSpecialties, courseAccess, courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, videoAssets } from "@/db/schema";
 import { courses as staticCourses, institutions as staticInstitutions, type Course, type Institution, type InstitutionType } from "@/lib/data";
 import { getVerifiedInstitutionPrograms } from "@/lib/official-programs";
 import { withCatalogSource } from "@/lib/catalog-sources";
 import type { AcademicProgram } from "@/lib/academic-data";
+import { normalizeAccessDurationDays } from "@/lib/course-access";
 
 const themes: Record<string, string> = {
   "blue-violet": "from-blue-700 to-violet-600",
@@ -148,7 +149,7 @@ export async function getProgramsCatalog(institutionSlug: string): Promise<{ pro
 }
 
 export async function getCoursesCatalog(includeDraft = false): Promise<Course[]> {
-  if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item, ...courseReadiness(item.units) }));
+  if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item, accessDurationDays: normalizeAccessDurationDays(item.accessDurationDays, item.access), ...courseReadiness(item.units) }));
   if (!includeDraft && coursesCache && coursesCache.expiresAt > Date.now()) return coursesCache.value;
   if (!includeDraft && coursesInFlight) return coursesInFlight;
   const load = async () => {
@@ -160,7 +161,7 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
     db.select().from(catalogSpecialties),
     getInstitutionsCatalog(true),
     db.select().from(courseReviews).where(eq(courseReviews.status, "published")),
-    db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(isNull(courseAccess.revokedAt)),
+    db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(and(isNull(courseAccess.revokedAt), isNull(courseAccess.suspendedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, new Date().toISOString())))),
     db.select({ institutionSlug: institutionSpecialties.institutionSlug, specialtySlug: institutionSpecialties.specialtySlug, status: institutionSpecialties.status }).from(institutionSpecialties),
     db.select({ lessonId: videoAssets.lessonId }).from(videoAssets).where(eq(videoAssets.status, "ready")),
   ]);
@@ -226,6 +227,7 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       price: linkedRow.price,
       oldPrice: linkedRow.oldPrice || undefined,
       access: linkedRow.accessLabel,
+      accessDurationDays: linkedRow.accessDurationDays,
       featured: linkedRow.featured,
       color: themes[linkedRow.coverTheme] || item.color,
       units: resolvedUnits,
@@ -271,6 +273,7 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       icon: "📚",
       featured: row.featured,
       access: row.accessLabel,
+      accessDurationDays: row.accessDurationDays,
       units: unitRows,
       ...courseReadiness(unitRows),
     });

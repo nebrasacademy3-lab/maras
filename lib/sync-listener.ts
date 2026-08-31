@@ -1,4 +1,5 @@
 import type { PoolClient } from "pg";
+import { setTimeout as scheduleTimeout } from "node:timers";
 import { getPool } from "@/db";
 import { invalidateCatalogCache } from "@/lib/catalog-store";
 import { invalidatePublicSettingsCache } from "@/lib/platform-settings";
@@ -36,11 +37,12 @@ function scheduleReconnect() {
   if (state.retryTimer || !state.started || !process.env.DATABASE_URL) return;
   const delay = Math.min(30_000, 1_000 * (2 ** state.retryAttempt));
   state.retryAttempt = Math.min(state.retryAttempt + 1, 5);
-  state.retryTimer = setTimeout(() => {
+  const timer = scheduleTimeout(() => {
     state.retryTimer = null;
     void ensureListener();
   }, delay);
-  state.retryTimer.unref?.();
+  state.retryTimer = timer;
+  timer.unref();
 }
 
 function releaseClient(client: PoolClient) {

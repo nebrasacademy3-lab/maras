@@ -80,11 +80,14 @@ export const orders = pgTable("orders", {
   total: real("total").notNull(),
   currency: text("currency").notNull().default("SAR"),
   status: text("status").notNull().default("pending"),
+  paymentMethod: text("payment_method").notNull().default("tap"),
+  checkoutKey: text("checkout_key"),
+  checkoutUrl: text("checkout_url"),
   tapChargeId: text("tap_charge_id"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   paidAt: text("paid_at"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("orders_number_unique").on(table.orderNumber), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
+}, (table) => [uniqueIndex("orders_number_unique").on(table.orderNumber), uniqueIndex("orders_checkout_key_unique").on(table.checkoutKey), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
 
 export const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
@@ -93,6 +96,7 @@ export const orderItems = pgTable("order_items", {
   unitPrice: real("unit_price").notNull(),
   discount: real("discount").notNull().default(0),
   total: real("total").notNull(),
+  accessDurationDays: integer("access_duration_days").notNull().default(90),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [uniqueIndex("order_items_order_course_unique").on(table.orderNumber, table.courseSlug), index("order_items_order_idx").on(table.orderNumber), index("order_items_course_idx").on(table.courseSlug)]);
 
@@ -115,8 +119,27 @@ export const courseAccess = pgTable("course_access", {
   orderNumber: text("order_number"),
   startsAt: text("starts_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   expiresAt: text("expires_at"),
+  suspendedAt: text("suspended_at"),
+  suspensionReason: text("suspension_reason"),
   revokedAt: text("revoked_at"),
+  revocationReason: text("revocation_reason"),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [uniqueIndex("course_access_user_course_unique").on(table.userEmail, table.courseSlug), index("course_access_course_idx").on(table.courseSlug)]);
+
+export const courseAccessEvents = pgTable("course_access_events", {
+  id: serial("id").primaryKey(),
+  eventKey: text("event_key").notNull(),
+  accessId: integer("access_id"),
+  userEmail: text("user_email").notNull(),
+  courseSlug: text("course_slug").notNull(),
+  action: text("action").notNull(),
+  actorEmail: text("actor_email"),
+  reason: text("reason"),
+  orderNumber: text("order_number"),
+  beforeJson: text("before_json"),
+  afterJson: text("after_json"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [uniqueIndex("course_access_events_key_unique").on(table.eventKey), index("course_access_events_access_idx").on(table.userEmail, table.courseSlug, table.createdAt)]);
 
 export const lessonProgress = pgTable("lesson_progress", {
   id: serial("id").primaryKey(),
@@ -220,6 +243,7 @@ export const catalogCourses = pgTable("catalog_courses", {
   price: real("price").notNull().default(0),
   oldPrice: real("old_price"),
   accessLabel: text("access_label").notNull().default("90 يومًا"),
+  accessDurationDays: integer("access_duration_days").notNull().default(90),
   sourceUrl: text("source_url"),
   verifiedAt: text("verified_at"),
   status: text("status").notNull().default("draft"),
@@ -365,8 +389,10 @@ export const lessonNotes = pgTable("lesson_notes", {
   userEmail: text("user_email").notNull(),
   lessonId: text("lesson_id").notNull(),
   body: text("body").notNull().default(""),
+  timestampSeconds: integer("timestamp_seconds").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("lesson_notes_user_lesson_unique").on(table.userEmail, table.lessonId)]);
+}, (table) => [index("lesson_notes_user_lesson_idx").on(table.userEmail, table.lessonId), index("lesson_notes_lesson_time_idx").on(table.lessonId, table.timestampSeconds)]);
 
 export const courseReviews = pgTable("course_reviews", {
   id: serial("id").primaryKey(),
@@ -389,14 +415,19 @@ export const notificationsDb = pgTable("notifications", {
   actionLabel: text("action_label"),
   presentation: text("presentation").notNull().default("inbox"),
   template: text("template").notNull().default("general"),
+  dedupeKey: text("dedupe_key"),
   pushEnabled: boolean("push_enabled").notNull().default(true),
-  pushDeliveredAt: text("push_delivered_at").default(sql`CURRENT_TIMESTAMP::text`),
+  pushStatus: text("push_status").notNull().default("pending"),
+  pushAttempts: integer("push_attempts").notNull().default(0),
+  pushClaimedAt: text("push_claimed_at"),
+  pushLastError: text("push_last_error"),
+  pushDeliveredAt: text("push_delivered_at"),
   startsAt: text("starts_at"),
   expiresAt: text("expires_at"),
   dismissible: boolean("dismissible").notNull().default(true),
   readAt: text("read_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience)]);
+}, (table) => [uniqueIndex("notifications_dedupe_key_unique").on(table.dedupeKey), index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience), index("notifications_push_dispatch_idx").on(table.pushEnabled, table.pushStatus, table.pushClaimedAt, table.startsAt)]);
 
 export const notificationReads = pgTable("notification_reads", {
   notificationId: integer("notification_id").notNull().references(() => notificationsDb.id, { onDelete: "cascade" }),
@@ -408,12 +439,13 @@ export const pushDevices = pgTable("push_devices", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   token: text("token").notNull(),
+  deviceId: text("device_id"),
   platform: text("platform").notNull(),
   deviceLabel: text("device_label"),
   status: text("status").notNull().default("active"),
   lastSeenAt: text("last_seen_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("push_devices_token_unique").on(table.token), index("push_devices_user_idx").on(table.userId, table.status)]);
+}, (table) => [uniqueIndex("push_devices_token_unique").on(table.token), index("push_devices_user_idx").on(table.userId, table.status), index("push_devices_device_idx").on(table.userId, table.deviceId, table.status)]);
 
 export const couponsDb = pgTable("coupons", {
   id: serial("id").primaryKey(),

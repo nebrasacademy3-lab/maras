@@ -13,8 +13,13 @@ assert.match(player, /router\.dismissTo\(returnHref/);
 assert.match(player, /BackHandler\.addEventListener\("hardwareBackPress"/);
 assert.match(player, /player\.replaceAsync\(null\)/);
 assert.match(player, /settingsOpen/);
-assert.match(player, /enterFullscreen/);
+assert.match(player, /<Modal visible/);
+assert.match(player, /presentationStyle="fullScreen"/);
+assert.match(player, /nativeControls=\{false\}/);
+assert.match(player, /fullscreenOptions=\{\{ enable: false \}\}/);
+assert.match(player, /preventScreenCaptureAsync\("meras-lesson"\)/);
+assert.match(player, /transform: \[\{ rotate: "90deg" as const \}\]/);
 assert.match(learn, /from: "learn"/);
 assert.match(course, /from: "course"/);
 
-console.log("video fixes: 10/10 checks passed");
+console.log("video fixes: 15/15 checks passed");

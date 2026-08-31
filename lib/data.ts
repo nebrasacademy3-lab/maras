@@ -60,6 +60,7 @@ export type Course = {
   icon: string;
   featured?: boolean;
   access: string;
+  accessDurationDays?: number;
   units: CourseUnit[];
   readyLessons?: number;
   availableForPurchase?: boolean;

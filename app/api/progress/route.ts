@@ -1,8 +1,9 @@
-import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, lessonProgress, lessonsDb } from "@/db/schema";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
+import { activeCourseAccessWhere } from "@/lib/course-access";
 import { getCourseCatalog } from "@/lib/catalog-store";
 
 export async function GET(request: Request) {
@@ -32,10 +33,7 @@ export async function POST(request: Request) {
   const [lessonRow] = await db.select({ durationSeconds: lessonsDb.durationSeconds }).from(lessonsDb).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug), eq(lessonsDb.status, "published"))).limit(1);
   if (!lessonRow) return jsonError("الدرس غير منشور", 404);
   if (!lesson.free) {
-    const [access] = await db.select({ id: courseAccess.id }).from(courseAccess).where(and(
-      eq(courseAccess.userEmail, user.email), eq(courseAccess.courseSlug, courseSlug), isNull(courseAccess.revokedAt),
-      or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, new Date().toISOString())),
-    )).limit(1);
+    const [access] = await db.select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.email, courseSlug)).limit(1);
     if (!access) return jsonError("لا توجد صلاحية نشطة لهذه المادة", 403);
   }
   const completionThreshold = lessonRow.durationSeconds > 0 ? Math.max(5, Math.floor(lessonRow.durationSeconds * .85)) : 30;

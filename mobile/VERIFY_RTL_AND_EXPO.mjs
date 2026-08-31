@@ -13,8 +13,8 @@ check('package-lock root contains expo-asset', lock.packages?.['']?.dependencies
 check('package-lock resolves expo-asset 57.0.15', lock.packages?.['node_modules/expo-asset']?.version === '57.0.15');
 check('LanguageProvider applies native RTL + logical root direction', /forceRTL\(rtl\)/.test(read('src/providers/LanguageProvider.tsx')) && /direction: value\.direction/.test(read('src/providers/LanguageProvider.tsx')));
 check('Screen propagates direction into SafeArea/ScrollView', /contentContainerStyle=.*direction/.test(read('src/components/ui.tsx')) && /backgroundColor: colors\.background, direction/.test(read('src/components/ui.tsx')));
-check('ScaledText forces Arabic RTL and English LTR', /writingDirection: forceLtr \? "ltr" : isRTL \? "rtl" : "ltr"/.test(read('src/components/ScaledText.tsx')));
-check('ScaledTextInput owns field alignment', /requestedTextAlign === "center"/.test(read('src/components/ScaledTextInput.tsx')) && /forceLtr \? "left" : isRTL \? "right" : "left"/.test(read('src/components/ScaledTextInput.tsx')));
+check('ScaledText resolves mixed Arabic/English direction from content', /directionForText\(textFromNode\(children, t\)/.test(read('src/components/ScaledText.tsx')) && /contentDirection === "rtl" \? "right" : "left"/.test(read('src/components/ScaledText.tsx')));
+check('ScaledTextInput owns field alignment and technical LTR', /requestedTextAlign === "center"/.test(read('src/components/ScaledTextInput.tsx')) && /directionForText\(currentText/.test(read('src/components/ScaledTextInput.tsx')) && /contentDirection === "rtl" \? "right" : "left"/.test(read('src/components/ScaledTextInput.tsx')));
 check('Login layout is direction-aware', /rowDirection/.test(read('app/(auth)/login.tsx')) && /alignSelf: "flex-start"/.test(read('app/(auth)/login.tsx')));
 check('Register layout is direction-aware', /flexDirection: rowDirection/.test(read('app/(auth)/register.tsx')));
 check('Tabs scene is direction-aware and translated', /sceneStyle: \{ direction \}/.test(read('app/(tabs)/_layout.tsx')) && /title: t\("الرئيسية"\)/.test(read('app/(tabs)/_layout.tsx')));

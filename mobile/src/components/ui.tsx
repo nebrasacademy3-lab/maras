@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import React, { useEffect, useState } from "react";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { ActivityIndicator, Animated, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, type StyleProp, type TextInputProps, View, type ViewStyle } from "react-native";
+import { AccessibilityInfo, ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, type StyleProp, type TextInputProps, View, type ViewStyle } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -10,26 +10,47 @@ import { useLanguage } from "@/src/providers/LanguageProvider";
 import { metrics } from "@/src/theme/colors";
 import { MobileFooter } from "@/src/components/MobileFooter";
 
+function useReduceMotion() {
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((value) => { if (active) setReduceMotion(value); });
+    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
+    return () => { active = false; subscription.remove(); };
+  }, []);
+  return reduceMotion;
+}
+
 export function Screen({ children, scroll = true, padded = true, keyboard = false, showFooter = true, style }: { children: React.ReactNode; scroll?: boolean; padded?: boolean; keyboard?: boolean; showFooter?: boolean; style?: ViewStyle }) {
   const { colors } = useTheme();
   const { direction } = useLanguage();
+  const [entrance] = useState(() => new Animated.Value(0));
+  const reduceMotion = useReduceMotion();
+  useEffect(() => {
+    if (reduceMotion) entrance.setValue(1);
+    else Animated.timing(entrance, { toValue: 1, duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    return () => entrance.stopAnimation();
+  }, [entrance, reduceMotion]);
   const footer = showFooter ? <MobileFooter /> : null;
-  const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ direction }} contentContainerStyle={[styles.scroll, padded && styles.padded, { direction }, style]}><View style={[styles.screenContent, { direction }]}>{children}{footer}</View></ScrollView> : <View style={[styles.flex, padded && styles.padded, { direction }, style]}><View style={[styles.screenContent, { direction }]}>{children}{footer}</View></View>;
+  const animatedContent = <Animated.View style={[styles.screenContent, { direction, opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>{children}{footer}</Animated.View>;
+  const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ direction }} contentContainerStyle={[styles.scroll, padded && styles.padded, { direction }, style]}>{animatedContent}</ScrollView> : <View style={[styles.flex, padded && styles.padded, { direction }, style]}>{animatedContent}</View>;
   return <SafeAreaView edges={["top", "left", "right"]} style={[styles.flex, { backgroundColor: colors.background, direction }]}>{keyboard ? <KeyboardAvoidingView style={[styles.flex, { direction }]} behavior={Platform.OS === "ios" ? "padding" : "height"}>{content}</KeyboardAvoidingView> : content}</SafeAreaView>;
 }
 
-export function FadeIn({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: ViewStyle }) {
+export function FadeIn({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
   const [value] = useState(() => new Animated.Value(0));
-  useEffect(() => { Animated.timing(value, { toValue: 1, delay, duration: 260, useNativeDriver: true }).start(); return () => value.stopAnimation(); }, [delay, value]);
-  return <Animated.View style={[style, { opacity: value, transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }] }]}>{children}</Animated.View>;
+  const reduceMotion = useReduceMotion();
+  useEffect(() => { if (reduceMotion) value.setValue(1); else Animated.timing(value, { toValue: 1, delay, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); return () => value.stopAnimation(); }, [delay, reduceMotion, value]);
+  return <Animated.View style={[style, { opacity: value, transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }, { scale: value.interpolate({ inputRange: [0, 1], outputRange: [.985, 1] }) }] }]}>{children}</Animated.View>;
 }
 
 export function AppButton({ title, onPress, icon, variant = "primary", disabled = false, loading = false, full = true }: { title: string; onPress?: () => void; icon?: React.ComponentProps<typeof Ionicons>["name"]; variant?: "primary" | "soft" | "ghost" | "danger"; disabled?: boolean; loading?: boolean; full?: boolean }) {
   const { colors } = useTheme();
-  const { rowDirection } = useLanguage();
+  const { direction, rowDirection } = useLanguage();
+  const reduceMotion = useReduceMotion();
   const contentColor = variant === "primary" || variant === "danger" ? "#FFFFFF" : colors.primary;
   const background = variant === "primary" ? colors.primary : variant === "danger" ? colors.danger : variant === "soft" ? colors.surfaceAlt : "transparent";
-  return <Pressable accessibilityRole="button" disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { flexDirection: rowDirection, backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, opacity: disabled ? .45 : pressed ? .8 : 1, transform: [{ scale: pressed ? .97 : 1 }] }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
+  return <Pressable accessibilityRole="button" disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { direction, flexDirection: rowDirection, backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, opacity: disabled ? .45 : pressed ? .8 : 1, transform: [{ scale: pressed && !reduceMotion ? .97 : 1 }] }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
 }
 
 export function Field({ label, error, icon, trailing, inputDirection = "natural", ...props }: TextInputProps & { label: string; error?: string; icon?: React.ComponentProps<typeof Ionicons>["name"]; trailing?: React.ReactNode; inputDirection?: "natural"|"ltr" }) {

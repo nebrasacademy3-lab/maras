@@ -1,8 +1,9 @@
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, courseReviews, lessonProgress, users } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { activeCourseAccessWhere } from "@/lib/course-access";
 import { getCourseCatalog } from "@/lib/catalog-store";
 
 function displayName(value: string) {
@@ -34,11 +35,10 @@ export async function POST(request: Request) {
   if (!await getCourseCatalog(courseSlug) || rating < 1 || rating > 5 || body.length < 10) return jsonError("اختر تقييمًا من 1 إلى 5 واكتب رأيًا مفيدًا");
   const db = getDb();
   const now = new Date().toISOString();
-  const [access] = await db.select().from(courseAccess).where(and(eq(courseAccess.userEmail, user.email), eq(courseAccess.courseSlug, courseSlug), isNull(courseAccess.revokedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, now)))).limit(1);
+  const [access] = await db.select().from(courseAccess).where(activeCourseAccessWhere(user.email, courseSlug, now)).limit(1);
   if (!access) return jsonError("يمكن تقييم المادة بعد شرائها", 403);
   const [progress] = await db.select({ id: lessonProgress.id }).from(lessonProgress).where(and(eq(lessonProgress.userEmail, user.email), eq(lessonProgress.courseSlug, courseSlug))).limit(1);
   if (!progress) return jsonError("ابدأ مشاهدة المادة قبل كتابة تقييم", 403);
   await db.insert(courseReviews).values({ userEmail: user.email, courseSlug, rating, body, status: "pending", createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: [courseReviews.userEmail, courseReviews.courseSlug], set: { rating, body, status: "pending", updatedAt: now } });
   return Response.json({ ok: true, message: "وصل تقييمك للمراجعة وسيظهر بعد اعتماده" }, { status: 201 });
 }
-

@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { getDocumentAsync } from "expo-document-picker";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
-import { Redirect, router, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
 import { Pressable, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
@@ -18,7 +18,8 @@ import type { PublicSettings, SupportTicket } from "@/src/types";
 
 type PickedFile = { uri: string; name: string; type: string; size: number };
 const labels: Record<string, string> = { new: "جديدة", open: "مفتوحة", waiting: "بانتظار ردك", resolved: "محلولة", closed: "مغلقة" };
-const categories = [{ id: "technical", label: "مشكلة تقنية" }, { id: "payment", label: "الدفع" }, { id: "course", label: "المواد" }, { id: "account", label: "الحساب" }];
+const categoryLabels: Record<string, string> = { technical: "مشكلة تقنية", payment: "الدفع", course: "المواد", account: "الحساب" };
+const categories = Object.entries(categoryLabels).map(([id, label]) => ({ id, label }));
 
 export default function Support() {
   const { colors } = useTheme();
@@ -40,7 +41,12 @@ export default function Support() {
   const rows = useMemo(() => tickets.data?.tickets || [], [tickets.data?.tickets]);
   const selected = useMemo(() => rows.find((ticket) => ticket.id === selectedId) || null, [rows, selectedId]);
 
-  useEffect(() => { if (params.ticket && Number(params.ticket) > 0) setSelectedId(Number(params.ticket)); }, [params.ticket]);
+  useEffect(() => {
+    const ticketId = Number(params.ticket || 0);
+    if (!ticketId) return;
+    const timer = setTimeout(() => setSelectedId(ticketId), 0);
+    return () => clearTimeout(timer);
+  }, [params.ticket]);
   const reload = async () => { await Promise.all([client.invalidateQueries({ queryKey: ["support"] }), client.invalidateQueries({ queryKey: ["dashboard"] })]); };
 
   const pickNewFiles = async () => {
@@ -84,10 +90,10 @@ export default function Support() {
   if (tickets.isLoading) return <Screen><LoadingState label="جارٍ تحميل محادثات الدعم..." /></Screen>;
 
   if (selected) return <Screen keyboard showFooter={false}>
-    <AppHeader title={selected.title} subtitle={`${selected.ticketNumber} · ${labels[selected.status] || selected.status}`} back onBack={() => setSelectedId(null)} />
+    <AppHeader title={selected.title} subtitle={`${selected.ticketNumber} · ${labels[selected.status] || "حالة غير معروفة"}`} back onBack={() => setSelectedId(null)} />
     <View style={[styles.ticketBar, { backgroundColor: colors.surface, borderColor: colors.border }]}>
-      <View style={{ flex: 1, alignItems: "flex-start" }}><Text style={[styles.ticketTitle, { color: colors.text }]}>{selected.title}</Text><Text style={[styles.meta, { color: colors.textSoft }]}>{selected.category} · آخر تحديث {new Date(selected.updatedAt || selected.createdAt).toLocaleString(locale)}</Text></View>
-      <View style={[styles.statusPill, { backgroundColor: ["closed", "resolved"].includes(selected.status) ? `${colors.success}14` : `${colors.primary}14` }]}><Text style={{ color: ["closed", "resolved"].includes(selected.status) ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{labels[selected.status] || selected.status}</Text></View>
+      <View style={{ flex: 1, alignItems: "flex-start" }}><Text style={[styles.ticketTitle, { color: colors.text }]}>{selected.title}</Text><Text style={[styles.meta, { color: colors.textSoft }]}>{categoryLabels[selected.category] || "دعم عام"} · آخر تحديث {new Date(selected.updatedAt || selected.createdAt).toLocaleString(locale)}</Text></View>
+      <View style={[styles.statusPill, { backgroundColor: ["closed", "resolved"].includes(selected.status) ? `${colors.success}14` : `${colors.primary}14` }]}><Text style={{ color: ["closed", "resolved"].includes(selected.status) ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{labels[selected.status] || "حالة غير معروفة"}</Text></View>
     </View>
     {["closed", "resolved"].includes(selected.status) && <View style={styles.compactAction}><AppButton full={false} title="إعادة فتح المحادثة" variant="soft" icon="refresh-outline" onPress={() => void reopen()} /></View>}
     <SupportChat ticket={selected} viewer="student" onReload={reload} onFeedback={setFeedback} />
@@ -121,7 +127,7 @@ export default function Support() {
       const last = ticket.replies?.[ticket.replies.length - 1];
       return <Pressable key={ticket.id} onPress={() => setSelectedId(ticket.id)}>
         <Card style={styles.ticketCard}>
-          <View style={styles.cardTop}><View style={[styles.statusPill, { backgroundColor: ["closed", "resolved"].includes(ticket.status) ? `${colors.success}14` : `${colors.primary}14` }]}><Text style={{ color: ["closed", "resolved"].includes(ticket.status) ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{labels[ticket.status] || ticket.status}</Text></View><View style={{ flex: 1, alignItems: "flex-start" }}><Text style={[styles.ticketTitle, { color: colors.text }]}>{ticket.title}</Text><Text style={[styles.meta, { color: colors.textSoft }]}>{ticket.ticketNumber}</Text></View></View>
+          <View style={styles.cardTop}><View style={[styles.statusPill, { backgroundColor: ["closed", "resolved"].includes(ticket.status) ? `${colors.success}14` : `${colors.primary}14` }]}><Text style={{ color: ["closed", "resolved"].includes(ticket.status) ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{labels[ticket.status] || "حالة غير معروفة"}</Text></View><View style={{ flex: 1, alignItems: "flex-start" }}><Text style={[styles.ticketTitle, { color: colors.text }]}>{ticket.title}</Text><Text style={[styles.meta, { color: colors.textSoft }]}>{ticket.ticketNumber}</Text></View></View>
           <Text numberOfLines={2} style={[styles.preview, { color: colors.textSoft }]}>{last?.body || last?.files?.[0]?.originalName || ticket.message}</Text>
           <View style={styles.cardBottom}><Text style={{ color: colors.textSoft, fontSize: 8 }}>{new Date(ticket.updatedAt || ticket.createdAt).toLocaleDateString(locale)}</Text><View style={styles.openLabel}><Text style={{ color: colors.primary, fontSize: 8, fontWeight: "900" }}>فتح المحادثة</Text><Ionicons name={isRTL ? "chevron-back" : "chevron-forward"} size={14} color={colors.primary} /></View></View>
         </Card>

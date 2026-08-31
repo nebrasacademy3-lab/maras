@@ -26,8 +26,8 @@ export async function POST(request: Request) {
   if (!await checkRateLimit("admin-cover-upload", identity, 20, 60)) return jsonError("طلبات الرفع كثيرة. حاول بعد دقيقة.", 429);
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_COVER_BYTES + 1 * 1024 * 1024) return jsonError("حجم الطلب أكبر من المسموح", 413);
-  let form: FormData;
-  try { form = await request.formData(); } catch { return jsonError("تعذر قراءة الغلاف", 400); }
+  const form = await request.formData().catch(() => null);
+  if (!form) return jsonError("تعذر قراءة الغلاف", 400);
   const slug = cleanText(form.get("courseSlug"), 80).toLowerCase();
   const file = form.get("file");
   if (!await getCourseCatalog(slug, true)) return jsonError("المادة غير موجودة", 404);

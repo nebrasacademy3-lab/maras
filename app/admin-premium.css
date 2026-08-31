@@ -1,0 +1,77 @@
+/* Readable, calm administration surface. Scoped to avoid changing the student UI. */
+.admin-app {
+  --admin-radius: 16px;
+  font-size: calc(14px * var(--font-scale, 1));
+  background: color-mix(in srgb, var(--bg-soft) 94%, var(--primary) 6%);
+}
+
+.admin-app .admin-sidebar { border-inline-end-color: color-mix(in srgb, var(--primary) 13%, var(--line)); }
+.admin-app .admin-brand { min-height: 82px; padding: 12px 18px; }
+.admin-app .admin-context { margin: 10px 12px 14px; padding: 12px; border-radius: 14px; }
+.admin-app .admin-context strong { font-size: calc(14px * var(--font-scale, 1)); }
+.admin-app .admin-context small { font-size: calc(11px * var(--font-scale, 1)); line-height: 1.5; }
+.admin-app .admin-sidebar nav section > span { padding: 12px 18px 7px; font-size: calc(11px * var(--font-scale, 1)); letter-spacing: 0; }
+.admin-app .admin-sidebar nav button { min-height: 44px; margin: 2px 9px; padding: 0 12px; border-radius: 12px; }
+.admin-app .admin-sidebar nav button b { font-size: calc(13px * var(--font-scale, 1)); }
+.admin-app .admin-sidebar nav button i { min-width: 21px; min-height: 21px; font-size: calc(10px * var(--font-scale, 1)); }
+.admin-app .admin-logout { min-height: 43px; margin: 10px 12px 14px; font-size: calc(13px * var(--font-scale, 1)); }
+
+.admin-app .admin-header { min-height: 74px; padding-inline: 24px; }
+.admin-app .admin-header label { min-height: 42px; border-radius: 12px; }
+.admin-app .admin-header input { font-size: calc(13px * var(--font-scale, 1)); }
+.admin-app .admin-user strong { font-size: calc(13px * var(--font-scale, 1)); }
+.admin-app .admin-user small { font-size: calc(11px * var(--font-scale, 1)); }
+.admin-app .admin-content { padding: 28px clamp(16px, 3vw, 38px) 60px; }
+.admin-app .admin-page-title p { font-size: calc(12px * var(--font-scale, 1)); }
+.admin-app .admin-page-title h1 { font-size: clamp(25px, 3vw, 32px); letter-spacing: 0; }
+
+.admin-app .admin-panel,
+.admin-app .subscription-card,
+.admin-app .admin-metric { border-radius: var(--admin-radius); box-shadow: 0 8px 28px color-mix(in srgb, var(--primary-dark) 8%, transparent); }
+.admin-app .admin-panel h2,
+.admin-app .admin-panel-title h2 { font-size: calc(18px * var(--font-scale, 1)); }
+.admin-app .admin-panel p,
+.admin-app .admin-panel-title p { font-size: calc(12px * var(--font-scale, 1)); line-height: 1.75; }
+.admin-app .admin-metric { min-height: 118px; padding: 16px; }
+.admin-app .admin-metric strong { font-size: calc(22px * var(--font-scale, 1)); line-height: 1.1; }
+.admin-app .admin-metric span,
+.admin-app .admin-metric small,
+.admin-app .admin-metric p { font-size: calc(11px * var(--font-scale, 1)); line-height: 1.55; }
+
+.admin-app .live-table-head { min-height: 42px; font-size: calc(12px * var(--font-scale, 1)); }
+.admin-app .live-table-row { min-height: 60px; font-size: calc(13px * var(--font-scale, 1)); line-height: 1.5; }
+.admin-app .live-table-row strong,
+.admin-app .live-table-row b,
+.admin-app .live-entity b { font-size: calc(13px * var(--font-scale, 1)); }
+.admin-app .live-table-row small,
+.admin-app .live-entity small { font-size: calc(11px * var(--font-scale, 1)); line-height: 1.5; }
+.admin-app .live-table-row select,
+.admin-app .live-table-row input { min-height: 39px; font-size: calc(13px * var(--font-scale, 1)); }
+.admin-app .live-actions button,
+.admin-app .subscription-card footer button,
+.admin-app .device-session-list button { min-height: 36px; padding-inline: 11px; font-size: calc(12px * var(--font-scale, 1)); }
+.admin-app .status,
+.admin-app .subscription-state { font-size: calc(11px * var(--font-scale, 1)); }
+.admin-app .subscription-card strong { font-size: calc(14px * var(--font-scale, 1)); }
+.admin-app .subscription-card small,
+.admin-app .subscription-card dt,
+.admin-app .subscription-card dd,
+.admin-app .subscription-reason { font-size: calc(11px * var(--font-scale, 1)); line-height: 1.55; }
+
+.admin-app input,
+.admin-app select,
+.admin-app textarea,
+.admin-app .button { font-size: calc(13px * var(--font-scale, 1)); }
+.admin-app input:not([type="checkbox"]):not([type="radio"]),
+.admin-app select,
+.admin-app .button { min-height: 42px; }
+
+@media (max-width: 700px) {
+  .admin-app .admin-content { padding: 18px 10px 52px; }
+  .admin-app .admin-header { min-height: 66px; padding-inline: 10px; }
+  .admin-app .admin-metrics,
+  .admin-app .admin-metrics.compact { grid-template-columns: 1fr; }
+  .admin-app .admin-metric { min-height: 100px; }
+  .admin-app .live-table-scroll { overflow-x: auto; }
+  .admin-app .live-table-row { font-size: calc(13px * var(--font-scale, 1)); }
+}

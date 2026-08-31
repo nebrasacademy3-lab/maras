@@ -2,6 +2,16 @@ import { sameOriginRequest } from "@/lib/auth";
 
 export const MOBILE_CLIENT = "mobile-v1";
 
+export function isNativeAppRequest(request: Request) {
+  const platform = (request.headers.get("x-meras-platform") || "").trim().toLowerCase();
+  const bearer = request.headers.get("authorization")?.trim() || "";
+  const browserFetch = Boolean(request.headers.get("origin") || request.headers.get("sec-fetch-site") || request.headers.get("sec-fetch-mode"));
+  return request.headers.get("x-meras-client") === MOBILE_CLIENT
+    && (platform === "android" || platform === "ios")
+    && /^Bearer\s+\S+$/i.test(bearer)
+    && !browserFetch;
+}
+
 export function isMobileRequest(request: Request) {
   if (request.headers.get("x-meras-client") !== MOBILE_CLIENT) return false;
   const platform = (request.headers.get("x-meras-platform") || "").trim().toLowerCase();

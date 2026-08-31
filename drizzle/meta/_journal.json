@@ -106,6 +106,27 @@
       "when": 1788031501174,
       "tag": "0014_device_limits_ads_requests",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1788200000000,
+      "tag": "0015_video_experience",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1788205000000,
+      "tag": "0016_commerce_access_notifications",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1788220800000,
+      "tag": "0017_push_dispatch_claims",
+      "breakpoints": true
     }
   ]
 }

@@ -3,10 +3,11 @@ import { Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import { useEvent } from "expo";
 import * as ScreenCapture from "expo-screen-capture";
+import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Animated, AppState, BackHandler, Platform, Pressable, StyleSheet, View } from "react-native";
+import { Animated, AppState, BackHandler, Modal, Platform, Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { AppHeader } from "@/src/components/AppHeader";
@@ -21,20 +22,35 @@ const rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const qualities = ["تلقائي", "الأصلية"] as const;
 
 type Origin = "learn" | "course";
+type VideoNote = { id: number; lessonId: string; body: string; timestampSeconds: number; createdAt: string; updatedAt: string };
+type PreparedPlayback = {
+  key: string;
+  courseSlug: string;
+  lessonId: string;
+  resumeAt: number;
+  source: {
+    uri: string;
+    headers: Record<string, string>;
+    contentType: "progressive";
+    useCaching: false;
+    metadata: { title: string; artist: string };
+  };
+};
 
 export default function LessonPlayer() {
   const { courseSlug, lessonId, from } = useLocalSearchParams<{ courseSlug: string; lessonId: string; from?: Origin }>();
   const { user } = useAuth();
   const { colors } = useTheme();
-  const { direction, rowDirection, startAlignment } = useLanguage();
+  const { direction, rowDirection, startAlignment, t } = useLanguage();
+  const window = useWindowDimensions();
   const origin: Origin = from === "course" ? "course" : "learn";
 
   const [course, setCourse] = useState<Catalog["courses"][number] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [playbackError, setPlaybackError] = useState("");
   const [privateOverlay, setPrivateOverlay] = useState(false);
   const [note, setNote] = useState("");
+  const [videoNotes, setVideoNotes] = useState<VideoNote[]>([]);
   const [noteMessage, setNoteMessage] = useState("");
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -45,6 +61,9 @@ export default function LessonPlayer() {
   const [captions, setCaptions] = useState(false);
   const [quality, setQuality] = useState<(typeof qualities)[number]>("تلقائي");
   const [retryKey, setRetryKey] = useState(0);
+  const [fullscreen, setFullscreen] = useState(false);
+  const [manualRotation, setManualRotation] = useState(false);
+  const [preparedPlayback, setPreparedPlayback] = useState<PreparedPlayback | null>(null);
   const videoRef = useRef<VideoView>(null);
   const watermark = useRef(new Animated.Value(0)).current;
 
@@ -58,6 +77,9 @@ export default function LessonPlayer() {
   });
   const { isPlaying } = useEvent(player, "playingChange", { isPlaying: player.playing });
   const statusEvent = useEvent(player, "statusChange", { status: player.status });
+  const playbackError = statusEvent.status === "error"
+    ? (("error" in statusEvent && statusEvent.error?.message) || "تعذر تشغيل ملف الفيديو. أعد المحاولة أو تواصل مع الدعم إذا استمرت المشكلة.")
+    : "";
 
   const lessons = useMemo(() => course?.units.flatMap((unit) => unit.lessons) || [], [course]);
   const lesson = useMemo(() => lessons.find((item) => item.id === lessonId), [lessons, lessonId]);
@@ -79,6 +101,7 @@ export default function LessonPlayer() {
   }, [player]);
 
   const leavePlayer = useCallback(() => {
+    setFullscreen(false);
     releaseVideo();
     router.dismissTo(returnHref as never);
   }, [releaseVideo, returnHref]);
@@ -86,14 +109,19 @@ export default function LessonPlayer() {
   useEffect(() => {
     if (Platform.OS !== "android") return;
     const subscription = BackHandler.addEventListener("hardwareBackPress", () => {
+      if (fullscreen) {
+        setFullscreen(false);
+        setManualRotation(false);
+        return true;
+      }
       leavePlayer();
       return true;
     });
     return () => subscription.remove();
-  }, [leavePlayer]);
+  }, [fullscreen, leavePlayer]);
 
   useEffect(() => {
-    void ScreenCapture.preventScreenCaptureAsync("meras-lesson");
+    if (Platform.OS !== "web") void ScreenCapture.preventScreenCaptureAsync("meras-lesson").catch(() => undefined);
     const subscription = AppState.addEventListener("change", (state) => {
       setPrivateOverlay(state !== "active");
       if (state !== "active") player.pause();
@@ -101,9 +129,14 @@ export default function LessonPlayer() {
     return () => {
       subscription.remove();
       releaseVideo();
-      void ScreenCapture.allowScreenCaptureAsync("meras-lesson");
+      if (Platform.OS !== "web") void ScreenCapture.allowScreenCaptureAsync("meras-lesson").catch(() => undefined);
     };
   }, [player, releaseVideo]);
+
+  useEffect(() => {
+    if (!fullscreen || Platform.OS === "web") return;
+    void ScreenCapture.preventScreenCaptureAsync("meras-lesson").catch(() => undefined);
+  }, [fullscreen]);
 
   useEffect(() => {
     const animation = Animated.loop(Animated.sequence([
@@ -123,20 +156,15 @@ export default function LessonPlayer() {
   }, [player]);
 
   useEffect(() => {
-    if (statusEvent.status === "error") {
-      const detail = "error" in statusEvent && statusEvent.error?.message ? statusEvent.error.message : "";
-      setPlaybackError(detail || "تعذر تشغيل ملف الفيديو. أعد المحاولة أو تواصل مع الدعم إذا استمرت المشكلة.");
-    } else if (statusEvent.status === "readyToPlay") {
-      setPlaybackError("");
-    }
-  }, [statusEvent]);
-
-  useEffect(() => {
     let cancelled = false;
     void (async () => {
+      try { player.pause(); } catch { /* The previous source may not be mounted yet. */ }
       setLoading(true);
       setError("");
-      setPlaybackError("");
+      setCourse(null);
+      setPreparedPlayback(null);
+      setVideoNotes([]);
+      setNote("");
       setTime(0);
       setDuration(0);
       setSettingsOpen(false);
@@ -148,38 +176,41 @@ export default function LessonPlayer() {
         const selectedLesson = selected.units.flatMap((unit) => unit.lessons).find((item) => item.id === lessonId);
         if (!selectedLesson) throw new Error("الدرس غير موجود");
         if (cancelled) return;
-        setCourse(selected);
-
-        const session = await api<{ streamUrl: string; expiresAt: string }>("/api/video/session", {
-          method: "POST",
-          body: jsonBody({ courseSlug, lessonId }),
-        });
+        const [session, progress, noteResult] = await Promise.all([
+          api<{ streamUrl: string; expiresAt: string }>("/api/video/session", {
+            method: "POST",
+            body: jsonBody({ courseSlug, lessonId }),
+          }),
+          api<{ progress: { lessonId: string; watchedSeconds: number }[] }>(
+            `/api/progress?course=${encodeURIComponent(courseSlug || "")}`,
+          ).catch(() => ({ progress: [] })),
+          api<{ notes: VideoNote[] }>(
+            `/api/mobile/notes?lesson=${encodeURIComponent(lessonId || "")}`,
+          ).catch(() => ({ notes: [] })),
+        ]);
         if (cancelled) return;
 
         const token = getApiToken();
         const headers: Record<string, string> = { Accept: "video/*" };
         if (token) headers.Authorization = `Bearer ${token}`;
 
-        await player.replaceAsync({
-          uri: absoluteUrl(session.streamUrl),
-          headers,
-          contentType: "progressive",
-          useCaching: false,
-          metadata: { title: selectedLesson.title, artist: "مراس العلم" },
-        });
-        if (cancelled) return;
-
-        const progress = await api<{ progress: { lessonId: string; watchedSeconds: number }[] }>(
-          `/api/progress?course=${encodeURIComponent(courseSlug || "")}`,
-        ).catch(() => ({ progress: [] }));
         const saved = progress.progress.find((item) => item.lessonId === lessonId);
-        if (saved?.watchedSeconds && Number.isFinite(saved.watchedSeconds)) player.currentTime = saved.watchedSeconds;
-
-        const noteResult = await api<{ note: { body: string } | null }>(
-          `/api/mobile/notes?lesson=${encodeURIComponent(lessonId || "")}`,
-        ).catch(() => ({ note: null }));
-        if (!cancelled) setNote(noteResult.note?.body || "");
-        if (!cancelled) player.play();
+        const resumeAt = saved?.watchedSeconds && Number.isFinite(saved.watchedSeconds) ? Math.max(0, saved.watchedSeconds) : 0;
+        setCourse(selected);
+        setVideoNotes(noteResult.notes || []);
+        setPreparedPlayback({
+          key: `${courseSlug}:${lessonId}:${retryKey}`,
+          courseSlug: courseSlug || "",
+          lessonId: lessonId || "",
+          resumeAt,
+          source: {
+            uri: absoluteUrl(session.streamUrl),
+            headers,
+            contentType: "progressive",
+            useCaching: false,
+            metadata: { title: selectedLesson.title, artist: "مراس العلم" },
+          },
+        });
       } catch (reason) {
         if (!cancelled) setError(reason instanceof ApiError ? reason.message : reason instanceof Error ? reason.message : "تعذر تشغيل الدرس");
       } finally {
@@ -190,7 +221,50 @@ export default function LessonPlayer() {
   }, [courseSlug, lessonId, player, retryKey]);
 
   useEffect(() => {
-    if (!user || !courseSlug || !lessonId) return;
+    if (loading || !preparedPlayback) return;
+    let cancelled = false;
+    let applied = false;
+    let acceptingStatus = false;
+    let statusSubscription: { remove: () => void } | null = null;
+    const applyResumeAndPlay = () => {
+      if (cancelled || applied) return;
+      applied = true;
+      statusSubscription?.remove();
+      statusSubscription = null;
+      if (preparedPlayback.resumeAt > 0) {
+        player.currentTime = preparedPlayback.resumeAt;
+        setTime(preparedPlayback.resumeAt);
+      }
+      // Native playback can start immediately; browsers retain their visible play control when autoplay is blocked.
+      if (Platform.OS !== "web") player.play();
+    };
+    const frame = requestAnimationFrame(() => {
+      if (cancelled) return;
+      statusSubscription = player.addListener("statusChange", (event) => {
+        if (!acceptingStatus) return;
+        if (event.status === "readyToPlay") applyResumeAndPlay();
+        else if (event.status === "error") {
+          statusSubscription?.remove();
+          statusSubscription = null;
+        }
+      });
+      acceptingStatus = true;
+      const replacement = player.replaceAsync(preparedPlayback.source);
+      void replacement.then(() => {
+        if (player.status === "readyToPlay") applyResumeAndPlay();
+      }).catch((reason) => {
+        if (!cancelled) setError(reason instanceof Error ? reason.message : "تعذر تشغيل الدرس");
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      statusSubscription?.remove();
+    };
+  }, [loading, player, preparedPlayback]);
+
+  useEffect(() => {
+    if (!user || !courseSlug || !lessonId || loading || preparedPlayback?.courseSlug !== courseSlug || preparedPlayback.lessonId !== lessonId) return;
     const save = () => api("/api/progress", {
       method: "POST",
       body: jsonBody({
@@ -202,7 +276,7 @@ export default function LessonPlayer() {
     }).catch(() => undefined);
     const timer = setInterval(save, 15_000);
     return () => { clearInterval(timer); void save(); };
-  }, [courseSlug, lessonId, player, user]);
+  }, [courseSlug, lessonId, loading, player, preparedPlayback, user]);
 
   const seek = (seconds: number) => {
     player.currentTime = Math.max(0, Math.min(player.duration || 0, player.currentTime + seconds));
@@ -230,11 +304,32 @@ export default function LessonPlayer() {
 
   const saveNote = async () => {
     setNoteMessage("");
+    const body = note.trim();
+    if (!body) { setNoteMessage("اكتب الملاحظة أولًا"); return; }
     try {
-      await api("/api/mobile/notes", { method: "PUT", body: jsonBody({ lessonId, body: note }) });
-      setNoteMessage("تم حفظ الملاحظة");
-    } catch {
-      setNoteMessage("تعذر حفظ الملاحظة");
+      const result = await api<{ note: VideoNote }>("/api/mobile/notes", { method: "POST", body: jsonBody({ lessonId, body, timestampSeconds: Math.floor(player.currentTime || 0) }) });
+      setVideoNotes((current) => [...current, result.note].sort((left, right) => left.timestampSeconds - right.timestampSeconds || left.id - right.id));
+      setNote("");
+      setNoteMessage(`تم حفظ الملاحظة عند ${formatTime(result.note.timestampSeconds)}`);
+    } catch (reason) {
+      setNoteMessage(reason instanceof ApiError ? reason.message : "تعذر حفظ الملاحظة");
+    }
+  };
+
+  const openNote = (item: VideoNote) => {
+    player.currentTime = item.timestampSeconds;
+    setTime(item.timestampSeconds);
+    player.play();
+  };
+
+  const deleteNote = async (item: VideoNote) => {
+    setNoteMessage("");
+    try {
+      await api("/api/mobile/notes", { method: "DELETE", body: jsonBody({ id: item.id }) });
+      setVideoNotes((current) => current.filter((noteItem) => noteItem.id !== item.id));
+      setNoteMessage("تم حذف الملاحظة");
+    } catch (reason) {
+      setNoteMessage(reason instanceof ApiError ? reason.message : "تعذر حذف الملاحظة");
     }
   };
 
@@ -272,7 +367,8 @@ export default function LessonPlayer() {
         <AppHeader title={lesson.title} subtitle={course.title} back onBack={leavePlayer} />
       </View>
 
-      <View style={styles.playerWrap}>
+      <PlayerFullscreenHost expanded={fullscreen} rotated={manualRotation} width={window.width} height={window.height} onClose={() => { setFullscreen(false); setManualRotation(false); }}>
+      <View style={[styles.playerWrap, fullscreen && styles.playerWrapFullscreen]}>
         <VideoView
           ref={videoRef}
           player={player}
@@ -281,7 +377,7 @@ export default function LessonPlayer() {
           contentFit="contain"
           allowsPictureInPicture={false}
           allowsVideoFrameAnalysis={false}
-          fullscreenOptions={{ enable: true }}
+          fullscreenOptions={{ enable: false }}
           {...(Platform.OS === "android" ? { surfaceType: "textureView" as const } : {})}
         />
 
@@ -312,7 +408,7 @@ export default function LessonPlayer() {
         {playbackError ? <View style={styles.playerState}><Ionicons name="alert-circle-outline" size={32} color="#FFFFFF" /><Text style={styles.playerStateTitle}>تعذّر تشغيل الفيديو</Text><Text style={styles.playerStateText}>{playbackError}</Text><Pressable style={styles.retryButton} onPress={() => setRetryKey((value) => value + 1)}><Ionicons name="refresh" size={16} color="#FFFFFF" /><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable></View> : null}
 
         {!isPlaying && !playbackError && statusEvent.status === "readyToPlay" ? (
-          <Pressable accessibilityLabel="تشغيل" onPress={() => player.play()} style={styles.centerPlay}>
+          <Pressable accessibilityLabel={t("تشغيل")} onPress={() => player.play()} style={styles.centerPlay}>
             <Ionicons name="play" size={31} color="#FFFFFF" />
           </Pressable>
         ) : null}
@@ -343,7 +439,8 @@ export default function LessonPlayer() {
               <PlayerButton icon="text" active={captions} onPress={() => setCaptions((value) => !value)} />
               <Pressable style={styles.labelButton} onPress={() => setSettingsOpen((value) => !value)}><Text style={styles.labelButtonText}>{rate}×</Text></Pressable>
               <PlayerButton icon="settings-outline" active={settingsOpen} onPress={() => setSettingsOpen((value) => !value)} />
-              <PlayerButton icon="expand-outline" onPress={() => void videoRef.current?.enterFullscreen()} />
+              {fullscreen ? <PlayerButton icon="phone-landscape-outline" active={manualRotation} onPress={() => setManualRotation((value) => !value)} /> : null}
+              <PlayerButton icon={fullscreen ? "contract-outline" : "expand-outline"} onPress={() => { setFullscreen((value) => !value); setManualRotation(false); }} />
             </View>
           </View>
         </View>
@@ -361,6 +458,7 @@ export default function LessonPlayer() {
           </View>
         ) : null}
       </View>
+      </PlayerFullscreenHost>
 
       <View style={styles.content}>
         <View style={[styles.navigationRow, { flexDirection: rowDirection }]}>
@@ -370,14 +468,27 @@ export default function LessonPlayer() {
         <Text style={[styles.lessonTitle, { color: colors.text }]}>{lesson.title}</Text>
         <Text style={[styles.protection, { color: colors.textSoft }]}><Ionicons name="shield-checkmark-outline" size={14} color={colors.success} /> بث محمي · عرض كامل بدون قص · حفظ تقدم تلقائي</Text>
         <Card style={styles.notes}>
-          <Text style={[styles.notesTitle, { color: colors.text }]}>ملاحظاتي على الدرس</Text>
-          <TextInput multiline value={note} onChangeText={setNote} placeholder="اكتب نقاطك المهمة هنا..." placeholderTextColor={colors.textSoft} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} />
-          <AppButton title="حفظ الملاحظة" variant="soft" icon="save-outline" onPress={saveNote} />
+          <Text style={[styles.notesTitle, { color: colors.text }]}>ملاحظات مرتبطة بالفيديو</Text>
+          <Text style={[styles.noteTimeHint, { color: colors.primary }]}>اللحظة الحالية: {formatTime(time)}</Text>
+          <TextInput multiline value={note} onChangeText={setNote} placeholder="اكتب ملاحظتك عند هذه اللحظة..." placeholderTextColor={colors.textSoft} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} />
+          <AppButton title="حفظ عند هذه اللحظة" variant="soft" icon="bookmark-outline" onPress={saveNote} />
           {noteMessage ? <Text style={[styles.noteMessage, { color: noteMessage.startsWith("تم") ? colors.success : colors.danger }]}>{noteMessage}</Text> : null}
+          <View style={styles.savedNotes}>{videoNotes.map((item) => <View key={item.id} style={[styles.savedNote, { borderColor: colors.border, backgroundColor: colors.surfaceAlt, flexDirection: rowDirection }]}><Pressable style={[styles.savedNoteOpen, { flexDirection: rowDirection }]} onPress={() => openNote(item)}><Text style={styles.savedNoteTime}>{formatTime(item.timestampSeconds)}</Text><Text numberOfLines={2} style={[styles.savedNoteBody, { color: colors.text }]}>{item.body}</Text></Pressable><Pressable accessibilityLabel={t("حذف الملاحظة")} style={styles.savedNoteDelete} onPress={() => void deleteNote(item)}><Ionicons name="trash-outline" size={17} color={colors.danger} /></Pressable></View>)}{videoNotes.length === 0 ? <Text style={[styles.notesEmpty, { color: colors.textSoft }]}>أوقف الفيديو عند الموضع المطلوب واحفظ أول ملاحظة؛ ستظهر هنا ويمكنك الضغط عليها للعودة لنفس الثانية.</Text> : null}</View>
         </Card>
       </View>
     </Screen>
   );
+}
+
+function PlayerFullscreenHost({ expanded, rotated, width, height, onClose, children }: { expanded: boolean; rotated: boolean; width: number; height: number; onClose: () => void; children: React.ReactNode }) {
+  const stage = rotated
+    ? { width: height, height: width, transform: [{ rotate: "90deg" as const }] }
+    : { width, height };
+  if (Platform.OS === "web") {
+    return <View style={expanded ? [styles.webFullscreenHost, { width, height }] : styles.webPlayerHost}><View style={expanded ? [styles.fullscreenStage, stage] : styles.webPlayerStage}>{children}</View></View>;
+  }
+  if (!expanded) return <>{children}</>;
+  return <Modal visible animationType="fade" presentationStyle="fullScreen" statusBarTranslucent supportedOrientations={["portrait", "portrait-upside-down", "landscape", "landscape-left", "landscape-right"]} onRequestClose={onClose}><StatusBar hidden /><View style={styles.fullscreenHost}><View style={[styles.fullscreenStage, stage]}>{children}</View></View></Modal>;
 }
 
 function PlayerButton({ icon, label, active = false, onPress }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label?: string; active?: boolean; onPress: () => void }) {
@@ -395,6 +506,12 @@ function formatTime(value: number) {
 const styles = StyleSheet.create({
   headerPad: { paddingHorizontal: 18 },
   playerWrap: { width: "100%", aspectRatio: 16 / 9, backgroundColor: "#000000", position: "relative", overflow: "hidden" },
+  playerWrapFullscreen: { width: "100%", height: "100%", aspectRatio: undefined },
+  webPlayerHost: { width: "100%" },
+  webPlayerStage: { width: "100%" },
+  webFullscreenHost: { position: "fixed" as "absolute", zIndex: 100000, top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "#000000", alignItems: "center", justifyContent: "center" },
+  fullscreenHost: { flex: 1, backgroundColor: "#000000", alignItems: "center", justifyContent: "center" },
+  fullscreenStage: { backgroundColor: "#000000", alignItems: "stretch", justifyContent: "center" },
   video: { width: "100%", height: "100%", backgroundColor: "#000000" },
   topShade: { position: "absolute", top: 0, left: 0, right: 0, height: 72, backgroundColor: "rgba(0,0,0,.18)" },
   bottomShade: { position: "absolute", bottom: 0, left: 0, right: 0, height: 92, backgroundColor: "rgba(0,0,0,.48)" },
@@ -441,8 +558,16 @@ const styles = StyleSheet.create({
   protection: { fontSize: 9, textAlign: "right", marginTop: 7 },
   notes: { marginTop: 20 },
   notesTitle: { fontSize: 14, fontWeight: "900", textAlign: "right", marginBottom: 11 },
+  noteTimeHint: { fontSize: 9, fontWeight: "900", textAlign: "right", marginBottom: 8, writingDirection: "rtl" },
   noteInput: { minHeight: 140, borderWidth: 1, borderRadius: 15, padding: 12, textAlignVertical: "top", writingDirection: "rtl", marginBottom: 10 },
   noteMessage: { fontSize: 9, textAlign: "center", marginTop: 8 },
+  savedNotes: { gap: 8, marginTop: 14 },
+  savedNote: { minHeight: 56, borderWidth: 1, borderRadius: 13, alignItems: "center", padding: 7, gap: 7 },
+  savedNoteOpen: { flex: 1, minWidth: 0, alignItems: "center", gap: 8 },
+  savedNoteTime: { color: "#FFFFFF", backgroundColor: "#275AC8", paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, fontSize: 8, fontWeight: "900", writingDirection: "ltr", overflow: "hidden" },
+  savedNoteBody: { flex: 1, fontSize: 9, lineHeight: 15, textAlign: "right", writingDirection: "rtl" },
+  savedNoteDelete: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  notesEmpty: { fontSize: 9, lineHeight: 17, textAlign: "right" },
   errorCard: { marginTop: 40, alignItems: "center", gap: 13 },
   errorTitle: { fontSize: 19, fontWeight: "900" },
   errorText: { fontSize: 11, lineHeight: 19, textAlign: "center" },

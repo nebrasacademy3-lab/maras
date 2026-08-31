@@ -12,6 +12,7 @@ const context = await read("lib/assistant-context.ts");
 const route = await read("app/api/assistant/route.ts");
 const web = await read("components/meras-assistant.tsx");
 const mobile = await read("mobile/app/assistant.tsx");
+const access = await read("lib/course-access.ts");
 
 test("assistant understands a broad Arabic intent vocabulary and has detailed fallbacks", () => {
   assert.match(knowledge, /export type AssistantIntent/);
@@ -28,7 +29,8 @@ test("model responses are instructed to be structured, detailed, and safe", () =
   assert.match(ai, /type: "json_schema"/);
   assert.match(ai, /strict: true/);
   assert.match(ai, /additionalProperties: false/);
-  assert.match(ai, /reasoning: \{ effort: "minimal" \}/);
+  assert.match(ai, /reasoning_effort: "minimal"/);
+  assert.match(ai, /"\/cart", "\/favorites", "\/checkout"/);
 });
 
 test("private support context is scoped to the current user's tickets", () => {
@@ -36,6 +38,20 @@ test("private support context is scoped to the current user's tickets", () => {
   assert.match(context, /supportTickets\.userEmail/);
   assert.match(route, /detectAssistantIntent\(question\)/);
   assert.match(route, /intent/);
+});
+
+test("live retrieval stays ahead of bounded, active account context", () => {
+  assert.match(context, /formatRetrievedContext[\s\S]*\.slice\(0, 9_000\)/);
+  assert.match(context, /privateContext\.slice\(0, 5_000\)/);
+  assert.ok(context.indexOf("${retrieved}") < context.indexOf("${boundedPrivateContext}"));
+  assert.match(context, /activeUserAccessWhere\(user\.email, now\)/);
+  assert.match(access, /isNull\(courseAccess\.suspendedAt\)/);
+  assert.match(access, /gt\(courseAccess\.expiresAt, now\)/);
+});
+
+test("lesson-specific questions outrank a simultaneous course match", () => {
+  assert.match(knowledge, /preferLesson[\s\S]*intent === "learning"/);
+  assert.match(knowledge, /if \(matchedCourse && !preferLesson\)/);
 });
 
 test("web and Expo expose the same answer actions and suggestions", () => {

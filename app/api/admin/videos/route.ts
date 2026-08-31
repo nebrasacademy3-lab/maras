@@ -1,11 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { lessonsDb, supervisorAssignments, videoAssets } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { getCourseCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
+import { isNativeAppRequest } from "@/lib/mobile-api";
 import { deleteObject, putObject } from "@/lib/storage";
+import { probeStoredVideoDuration } from "@/lib/video-metadata";
 
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska", "video/x-msvideo"]);
@@ -33,6 +35,11 @@ function compatibleVideoType(declared: string, detected: string) {
   if (declared === detected) return true;
   if (declared === "video/quicktime" && detected === "video/mp4") return true;
   return (declared === "video/webm" || declared === "video/x-matroska") && detected === "video/webm";
+}
+
+function safeDuration(value: unknown) {
+  const seconds = Math.round(Number(value));
+  return Number.isFinite(seconds) && seconds > 0 && seconds <= 7 * 24 * 60 * 60 ? seconds : 0;
 }
 
 async function inspectUploadStream(input: ReadableStream<Uint8Array>) {
@@ -82,7 +89,7 @@ export async function POST(request: Request) {
   const suppliedToken = request.headers.get("x-admin-upload-token")?.trim() || "";
   const uploadSecret = process.env.ADMIN_UPLOAD_TOKEN?.trim() || "";
   const tokenAuthorized = Boolean(uploadSecret && secretEquals(uploadSecret, suppliedToken));
-  if (!tokenAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!tokenAuthorized && !sameOriginRequest(request) && !isNativeAppRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
 
   const user = tokenAuthorized ? null : await getSessionUser(request);
   if (!tokenAuthorized && !roleAllowed(user, ["admin", "supervisor"])) return jsonError("غير مصرح برفع الفيديو", 401);
@@ -103,6 +110,7 @@ export async function POST(request: Request) {
   let uploadStream: ReadableStream<Uint8Array>;
   let detectedType = "";
   let measuredSize = () => sizeBytes;
+  let suppliedDurationSeconds = safeDuration(request.headers.get("x-meras-duration-seconds"));
 
   if (rawUpload) {
     if (!Number.isSafeInteger(declaredLength) || declaredLength <= 0) return jsonError("يلزم تحديد حجم الفيديو", 411);
@@ -117,11 +125,12 @@ export async function POST(request: Request) {
       return jsonError("تعذر قراءة ملف الفيديو", 400);
     }
   } else {
-    let form: FormData;
-    try { form = await request.formData(); } catch { return jsonError("تعذر قراءة ملف الفيديو", 400); }
+    const form = await request.formData().catch(() => null);
+    if (!form) return jsonError("تعذر قراءة ملف الفيديو", 400);
     const file = form.get("file");
     courseSlug = cleanText(form.get("courseSlug"), 120);
     lessonId = cleanText(form.get("lessonId"), 120);
+    suppliedDurationSeconds = safeDuration(form.get("durationSeconds"));
     if (!(file instanceof File)) return jsonError("اختر ملف فيديو صالحًا");
     if (file.size <= 0 || file.size > MAX_VIDEO_BYTES) return jsonError("حجم الفيديو يجب ألا يتجاوز 200 ميجابايت", 413);
     declaredType = file.type.toLowerCase();
@@ -142,22 +151,28 @@ export async function POST(request: Request) {
     if (!mayEdit) { await discardRawUpload(); return jsonError("هذه المادة غير مسندة لهذا المشرف", 403); }
   }
 
-  const objectKey = `private/${courseSlug}/${lessonId}/${crypto.randomUUID()}.${extensionFor(contentType)}`;
   const db = getDb();
-  const existingAssets = await db.select({ id: videoAssets.id, objectKey: videoAssets.objectKey }).from(videoAssets).where(and(eq(videoAssets.courseSlug, courseSlug), eq(videoAssets.lessonId, lessonId)));
+  const [existingLesson] = await db.select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug))).limit(1);
+  if (!existingLesson) { await discardRawUpload(); return jsonError("أنشئ سجل الدرس في الإدارة قبل رفع الفيديو", 409); }
+  const objectKey = `private/${courseSlug}/${lessonId}/${crypto.randomUUID()}.${extensionFor(contentType)}`;
   try {
     await putObject(objectKey, uploadStream, contentType);
     const actualSize = measuredSize();
     if (actualSize <= 0 || actualSize > MAX_VIDEO_BYTES || (rawUpload && actualSize !== sizeBytes)) throw new Error("video-size-mismatch");
     sizeBytes = actualSize;
+    const probedDurationSeconds = await probeStoredVideoDuration(objectKey, sizeBytes, contentType).catch(() => 0);
+    const durationSeconds = probedDurationSeconds || suppliedDurationSeconds || 0;
     const now = new Date().toISOString();
-    const asset = await db.transaction(async (tx) => {
-      const [created] = await tx.insert(videoAssets).values({ courseSlug, lessonId, objectKey, contentType, sizeBytes, status: "ready", createdAt: now, updatedAt: now }).returning({ id: videoAssets.id, objectKey: videoAssets.objectKey, status: videoAssets.status });
-      await tx.update(lessonsDb).set({ videoAssetId: created.id, updatedAt: now }).where(eq(lessonsDb.id, lessonId));
-      if (existingAssets.length) await tx.delete(videoAssets).where(inArray(videoAssets.id, existingAssets.map((item) => item.id)));
-      return created;
+    const { asset, replacedAssets } = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`video-upload:${courseSlug}:${lessonId}`}))`);
+      const previous = await tx.select({ id: videoAssets.id, objectKey: videoAssets.objectKey }).from(videoAssets).where(and(eq(videoAssets.courseSlug, courseSlug), eq(videoAssets.lessonId, lessonId)));
+      const [created] = await tx.insert(videoAssets).values({ courseSlug, lessonId, objectKey, contentType, sizeBytes, status: "ready", durationSeconds: durationSeconds || null, createdAt: now, updatedAt: now }).returning({ id: videoAssets.id, objectKey: videoAssets.objectKey, status: videoAssets.status, durationSeconds: videoAssets.durationSeconds });
+      const [linked] = await tx.update(lessonsDb).set({ videoAssetId: created.id, durationSeconds, updatedAt: now }).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug))).returning({ id: lessonsDb.id });
+      if (!linked) throw new Error("lesson-link-failed");
+      if (previous.length) await tx.delete(videoAssets).where(inArray(videoAssets.id, previous.map((item) => item.id)));
+      return { asset: created, replacedAssets: previous };
     });
-    await Promise.all(existingAssets.map(async (item) => { try { await deleteObject(item.objectKey); } catch { console.warn("[video-upload] previous object cleanup failed", item.objectKey); } }));
+    await Promise.all(replacedAssets.map(async (item) => { try { await deleteObject(item.objectKey); } catch { console.warn("[video-upload] previous object cleanup failed", item.objectKey); } }));
     invalidateCatalogCache();
     return Response.json({ ok: true, asset }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch {

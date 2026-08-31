@@ -1,5 +1,61 @@
 export type AppLanguage = "ar" | "en";
 
+// Server enums are deliberately stored in English. Translate them at the text
+// boundary so role/status values never leak into the Arabic interface, while
+// preserving the canonical value used by API requests and comparisons.
+const internalValueLabels: Record<AppLanguage, Record<string, string>> = {
+  ar: {
+    admin: "مدير",
+    supervisor: "مشرف",
+    student: "طالب",
+    active: "نشط",
+    suspended: "موقوف",
+    published: "منشور",
+    hidden: "مخفي",
+    draft: "مسودة",
+    pending: "قيد الانتظار",
+    paid: "مدفوع",
+    failed: "فشل",
+    cancelled: "ملغي",
+    refunded: "مسترد",
+    rejected: "مرفوض",
+    ready: "جاهز",
+    uploading: "جارٍ الرفع",
+    new: "جديد",
+    assigned: "مسند",
+    reviewing: "قيد المراجعة",
+    planned: "مخطط له",
+    producing: "قيد الإنتاج",
+    available: "متاح",
+    declined: "متعذر",
+  },
+  en: {
+    admin: "Admin",
+    supervisor: "Supervisor",
+    student: "Student",
+    active: "Active",
+    suspended: "Suspended",
+    published: "Published",
+    hidden: "Hidden",
+    draft: "Draft",
+    pending: "Pending",
+    paid: "Paid",
+    failed: "Failed",
+    cancelled: "Cancelled",
+    refunded: "Refunded",
+    rejected: "Rejected",
+    ready: "Ready",
+    uploading: "Uploading",
+    new: "New",
+    assigned: "Assigned",
+    reviewing: "Reviewing",
+    planned: "Planned",
+    producing: "In production",
+    available: "Available",
+    declined: "Declined",
+  },
+};
+
 const exact: Record<string, string> = {
   "تسجيل الدخول":"Sign in","إنشاء حساب":"Create account","إنشاء الحساب":"Create account","دخول آمن":"Secure sign in","تسجيل الخروج":"Sign out","إنهاء الجلسة بأمان":"End your session securely",
   "حسابي":"My account","الإعدادات والخدمات":"Settings & services","إعدادات المظهر":"Appearance settings","اللغة":"Language","العربية":"Arabic","الإنجليزية":"English","الوضع":"Appearance","تلقائي":"System","فاتح":"Light","ليلي":"Dark","الثيم اللوني":"Color theme","حجم الخط":"Text size","صغير":"Small","قياسي":"Standard","كبير":"Large","أكبر":"Larger",
@@ -13,6 +69,77 @@ const exact: Record<string, string> = {
   "جارٍ التحميل...":"Loading...","جارٍ تحميل مراس...":"Loading Meras...","إعادة المحاولة":"Try again","حدث خطأ":"Something went wrong","تم":"Done","جديد":"New","مفتوح":"Open","مغلق":"Closed","محلول":"Resolved","انتظار":"Waiting",
   "المزيد":"More","الإعدادات":"Settings","رجوع":"Back","التالي":"Next","السابق":"Previous","تأكيد":"Confirm","متابعة":"Continue","ابدأ الآن":"Get started","تصفح كزائر":"Browse as guest",
 };
+
+// Arabic presentation labels used for canonical server values in mobile admin,
+// orders and support. Keeping them here preserves a fully English LTR interface
+// when the app language changes while API payloads continue using stable enums.
+Object.assign(exact, {
+  "طالب": "Student",
+  "مشرف": "Supervisor",
+  "مدير": "Admin",
+  "صلاحية غير معروفة": "Unknown role",
+  "نشط": "Active",
+  "معلّق": "Suspended",
+  "غير نشط": "Inactive",
+  "قيد التفعيل": "Pending activation",
+  "بانتظار قبول الدعوة": "Invitation pending",
+  "محظور": "Banned",
+  "محذوف": "Deleted",
+  "حالة حساب غير معروفة": "Unknown account status",
+  "منشور": "Published",
+  "مخفي": "Hidden",
+  "مسودة": "Draft",
+  "مؤرشف": "Archived",
+  "معطّل": "Disabled",
+  "حالة نشر غير معروفة": "Unknown publishing status",
+  "بانتظار المراجعة": "Awaiting review",
+  "مرفوض": "Rejected",
+  "حالة تقييم غير معروفة": "Unknown review status",
+  "نسبة مئوية": "Percentage",
+  "مبلغ ثابت": "Fixed amount",
+  "نوع خصم غير معروف": "Unknown discount type",
+  "منتهي": "Expired",
+  "مكتمل الاستخدام": "Fully redeemed",
+  "حالة كوبون غير معروفة": "Unknown coupon status",
+  "دفعة يدوية": "Manual payment",
+  "منحة مجانية": "Complimentary grant",
+  "نوع منح الوصول": "Access grant type",
+  "اختر هل الوصول ناتج عن دفعة يدوية مسجلة أو منحة مجانية": "Choose whether access comes from a recorded manual payment or a complimentary grant",
+  "لن تُسجل المنحة المجانية ضمن الطلبات أو الإيرادات.": "Complimentary grants are not recorded as orders or revenue.",
+  "منح المادة وتسجيل الدفعة": "Grant course and record payment",
+  "منح المادة مجانًا": "Grant course for free",
+  "تم منح المادة وتسجيل الدفعة في المدفوعات": "Course access granted and the payment was recorded",
+  "تم منح المادة مجانًا دون تسجيل إيراد": "Course access granted without recording revenue",
+  "جامعة": "University",
+  "كلية": "College",
+  "تقنية": "Technical",
+  "حكومية": "Public",
+  "أهلية": "Private",
+  "جهة تعليمية": "Educational institution",
+  "المعرّف:": "Identifier:",
+  "بدأ الدفع": "Payment started",
+  "بدأت عملية الدفع": "Payment started",
+  "بانتظار الدفع": "Awaiting payment",
+  "قيد التحقق من الدفع": "Payment verification pending",
+  "قيد مراجعة الدفع": "Payment under review",
+  "مدفوع": "Paid",
+  "مسترد جزئيًا": "Partially refunded",
+  "مسترد": "Refunded",
+  "متعذر": "Failed",
+  "لم يكتمل": "Not completed",
+  "ملغي": "Cancelled",
+  "مبطل": "Voided",
+  "حالة دفع غير معروفة": "Unknown payment status",
+  "حالة طلب غير معروفة": "Unknown request status",
+  "بوابة Tap للدفع": "Tap payment gateway",
+  "خدمة إضافية": "Additional service",
+  "مشكلة تقنية": "Technical issue",
+  "الدفع": "Payment",
+  "المواد": "Courses",
+  "الحساب": "Account",
+  "دعم عام": "General support",
+  "حالة غير معروفة": "Unknown status",
+});
 
 
 Object.assign(exact, {
@@ -64,7 +191,6 @@ Object.assign(exact, {
   "نجهّز كتالوج المواد...": "Preparing the course catalog...",
   "المواد والشروحات": "Courses & lessons",
   "اسم المادة، الرمز، الجامعة أو التخصص": "Course name, code, university or major",
-  "اختر جهة تعليمية": "Choose an institution",
   "اختر التخصص": "Choose a major",
   "الجامعات والكليات": "Universities & colleges",
   "ابحث باسم الجامعة أو المنطقة": "Search by university or region",
@@ -83,7 +209,6 @@ Object.assign(exact, {
   "مقترحة لك": "Recommended for you",
   "مرتبطة بجامعتك وتخصصك أولًا": "Prioritized for your university and major",
   "مواد مختارة من كتالوج مراس": "Selected courses from the Meras catalog",
-  "الجامعات والكليات": "Universities & colleges",
   "اختصارات ذكية": "Smart shortcuts",
   "اسأل عن أي خدمة": "Ask about any service",
   "ارفع السلايدات": "Upload slides",
@@ -423,7 +548,6 @@ Object.assign(exact, {
   "بانتظار الفيديو": "Waiting for video",
   "استبدال": "Replace",
   "رفع": "Upload",
-  "جديدة": "New",
   "بانتظار ردك": "Waiting for your reply",
   "مشكلة تقنية": "Technical issue",
   "الدفع": "Payment",
@@ -707,11 +831,58 @@ Object.assign(exact, {
   "يجب أن تبقى هذه البيانات مكتملة حتى تظهر توصياتك وتعمل طلبات المواد والشراء بصورة صحيحة.": "Keep this information complete so recommendations, course requests and purchases work correctly.",
   "يراجع سياق حسابك...": "Reviewing your account context...",
   "يفتح الاشتراك عند نشر أول درس، ثم تصلك بقية الدروس تلقائيًا ضمن المادة نفسها.": "Subscriptions open when the first lesson is published; later lessons are added automatically to the same course.",
-  "يمكن تفعيل المادة من موقع مراس، ثم ستظهر هنا تلقائيًا. نسخة المتجر لا تعرض شراء المحتوى الرقمي داخل التطبيق.": "Activate the course from the Meras website and it will appear here automatically. The store build does not offer in-app digital content purchases."
+  "يمكن تفعيل المادة من موقع مراس، ثم ستظهر هنا تلقائيًا. نسخة المتجر لا تعرض شراء المحتوى الرقمي داخل التطبيق.": "Activate the course from the Meras website and it will appear here automatically. The store build does not offer in-app digital content purchases.",
+  "أهلًا بك، أنا مساعد مراس الذكي. اسألني بطريقتك عن الجامعات والتخصصات والمواد والدروس والتسجيل والدفع والمشغل وطلب مادة والدعم.": "Hello, I'm the Meras assistant. Ask naturally about institutions, majors, courses, lessons, registration, payment, playback, course requests, or support.",
+  "اكتب الملاحظة أولًا": "Write the note first",
+  "اكتب ملاحظتك عند هذه اللحظة...": "Write a note for this moment...",
+  "اختيار ملف الفيديو": "Choose video file",
+  "اختر الدرس": "Choose a lesson",
+  "إعدادات المشاهدة": "Playback settings",
+  "الأصلية": "Original",
+  "اكتمل التنزيل": "Download complete",
+  "الدرس": "Lesson",
+  "السرعة": "Speed",
+  "الصوت": "Volume",
+  "الجودة": "Quality",
+  "اللحظة الحالية:": "Current moment:",
+  "التطبيق فقط": "App only",
+  "الويب فقط": "Web only",
+  "الويب والتطبيق": "Web and app",
+  "بث محمي · عرض كامل بدون قص · حفظ تقدم تلقائي": "Protected stream · full view without cropping · progress saved automatically",
+  "تحقق من الاتصال وحاول مرة أخرى": "Check your connection and try again",
+  "تعذر الحفظ في المجلد المختار. اختر مجلدًا آخر وحاول مجددًا.": "Could not save to the selected folder. Choose another folder and try again.",
+  "تعذر تنزيل الملف. تحقق من الاتصال وحاول مرة أخرى.": "Could not download the file. Check your connection and try again.",
+  "تعذر تشغيل ملف الفيديو. أعد المحاولة أو تواصل مع الدعم إذا استمرت المشكلة.": "Could not play the video file. Try again or contact support if the problem continues.",
+  "تعذر حذف الملاحظة": "Could not delete the note",
+  "تعذر الوصول إلى مساحة تخزين التطبيق.": "Could not access app storage.",
+  "تعذّر تشغيل الفيديو": "Could not play the video",
+  "تم تنزيل الملف وحفظه داخل مساحة تطبيق مراس.": "The file was downloaded and saved in Meras app storage.",
+  "تم تحديث طريقة مشاهدة المحتوى": "Content viewing mode updated",
+  "تم حذف الملاحظة": "Note deleted",
+  "تم ربط الفيديو بالدرس، وسيستخدم الخادم بيانات المدة المتاحة.": "The video was linked to the lesson, and the server will use the available duration metadata.",
+  "تم رفع الفيديو": "Video uploaded",
+  "تم تنزيل المرفق وحفظه داخل مساحة تطبيق مراس": "The attachment was downloaded and saved in Meras app storage",
+  "تم حفظ الملف في المجلد الذي اخترته.": "The file was saved in the folder you selected.",
+  "تشغيل": "Play",
+  "جلسة مشاهدة محمية": "Protected viewing session",
+  "حذف الملاحظة": "Delete note",
+  "حفظ عند هذه اللحظة": "Save at this moment",
+  "رفع فيديو درس": "Upload lesson video",
+  "رفع وربط الفيديو": "Upload and link video",
+  "طريقة مشاهدة المحتوى": "Content viewing mode",
+  "جارٍ تحميل الفيديو...": "Loading video...",
+  "جارٍ تجهيز المشغل المحمي...": "Preparing the protected player...",
+  "لا يوجد ملف ترجمة مرفوع لهذا الدرس بعد.": "No captions file has been uploaded for this lesson yet.",
+  "ملاحظات مرتبطة بالفيديو": "Video-linked notes",
+  "يبحث في البيانات الحالية...": "Searching current data...",
+  "يُعرض الفيديو بالحجم الأصلي داخل الإطار بدون قص أو تقريب.": "The video is shown at its original aspect ratio without cropping or zooming.",
+  "يُفرض الاختيار من خادم البث، بينما يبقى الدرس التجريبي متاحًا في الويب والتطبيق": "The streaming server enforces this choice, while preview lessons remain available on both web and app.",
+  "يحسب الخادم مدة MP4/MOV/WebM/MKV/AVI تلقائيًا ويحدّث مدة الدرس": "The server automatically detects MP4/MOV/WebM/MKV/AVI duration and updates the lesson.",
+  "أوقف الفيديو عند الموضع المطلوب واحفظ أول ملاحظة؛ ستظهر هنا ويمكنك الضغط عليها للعودة لنفس الثانية.": "Pause the video at the desired point and save your first note. It will appear here, and you can tap it to return to the same second."
 });
 
 
-const dynamicEnglish: Array<[RegExp, (...parts: string[]) => string]> = [
+const dynamicEnglish: [RegExp, (...parts: string[]) => string][] = [
   [/^(\d+) جهة تعليمية$/, (_all, n) => `${n} institutions`],
   [/^(\d+) مادة ظاهرة$/, (_all, n) => `${n} visible courses`],
   [/^مرحبًا، (.+)$/, (_all, name) => `Hello, ${name}`],
@@ -760,15 +931,31 @@ const dynamicEnglish: Array<[RegExp, (...parts: string[]) => string]> = [
   [/^(\d+(?:\.\d+)?) م\.ب\/ث$/, (_all, n) => `${n} MB/s`],
   [/^ · متبقٍ (\d+) ث$/, (_all, n) => ` · ${n}s remaining`],
   [/^ · متبقٍ نحو (\d+) د$/, (_all, n) => ` · about ${n} min remaining`],
+  [/^حُسبت المدة تلقائيًا: (.+)$/, (_all, duration) => `Duration detected automatically: ${duration}`],
+  [/^الفيديو: (.+)$/, (_all, name) => `Video: ${name}`],
+  [/^تم حفظ الملاحظة عند (.+)$/, (_all, time) => `Note saved at ${time}`],
+  [/^تعذر تنزيل الملف من الخادم \(HTTP (\d+)\)\.$/, (_all, status) => `Could not download the file from the server (HTTP ${status}).`],
+  [/^حفظ (.+)$/, (_all, name) => `Save ${name}`],
 ];
 
 
 export function translate(text: string, language: AppLanguage) {
-  if (language === "ar" || !text) return text;
+  if (!text) return text;
+  if (internalValueLabels[language][text]) return internalValueLabels[language][text];
+  if (language === "ar") return text;
   if (exact[text]) return exact[text];
   for (const [pattern, render] of dynamicEnglish) {
     const match = text.match(pattern);
     if (match) return render(...match);
+  }
+  const leadingWhitespace = text.match(/^\s*/)?.[0] || "";
+  const trailingWhitespace = text.match(/\s*$/)?.[0] || "";
+  const core = text.slice(leadingWhitespace.length, trailingWhitespace.length ? -trailingWhitespace.length : undefined);
+  if (!core) return text;
+  if (exact[core]) return `${leadingWhitespace}${exact[core]}${trailingWhitespace}`;
+  for (const [pattern, render] of dynamicEnglish) {
+    const match = core.match(pattern);
+    if (match) return `${leadingWhitespace}${render(...match)}${trailingWhitespace}`;
   }
   // Unknown strings may be server or user-authored content. Preserve them instead of partially translating them.
   return text;

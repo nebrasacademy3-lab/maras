@@ -16,7 +16,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { absoluteUrl, api, apiUpload, ApiError, getApiToken } from "@/src/lib/api";
+import { absoluteUrl, apiUpload, ApiError, getApiToken } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import type { SupportFile, SupportReply, SupportTicket } from "@/src/types";
@@ -33,11 +33,10 @@ type Props = {
 function isImage(file: SupportFile) { return file.contentType.startsWith("image/"); }
 function isAudio(file: SupportFile) { return file.contentType.startsWith("audio/"); }
 function formatBytes(bytes: number) { if (!bytes) return ""; if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
-function authHeaders() { const token = getApiToken(); return token ? { authorization: `Bearer ${token}` } : {}; }
+function authHeaders(): Record<string, string> { const token = getApiToken(); return token ? { authorization: `Bearer ${token}` } : {}; }
 
 function AudioAttachment({ file, mine }: { file: SupportFile; mine: boolean }) {
   const { colors } = useTheme();
-  const { locale } = useLanguage();
   const source = useMemo(() => ({ uri: absoluteUrl(`/api/support/files/${file.id}?inline=1`), headers: authHeaders() }), [file.id]);
   const player = useAudioPlayer(source);
   const status = useAudioPlayerStatus(player);

@@ -2,6 +2,11 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./checkout.css";
 import "./additions.css";
+import "./direction-polish.css";
+import "./home-premium.css";
+import "./campaigns.css";
+import "./brand-premium.css";
+import "./admin-premium.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DeferredEnhancements } from "@/components/deferred-enhancements";
 import { AnnouncementCampaign } from "@/components/announcement-campaign";
@@ -38,6 +43,7 @@ export const viewport: Viewport = {
 };
 
 const themeScript = `(function(){try{var t=localStorage.getItem('meras-theme');var p=localStorage.getItem('meras-palette');var s=localStorage.getItem('meras-font-scale');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.dataset.palette=['official','violet','rose','teal'].indexOf(p)>=0?p:'official';document.documentElement.dataset.fontScale=['0.9','1','1.1','1.2'].indexOf(s)>=0?s:'1'}catch(e){}})()`;
+const homeIntroScript = `(function(){try{var reduced=window.matchMedia('(prefers-reduced-motion: reduce)').matches;var seen=sessionStorage.getItem('meras-home-intro-seen')==='1';document.documentElement.dataset.homeIntro=!reduced&&!seen?'show':'skip'}catch(e){document.documentElement.dataset.homeIntro='skip'}})()`;
 const structuredData = {
   "@context": "https://schema.org",
   "@graph": [
@@ -48,8 +54,8 @@ const structuredData = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="ar" dir="rtl" suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} /></head>
+    <html lang="ar" dir="rtl" data-scroll-behavior="smooth" suppressHydrationWarning>
+      <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /><script dangerouslySetInnerHTML={{ __html: homeIntroScript }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} /></head>
       <body><ThemeProvider><RealtimeSync><AnnouncementCampaign />{children}<DeferredEnhancements /></RealtimeSync></ThemeProvider></body>
     </html>
   );

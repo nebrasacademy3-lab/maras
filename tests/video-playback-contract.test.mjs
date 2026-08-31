@@ -13,8 +13,9 @@ test("web player preserves the entire video frame instead of cropping it", async
 
 test("signed video URLs remain playable by native/browser media range requests", async () => {
   const route = await read("app/api/video/[lessonId]/route.ts");
-  assert.match(route, /eq\(courseAccess\.userEmail, grant\.email\)/);
-  assert.match(route, /if \(user && user\.email !== grant\.email\)/);
+  assert.match(route, /activeCourseAccessWhere\(grant\.email, courseSlug\)/);
+  assert.match(route, /if \(!user\) return jsonError/);
+  assert.match(route, /if \(user\.email !== grant\.email\)/);
   assert.match(route, /Accept-Ranges/);
   assert.match(route, /Cross-Origin-Resource-Policy", "cross-origin/);
   assert.match(route, /Referrer-Policy", "no-referrer/);

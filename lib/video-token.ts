@@ -2,6 +2,7 @@ type VideoGrant = {
   courseSlug: string;
   lessonId: string;
   email: string;
+  client?: "app" | "web";
   expiresAt: number;
 };
 

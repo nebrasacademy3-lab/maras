@@ -50,6 +50,7 @@ test("Expo appearance preferences are persisted and mounted for all roles", asyn
   assert.match(admin, /<AppearanceSettings\s*\/>/);
   assert.match(supervisor, /<AppearanceSettings\s*\/>/);
   assert.match(brand, /assets\/brand-mark\.png/);
-  assert.match(brand, /assets\/brand-logo-(?:dark|light)\.png/);
+  assert.match(brand, /assets\/brand-mark-dark\.png/);
+  assert.match(brand, /مراس العلم/);
   assert.doesNotMatch(brand, /tintColor/);
 });

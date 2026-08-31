@@ -27,7 +27,10 @@ export const PUBLIC_SETTING_DEFAULTS = {
 
 export const ADMIN_SETTING_DEFAULTS = {
   max_student_devices: "2",
+  content_view_mode: "both",
 } as const;
+
+export type ContentViewMode = "both" | "app_only" | "web_only";
 
 export type PublicSettingKey = keyof typeof PUBLIC_SETTING_DEFAULTS;
 export type AdminSettingKey = keyof typeof ADMIN_SETTING_DEFAULTS;
@@ -55,6 +58,7 @@ export const SETTING_META: Record<SettingKey, { label: string; category: string;
   social_threads: { label: "رابط Threads", category: "social", isPublic: true },
   announcement: { label: "تنبيه عام", category: "general", isPublic: true },
   max_student_devices: { label: "الحد الأقصى لأجهزة الطالب", category: "security", isPublic: false },
+  content_view_mode: { label: "الأجهزة المسموح لها بمشاهدة المحتوى", category: "security", isPublic: false },
 };
 
 export function whatsappHref(settings: Pick<PublicSettings, "whatsapp_number" | "whatsapp_message">) {
@@ -74,6 +78,19 @@ export async function getStudentDeviceLimit() {
   } catch {
     return fallback;
   }
+}
+
+export async function getContentViewMode(): Promise<ContentViewMode> {
+  const fallback: ContentViewMode = "both";
+  if (!process.env.DATABASE_URL) return fallback;
+  const [row] = await getDb().select({ value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.key, "content_view_mode")).limit(1);
+  return row?.value === "app_only" || row?.value === "web_only" || row?.value === "both" ? row.value : fallback;
+}
+
+export function contentViewModeError(mode: ContentViewMode, client: "app" | "web") {
+  if (mode === "app_only" && client === "web") return "مشاهدة المحتوى الكامل متاحة حاليًا من تطبيق مراس فقط. يبقى الدرس التجريبي متاحًا على الويب.";
+  if (mode === "web_only" && client === "app") return "مشاهدة المحتوى الكامل متاحة حاليًا من موقع مراس فقط. يبقى الدرس التجريبي متاحًا في التطبيق.";
+  return "";
 }
 
 let publicSettingsCache: { expiresAt: number; value: PublicSettings } | null = null;
@@ -103,4 +120,3 @@ export async function getPublicSettings(): Promise<PublicSettings> {
   publicSettingsInFlight = load();
   try { return await publicSettingsInFlight; } finally { publicSettingsInFlight = null; }
 }
-

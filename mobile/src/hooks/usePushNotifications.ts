@@ -2,11 +2,11 @@ import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
 import { useQueryClient } from "@tanstack/react-query";
-import { router } from "expo-router";
 import { useCallback, useEffect } from "react";
-import { AppState, Linking, Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import { api, jsonBody } from "@/src/lib/api";
 import { useAuth } from "@/src/providers/AuthProvider";
+import { openNotificationRoute } from "@/src/lib/notification-routing";
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
@@ -16,23 +16,6 @@ Notifications.setNotificationHandler({
     shouldShowList: true,
   }),
 });
-
-function openPushRoute(route: unknown) {
-  if (typeof route !== "string" || !route.startsWith("/")) return;
-  if (route.startsWith("/learn/")) {
-    const slug = decodeURIComponent(route.slice("/learn/".length));
-    if (slug) router.push({ pathname: "/course/[slug]", params: { slug } });
-  } else if (route === "/courses") router.push("/(tabs)/courses");
-  else if (route === "/universities") router.push("/(tabs)/universities");
-  else if (route === "/contact") router.push("/contact");
-  else if (route === "/support") router.push("/support");
-  else if (route === "/requests" || route.includes("view=requests")) router.push("/requests");
-  else if (route === "/notifications" || route.includes("view=notifications")) router.push("/notifications");
-  else if (route === "/cart") router.push("/cart");
-  else if (route === "/favorites") router.push("/favorites");
-  else if (route === "/admin") router.push("/admin");
-  else if (route === "/supervisor") router.push("/supervisor");
-}
 
 export async function clearNativeNotificationBadge() {
   await Promise.allSettled([
@@ -51,7 +34,7 @@ export function usePushNotifications() {
       return;
     }
     try {
-      const payload = await api<{ unreadCount?: number; notifications?: Array<{ readAt: string | null }> }>("/api/mobile/notifications");
+      const payload = await api<{ unreadCount?: number; notifications?: { readAt: string | null }[] }>("/api/mobile/notifications");
       const unread = typeof payload.unreadCount === "number"
         ? payload.unreadCount
         : (payload.notifications || []).filter((item) => !item.readAt).length;
@@ -98,10 +81,11 @@ export function usePushNotifications() {
 
   useEffect(() => {
     if (!user) return;
-    const receive = Notifications.addNotificationReceivedListener(() => {
-      void refreshNotificationState();
-    });
-    const response = Notifications.addNotificationResponseReceivedListener((event) => {
+    let lastHandledIdentifier = "";
+    const handleResponse = (event: Notifications.NotificationResponse) => {
+      const identifier = event.notification.request.identifier;
+      if (identifier && identifier === lastHandledIdentifier) return;
+      lastHandledIdentifier = identifier;
       const data = event.notification.request.content.data || {};
       const notificationId = Number(data.notificationId || 0);
       if (notificationId > 0) {
@@ -111,8 +95,13 @@ export function usePushNotifications() {
       } else {
         void refreshNotificationState();
       }
-      if (typeof data.url === "string" && data.url.startsWith("https://")) void Linking.openURL(data.url); else openPushRoute(data.route);
+      openNotificationRoute(typeof data.url === "string" ? data.url : data.route);
+    };
+    const receive = Notifications.addNotificationReceivedListener(() => {
+      void refreshNotificationState();
     });
+    const response = Notifications.addNotificationResponseReceivedListener(handleResponse);
+    void Notifications.getLastNotificationResponseAsync().then((event) => { if (event) handleResponse(event); }).catch(() => undefined);
     const appState = AppState.addEventListener("change", (state) => {
       if (state === "active") void refreshNotificationState();
     });

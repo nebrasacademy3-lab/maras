@@ -10,6 +10,7 @@ import { AppHeader } from "@/src/components/AppHeader";
 import { AppearanceSettings } from "@/src/components/AppearanceSettings";
 import { AppButton, Card, EmptyState, Field, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
 import { absoluteUrl, api, ApiError, getApiToken, jsonBody } from "@/src/lib/api";
+import { downloadProtectedFile } from "@/src/lib/downloads";
 import { assetMimeType } from "@/src/lib/file-types";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -20,7 +21,7 @@ type UnitRow = { id: number; courseSlug: string; title: string; position: number
 type LessonRow = { id: string; courseSlug: string; unitId: number; title: string; position: number; durationSeconds: number; freePreview: boolean; status: string; videoAssetId: number | null };
 type VideoRow = { id: number; courseSlug: string; lessonId: string; status: string; sizeBytes: number; createdAt: string };
 type Workspace = { ok: true; courses: Course[]; units: UnitRow[]; lessons: LessonRow[]; videos: VideoRow[]; assignments: { id: number; institutionSlug: string | null; specialty: string | null }[] };
-type RequestRow = { id: number; courseName: string; university: string; specialty: string; courseUrl?: string | null; status: string; notes: string; attachmentsCount: number; createdAt: string; files: { id: number; originalName: string; sizeBytes: number }[] };
+type RequestRow = { id: number; courseName: string; university: string; specialty: string; courseUrl?: string | null; status: string; notes: string; attachmentsCount: number; createdAt: string; files: { id: number; originalName: string; contentType: string; sizeBytes: number }[] };
 type RequestsPayload = { ok: true; requests: RequestRow[] };
 type Tab = "requests" | "content" | "appearance";
 
@@ -30,7 +31,6 @@ const labels: Record<string, string> = { assigned: "مسند", reviewing: "مر�
 export default function Supervisor() {
   const { user } = useAuth();
   const { colors } = useTheme();
-  const { locale } = useLanguage();
   const client = useQueryClient();
   const allowed = user?.role === "supervisor" || user?.role === "admin";
   const [tab, setTab] = useState<Tab>("requests");
@@ -62,7 +62,7 @@ export default function Supervisor() {
       <TabButton active={tab === "appearance"} label="المظهر" icon="color-palette-outline" onPress={() => setTab("appearance")} colors={colors} />
     </View>
     {feedback ? <Text style={[styles.feedback, { color: feedback.startsWith("تم") ? colors.success : colors.danger }]}>{feedback}</Text> : null}
-    {tab === "requests" ? <RequestQueue rows={requests.data?.requests || []} colors={colors} run={run} openingFile={openingFile} onOpenFile={async (file) => { setOpeningFile(file.id); try { const uri = `${FileSystem.cacheDirectory || FileSystem.documentDirectory || ""}maras-request-${file.id}-${encodeURIComponent(file.originalName).replace(/%/g, "_")}`; const result = await FileSystem.downloadAsync(absoluteUrl(`/api/supervisor/request-files/${file.id}`), uri, { headers: { authorization: `Bearer ${getApiToken()}` } }); await Linking.openURL(result.uri); } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر فتح المرفق من الخادم"); } finally { setOpeningFile(null); } }} /> : tab === "content" ? <ContentManager data={workspace.data!} colors={colors} run={run} /> : <AppearanceSettings />}
+    {tab === "requests" ? <RequestQueue rows={requests.data?.requests || []} colors={colors} run={run} openingFile={openingFile} onOpenFile={async (file) => { setOpeningFile(file.id); try { const result = await downloadProtectedFile({ path: `/api/supervisor/request-files/${file.id}`, fileName: `request-${file.id}-${file.originalName}`, mimeType: file.contentType }); if (result.action === "stored") setFeedback("تم تنزيل المرفق وحفظه داخل مساحة تطبيق مراس"); } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر فتح المرفق من الخادم"); } finally { setOpeningFile(null); } }} /> : tab === "content" ? <ContentManager data={workspace.data!} colors={colors} run={run} /> : <AppearanceSettings />}
   </Screen>;
 }
 
@@ -71,6 +71,7 @@ function TabButton({ active, label, icon, onPress, colors }: { active: boolean; 
 }
 
 function RequestQueue({ rows, colors, run, openingFile, onOpenFile }: { rows: RequestRow[]; colors: ReturnType<typeof useTheme>["colors"]; run: (task: () => Promise<unknown>, success: string) => Promise<void>; openingFile: number | null; onOpenFile: (file: RequestRow["files"][number]) => Promise<void> }) {
+  const { locale, t } = useLanguage();
   return <>
     <SectionTitle title="طابور طلبات المواد" subtitle="اختيار الحالة يربط الطلب بك ويرسل تحديثًا فوريًا للطالب" />
     {rows.length ? rows.map((row) => <Card key={row.id} style={styles.request}>
@@ -78,7 +79,7 @@ function RequestQueue({ rows, colors, run, openingFile, onOpenFile }: { rows: Re
       {row.notes ? <Text style={[styles.notes, { color: colors.text }]}>{row.notes}</Text> : null}
       {row.courseUrl ? <Pressable onPress={() => void Linking.openURL(row.courseUrl!)} style={[styles.file, { borderColor: colors.border }]}><Ionicons name="link-outline" size={17} color={colors.primary} /><Text numberOfLines={1} style={[styles.fileName, { color: colors.primary }]}>فتح رابط المادة المرفوع من الطالب</Text></Pressable> : null}
       <Text style={[styles.meta, { color: colors.textSoft }]}>{row.attachmentsCount} مرفقات · {new Date(row.createdAt).toLocaleDateString(locale)}</Text>
-      {row.files?.map((file) => <Pressable key={file.id} accessibilityRole="button" accessibilityLabel={`فتح المرفق ${file.originalName}`} onPress={() => void onOpenFile(file)} disabled={openingFile === file.id} style={[styles.file, { borderColor: colors.border, opacity: openingFile === file.id ? .55 : 1 }]}><Ionicons name={openingFile === file.id ? "hourglass-outline" : "document-outline"} size={17} color={colors.primary} /><Text numberOfLines={1} style={[styles.fileName, { color: colors.text }]}>{file.originalName}</Text><Text style={[styles.fileSize, { color: colors.textSoft }]}>{openingFile === file.id ? "جارٍ الفتح" : `${Math.ceil(file.sizeBytes / 1024)} KB`}</Text></Pressable>)}
+      {row.files?.map((file) => <Pressable key={file.id} accessibilityRole="button" accessibilityLabel={t(`فتح المرفق ${file.originalName}`)} onPress={() => void onOpenFile(file)} disabled={openingFile === file.id} style={[styles.file, { borderColor: colors.border, opacity: openingFile === file.id ? .55 : 1 }]}><Ionicons name={openingFile === file.id ? "hourglass-outline" : "document-outline"} size={17} color={colors.primary} /><Text numberOfLines={1} style={[styles.fileName, { color: colors.text }]}>{file.originalName}</Text><Text style={[styles.fileSize, { color: colors.textSoft }]}>{openingFile === file.id ? "جارٍ الفتح" : `${Math.ceil(file.sizeBytes / 1024)} KB`}</Text></Pressable>)}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.statuses}>{statuses.map((status) => <Pressable key={status} onPress={() => run(() => api("/api/supervisor/requests", { method: "PATCH", body: jsonBody({ id: row.id, status }) }), "تم تحديث الطلب وإشعار الطالب")} style={[styles.status, { backgroundColor: row.status === status ? colors.primary : colors.surfaceAlt }]}><Text style={{ color: row.status === status ? "#FFF" : colors.text, fontSize: 8, fontWeight: "800" }}>{labels[status]}</Text></Pressable>)}</ScrollView>
     </Card>) : <EmptyState icon="checkmark-done-circle-outline" title="الطابور فارغ" text="لا توجد طلبات جديدة ضمن نطاق إشرافك الآن." />}
   </>;

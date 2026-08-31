@@ -22,7 +22,7 @@ export function SupportForm() {
     try{const response=await fetch("/api/support",{credentials:"same-origin",cache:"no-store"});const result=await response.json() as {tickets?:SupportTicket[]};if(response.ok)setTickets(result.tickets||[]);}
     catch{/* keep last snapshot */}
   },[]);
-  useEffect(()=>{void loadTickets();},[loadTickets]);
+  useEffect(()=>{queueMicrotask(()=>{void loadTickets();});},[loadTickets]);
   const selected=useMemo(()=>tickets.find((ticket)=>ticket.id===selectedId)||null,[tickets,selectedId]);
 
   const submit=async(event:React.FormEvent<HTMLFormElement>)=>{

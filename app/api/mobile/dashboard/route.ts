@@ -1,9 +1,10 @@
-import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, courseRequests, invoices, lessonProgress, notificationsDb, orders, supportReplies, supportTickets } from "@/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { jsonError } from "@/lib/api";
 import { getCoursesCatalog, getInstitutionsCatalog, getRecommendedCourses } from "@/lib/catalog-store";
+import { activeUserAccessWhere } from "@/lib/course-access";
 import { mobileNoStoreHeaders } from "@/lib/mobile-api";
 
 export async function GET(request: Request) {
@@ -12,7 +13,7 @@ export async function GET(request: Request) {
   const db = getDb();
   const now = new Date().toISOString();
   const [accessRows, progressRows, orderRows, invoiceRows, requestRows, noticeRows, ticketRows] = await Promise.all([
-    db.select().from(courseAccess).where(and(eq(courseAccess.userEmail, user.email), isNull(courseAccess.revokedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, now)))),
+    db.select().from(courseAccess).where(activeUserAccessWhere(user.email, now)),
     db.select().from(lessonProgress).where(eq(lessonProgress.userEmail, user.email)),
     db.select().from(orders).where(eq(orders.customerEmail, user.email)).orderBy(desc(orders.createdAt)).limit(50),
     db.select().from(invoices).where(eq(invoices.customerEmail, user.email)).orderBy(desc(invoices.issuedAt)).limit(50),

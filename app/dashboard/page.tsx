@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { and, desc, eq, gt, isNull, or } from "drizzle-orm";
+import { and, desc, eq, isNull, or } from "drizzle-orm";
 import { SiteHeader } from "@/components/site-header";
 import { StudentDashboard, type DashboardCourse, type DashboardNotice, type DashboardOrder, type DashboardRequest, type DashboardRecommendation } from "@/components/student-dashboard";
 import { getDb } from "@/db";
 import { courseAccess, courseRequests, lessonProgress, notificationsDb, orders, supportReplies, supportTickets } from "@/db/schema";
 import { getCoursesCatalog, getInstitutionsCatalog, getRecommendedCourses } from "@/lib/catalog-store";
+import { activeUserAccessWhere } from "@/lib/course-access";
 import { requireUser } from "@/lib/server-auth";
 
 export const metadata: Metadata = { title:"لوحة الطالب",robots:{index:false,follow:false} };
@@ -17,7 +18,7 @@ export default async function DashboardPage({ searchParams }:{ searchParams:Prom
   const db = getDb();
   const now = new Date().toISOString();
   const [accessRows, progressRows, orderRows, requestRows, noticeRows, ticketRows, replyRows, catalogCourses, institutions, recommendedRows] = await Promise.all([
-    db.select().from(courseAccess).where(and(eq(courseAccess.userEmail,user.email),isNull(courseAccess.revokedAt),or(isNull(courseAccess.expiresAt),gt(courseAccess.expiresAt,now)))),
+    db.select().from(courseAccess).where(activeUserAccessWhere(user.email, now)),
     db.select().from(lessonProgress).where(eq(lessonProgress.userEmail,user.email)),
     db.select().from(orders).where(eq(orders.customerEmail,user.email)).orderBy(desc(orders.createdAt)).limit(50),
     db.select().from(courseRequests).where(eq(courseRequests.userId,user.id)).orderBy(desc(courseRequests.createdAt)).limit(50),

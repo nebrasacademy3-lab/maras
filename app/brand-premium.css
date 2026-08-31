@@ -1,0 +1,58 @@
+/* Crisp identity lockup: the symbol remains an image while Arabic lettering is live text. */
+.brand-logo {
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  text-align: center;
+  text-decoration: none;
+  line-height: 1;
+}
+
+.brand-logo-symbol {
+  width: 72%;
+  aspect-ratio: 2 / 1;
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.brand-logo-symbol > img {
+  grid-area: 1 / 1;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+
+.brand-logo-word {
+  display: block;
+  color: var(--primary-dark);
+  font-family: inherit;
+  font-size: calc(20px * var(--font-scale, 1));
+  font-weight: 900;
+  line-height: .95;
+  white-space: nowrap;
+  text-rendering: geometricPrecision;
+}
+
+.dark .brand-logo-word { color: #f7f9ff; }
+.brand-logo-compact .brand-logo-word { font-size: calc(16px * var(--font-scale, 1)); }
+.brand-logo-mark-only { display: inline-flex; align-items: center; justify-content: center; }
+.brand-logo-mark-only .brand-logo-symbol { width: 100%; height: 100%; }
+
+.brand-mark { display: grid; place-items: center; overflow: hidden; }
+.brand-mark img { inset: auto; width: 100%; height: 100%; object-fit: contain; }
+.brand-mark-dark { display: none !important; }
+.dark .brand-mark-light { display: none !important; }
+.dark .brand-mark-dark { display: block !important; }
+
+.admin-brand .brand-logo { width: 122px !important; }
+.video-brand .brand-logo { width: 100%; max-width: none; }
+.video-brand .brand-logo-symbol { width: 82%; }
+.video-brand .brand-logo-word { color: #fff; font-size: calc(10px * var(--font-scale, 1)); text-shadow: 0 1px 5px rgba(0,0,0,.7); }
+.university-identity { gap: 30px; }
+.university-identity > .university-logo { transform: translateX(6px); margin-inline-end: 3px; }
+
+@media (max-width: 520px) {
+  .brand-logo-word { font-size: calc(17px * var(--font-scale, 1)); }
+  .brand-logo-compact .brand-logo-word { font-size: calc(14px * var(--font-scale, 1)); }
+}

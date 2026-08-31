@@ -19,9 +19,10 @@ export async function POST(request: Request) {
   const token = cleanText(payload.token, 260);
   const platform = cleanText(payload.platform, 20);
   const deviceLabel = cleanText(payload.deviceLabel, 120) || null;
+  const deviceId = cleanText(request.headers.get("x-meras-device-id"), 128) || null;
   if (!validExpoToken(token) || !["ios", "android"].includes(platform)) return jsonError("رمز الإشعارات أو النظام غير صالح");
   const now = new Date().toISOString();
-  await getDb().insert(pushDevices).values({ userId: user.id, token, platform, deviceLabel, status: "active", lastSeenAt: now, createdAt: now }).onConflictDoUpdate({ target: pushDevices.token, set: { userId: user.id, platform, deviceLabel, status: "active", lastSeenAt: now } });
+  await getDb().insert(pushDevices).values({ userId: user.id, token, deviceId, platform, deviceLabel, status: "active", lastSeenAt: now, createdAt: now }).onConflictDoUpdate({ target: pushDevices.token, set: { userId: user.id, deviceId, platform, deviceLabel, status: "active", lastSeenAt: now } });
   return Response.json({ ok: true }, { headers: mobileNoStoreHeaders });
 }
 
@@ -30,10 +31,11 @@ export async function DELETE(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
   if (!await checkRateLimit("push-device-write", `user:${user.id}:${clientIp(request)}`, 20, 60 * 60)) return jsonError("طلبات الأجهزة كثيرة. حاول لاحقًا.", 429);
-  let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الجهاز غير صالحة"); }
+  let payload: Record<string, unknown> = {};
+  try { payload = await request.json() as Record<string, unknown>; } catch { /* The device id header is sufficient during logout. */ }
   const token = cleanText(payload.token, 260);
-  if (!validExpoToken(token)) return jsonError("رمز الإشعارات غير صالح");
-  await getDb().update(pushDevices).set({ status: "revoked", lastSeenAt: new Date().toISOString() }).where(and(eq(pushDevices.token, token), eq(pushDevices.userId, user.id)));
+  const deviceId = cleanText(request.headers.get("x-meras-device-id"), 128);
+  if (!validExpoToken(token) && deviceId.length < 12) return jsonError("تعذر تحديد جهاز الإشعارات");
+  await getDb().update(pushDevices).set({ status: "revoked", lastSeenAt: new Date().toISOString() }).where(and(eq(pushDevices.userId, user.id), validExpoToken(token) ? eq(pushDevices.token, token) : eq(pushDevices.deviceId, deviceId)));
   return Response.json({ ok: true }, { headers: mobileNoStoreHeaders });
 }

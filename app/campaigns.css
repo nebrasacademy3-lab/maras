@@ -1,0 +1,40 @@
+.public-announcement-banner {
+  --announcement-accent: #3159e8;
+  position: relative;
+  z-index: 65;
+  overflow: hidden;
+  border-block-end: 1px solid color-mix(in srgb, var(--announcement-accent) 23%, var(--line));
+  color: var(--text);
+  background:
+    radial-gradient(circle at 88% -40%, color-mix(in srgb, var(--announcement-accent) 22%, transparent), transparent 42%),
+    color-mix(in srgb, var(--announcement-accent) 6%, var(--surface));
+}
+.public-announcement-banner::before { content:""; position:absolute; inset-block:0; inset-inline-start:0; width:4px; background:var(--announcement-accent); }
+.public-announcement-banner>.container { min-height: 62px; display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 13px; padding-block: 9px; }
+.announcement-mark { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 13px; color: var(--announcement-accent); background: color-mix(in srgb, var(--announcement-accent) 12%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--announcement-accent) 15%, transparent); }
+.public-announcement-banner>.container>div { min-width: 0; }
+.public-announcement-banner strong { display:block; font-size:14px; line-height:1.5; }
+.public-announcement-banner p { overflow:hidden; margin:2px 0 0; color:var(--text-soft); font-size:12px; line-height:1.6; text-overflow:ellipsis; white-space:nowrap; }
+.announcement-action { min-height:36px; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:7px 12px; border:1px solid color-mix(in srgb,var(--announcement-accent) 24%,var(--line)); border-radius:11px; color:var(--announcement-accent); background:var(--surface); font-size:12px; font-weight:900; transition:transform var(--motion-fast),box-shadow var(--motion-fast),background var(--motion-fast); }
+.announcement-action:hover { transform:translateY(-1px); background:color-mix(in srgb,var(--announcement-accent) 7%,var(--surface)); box-shadow:0 8px 20px color-mix(in srgb,var(--announcement-accent) 12%,transparent); }
+.announcement-banner-close,.announcement-modal-close { width:36px; height:36px; display:grid; place-items:center; border:0; border-radius:11px; color:var(--text-soft); background:transparent; cursor:pointer; transition:color var(--motion-fast),background var(--motion-fast),transform var(--motion-fast); }
+.announcement-banner-close:hover,.announcement-modal-close:hover { color:var(--text); background:var(--surface-2); transform:rotate(4deg); }
+
+.announcement-modal-backdrop { position:fixed; z-index:1000; inset:0; display:grid; place-items:center; padding:18px; background:rgba(4,10,26,.63); backdrop-filter:blur(9px); animation:campaign-backdrop-in .28s var(--ease-standard) both; }
+.announcement-modal { --announcement-accent:#3159e8; position:relative; width:min(520px,100%); overflow:hidden; display:grid; grid-template-columns:74px minmax(0,1fr); gap:17px; padding:27px; border:1px solid rgba(255,255,255,.65); border-radius:28px; color:var(--text); background:linear-gradient(145deg,color-mix(in srgb,var(--announcement-accent) 7%,var(--surface)),var(--surface) 62%); box-shadow:0 30px 95px rgba(2,8,23,.32); outline:0; animation:campaign-card-in .46s var(--ease-emphasized) both; }
+.announcement-modal::after { content:""; position:absolute; width:220px; height:220px; inset-block-start:-150px; inset-inline-end:-110px; border-radius:50%; background:color-mix(in srgb,var(--announcement-accent) 18%,transparent); filter:blur(8px); pointer-events:none; }
+.announcement-modal-icon { position:relative; z-index:1; width:68px; height:68px; display:grid; place-items:center; border-radius:22px; color:#fff!important; background:linear-gradient(145deg,var(--announcement-accent),color-mix(in srgb,var(--announcement-accent) 62%,#8b5cf6)); box-shadow:0 15px 35px color-mix(in srgb,var(--announcement-accent) 28%,transparent); }
+.announcement-modal-icon svg { width:29px; height:29px; }
+.announcement-modal-copy { position:relative; z-index:1; min-width:0; padding-inline-end:24px; }
+.announcement-modal-copy>span { display:inline-flex; margin-bottom:6px; color:var(--announcement-accent); font-size:11px; font-weight:900; letter-spacing:.02em; }
+.announcement-modal-copy h2 { margin:0; font-size:25px; line-height:1.35; letter-spacing:-.02em; }
+.announcement-modal-copy p { margin:8px 0 0; color:var(--text-soft); font-size:14px; line-height:1.9; }
+.announcement-modal-actions { position:relative; z-index:1; grid-column:1/-1; display:flex; align-items:center; justify-content:flex-start; gap:9px; padding-top:5px; }
+.announcement-modal-actions .announcement-action { min-height:43px; padding-inline:17px; color:#fff; border-color:transparent; background:var(--announcement-accent); }
+.announcement-dismiss { min-height:43px; padding:8px 15px; border:1px solid var(--line); border-radius:12px; color:var(--text-soft); background:var(--surface-2); font:inherit; font-size:12px; font-weight:850; cursor:pointer; }
+.announcement-modal-close { position:absolute; z-index:3; inset-block-start:14px; inset-inline-end:14px; }
+.announcement-template-discount{--announcement-accent:#d97706}.announcement-template-new-course{--announcement-accent:#2563eb}.announcement-template-new-service{--announcement-accent:#7c3aed}.announcement-template-urgent{--announcement-accent:#dc2626}.announcement-template-success{--announcement-accent:#059669}
+@keyframes campaign-backdrop-in { from { opacity:0 } to { opacity:1 } }
+@keyframes campaign-card-in { from { opacity:0; transform:translateY(18px) scale(.96) } to { opacity:1; transform:none } }
+@media(max-width:680px){.public-announcement-banner>.container{grid-template-columns:auto minmax(0,1fr) auto;gap:9px}.public-announcement-banner .announcement-action{grid-column:2;justify-self:start}.public-announcement-banner p{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.announcement-modal{grid-template-columns:55px minmax(0,1fr);gap:13px;padding:21px;border-radius:23px}.announcement-modal-icon{width:53px;height:53px;border-radius:17px}.announcement-modal-icon svg{width:23px;height:23px}.announcement-modal-copy{padding-inline-end:16px}.announcement-modal-copy h2{font-size:21px}.announcement-modal-copy p{font-size:13px}.announcement-modal-actions{display:grid;grid-template-columns:1fr}.announcement-modal-actions>*{width:100%}}
+@media(prefers-reduced-motion:reduce){.announcement-modal-backdrop,.announcement-modal{animation:none}.announcement-action,.announcement-banner-close,.announcement-modal-close{transition:none}}

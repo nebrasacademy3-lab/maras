@@ -1,68 +1,84 @@
-import { allPrograms, getInstitutionPrograms, getProgramCourses } from "@/lib/academic-data";
+import { allPrograms, getInstitutionPrograms } from "@/lib/academic-data";
 import { courses as bundledCourses, institutions as bundledInstitutions, type Course, type Institution } from "@/lib/data";
 import type { SessionUser } from "@/lib/auth";
 import { PUBLIC_SETTING_DEFAULTS, type PublicSettings, whatsappHref } from "@/lib/platform-settings";
+import { assistantMatchScore, detectAssistantLanguage, findBestAssistantMatch, normalizeAssistantText, type AssistantLanguage } from "@/lib/assistant-search";
 
 export type AssistantAction = { label: string; href: string };
 export type AssistantReply = { answer: string; actions: AssistantAction[]; suggestions?: string[] };
 
-const normalize = (value: string) => value.toLowerCase()
-  .replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه").replace(/ؤ/g, "و").replace(/ئ/g, "ي")
-  .replace(/[پ]/g, "ب").replace(/[چ]/g, "ج").replace(/[گ]/g, "ك").replace(/[ڤ]/g, "ف")
-  .replace(/[ًٌٍَُِّْـ]/g, "").replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
-const tokens = (value: string) => normalize(value).split(" ").filter((word) => word.length > 1);
-const bigrams = (value: string) => Array.from({ length: Math.max(0, value.length - 1) }, (_, index) => value.slice(index, index + 2));
-const closeWord = (left: string, right: string) => {
-  if (left === right) return true;
-  if (Math.min(left.length, right.length) >= 3 && (left.includes(right) || right.includes(left))) return true;
-  if (Math.min(left.length, right.length) < 4) return false;
-  const a = bigrams(left); const b = bigrams(right); let overlap = 0; const copy = [...b];
-  for (const item of a) { const index = copy.indexOf(item); if (index >= 0) { overlap += 1; copy.splice(index, 1); } }
-  return (2 * overlap) / Math.max(1, a.length + b.length) >= 0.67;
-};
 const has = (text: string, terms: string[]) => {
-  const haystack = tokens(text);
-  return terms.some((term) => {
-    const normalized = normalize(term);
-    if (text.includes(normalized)) return true;
-    const wanted = tokens(normalized);
-    return wanted.length > 0 && wanted.every((word) => haystack.some((candidate) => closeWord(candidate, word)));
-  });
+  return terms.some((term) => assistantMatchScore(text, term) >= 0.65);
 };
 const action = (label: string, href: string): AssistantAction => ({ label, href });
 
-type LiveAssistantCatalog = { institutions: Institution[]; courses: Course[] };
-export type AssistantIntent = "greeting" | "registration" | "login" | "recovery" | "profile" | "security" | "university" | "specialty" | "course_search" | "course_request" | "files" | "cart_favorites" | "payment" | "coupon" | "learning" | "notifications" | "support" | "appearance" | "staff" | "assistant" | "thanks" | "general";
+export type AssistantProgram = { slug?: string; name: string; aliases?: string[]; description?: string; faculty?: string; degree?: string; institutionSlugs?: string[] };
+export type LiveAssistantCatalog = { institutions: Institution[]; courses: Course[]; programs?: AssistantProgram[] };
+export type AssistantIntent = "greeting" | "registration" | "login" | "recovery" | "profile" | "security" | "policy" | "university" | "specialty" | "course_search" | "course_request" | "files" | "cart_favorites" | "payment" | "coupon" | "learning" | "notifications" | "support" | "appearance" | "staff" | "assistant" | "thanks" | "general";
 
 export function detectAssistantIntent(rawQuestion: string): AssistantIntent {
-  const text = normalize(rawQuestion);
+  const text = normalizeAssistantText(rawQuestion);
   const rules: Array<[AssistantIntent, string[]]> = [
-    ["greeting", ["السلام عليكم", "مرحبا", "اهلا", "هلا", "صباح الخير", "مساء الخير"]],
-    ["thanks", ["شكرا", "مشكور", "يعطيك العافيه", "ممتاز", "تمام"]],
-    ["recovery", ["نسيت كلمه المرور", "استعاده الحساب", "استرجاع الحساب", "رمز التحقق", "ما اتذكر الباسورد", "تغيير كلمه المرور"]],
-    ["security", ["امن", "امان", "اختراق", "تسلل", "سرقه الحساب", "حذف حساب", "خصوصيه", "بياناتي"]],
-    ["registration", ["انشاء حساب", "حساب جديد", "سجلت جديد", "ابغى اسجل", "التسجيل", "اشتراك حساب"]],
-    ["login", ["تسجيل الدخول", "ما يدخل", "ما اقدر ادخل", "خطا في الدخول", "مشكله الدخول", "دخول حسابي"]],
-    ["profile", ["اكمل بياناتي", "المستوى الدراسي", "مستواي", "تغيير الجامعه", "تغيير التخصص", "ملفي", "بيانات الحساب", "جامعتي", "ما جامعتي", "تخصصي", "ما تخصصي", "بياناتي الجامعيه", "اخر طلب"]],
-    ["course_request", ["ما لقيت مادتي", "ماده غير موجوده", "اطلب ماده", "توفير ماده", "طلب مقرر", "السلايدات", "التوصيف"]],
-    ["learning", ["درس مجاني", "المشغل", "الفيديو", "سرعه الفيديو", "اكمل الفيديو", "تقدم", "ملء الشاشه", "الجوده", "ما يشتغل الفيديو"]],
-    ["files", ["رفع ملف", "ارفع ملف", "مرفق", "مرفقات", "pdf", "بوربوينت", "حجم الملف", "رفع فيديو"]],
-    ["coupon", ["كوبون", "قسيمه", "رمز خصم", "كود خصم", "بروموكود", "خصم"]],
-    ["payment", ["اشتري", "شراء", "ادفع", "الدفع", "بطاقه", "مدى", "فيزا", "ماستر", "فاتوره", "استرداد", "استرجاع مبلغ", "عملية الدفع"]],
-    ["cart_favorites", ["السله", "أضيف للسلة", "المفضله", "المفضلة", "القلب", "حفظ ماده"]],
-    ["notifications", ["اشعار", "اشعارات", "تنبيه", "التنبيهات", "وصلني اشعار", "حاله الطلب"]],
-    ["support", ["الدعم", "مشكله", "مشكلة", "شكوى", "ساعدني", "ما يشتغل", "ما يفتح", "خربان", "تواصل"]],
-    ["appearance", ["الوضع الليلي", "الوضع الفاتح", "الثيم", "حجم الخط", "تكبير الخط", "تصغير الخط", "المظهر", "الشاشه"]],
-    ["staff", ["المشرف", "الاداره", "لوحه المشرف", "صلاحيات", "رفع فيديو للمادة"]],
-    ["assistant", ["المساعد", "الذكاء الاصطناعي", "اسال المساعد", "كيف اسال"]],
-    ["university", ["الجامعات", "الكليات", "جامعه", "كليه", "جهة تعليمية", "جامعة ثانيه", "غير جامعتي"]],
-    ["specialty", ["التخصص", "تخصصات", "تخصصي", "برنامج دراسي", "خطة دراسية"]],
-    ["course_search", ["المواد", "ماده", "مقرر", "ابحث عن مادة", "فلتر المواد", "كل المواد"]],
+    ["greeting", ["السلام عليكم", "مرحبا", "اهلا", "هلا", "صباح الخير", "مساء الخير", "hello", "hi", "hey", "good morning", "good evening"]],
+    ["thanks", ["شكرا", "مشكور", "يعطيك العافيه", "ممتاز", "تمام", "thanks", "thank you", "appreciate it", "great"]],
+    ["recovery", ["نسيت كلمه المرور", "استعاده الحساب", "استرجاع الحساب", "رمز التحقق", "ما اتذكر الباسورد", "تغيير كلمه المرور", "forgot password", "reset password", "recover account", "verification code"]],
+    ["policy", ["الشروط والاحكام", "سياسه الخصوصيه", "سياسه الاسترداد", "حقوق المحتوى", "سياسه الاستخدام", "terms and conditions", "privacy policy", "refund policy", "content policy", "terms of use"]],
+    ["security", ["امن", "امان", "اختراق", "تسلل", "سرقه الحساب", "حذف حساب", "خصوصيه", "بياناتي", "security", "hacked", "privacy", "delete account", "stolen account"]],
+    ["registration", ["انشاء حساب", "حساب جديد", "سجلت جديد", "ابغى اسجل", "التسجيل", "اشتراك حساب", "create account", "new account", "sign up", "signup", "register"]],
+    ["login", ["تسجيل الدخول", "ما يدخل", "ما اقدر ادخل", "خطا في الدخول", "مشكله الدخول", "دخول حسابي", "log in", "login", "sign in", "signin", "cannot login", "cant login"]],
+    ["profile", ["اكمل بياناتي", "المستوى الدراسي", "مستواي", "تغيير الجامعه", "تغيير التخصص", "ملفي", "بيانات الحساب", "جامعتي", "ما جامعتي", "تخصصي", "ما تخصصي", "بياناتي الجامعيه", "اخر طلب", "my profile", "account details", "change university", "change major", "academic level"]],
+    ["course_request", ["ما لقيت مادتي", "ماده غير موجوده", "اطلب ماده", "توفير ماده", "طلب مقرر", "السلايدات", "التوصيف", "missing course", "request course", "request a course", "add a course", "course not found", "course outline", "slides"]],
+    ["learning", ["درس مجاني", "المشغل", "الفيديو", "سرعه الفيديو", "اكمل الفيديو", "تقدم", "ملء الشاشه", "الجوده", "ما يشتغل الفيديو", "free lesson", "video player", "playback", "video speed", "fullscreen", "watch progress", "video not working"]],
+    ["files", ["رفع ملف", "ارفع ملف", "مرفق", "مرفقات", "pdf", "بوربوينت", "حجم الملف", "رفع فيديو", "upload file", "attachment", "file size", "upload video", "powerpoint"]],
+    ["coupon", ["كوبون", "قسيمه", "رمز خصم", "كود خصم", "بروموكود", "خصم", "coupon", "promo code", "discount code", "voucher"]],
+    ["payment", ["اشتري", "شراء", "ادفع", "الدفع", "بطاقه", "مدى", "فيزا", "ماستر", "فاتوره", "استرداد", "استرجاع مبلغ", "عملية الدفع", "buy", "purchase", "payment", "checkout", "credit card", "invoice", "refund"]],
+    ["cart_favorites", ["السله", "أضيف للسلة", "المفضله", "المفضلة", "القلب", "حفظ ماده", "cart", "basket", "favorites", "favourites", "wishlist", "save course"]],
+    ["notifications", ["اشعار", "اشعارات", "تنبيه", "التنبيهات", "وصلني اشعار", "حاله الطلب", "notification", "notifications", "alert", "request status"]],
+    ["appearance", ["الوضع الليلي", "الوضع الفاتح", "الثيم", "حجم الخط", "تكبير الخط", "تصغير الخط", "المظهر", "الشاشه", "dark mode", "light mode", "theme", "font size", "appearance"]],
+    ["staff", ["المشرف", "الاداره", "لوحه المشرف", "صلاحيات", "رفع فيديو للمادة", "admin", "supervisor", "staff dashboard", "permissions"]],
+    ["assistant", ["المساعد", "الذكاء الاصطناعي", "اسال المساعد", "كيف اسال", "assistant", "chatbot", "artificial intelligence"]],
+    ["university", ["الجامعات", "الكليات", "جامعه", "كليه", "جهة تعليمية", "جامعة ثانيه", "غير جامعتي", "university", "universities", "college", "colleges", "institution"]],
+    ["specialty", ["التخصص", "تخصصات", "تخصصي", "برنامج دراسي", "خطة دراسية", "major", "specialty", "specialisation", "specialization", "degree program", "study plan"]],
+    ["course_search", ["المواد", "ماده", "مقرر", "ابحث عن مادة", "فلتر المواد", "كل المواد", "course", "courses", "subject", "module", "find course", "search courses"]],
+    ["support", ["الدعم", "مشكله", "مشكلة", "شكوى", "ساعدني", "ما يشتغل", "ما يفتح", "خربان", "تواصل", "support", "help", "problem", "not working", "contact"]],
   ];
   return rules.find(([, terms]) => has(text, terms))?.[0] || "general";
 }
 
-function intentFallback(intent: AssistantIntent, user: SessionUser | null, settings: PublicSettings, institutions: Institution[], courses: Course[]): AssistantReply | null {
+function englishIntentFallback(intent: AssistantIntent, user: SessionUser | null, settings: PublicSettings, institutions: Institution[], courses: Course[]): AssistantReply | null {
+  const whatsApp = whatsappHref(settings);
+  const reply = (answer: string, actions: AssistantAction[], suggestions: string[] = []) => ({ answer, actions, suggestions });
+  switch (intent) {
+    case "registration": return reply("To create an account: open Registration, enter your name, email, Saudi mobile number, and a strong password, then choose an institution and one of its linked majors. Complete your academic level and accept the terms. Never share your password.", [action("Create account", "/register"), action("Sign in", "/login")], ["Why was registration rejected?", "What password should I use?"]);
+    case "login": return reply("Sign in with the email or Saudi mobile number linked to your account and enter the password exactly as created. If it still fails, use password recovery instead of repeating attempts. Never send your password to support.", [action("Sign in", "/login"), action("Reset password", "/forgot-password")], ["I forgot my password", "My login still fails"]);
+    case "recovery": return reply("Open Password recovery, enter the account email, and use the link in the recovery message before it expires. If the message does not arrive, check spam and then open a support ticket without sharing any verification code.", [action("Reset password", "/forgot-password"), action("Support", "/support")]);
+    case "profile": {
+      const institution = user ? institutions.find((item) => item.slug === user.universitySlug)?.nameEn || institutions.find((item) => item.slug === user.universitySlug)?.name || user.universitySlug || "not set" : "not set";
+      return user ? reply(`Your current institution is ${institution}, and your major is ${user.specialty || "not set"}. Review or update these values in Account settings; your own requests are under Course requests.`, [action("Account settings", "/dashboard?view=account"), action("Course requests", "/dashboard?view=requests")]) : reply("Sign in first to view your account, institution, major, and requests securely.", [action("Sign in", "/login"), action("Create account", "/register")]);
+    }
+    case "security": return reply("Use a unique password and never share recovery codes, card data, or session links. If you suspect unauthorized access, reset the password immediately and contact support from the registered account. Account deletion requires identity verification.", [action("Reset password", "/forgot-password"), action("Privacy", "/privacy"), action("Support", "/support")]);
+    case "policy": return reply("Use the published policy pages for the current terms; I won’t invent a deadline or eligibility rule that is not stated there. Refund requests are reviewed through support using the order number, while privacy and content-use rules have their own pages.", [action("Terms", "/terms"), action("Privacy", "/privacy"), action("Refund policy", "/refund-policy"), action("Content policy", "/content-policy")]);
+    case "course_search": return reply(`There are ${courses.length} published courses in the live catalog. Search by Arabic or English title or course code, then filter by institution and major. Open the course page to verify its current price, access period, lessons, and preview before checkout.`, [action("Browse courses", "/courses"), action("Browse institutions", "/universities")], ["Show courses for my major", "Can I browse another university?"]);
+    case "course_request": return reply("If a course is missing, open Course request, enter its title and code if known, add useful notes, and attach only files you are allowed to share. Submit it and track the live status in your dashboard. A course request is not a purchase and does not require payment.", [action("Request a course", "/request-course"), action("Track requests", "/dashboard?view=requests")]);
+    case "university": return reply(`The live directory currently contains ${institutions.length} published institutions. Search by Arabic or English name, region, or type, then open an institution to view its linked majors and published courses.`, [action("Institution directory", "/universities"), action("Browse courses", "/courses")]);
+    case "specialty": return reply("Majors are linked to each institution, so choose the institution first. Course codes and study plans may differ between institutions; verify the course page or submit the official outline if the course is missing.", [action("Institution directory", "/universities"), action("Search courses", "/courses"), action("Request a course", "/request-course")]);
+    case "payment": return reply("Sign in, complete your academic profile, review the live course page and preview, then continue through the cart and Tap checkout. Access is granted only after the server confirms payment. For a payment issue, share the order number with support—never card details.", [action("Browse courses", "/courses"), action("Cart", "/cart"), action("Orders and invoices", "/dashboard?view=orders")]);
+    case "coupon": return reply("Enter the coupon at checkout and apply it before payment. The server checks its status, dates, usage limit, and eligible course, then recalculates the final total. Treat the coupon as applied only when the final checkout total changes.", [action("Cart", "/cart"), action("Orders and invoices", "/dashboard?view=orders")]);
+    case "cart_favorites": return reply("Favorites save courses for later; the cart prepares them for checkout. Neither grants course access. Access starts only after the server confirms payment.", [action("Cart", "/cart"), action("Favorites", "/favorites"), action("Courses", "/courses")]);
+    case "learning": return reply("Open a free preview from the course page or an activated course from My courses. The player saves progress to your account and supports playback, speed, volume, quality, and fullscreen. If playback fails, reopen the lesson, check the connection, then contact support.", [action("My courses", "/dashboard?view=courses"), action("Browse courses", "/courses"), action("Support", "/support")]);
+    case "notifications": return reply("Notifications contain course-request, purchase, support, and announcement updates. Open Notifications in your dashboard; in the app, also allow push notifications in the device settings.", [action("Notifications", "/dashboard?view=notifications"), action("Course requests", "/dashboard?view=requests")]);
+    case "appearance": return reply("Use Appearance settings to switch light/dark mode and adjust theme and text size. These preferences are stored separately for the web and app.", [action("Account settings", "/dashboard?view=account")]);
+    case "files": return reply("Course requests accept PDF, PPT/PPTX, DOC/DOCX, PNG, and JPG files, up to 100 files and 100 MB total. Upload only material you are allowed to share. Lesson videos can only be uploaded by authorized staff.", [action("Request a course", "/request-course"), action("Support", "/support")]);
+    case "staff": return reply("Admin and supervisor areas are available only when the server-assigned role permits them. Students cannot elevate their own role.", user?.role === "admin" ? [action("Admin area", "/admin")] : user?.role === "supervisor" ? [action("Supervisor area", "/supervisor")] : [action("Student dashboard", "/dashboard")]);
+    case "assistant": return reply("Ask naturally in Arabic or English, including common spelling mistakes. I use the current catalog and your own account context when available; I will not guess prices, availability, payment status, or private data.", [action("Browse courses", "/courses"), action("Support", "/support")]);
+    case "support": return reply(`Describe the failed step, the exact message, and your device or browser. Include an order number only if relevant, and never send a password or card details. Current support email: ${settings.support_email}; hours: ${settings.support_hours}.`, [action("Open support ticket", "/support"), ...(whatsApp ? [action("WhatsApp support", whatsApp)] : []), action("Contact", "/contact")]);
+    case "thanks": return reply("You’re welcome. Tell me the service, institution, course, or exact error and I’ll point you to the next verified step.", [action("Browse courses", "/courses"), action("Support", "/support")]);
+    default: return null;
+  }
+}
+
+function intentFallback(intent: AssistantIntent, user: SessionUser | null, settings: PublicSettings, institutions: Institution[], courses: Course[], language: AssistantLanguage): AssistantReply | null {
+  if (language === "en") return englishIntentFallback(intent, user, settings, institutions, courses);
   const whatsApp = whatsappHref(settings);
   const firstName = user?.fullName?.split(" ")[0];
   const reply = (answer: string, actions: AssistantAction[], suggestions: string[] = []) => ({ answer, actions, suggestions });
@@ -82,6 +98,7 @@ function intentFallback(intent: AssistantIntent, user: SessionUser | null, setti
         : reply("سجّل الدخول أولًا لعرض جامعتك وتخصصك وطلباتك بأمان. بعد الدخول افتح «حسابي» لتحديث الجامعة والتخصص والمستوى الدراسي.", [action("تسجيل الدخول", "/login"), action("إنشاء حساب", "/register")], ["كيف أكمل ملفي؟", "ما المستويات المتاحة؟"]);
     }
     case "security": return reply("أمان الحساب يعتمد على كلمة مرور قوية، وعدم مشاركة رمز الاستعادة أو بيانات البطاقة، واستخدام الموقع والتطبيق الرسميين فقط. لا يطلب منك فريق مراس كلمة المرور داخل الدعم. إذا شككت في دخول غير معروف: غيّر كلمة المرور فورًا، سجّل الخروج من الأجهزة، ثم افتح تذكرة من البريد المسجل. حذف الحساب إجراء حساس ويحتاج تحققًا، بينما تبقى الفواتير وأحداث الدفع محفوظة للامتثال.", [action("استعادة كلمة المرور", "/forgot-password"), action("الدعم", "/support"), action("الخصوصية", "/privacy")], ["كيف أحمي حسابي؟", "أريد حذف حسابي"]);
+    case "policy": return reply("اعتمد على صفحات السياسات المنشورة لمعرفة الحكم الحالي؛ لن أفترض مدة أو أهلية غير مكتوبة. تُراجع طلبات الاسترداد عبر تذكرة دعم برقم الطلب، بينما توجد صفحات مستقلة للشروط والخصوصية وحقوق المحتوى.", [action("الشروط", "/terms"), action("الخصوصية", "/privacy"), action("سياسة الاسترداد", "/refund-policy"), action("حقوق المحتوى", "/content-policy")]);
     case "course_search": return reply(`للعثور على المادة بسرعة: 1) افتح المواد. 2) اكتب اسم المادة أو رمزها في البحث. 3) اختر الجامعة ثم التخصص إذا أردت تضييق النتائج، أو اختر «كل الجامعات» و«كل التخصصات» للبحث العام. 4) افتح بطاقة المادة لمراجعة الوصف والدرس المجاني والسعر قبل إضافتها للسلة. يعرض التطبيق توصيات جامعتك وتخصصك أولًا، لكنه لا يمنعك من تصفح باقي الكتالوج (${courses.length} مادة منشورة حاليًا).`, [action("استكشاف المواد", "/courses"), action("الجامعات والكليات", "/universities")], ["أريد مواد جامعتي", "هل أستطيع الشراء من جامعة أخرى؟"]);
     case "university": return reply(`يعرض دليل مراس ${institutions.length} جهة تعليمية منشورة. يمكنك البحث بالاسم أو المنطقة أو نوع الجهة، ثم فتح صفحة الجهة لرؤية التخصصات والمواد المرتبطة بها. إذا لم تجد جامعتك أو كلية معينة، اكتب اسمها كاملًا أو أرسل طلب مادة، وستحتاج الإدارة إلى إضافة الجهة وربط تخصصاتها قبل ظهورها في الفلاتر.`, [action("فتح دليل الجامعات", "/universities"), action("استكشاف المواد", "/courses"), action("طلب مادة أو جهة", "/request-course")], ["أريد تخصصات جامعة معينة", "كيف أختار التخصص؟"]);
     case "specialty": return reply("التخصصات تُعرض بحسب الجامعة المختارة حتى لا تختلط الخطط بين الجهات. افتح دليل الجامعات لاختيار الجهة، أو افتح المواد وحدد الجامعة ثم التخصص. قد يختلف اسم التخصص أو الخطة من جامعة إلى أخرى؛ لذلك راجع رمز المادة ووصفها. إذا كان تخصصك غير موجود، أكمل بيانات الحساب أولًا ثم أرسل طلب مادة مع اسم التخصص والجامعة.", [action("دليل الجامعات", "/universities"), action("بحث المواد", "/courses"), action("إكمال الحساب", "/dashboard?view=account")], ["ما مواد تخصصي؟", "تخصصي غير موجود"]);
@@ -97,63 +114,117 @@ function intentFallback(intent: AssistantIntent, user: SessionUser | null, setti
 }
 
 function detectedInstitution(text: string, rows: Institution[]) {
-  return [...rows].sort((a, b) => b.name.length - a.name.length).find((item) => {
-    const full = normalize(item.name);
-    const short = full.replace(/^(جامعه|الجامعه|كليه|كليات)\s+/, "");
-    return text.includes(full) || (short.length > 5 && text.includes(short));
-  });
+  return findBestAssistantMatch(text, rows, (item) => [item.name, item.nameEn, ...(item.aliases || []), item.slug, item.domain?.split(".")[0]], 0.74);
 }
 
-function detectedProgram(text: string, rows: Course[]) {
-  const dynamic = rows.flatMap((course) => [course.specialty]).filter(Boolean).map((name) => ({ name }));
-  return [...allPrograms.map((item) => ({ name: item.name })), ...dynamic].sort((a, b) => b.name.length - a.name.length).find((item) => text.includes(normalize(item.name)));
+function assistantPrograms(courses: Course[], livePrograms?: AssistantProgram[]) {
+  const rows: AssistantProgram[] = [
+    ...(livePrograms || []),
+    ...(livePrograms ? [] : allPrograms.map((item) => ({ name: item.name, aliases: item.aliases, degree: item.degree }))),
+    ...courses.map((course) => ({ name: course.specialty, institutionSlugs: [course.universitySlug] })),
+  ];
+  const merged = new Map<string, AssistantProgram>();
+  for (const row of rows) {
+    const key = normalizeAssistantText(row.name);
+    const current = merged.get(key);
+    merged.set(key, current ? {
+      ...current,
+      ...row,
+      aliases: [...new Set([...(current.aliases || []), ...(row.aliases || [])])],
+      institutionSlugs: [...new Set([...(current.institutionSlugs || []), ...(row.institutionSlugs || [])])],
+    } : row);
+  }
+  return [...merged.values()];
+}
+
+function detectedProgram(text: string, rows: AssistantProgram[]) {
+  return findBestAssistantMatch(text, rows, (item) => [item.name, ...(item.aliases || []), item.slug], 0.75);
+}
+
+function detectedCourse(text: string, rows: Course[]) {
+  return findBestAssistantMatch(text, rows, (item) => [item.title, item.titleEn, item.code, item.slug], 0.74);
+}
+
+function detectedLesson(text: string, rows: Course[]) {
+  const lessons = rows.flatMap((course) => course.units.flatMap((unit) => unit.lessons.map((lesson) => ({ course, unit: unit.title, lesson }))));
+  return findBestAssistantMatch(text, lessons, (item) => [item.lesson.title], 0.77);
 }
 
 export function answerAssistant(rawQuestion: string, user: SessionUser | null, publicSettings: PublicSettings = { ...PUBLIC_SETTING_DEFAULTS }, liveCatalog?: LiveAssistantCatalog): AssistantReply {
-  const text = normalize(rawQuestion);
-  const institutions = liveCatalog?.institutions?.length ? liveCatalog.institutions : bundledInstitutions;
-  const courses = liveCatalog?.courses?.length ? liveCatalog.courses : bundledCourses;
-  const institution = detectedInstitution(text, institutions);
-  const program = detectedProgram(text, courses);
-  const matchedCourse = courses.find((course) => text.includes(normalize(course.title)) || (course.code && text.includes(normalize(course.code))));
+  const text = normalizeAssistantText(rawQuestion);
+  const language = detectAssistantLanguage(rawQuestion);
+  const institutions = liveCatalog ? liveCatalog.institutions : bundledInstitutions;
+  const courses = liveCatalog ? liveCatalog.courses : bundledCourses;
+  const programs = assistantPrograms(courses, liveCatalog?.programs);
+  const institutionMatch = detectedInstitution(text, institutions);
+  const programMatch = detectedProgram(text, programs);
+  const courseMatch = detectedCourse(text, courses);
+  const lessonMatch = detectedLesson(text, courses);
+  const institution = institutionMatch?.row;
+  const program = programMatch?.row;
+  const matchedCourse = courseMatch?.row;
   const intent = detectAssistantIntent(text);
+  const preferLesson = Boolean(lessonMatch && (intent === "learning" || !courseMatch || lessonMatch.score >= courseMatch.score));
   const firstName = user?.fullName?.split(" ")[0];
 
-  if (has(text, ["السلام", "مرحبا", "هلا", "اهلا", "صباح الخير", "مساء الخير"])) return {
-    answer: `${firstName ? `أهلًا ${firstName}،` : "أهلًا بك،"} أنا مساعد مراس الذكي. أقدر أرشدك للتسجيل والجامعات والتخصصات والمواد والشراء والمشغل وطلبات المواد والدعم. اكتب سؤالك بطريقتك.`,
+  if (intent === "greeting") return language === "en" ? {
+    answer: `${firstName ? `Hello ${firstName},` : "Hello,"} I’m the Meras assistant. Ask naturally in Arabic or English about institutions, majors, courses, lessons, registration, payment, or support. I’ll use the current catalog and your own account context when available.`,
+    actions: user ? [action("Open my dashboard", "/dashboard")] : [action("Create account", "/register")],
+    suggestions: ["Find a course", "How do I watch a free lesson?", "I need support"],
+  } : {
+    answer: `${firstName ? `أهلًا ${firstName}،` : "أهلًا بك،"} أنا مساعد مراس الذكي. اسألني بطريقتك عن التسجيل أو الجامعات والتخصصات والمواد والدروس والدفع والمشغل وطلبات المواد والدعم، وسأعتمد على الكتالوج الحالي وسياق حسابك عند توفره.`,
     actions: user ? [action("فتح لوحتي", "/dashboard")] : [action("إنشاء حساب", "/register")],
     suggestions: ["ما لقيت مادتي", "كيف أجرب درسًا؟", "كيف أحمي حسابي؟"],
   };
 
-  if (matchedCourse) return {
-    answer: `${matchedCourse.title} متاحة لطلاب ${matchedCourse.university} ضمن ${matchedCourse.specialty}. تحتوي ${matchedCourse.lessons} درسًا لمدة ${matchedCourse.duration}، وسعرها ${matchedCourse.price} ر.س. قبل الشراء راجع الوصف والدرس المجاني، ثم أضفها للسلة أو للمفضلة. بعد الدفع المؤكد من الخادم تظهر في «موادي».`,
-    actions: [action("فتح صفحة المادة", `/courses/${matchedCourse.slug}`), action("تصفح مواد مشابهة", `/courses?q=${encodeURIComponent(matchedCourse.title)}`)],
-    suggestions: ["هل فيها درس مجاني؟", "كيف أضيفها للسلة؟", "كيف أشتريها؟"],
+  if (matchedCourse && !preferLesson) return {
+    answer: language === "en"
+      ? `${matchedCourse.titleEn || matchedCourse.title} is a published course for ${matchedCourse.university}, major ${matchedCourse.specialty}. The live catalog currently shows ${matchedCourse.lessons} lessons, ${matchedCourse.duration} total duration, and a price of SAR ${matchedCourse.price}.${matchedCourse.availableForPurchase === false ? " It is not open for purchase yet because no ready lesson is available." : " Verify the description, access period, and any free preview on the course page before checkout."}`
+      : `${matchedCourse.title} مادة منشورة لجهة ${matchedCourse.university} ضمن تخصص ${matchedCourse.specialty}. يعرض الكتالوج الحالي ${matchedCourse.lessons} درسًا بمدة إجمالية ${matchedCourse.duration} وسعر ${matchedCourse.price} ر.س.${matchedCourse.availableForPurchase === false ? " المادة ليست مفتوحة للشراء بعد لعدم وجود درس جاهز للمشاهدة." : " راجع الوصف ومدة الوصول والدرس المجاني — إن وجد — في صفحة المادة قبل الشراء."}`,
+    actions: [action(language === "en" ? "Open course" : "فتح صفحة المادة", `/courses/${matchedCourse.slug}`), action(language === "en" ? "Similar courses" : "تصفح مواد مشابهة", `/courses?q=${encodeURIComponent(matchedCourse.title)}`)],
+    suggestions: language === "en" ? ["Does it have a free preview?", "What lessons are included?", "How do I buy it?"] : ["هل فيها درس مجاني؟", "ما الدروس الموجودة؟", "كيف أشتريها؟"],
   };
 
+  if (lessonMatch) {
+    const { course, unit, lesson } = lessonMatch.row;
+    return language === "en" ? {
+      answer: `${lesson.title} is listed under ${unit} in ${course.titleEn || course.title}. Its current duration is ${lesson.duration}.${lesson.ready === false ? " The lesson is listed, but its video is not ready for playback yet." : lesson.free ? " It is marked as a free preview." : " Access depends on the user’s active course entitlement."}`,
+      actions: [action("Open course", `/courses/${course.slug}`), action("My courses", "/dashboard?view=courses")],
+      suggestions: ["What other lessons are included?", "Is there a free preview?"],
+    } : {
+      answer: `درس «${lesson.title}» مدرج ضمن «${unit}» في مادة ${course.title}، ومدته الحالية ${lesson.duration}.${lesson.ready === false ? " الدرس مدرج لكن الفيديو غير جاهز للمشاهدة بعد." : lesson.free ? " وهو محدد كدرس تجريبي مجاني." : " وتحتاج مشاهدته إلى صلاحية فعالة للمادة."}`,
+      actions: [action("فتح المادة", `/courses/${course.slug}`), action("موادي", "/dashboard?view=courses")],
+      suggestions: ["ما بقية الدروس؟", "هل يوجد درس مجاني؟"],
+    };
+  }
+
   if (institution) {
-    const officialPrograms = getInstitutionPrograms(institution.slug).map((item) => item.name);
-    const livePrograms = courses.filter((course) => course.universitySlug === institution.slug).map((course) => course.specialty);
-    const programs = [...new Set([...livePrograms, ...officialPrograms])];
-    const names = programs.slice(0, 14).join("، ");
-    return {
-      answer: `${institution.name} مدرجة في مراس ضمن ${institution.type === "حكومية" ? "الجامعات الحكومية" : institution.type === "أهلية" ? "الجامعات الأهلية" : "الكليات"} في ${institution.region}. من برامجها المدرجة: ${names || "راجع صفحة الجهة للبرامج المتاحة"}${programs.length > 14 ? `، وغيرها (${programs.length} برنامجًا في الدليل)` : ""}. افتح صفحتها للبحث في جميع البرامج ورؤية مواد كل تخصص ورابط المصدر الرسمي.`,
-      actions: [action(`صفحة ${institution.name}`, `/universities/${institution.slug}`), action("طلب مادة لهذه الجهة", "/request-course")],
-      suggestions: ["كيف أختار تخصصي؟", "ما المواد المتاحة؟"],
+    const liveNames = programs.filter((item) => item.institutionSlugs?.includes(institution.slug)).map((item) => item.name);
+    const fallbackNames = liveCatalog?.programs ? [] : getInstitutionPrograms(institution.slug).map((item) => item.name);
+    const names = [...new Set([...liveNames, ...fallbackNames])];
+    return language === "en" ? {
+      answer: `${institution.nameEn || institution.name} is a published institution in ${institution.region}. The current directory links ${names.length} majors${names.length ? `, including ${names.slice(0, 10).join(", ")}${names.length > 10 ? ", and more" : ""}` : "; no linked major names are currently published"}. Open the institution page for the authoritative live list and its published courses.`,
+      actions: [action("Open institution", `/universities/${institution.slug}`), action("Browse courses", `/courses?university=${encodeURIComponent(institution.slug)}`)],
+      suggestions: ["Which courses are published?", "How do I choose my major?"],
+    } : {
+      answer: `${institution.name} جهة منشورة في دليل مراس ضمن ${institution.region}. يرتبط بها حاليًا ${names.length} تخصصًا${names.length ? `، منها: ${names.slice(0, 10).join("، ")}${names.length > 10 ? "، وغيرها" : ""}` : "، ولا توجد أسماء تخصصات مرتبطة منشورة حاليًا"}. افتح صفحة الجهة لرؤية القائمة الحية الكاملة والمواد المنشورة دون تخمين.` ,
+      actions: [action(`صفحة ${institution.name}`, `/universities/${institution.slug}`), action("مواد الجهة", `/courses?university=${encodeURIComponent(institution.slug)}`), action("طلب مادة", "/request-course")],
+      suggestions: ["ما المواد المنشورة؟", "كيف أختار تخصصي؟"],
     };
   }
 
   if (program) {
-    const names = [...new Set(courses.filter((course) => course.specialty === program.name).map((course) => course.title))];
-    const fallbackNames = getProgramCourses(program.name);
-    const listedNames = names.length ? names : fallbackNames;
-    return {
-      answer: `مواد ${program.name} المقترحة في الدليل تشمل: ${listedNames.join("، ") || "لا توجد مادة منشورة بهذا الاسم حاليًا"}. قد تختلف رموز المادة والخطة حسب الجامعة والسنة؛ افتح جامعتك لمطابقة برنامجها، أو أرسل توصيف المقرر إذا كانت المادة غير متاحة.`,
-      actions: [action("البحث عن المواد", `/courses?q=${encodeURIComponent(program.name)}`), action("طلب مادة", "/request-course")],
+    const names = [...new Set(courses.filter((course) => assistantMatchScore(course.specialty, program.name) >= 0.86).map((course) => language === "en" ? course.titleEn || course.title : course.title))];
+    return language === "en" ? {
+      answer: names.length ? `The live catalog currently has ${names.length} published course(s) linked to ${program.name}: ${names.slice(0, 12).join(", ")}${names.length > 12 ? ", and more" : ""}. Course codes and plans can differ by institution, so verify the institution filter.` : `I found ${program.name} in the directory, but there is no published course linked to it in the current catalog. I won’t invent a course list; you can submit the official course title or outline as a request.`,
+      actions: [action("Search this major", `/courses?q=${encodeURIComponent(program.name)}`), action("Request a course", "/request-course")],
+    } : {
+      answer: names.length ? `يعرض الكتالوج الحي ${names.length} مادة منشورة مرتبطة بتخصص ${program.name}: ${names.slice(0, 12).join("، ")}${names.length > 12 ? "، وغيرها" : ""}. قد تختلف الرموز والخطة بحسب الجامعة، لذلك استخدم فلتر الجهة للتأكد.` : `وجدت تخصص ${program.name} في الدليل، لكن لا توجد مادة منشورة مرتبطة به في الكتالوج الحالي. لن أفترض أسماء مواد غير موجودة؛ يمكنك إرسال اسم المقرر أو توصيفه في طلب مادة.`,
+      actions: [action("البحث في التخصص", `/courses?q=${encodeURIComponent(program.name)}`), action("طلب مادة", "/request-course")],
     };
   }
 
-  const enhancedFallback = intentFallback(intent, user, publicSettings, institutions, courses);
+  const enhancedFallback = intentFallback(intent, user, publicSettings, institutions, courses, language);
   if (enhancedFallback) return enhancedFallback;
 
   if (has(text, ["الجامعات", "الكليات", "جامعه", "كليه", "كم جامعه"])) return {
@@ -252,10 +323,15 @@ export function answerAssistant(rawQuestion: string, user: SessionUser | null, p
     return { answer: "لوحات الإشراف والإدارة لا تظهر للطلاب في صفحة الدخول، ولا تُفتح إلا لحساب موظف مُنح الدور والصلاحية من الخادم. الطالب يتابع مواده وطلباته وفواتيره من لوحته فقط.", actions: [action("لوحة الطالب", "/dashboard")] };
   }
 
-  const fallback = intentFallback(intent, user, publicSettings, institutions, courses);
+  const fallback = intentFallback(intent, user, publicSettings, institutions, courses, language);
   if (fallback) return fallback;
+  if (language === "en") return {
+    answer: "I can help with Meras, but I don’t have enough verified detail to answer that precisely. Give me the institution, major, course or lesson name—or the exact error and the step that failed. I’ll search the current catalog and your own account context when available, and I won’t guess availability, prices, payment status, or policy terms.",
+    actions: [action("Browse courses", "/courses"), action("Support", "/support"), action("Request a course", "/request-course")],
+    suggestions: ["Find a course", "I cannot sign in", "A video will not play", "How do I request a course?"],
+  };
   return {
-    answer: "أفهم أنك تحتاج مساعدة داخل مراس. سأحاول تحويل سؤالك إلى خطوة عملية: اكتب اسم الجامعة أو المادة، أو اذكر ما الذي حاولت فعله والرسالة التي ظهرت لك. أستطيع شرح التسجيل، الدخول، إكمال الملف، البحث والفلاتر، السلة والمفضلة، الدفع والكوبونات، المشغل، طلب المادة والملفات، الإشعارات، الدعم، والمظهر. إذا كان السؤال خارج المنصة فسأقدم معلومات عامة وأوضح ما يحتاج تحققًا من جهة مختصة.",
+    answer: "أستطيع مساعدتك داخل مراس، لكن لا توجد في سؤالك تفاصيل موثوقة تكفي لإجابة دقيقة. اكتب اسم الجامعة أو التخصص أو المادة أو الدرس، أو اذكر الخطوة التي فشلت ورسالة الخطأ كما ظهرت. سأبحث في الكتالوج الحالي وسياق حسابك عند توفره، ولن أخمّن التوفر أو السعر أو حالة الدفع أو نص سياسة غير منشور.",
     actions: [action("مركز المساعدة", "/support"), action("استكشاف المواد", "/courses"), action("طلب مادة", "/request-course")],
     suggestions: ["كيف أسجل؟", "ما لقيت مادتي", "كيف أشتري؟", "مشكلة في الدخول"],
   };

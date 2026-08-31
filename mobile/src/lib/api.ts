@@ -41,6 +41,7 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   const headers = new Headers(requestInit.headers);
   headers.set("accept", "application/json");
   headers.set("x-meras-client", "mobile-v1");
+  headers.set("x-meras-platform", Platform.OS);
   if (deviceIdentity) {
     headers.set("x-meras-device-id", deviceIdentity.id);
     headers.set("x-meras-device-label", safeHeaderText(deviceIdentity.label));
@@ -88,6 +89,7 @@ export function apiUpload<T>(path: string, body: FormData | Blob, options: ApiUp
     xhr.timeout = Math.max(15_000, Math.min(options.timeoutMs || 15 * 60_000, 30 * 60_000));
     xhr.setRequestHeader("accept", "application/json");
     xhr.setRequestHeader("x-meras-client", "mobile-v1");
+    xhr.setRequestHeader("x-meras-platform", Platform.OS);
     if (deviceIdentity) {
       xhr.setRequestHeader("x-meras-device-id", deviceIdentity.id);
       xhr.setRequestHeader("x-meras-device-label", safeHeaderText(deviceIdentity.label));

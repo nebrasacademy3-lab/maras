@@ -26,8 +26,8 @@ export async function POST(request: Request) {
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_LOGO_BYTES + 1 * 1024 * 1024) return jsonError("حجم الطلب أكبر من المسموح", 413);
 
-  let form: FormData;
-  try { form = await request.formData(); } catch { return jsonError("تعذر قراءة الشعار", 400); }
+  const form = await request.formData().catch(() => null);
+  if (!form) return jsonError("تعذر قراءة الشعار", 400);
   const slug = cleanText(form.get("slug"), 80).toLowerCase();
   const file = form.get("file");
   const institution = await getInstitutionCatalog(slug, true);

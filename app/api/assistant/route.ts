@@ -1,10 +1,9 @@
 import { answerWithOpenAI } from "@/lib/assistant-ai";
 import { answerAssistant, detectAssistantIntent } from "@/lib/assistant-knowledge";
-import { buildAssistantContext } from "@/lib/assistant-context";
+import { buildAssistantContext, getAssistantLiveCatalog } from "@/lib/assistant-context";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { getPublicSettings, PUBLIC_SETTING_DEFAULTS } from "@/lib/platform-settings";
-import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
@@ -20,17 +19,16 @@ export async function POST(request: Request) {
     const text = cleanText(row.text, 500).replace(/\s+/g, " ");
     return role && text ? [{ role, text }] : [];
   }).slice(-8) : [];
-  const [user, settings, institutions, courses] = await Promise.all([
+  const [user, settings, catalog] = await Promise.all([
     getSessionUser(request).catch(() => null),
     getPublicSettings().catch(() => ({ ...PUBLIC_SETTING_DEFAULTS })),
-    getInstitutionsCatalog().catch(() => []),
-    getCoursesCatalog().catch(() => []),
+    getAssistantLiveCatalog().catch(() => ({ institutions: [], courses: [], programs: [] })),
   ]);
   const intent = detectAssistantIntent(question);
   let reply = null;
   try {
-    const context = await buildAssistantContext(user, settings);
+    const context = await buildAssistantContext(user, settings, question, catalog);
     reply = await answerWithOpenAI({ question, history, user, settings, context, intent });
   } catch { /* The deterministic guide below keeps the assistant available. */ }
-  return Response.json(reply || answerAssistant(question, user, settings, { institutions, courses }), { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+  return Response.json(reply || answerAssistant(question, user, settings, catalog), { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }

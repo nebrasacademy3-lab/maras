@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import Link from "next/link";
 import { BadgeCheck, Check, CreditCard, Gift, LockKeyhole, ShieldCheck } from "lucide-react";
 import type { Course } from "@/lib/data";
 import { CourseCoverImage } from "./course-cover-image";
 
-export function CheckoutClient({ course, user }: { course: Course; user:{fullName:string;email:string;phone:string} }) {
+type PaymentMethod = "tap" | "tabby" | "tamara";
+
+export function CheckoutClient({ course, user, paymentMethods }: { course: Course; user:{fullName:string;email:string;phone:string}; paymentMethods:PaymentMethod[] }) {
   const [coupon, setCoupon] = useState("");
   const [discount, setDiscount] = useState(0);
   const [couponMessage, setCouponMessage] = useState("");
@@ -14,6 +16,8 @@ export function CheckoutClient({ course, user }: { course: Course; user:{fullNam
   const [accepted, setAccepted] = useState(true);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(paymentMethods[0] || "tap");
+  const checkoutAttemptRef = useRef<{ fingerprint: string; key: string } | null>(null);
   const total = Math.max(0, course.price - discount);
 
   const applyCoupon = async () => {
@@ -39,18 +43,27 @@ export function CheckoutClient({ course, user }: { course: Course; user:{fullNam
     setLoading(true);
     setError("");
     try {
+      const fingerprint = JSON.stringify({ courseSlug: course.slug, coupon: appliedCoupon || "", paymentMethod });
+      if (!checkoutAttemptRef.current || checkoutAttemptRef.current.fingerprint !== fingerprint) {
+        checkoutAttemptRef.current = { fingerprint, key: crypto.randomUUID() };
+      }
       const response = await fetch("/api/checkout", {
         method: "POST",
         credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ courseSlug: course.slug, coupon: appliedCoupon || undefined }),
+        headers: { "content-type": "application/json", "idempotency-key": checkoutAttemptRef.current.key },
+        body: JSON.stringify({ courseSlug: course.slug, coupon: appliedCoupon || undefined, paymentMethod }),
       });
-      const data = await response.json() as { checkoutUrl?: string; mode?: string; error?: string };
-      if (!response.ok) throw new Error(data.error || "تعذر بدء الدفع");
+      const data = await response.json() as { checkoutUrl?: string; mode?: string; error?: string; pending?: boolean };
+      if (!response.ok) {
+        if (!data.pending) checkoutAttemptRef.current = null;
+        throw new Error(data.error || "تعذر بدء الدفع");
+      }
+      if (data.pending) throw new Error(data.error || "محاولة الدفع قيد التحقق. حاول بعد لحظات.");
       if (data.checkoutUrl && data.mode === "live") {
         window.location.assign(data.checkoutUrl);
         return;
       }
+      checkoutAttemptRef.current = null;
       throw new Error("لم تُرجع بوابة الدفع رابطًا صالحًا");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر بدء الدفع. حاول مرة أخرى.");
@@ -67,8 +80,12 @@ export function CheckoutClient({ course, user }: { course: Course; user:{fullNam
         <div className="checkout-account-card"><BadgeCheck size={21}/><div><strong>{user.fullName}</strong><span dir="ltr">{user.email}</span><small dir="ltr">{user.phone}</small></div><Link href="/dashboard?view=account">تعديل بيانات الحساب</Link></div>
       </div>
       <div className="checkout-section">
-        <div className="checkout-section-title"><span>2</span><div><h2>طريقة الدفع</h2><p>سيتم نقلك إلى صفحة دفع Tap</p></div></div>
-        <div className="tap-payment-option active"><i><CreditCard size={22} /></i><div><strong>الدفع الإلكتروني عبر Tap</strong><span>مدى، Visa، Mastercard، Apple Pay ووسائل أخرى مفعلة في حسابك</span><div className="payment-brands"><b>mada</b><b>VISA</b><b>Mastercard</b><b> Pay</b></div></div><em><Check size={14} /></em></div>
+        <div className="checkout-section-title"><span>2</span><div><h2>طريقة الدفع</h2><p>اختر الطريقة المناسبة ثم أكمل بأمان في صفحة Tap</p></div></div>
+        <div className="payment-method-list" role="radiogroup" aria-label="طريقة الدفع">
+          <button type="button" role="radio" aria-checked={paymentMethod === "tap"} className={`tap-payment-option ${paymentMethod === "tap" ? "active" : ""}`} onClick={() => setPaymentMethod("tap")}><i><CreditCard size={22} /></i><div><strong>بطاقة أو Apple Pay</strong><span>مدى، Visa، Mastercard والوسائل المفعلة</span><div className="payment-brands"><b>mada</b><b>VISA</b><b>Mastercard</b><b> Pay</b></div></div><em><Check size={14} /></em></button>
+          {paymentMethods.includes("tabby") && <button type="button" role="radio" aria-checked={paymentMethod === "tabby"} className={`tap-payment-option installment-option ${paymentMethod === "tabby" ? "active" : ""}`} onClick={() => setPaymentMethod("tabby")}><i>ت</i><div><strong>قسّطها مع تابي</strong><span>تظهر خطة التقسيط والأهلية في صفحة الدفع</span></div><em><Check size={14} /></em></button>}
+          {paymentMethods.includes("tamara") && <button type="button" role="radio" aria-checked={paymentMethod === "tamara"} className={`tap-payment-option installment-option ${paymentMethod === "tamara" ? "active" : ""}`} onClick={() => setPaymentMethod("tamara")}><i>تـ</i><div><strong>قسّطها مع تمارا</strong><span>تخضع الخطة للموافقة وشروط مزوّد الخدمة</span></div><em><Check size={14} /></em></button>}
+        </div>
         <div className="payment-security"><ShieldCheck size={19} /><span><strong>معلومات بطاقتك لا تمر عبر خوادم مراس</strong><small>تُدخل بيانات الدفع في صفحة Tap المستضافة والملتزمة بمعايير الأمان.</small></span></div>
       </div>
       <label className="checkout-terms"><input type="checkbox" checked={accepted} onChange={(event) => setAccepted(event.target.checked)} /> أوافق على <Link href="/terms">الشروط والأحكام</Link> و<Link href="/refund-policy">سياسة الاسترداد</Link>.</label>

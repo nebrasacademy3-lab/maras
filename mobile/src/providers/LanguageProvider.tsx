@@ -35,9 +35,17 @@ async function storeLanguage(language: AppLanguage) {
 }
 function applyNativeDirection(language: AppLanguage) {
   const rtl = language === "ar";
+  if (Platform.OS === "web") {
+    if (typeof document !== "undefined") {
+      document.documentElement.dir = rtl ? "rtl" : "ltr";
+      document.documentElement.lang = rtl ? "ar" : "en";
+      document.body?.setAttribute("dir", rtl ? "rtl" : "ltr");
+    }
+    return;
+  }
   I18nManager.allowRTL(true);
   I18nManager.swapLeftAndRightInRTL(true);
-  I18nManager.forceRTL(rtl);
+  if (I18nManager.isRTL !== rtl) I18nManager.forceRTL(rtl);
 }
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {

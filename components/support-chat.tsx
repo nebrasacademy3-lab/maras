@@ -1,5 +1,7 @@
 "use client";
 
+/* eslint-disable @next/next/no-img-element -- authenticated support attachments cannot use the public Next image optimizer */
+
 import { useMemo, useRef, useState } from "react";
 import { Download, FileText, Image as ImageIcon, LoaderCircle, Mic, Paperclip, Reply, Send, Square, X } from "lucide-react";
 import { uploadWithProgress, uploadProgressLabel, type UploadProgress } from "@/lib/upload-client";

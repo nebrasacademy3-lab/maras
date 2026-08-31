@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, HelpCircle, ListVideo, Menu, MessageSquareText, NotebookPen, PanelLeftClose, PlayCircle, Search, ShieldCheck, Sparkles } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, HelpCircle, ListVideo, Menu, MessageSquareText, NotebookPen, PanelLeftClose, PlayCircle, Save, Search, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import type { Course } from "@/lib/data";
-import { SecureVideoPlayer } from "./secure-video-player";
+import { SecureVideoPlayer, type VideoSeekRequest } from "./secure-video-player";
 import { BrandLogo } from "./brand-logo";
 import { ThemeToggle } from "./theme-provider";
+
+type VideoNote = { id: number; lessonId: string; body: string; timestampSeconds: number; createdAt: string; updatedAt: string };
+
+function formatNoteTime(value: number) {
+  const seconds = Math.max(0, Math.floor(value || 0));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  return hours ? `${hours}:${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}` : `${minutes}:${String(remainder).padStart(2, "0")}`;
+}
 
 export function LearningRoom({ course, studentLabel }: { course: Course; studentLabel: string }) {
   const allLessons = useMemo(() => course.units.flatMap((unit) => unit.lessons), [course]);
@@ -14,7 +24,13 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
   const [completed, setCompleted] = useState(new Set(allLessons.filter((lesson) => lesson.completed).map((lesson) => lesson.id)));
   const [sidebar, setSidebar] = useState(true);
   const [tab, setTab] = useState("overview");
-  const [note, setNote] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [notes, setNotes] = useState<VideoNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [noteMessage, setNoteMessage] = useState("");
+  const [playerTime, setPlayerTime] = useState(0);
+  const [seekRequest, setSeekRequest] = useState<VideoSeekRequest | null>(null);
+  const seekNonceRef = useRef(0);
   const [lessonQuery, setLessonQuery] = useState("");
   const currentIndex = allLessons.findIndex((lesson) => lesson.id === activeLesson.id);
   const progress = Math.round((completed.size / allLessons.length) * 100);
@@ -27,9 +43,32 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
     }).catch(() => undefined);
   }, [course.slug]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const loadNotes = async () => {
+      setNotesLoading(true);
+      setNoteMessage("");
+      setNoteDraft("");
+      setPlayerTime(0);
+      try {
+        const response = await fetch(`/api/mobile/notes?lesson=${encodeURIComponent(activeLesson.id)}`, { credentials: "same-origin", signal: controller.signal });
+        const data = await response.json() as { notes?: VideoNote[]; error?: string };
+        if (!response.ok) throw new Error(data.error || "تعذر تحميل الملاحظات");
+        setNotes(data.notes || []);
+      } catch (reason) {
+        if ((reason as Error).name !== "AbortError") { setNotes([]); setNoteMessage(reason instanceof Error ? reason.message : "تعذر تحميل الملاحظات"); }
+      } finally {
+        if (!controller.signal.aborted) setNotesLoading(false);
+      }
+    };
+    void loadNotes();
+    return () => controller.abort();
+  }, [activeLesson.id]);
+
   const saveCompletion = (lessonId: string, value: boolean) => {
     void fetch("/api/progress", {
       method: "POST",
+      credentials: "same-origin",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ courseSlug: course.slug, lessonId, watchedSeconds: 0, completed: value }),
     }).catch(() => undefined);
@@ -43,11 +82,43 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
   };
   const chooseLesson = (lesson: typeof activeLesson) => {
     setActiveLesson(lesson);
-    try { setNote(localStorage.getItem(`meras-note:${course.slug}:${lesson.id}`) || ""); } catch { setNote(""); }
+    setSeekRequest(null);
   };
   const go = (offset: number) => {
     const next = allLessons[currentIndex + offset];
     if (next) chooseLesson(next);
+  };
+  const saveNote = async () => {
+    const body = noteDraft.trim();
+    if (!body) { setNoteMessage("اكتب الملاحظة أولًا"); return; }
+    setNoteMessage("جارٍ حفظ الملاحظة...");
+    try {
+      const response = await fetch("/api/mobile/notes", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ lessonId: activeLesson.id, body, timestampSeconds: Math.floor(playerTime) }) });
+      const data = await response.json() as { note?: VideoNote; error?: string };
+      if (!response.ok || !data.note) throw new Error(data.error || "تعذر حفظ الملاحظة");
+      setNotes((current) => [...current, data.note!].sort((left, right) => left.timestampSeconds - right.timestampSeconds || left.id - right.id));
+      setNoteDraft("");
+      setNoteMessage(`حُفظت الملاحظة عند ${formatNoteTime(data.note.timestampSeconds)}`);
+    } catch (reason) {
+      setNoteMessage(reason instanceof Error ? reason.message : "تعذر حفظ الملاحظة");
+    }
+  };
+  const openNote = (note: VideoNote) => {
+    seekNonceRef.current += 1;
+    setSeekRequest({ seconds: note.timestampSeconds, nonce: seekNonceRef.current });
+    document.querySelector(".learning-video-wrap")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const removeNote = async (note: VideoNote) => {
+    setNoteMessage("");
+    try {
+      const response = await fetch("/api/mobile/notes", { method: "DELETE", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ id: note.id }) });
+      const data = await response.json() as { error?: string };
+      if (!response.ok) throw new Error(data.error || "تعذر حذف الملاحظة");
+      setNotes((current) => current.filter((item) => item.id !== note.id));
+      setNoteMessage("تم حذف الملاحظة");
+    } catch (reason) {
+      setNoteMessage(reason instanceof Error ? reason.message : "تعذر حذف الملاحظة");
+    }
   };
 
   return <main className="learning-page">
@@ -69,7 +140,7 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
         </details>)}</div>
       </aside>
       <section className="learning-main">
-        <div className="learning-video-wrap"><SecureVideoPlayer key={activeLesson.id} title={activeLesson.title} studentLabel={studentLabel} courseSlug={course.slug} lessonId={activeLesson.id} /></div>
+        <div className="learning-video-wrap"><SecureVideoPlayer key={activeLesson.id} title={activeLesson.title} studentLabel={studentLabel} courseSlug={course.slug} lessonId={activeLesson.id} seekRequest={seekRequest} onTimeChange={setPlayerTime} /></div>
         <div className="lesson-toolbar"><div><span>الوحدة {course.units.findIndex((unit) => unit.lessons.some((lesson) => lesson.id === activeLesson.id)) + 1}</span><h1>{activeLesson.title}</h1></div><button onClick={markCompleted} className={completed.has(activeLesson.id) ? "completed" : ""}>{completed.has(activeLesson.id) ? <CheckCircle2 size={18} /> : <span />}{completed.has(activeLesson.id) ? "مكتمل" : "تحديد كمكتمل"}</button></div>
         <div className="lesson-navigation"><button disabled={currentIndex === 0} onClick={() => go(-1)}><ChevronRight size={17} /><span><small>السابق</small><strong>{allLessons[currentIndex - 1]?.title || "—"}</strong></span></button><button disabled={currentIndex === allLessons.length - 1} onClick={() => go(1)}><span><small>التالي</small><strong>{allLessons[currentIndex + 1]?.title || "—"}</strong></span><ChevronLeft size={17} /></button></div>
         <div className="lesson-tabs">
@@ -80,7 +151,7 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
         </div>
         <div className="lesson-tab-content">
           {tab === "overview" && <div className="lesson-overview"><h2>عن هذا الدرس</h2><p>في هذا الدرس نشرح المفهوم الأساسي خطوة بخطوة، ثم نطبّقه على أمثلة مشابهة لأسئلة المقرر والاختبارات.</p><h3>بعد نهاية الدرس ستستطيع:</h3><ul><li><CheckCircle2 size={16} /> تحديد عناصر الفكرة الأساسية</li><li><CheckCircle2 size={16} /> حل المسائل باستخدام الخطوات الصحيحة</li><li><CheckCircle2 size={16} /> تجنب الأخطاء الشائعة في الاختبار</li></ul></div>}
-          {tab === "notes" && <div className="notes-box"><div><NotebookPen size={18} /><span><strong>ملاحظاتك الخاصة</strong><small>تُحفظ محليًا على هذا الجهاز</small></span></div><textarea value={note} onChange={(event) => { setNote(event.target.value); try { localStorage.setItem(`meras-note:${course.slug}:${activeLesson.id}`,event.target.value); } catch {} }} placeholder="اكتب ملاحظتك عند هذا الدرس..." /><p>{note.length} حرفًا <span>محفوظ محليًا الآن</span></p></div>}
+          {tab === "notes" && <div className="notes-box"><div><NotebookPen size={18} /><span><strong>ملاحظات مرتبطة بالفيديو</strong><small>تُحفظ في حسابك وتفتح نفس الدقيقة والثانية على كل أجهزتك</small></span></div><div className="video-note-compose"><textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="اكتب ما تريد تذكره عند هذه اللحظة..." maxLength={4000} /><div><span>اللحظة الحالية: {formatNoteTime(playerTime)}</span><button className="button button-primary" type="button" onClick={() => void saveNote()}><Save size={15} /> حفظ عند هذه اللحظة</button></div></div>{noteMessage && <p className="notes-feedback">{noteMessage}</p>}{notesLoading ? <p className="notes-empty">جارٍ تحميل الملاحظات...</p> : notes.length ? <div className="video-notes-list">{notes.map((note) => <article className="video-note-item" key={note.id}><button type="button" onClick={() => openNote(note)}><time>{formatNoteTime(note.timestampSeconds)}</time><p>{note.body}</p></button><button type="button" className="video-note-delete" onClick={() => void removeNote(note)} aria-label="حذف الملاحظة"><Trash2 size={15} /></button></article>)}</div> : <p className="notes-empty">لا توجد ملاحظات بعد. أوقف الفيديو عند اللحظة المطلوبة ثم احفظ ملاحظتك.</p>}</div>}
           {tab === "files" && <div className="lesson-files"><article><i><FileText size={21} /></i><span><strong>ملخص الدرس.pdf</strong><small>PDF · 1.8 MB</small></span><button><Download size={16} /> تنزيل</button></article><article><i><ListVideo size={21} /></i><span><strong>تمارين تطبيقية.pdf</strong><small>PDF · 920 KB</small></span><button><Download size={16} /> تنزيل</button></article></div>}
           {tab === "qa" && <div className="qa-box"><HelpCircle size={30} /><h3>عندك سؤال عن هذا الدرس؟</h3><p>افتح مساعد مراس ليشرح لك طريق الدعم أو يوجّه سؤالك.</p><button className="button button-primary" onClick={()=>window.dispatchEvent(new Event("meras:assistant"))}><Sparkles size={16} /> اسأل مساعد مراس</button></div>}
         </div>

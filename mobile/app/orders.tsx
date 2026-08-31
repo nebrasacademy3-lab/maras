@@ -12,7 +12,19 @@ import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import type { Dashboard } from "@/src/types";
 
-const orderLabels: Record<string, string> = { paid: "مدفوع", initiated: "بانتظار التأكيد", pending: "قيد البدء", failed: "لم يكتمل", canceled: "ملغي" };
+const orderLabels: Record<string, string> = {
+  paid: "مدفوع",
+  initiated: "بدأت عملية الدفع",
+  pending: "بانتظار الدفع",
+  verification_pending: "قيد التحقق من الدفع",
+  payment_review: "قيد مراجعة الدفع",
+  partially_refunded: "مسترد جزئيًا",
+  refunded: "مسترد",
+  failed: "لم يكتمل",
+  canceled: "ملغي",
+  cancelled: "ملغي",
+  voided: "مبطل",
+};
 
 export default function Orders() {
   const { user } = useAuth();
@@ -27,7 +39,7 @@ export default function Orders() {
     <AppHeader title="الطلبات والفواتير" subtitle="سجل مرتبط بحسابك" back />
     <SectionTitle title="الطلبات" subtitle={`${orders.length} عملية`} />
     {orders.length ? orders.map((order) => <Card key={order.orderNumber} style={styles.card}>
-      <View style={styles.row}><View style={[styles.status, { backgroundColor: order.status === "paid" ? `${colors.success}18` : colors.surfaceAlt }]}><Text style={{ color: order.status === "paid" ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{orderLabels[order.status] || order.status}</Text></View><Text style={[styles.title, { color: colors.text }]}>{order.courseTitle}</Text></View>
+      <View style={styles.row}><View style={[styles.status, { backgroundColor: order.status === "paid" ? `${colors.success}18` : colors.surfaceAlt }]}><Text style={{ color: order.status === "paid" ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{orderLabels[order.status] || "حالة دفع غير معروفة"}</Text></View><Text style={[styles.title, { color: colors.text }]}>{order.courseTitle}</Text></View>
       <View style={styles.details}><Text style={[styles.amount, { color: colors.text }]}>{order.total.toLocaleString(locale)} ر.س</Text><Text style={[styles.meta, { color: colors.textSoft }]}>#{order.orderNumber} · {new Date(order.createdAt).toLocaleDateString(locale)}</Text></View>
     </Card>) : <EmptyState icon="cart-outline" title="لا توجد طلبات" text="ستظهر هنا عمليات الاشتراك بعد إنشائها من موقع مراس." />}
     <SectionTitle title="الفواتير" subtitle="تُنشأ بعد تأكيد الدفع من مزود الدفع" />

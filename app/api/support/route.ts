@@ -1,11 +1,11 @@
 import { asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { auditLogs, notificationsDb, supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
+import { auditLogs, supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { deleteObject } from "@/lib/storage";
 import { deleteStoredMultipartFiles, parseStoredMultipart, type StoredMultipartFile } from "@/lib/multipart-upload";
-import { sendPushNotification } from "@/lib/push";
+import { createAndSendNotification } from "@/lib/notifications";
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_FILES = 8;
@@ -80,14 +80,19 @@ function normalizedReplies(ticket: TicketRow, sourceReplies: ReplyRow[], sourceF
 }
 
 async function notifySupportTeam(ticket: TicketRow, body: string) {
-  const db = getDb();
   const title = `دعم: ${ticket.title}`;
   const text = body.slice(0, 240) || "أرسل الطالب مرفقًا جديدًا";
   await Promise.all([
-    db.insert(notificationsDb).values({ audience: "admin", title, body: text, actionUrl: "/admin", actionLabel: "فتح الدعم" }).catch(() => undefined),
-    db.insert(notificationsDb).values({ audience: "supervisor", title, body: text, actionUrl: "/supervisor", actionLabel: "فتح الدعم" }).catch(() => undefined),
-    sendPushNotification({ audience: "admin" }, title, text, { route: "/admin" }),
-    sendPushNotification({ audience: "supervisor" }, title, text, { route: "/supervisor" }),
+    createAndSendNotification({
+      values: { audience: "admin", title, body: text, actionUrl: "/admin", actionLabel: "فتح الدعم" },
+      target: { audience: "admin" },
+      data: { route: "/admin" },
+    }),
+    createAndSendNotification({
+      values: { audience: "supervisor", title, body: text, actionUrl: "/supervisor", actionLabel: "فتح الدعم" },
+      target: { audience: "supervisor" },
+      data: { route: "/supervisor" },
+    }),
   ]);
 }
 
@@ -149,8 +154,11 @@ export async function POST(request: Request) {
     if (ticket.userEmail && isManager(current) && !internal) {
       const title = "رد جديد من دعم مراس";
       const text = body.slice(0, 240) || (files.some((file) => file.contentType.startsWith("audio/")) ? "أرسل فريق مراس رسالة صوتية" : "أُضيف مرفق جديد إلى تذكرتك");
-      await db.insert(notificationsDb).values({ userEmail: ticket.userEmail, audience: "student", title, body: text, actionUrl: "/support", actionLabel: "فتح المحادثة" }).catch(() => undefined);
-      await sendPushNotification({ userEmail: ticket.userEmail }, title, text, { route: "/support", ticketId });
+      await createAndSendNotification({
+        values: { userEmail: ticket.userEmail, audience: "student", title, body: text, actionUrl: "/support", actionLabel: "فتح المحادثة" },
+        target: { userEmail: ticket.userEmail },
+        data: { route: "/support", ticketId },
+      });
     } else if (!isManager(current)) {
       await notifySupportTeam(ticket, body || (files.some((file) => file.contentType.startsWith("audio/")) ? "رسالة صوتية" : "مرفق جديد"));
     }
@@ -246,8 +254,11 @@ export async function PATCH(request: Request) {
   if (ticket.userEmail && isManager(current)) {
     const title = status === "closed" ? "أُغلقت تذكرة الدعم" : "أُعيد فتح تذكرة الدعم";
     const body = `${ticket.ticketNumber}: ${status === "closed" ? "تم إنهاء المحادثة ويمكنك إعادة فتحها عند الحاجة." : "أصبحت المحادثة مفتوحة من جديد."}`;
-    await db.insert(notificationsDb).values({ userEmail: ticket.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة" }).catch(() => undefined);
-    await sendPushNotification({ userEmail: ticket.userEmail }, title, body, { route: "/support", ticketId });
+    await createAndSendNotification({
+      values: { userEmail: ticket.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة" },
+      target: { userEmail: ticket.userEmail },
+      data: { route: "/support", ticketId },
+    });
   }
   return Response.json({ ok: true, status }, { headers: { "cache-control": "no-store" } });
 }

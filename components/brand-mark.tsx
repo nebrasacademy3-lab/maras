@@ -1,6 +1,7 @@
-/* eslint-disable @next/next/no-img-element -- the official square source is already optimized for this small UI surface */
+/* eslint-disable @next/next/no-img-element -- theme-specific brand assets are already optimized */
 export function BrandMark({ className = "" }: { className?: string }) {
   return <span className={`brand-mark ${className}`} aria-hidden="true">
-    <img src="/brand/mark-official.png" alt="" width={1920} height={1920} />
+    <img src="/brand/mark-light.png" alt="" width={512} height={256} className="brand-mark-light" />
+    <img src="/brand/mark-dark.png" alt="" width={512} height={256} className="brand-mark-dark" />
   </span>;
 }

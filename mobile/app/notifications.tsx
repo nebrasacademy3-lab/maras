@@ -1,9 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useFocusEffect } from "expo-router";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import React, { useCallback, useMemo } from "react";
-import { Linking, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AppButton, Card, EmptyState, LoadingState, Screen } from "@/src/components/ui";
@@ -13,31 +12,9 @@ import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import type { Notice } from "@/src/types";
+import { openNotificationRoute } from "@/src/lib/notification-routing";
 
 type NotificationsPayload = { notifications: Notice[]; unreadCount?: number };
-
-function openNotificationAction(actionUrl?: string | null) {
-  if (actionUrl?.startsWith("https://")) { void Linking.openURL(actionUrl); return; }
-  if (!actionUrl || !actionUrl.startsWith("/")) return;
-  const [path = "", query] = actionUrl.split("?", 2);
-  if (path.startsWith("/learn/")) {
-    const slug = decodeURIComponent(path.slice("/learn/".length));
-    if (slug) router.push({ pathname: "/course/[slug]", params: { slug } });
-  } else if (path === "/courses") router.push("/(tabs)/courses");
-  else if (path === "/universities") router.push("/(tabs)/universities");
-  else if (path === "/support") router.push("/support");
-  else if (path === "/contact") router.push("/contact");
-  else if (path === "/request-course") router.push("/requests");
-  else if (path === "/supervisor") router.push("/supervisor");
-  else if (path === "/admin") router.push("/admin");
-  else if (path === "/dashboard") {
-    const view = new URLSearchParams(query || "").get("view");
-    if (view === "notifications") router.push("/notifications");
-    else if (view === "account") router.push("/profile");
-    else if (view === "requests") router.push("/requests");
-    else router.push("/(tabs)");
-  }
-}
 
 export default function Notifications() {
   const { user } = useAuth();
@@ -59,7 +36,7 @@ export default function Notifications() {
     });
   }, [client, queryKey]);
 
-  const read = useMutation({
+  const { mutate: markRead, isPending: readPending } = useMutation({
     mutationFn: (payload: { id?: number; all?: boolean }) => api<{ unreadCount?: number }>("/api/mobile/notifications", { method: "PATCH", body: jsonBody(payload) }),
     onMutate: async (payload) => {
       updateLocalReadState(payload.all ? undefined : payload.id);
@@ -79,11 +56,11 @@ export default function Notifications() {
     if (!user) return;
     const timer = setTimeout(() => {
       const rows = client.getQueryData<NotificationsPayload>(queryKey)?.notifications || [];
-      if (rows.some((item) => !item.readAt)) read.mutate({ all: true });
+      if (rows.some((item) => !item.readAt)) markRead({ all: true });
       else void clearNativeNotificationBadge();
     }, 900);
     return () => clearTimeout(timer);
-  }, [client, queryKey, user]));
+  }, [client, markRead, queryKey, user]));
 
   if (!user) return <Screen><AppHeader title="الإشعارات" back /><EmptyState title="سجّل الدخول" text="إشعارات الحساب والمواد والطلبات خاصة بك." action={<AppButton title="تسجيل الدخول" onPress={() => router.push("/(auth)/login")} />} /></Screen>;
   if (query.isLoading) return <Screen><LoadingState /></Screen>;
@@ -98,14 +75,14 @@ export default function Notifications() {
         title="قراءة الكل"
         variant="soft"
         icon="checkmark-done-outline"
-        disabled={unread === 0 || read.isPending}
-        loading={read.isPending && unread > 0}
-        onPress={() => read.mutate({ all: true })}
+        disabled={unread === 0 || readPending}
+        loading={readPending && unread > 0}
+        onPress={() => markRead({ all: true })}
       />
     </View>
     {rows.length ? rows.map((item) => <Pressable key={item.id} onPress={() => {
-      if (!item.readAt) read.mutate({ id: item.id });
-      openNotificationAction(item.actionUrl);
+      if (!item.readAt) markRead({ id: item.id });
+      openNotificationRoute(item.actionUrl);
     }}>
       <Card style={[styles.notice, !item.readAt && { borderColor: colors.primary }]}>
         <View style={[styles.icon, { backgroundColor: !item.readAt ? `${colors.primary}18` : colors.surfaceAlt }]}><Ionicons name={!item.readAt ? "notifications" : "notifications-outline"} size={20} color={!item.readAt ? colors.primary : colors.textSoft} /></View>

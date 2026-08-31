@@ -1,20 +1,22 @@
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
-  auditLogs, authSessions, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseRequestFiles, courseRequests,
+  auditLogs, authSessions, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseAccessEvents, courseRequestFiles, courseRequests,
   courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, notificationsDb, orderItems, orders, paymentEvents, platformSettings,
-  supervisorAssignments, supportReplyFiles, supportReplies, supportTickets, users, videoAssets,
+  pushDevices, supervisorAssignments, supportReplyFiles, supportReplies, supportTickets, users, videoAssets,
 } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest, validEmail } from "@/lib/auth";
 import { getCourseCatalog, getCoursesCatalog, getInstitutionCatalog, getInstitutionsCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { ADMIN_SETTING_DEFAULTS, invalidatePublicSettingsCache, PUBLIC_SETTING_DEFAULTS, SETTING_META, type SettingKey } from "@/lib/platform-settings";
+import { createAndSendNotification } from "@/lib/notifications";
 import { sendPushNotification } from "@/lib/push";
 import { dispatchDuePushNotifications } from "@/lib/push-campaigns";
 import { syncCatalogTemplates } from "@/lib/catalog-sync";
 import { syncOfficialInstitutionPrograms } from "@/lib/catalog-official-sync";
 import { courseSlug, institutionSlug as makeInstitutionSlug, lessonId, specialtySlug } from "@/lib/catalog-templates";
 import { deleteAdminEntity, DeletionPolicyError, type AdminDeletionType } from "@/lib/admin-deletion";
+import { accessExpiryIso, normalizeAccessDurationDays } from "@/lib/course-access";
 
 async function authorize(request: Request) {
   const user = await getSessionUser(request);
@@ -48,12 +50,34 @@ function safeUrl(value: string) {
   try { return new URL(value).protocol === "https:"; } catch { return false; }
 }
 
+const courseRequestStatusArabic: Record<string, string> = {
+  new: "جديد",
+  assigned: "تم الإسناد",
+  reviewing: "قيد المراجعة",
+  planned: "ضمن الخطة",
+  producing: "قيد التجهيز",
+  available: "متاح",
+  declined: "متعذر حاليًا",
+};
+
+const supportStatusArabic: Record<string, string> = {
+  new: "جديدة",
+  open: "مفتوحة",
+  waiting: "بانتظار الرد",
+  resolved: "تم الحل",
+  closed: "مغلقة",
+};
+
 export async function GET(request: Request) {
   const authorization = await authorize(request);
   if (!authorization) return jsonError("غير مصرح", 403);
   const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
   if (!await checkRateLimit("admin-console-read", identity, 30, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
+  const compactMobile = new URL(request.url).searchParams.get("client") === "mobile";
+  const limits = compactMobile
+    ? { videos: 120, users: 160, sessions: 600, orders: 180, requests: 160, files: 600, tickets: 120, replies: 700, reviews: 180, access: 400, assignments: 250, notifications: 120, coupons: 120, audits: 60 }
+    : { videos: 500, users: 500, sessions: 3000, orders: 300, requests: 300, files: 3000, tickets: 300, replies: 2000, reviews: 300, access: 500, assignments: 500, notifications: 200, coupons: 200, audits: 120 };
   const [institutionRows, courses, specialtyRows, links, unitRows, lessonRows, videoRows, studentRows, sessionRows, orderRows, requestRows, requestFileRows, ticketRows, replyRows, supportFileRows, reviewRows, accessRows, supervisorRows, notificationRows, couponRows, settingRows, audits] = await Promise.all([
     getInstitutionsCatalog(true),
     getCoursesCatalog(true),
@@ -61,22 +85,22 @@ export async function GET(request: Request) {
     db.select().from(institutionSpecialties),
     db.select().from(courseUnitsDb).orderBy(courseUnitsDb.position),
     db.select().from(lessonsDb).orderBy(lessonsDb.position),
-    db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(500),
-    db.select({ id: users.id, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).orderBy(desc(users.createdAt)).limit(500),
-    db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).orderBy(desc(authSessions.lastSeenAt)).limit(3000),
-    db.select().from(orders).orderBy(desc(orders.createdAt)).limit(300),
-    db.select().from(courseRequests).orderBy(desc(courseRequests.createdAt)).limit(300),
-    db.select().from(courseRequestFiles).orderBy(desc(courseRequestFiles.createdAt)).limit(3000),
-    db.select().from(supportTickets).orderBy(desc(supportTickets.createdAt)).limit(300),
-    db.select().from(supportReplies).orderBy(asc(supportReplies.createdAt)).limit(2000),
-    db.select().from(supportReplyFiles).limit(2000),
-    db.select().from(courseReviews).orderBy(desc(courseReviews.createdAt)).limit(300),
-    db.select().from(courseAccess).orderBy(desc(courseAccess.startsAt)).limit(500),
-    db.select().from(supervisorAssignments).orderBy(desc(supervisorAssignments.createdAt)).limit(500),
-    db.select().from(notificationsDb).orderBy(desc(notificationsDb.createdAt)).limit(200),
-    db.select().from(couponsDb).orderBy(desc(couponsDb.createdAt)).limit(200),
+    db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(limits.videos),
+    db.select({ id: users.id, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).orderBy(desc(users.createdAt)).limit(limits.users),
+    db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).orderBy(desc(authSessions.lastSeenAt)).limit(limits.sessions),
+    db.select().from(orders).orderBy(desc(orders.createdAt)).limit(limits.orders),
+    db.select().from(courseRequests).orderBy(desc(courseRequests.createdAt)).limit(limits.requests),
+    db.select().from(courseRequestFiles).orderBy(desc(courseRequestFiles.createdAt)).limit(limits.files),
+    db.select().from(supportTickets).orderBy(desc(supportTickets.createdAt)).limit(limits.tickets),
+    db.select().from(supportReplies).orderBy(asc(supportReplies.createdAt)).limit(limits.replies),
+    db.select().from(supportReplyFiles).limit(limits.files),
+    db.select().from(courseReviews).orderBy(desc(courseReviews.createdAt)).limit(limits.reviews),
+    db.select().from(courseAccess).orderBy(desc(courseAccess.startsAt)).limit(limits.access),
+    db.select().from(supervisorAssignments).orderBy(desc(supervisorAssignments.createdAt)).limit(limits.assignments),
+    db.select().from(notificationsDb).orderBy(desc(notificationsDb.createdAt)).limit(limits.notifications),
+    db.select().from(couponsDb).orderBy(desc(couponsDb.createdAt)).limit(limits.coupons),
     db.select().from(platformSettings),
-    db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(120),
+    db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(limits.audits),
   ]);
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...ADMIN_SETTING_DEFAULTS } as Record<string, string>;
   for (const row of settingRows) settings[row.key] = row.value;
@@ -296,6 +320,7 @@ export async function POST(request: Request) {
       description: cleanText(payload.description, 3000), coverImageUrl: coverImageUrl || before?.coverImageUrl || null, price,
       oldPrice: Number.isFinite(oldPriceValue) && oldPriceValue > price ? oldPriceValue : null,
       accessLabel: cleanText(payload.accessLabel, 80) || "90 يومًا",
+      accessDurationDays: normalizeAccessDurationDays(payload.accessDurationDays, cleanText(payload.accessLabel, 80)),
       sourceUrl: cleanText(payload.sourceUrl, 500) || before?.sourceUrl || null,
       verifiedAt: cleanText(payload.verifiedAt, 30) || before?.verifiedAt || null,
       status, featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
@@ -399,31 +424,135 @@ export async function POST(request: Request) {
     const expiresAt = cleanText(payload.expiresAt, 40) || null;
     if (expiresAt && Number.isNaN(new Date(expiresAt).getTime())) return jsonError("تاريخ انتهاء الصلاحية غير صحيح");
     const suppliedPrice = Number(payload.price);
-    const price = Number.isFinite(suppliedPrice) && suppliedPrice >= 0 ? Math.round(suppliedPrice * 100) / 100 : Math.max(0, course.price || 0);
-    const orderNumber = `GRANT-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+    const grantType = cleanText(payload.grantType, 30) === "manual_payment" ? "manual_payment" : "complimentary";
+    const price = grantType === "manual_payment" && Number.isFinite(suppliedPrice) && suppliedPrice >= 0 ? Math.round(suppliedPrice * 100) / 100 : 0;
+    const orderNumber = grantType === "manual_payment" ? `MANUAL-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}` : null;
+    const resolvedExpiry = expiresAt || accessExpiryIso(normalizeAccessDurationDays(course.accessDurationDays, course.access), new Date(now));
+    let grantedExpiry: string | null = resolvedExpiry;
+    let accessId: number | undefined;
     await db.transaction(async (tx) => {
-      await tx.insert(orders).values({ orderNumber, customerEmail: userEmail, customerName: student.fullName, customerPhone: student.phone, courseSlug, subtotal: price, discount: 0, total: price, currency: "SAR", status: "paid", createdAt: now, paidAt: now, updatedAt: now });
-      await tx.insert(orderItems).values({ orderNumber, courseSlug, unitPrice: price, discount: 0, total: price, createdAt: now });
-      await tx.insert(paymentEvents).values({ provider: "admin", providerEventId: `admin-grant:${orderNumber}`, orderNumber, status: "paid", payload: JSON.stringify({ source: "admin_grant", actor: authorization.actor, price, courseSlug, userEmail }), receivedAt: now });
-      await tx.insert(courseAccess).values({ userEmail, courseSlug, source: "admin", orderNumber, expiresAt, startsAt: now }).onConflictDoUpdate({ target: [courseAccess.userEmail, courseAccess.courseSlug], set: { revokedAt: null, source: "admin", orderNumber, expiresAt, startsAt: now } });
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${userEmail}:${courseSlug}`}))`);
+      if (orderNumber) {
+        await tx.insert(orders).values({ orderNumber, customerEmail: userEmail, customerName: student.fullName, customerPhone: student.phone, courseSlug, subtotal: price, discount: 0, total: price, currency: "SAR", status: "paid", paymentMethod: "manual", createdAt: now, paidAt: now, updatedAt: now });
+        await tx.insert(orderItems).values({ orderNumber, courseSlug, unitPrice: price, discount: 0, total: price, accessDurationDays: normalizeAccessDurationDays(course.accessDurationDays, course.access), createdAt: now });
+        await tx.insert(paymentEvents).values({ provider: "admin", providerEventId: `admin-payment:${orderNumber}`, orderNumber, status: "paid", payload: JSON.stringify({ source: "manual_payment", actor: authorization.actor, price, courseSlug, userEmail }), receivedAt: now });
+      }
+      const [existingAccess] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, userEmail), eq(courseAccess.courseSlug, courseSlug))).limit(1);
+      if (existingAccess && !existingAccess.revokedAt) {
+        if (!existingAccess.expiresAt) grantedExpiry = null;
+        else if (grantedExpiry && Date.parse(existingAccess.expiresAt) > Date.parse(grantedExpiry)) grantedExpiry = existingAccess.expiresAt;
+      }
+      const startAt = existingAccess && !existingAccess.revokedAt ? existingAccess.startsAt : now;
+      const [access] = await tx.insert(courseAccess).values({ userEmail, courseSlug, source: grantType === "manual_payment" ? "admin_payment" : "admin_complimentary", orderNumber, expiresAt: grantedExpiry, startsAt: startAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now }).onConflictDoUpdate({ target: [courseAccess.userEmail, courseAccess.courseSlug], set: { revokedAt: null, revocationReason: null, suspendedAt: null, suspensionReason: null, source: grantType === "manual_payment" ? "admin_payment" : "admin_complimentary", orderNumber, expiresAt: grantedExpiry, startsAt: startAt, updatedAt: now } }).returning({ id: courseAccess.id });
+      accessId = access?.id;
+      await tx.insert(courseAccessEvents).values({ eventKey: `admin:${crypto.randomUUID()}`, accessId, userEmail, courseSlug, action: grantType === "manual_payment" ? "manual_payment_granted" : "complimentary_granted", actorEmail: authorization.actor, reason: cleanText(payload.reason, 500) || "منحة إدارية", orderNumber, beforeJson: existingAccess ? JSON.stringify(existingAccess) : null, afterJson: JSON.stringify({ expiresAt: grantedExpiry, price, grantType }), createdAt: now });
     });
     const notificationTitle = "تم تفعيل المادة";
     const notificationBody = `أصبحت مادة «${course.title || courseSlug}» متاحة في حسابك.`;
-    await db.insert(notificationsDb).values({ userEmail, audience: "student", title: notificationTitle, body: notificationBody, actionUrl: `/learn/${courseSlug}`, actionLabel: "فتح المادة", template: "success", createdAt: now }).catch(() => undefined);
-    await sendPushNotification({ userEmail }, notificationTitle, notificationBody, { route: `/learn/${courseSlug}` });
-    await audit(request, authorization.actor, "grant", "course_access", `${userEmail}:${courseSlug}`, null, { expiresAt, price, orderNumber });
-    return Response.json({ ok: true, orderNumber, price });
+    const [notice] = await db.insert(notificationsDb).values({ userEmail, audience: "student", title: notificationTitle, body: notificationBody, actionUrl: `/learn/${courseSlug}`, actionLabel: "فتح المادة", template: "success", dedupeKey: `access:${accessId}:grant:${now}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).returning({ id: notificationsDb.id }).catch(() => []);
+    const push = await sendPushNotification({ userEmail }, notificationTitle, notificationBody, { route: `/learn/${courseSlug}`, notificationId: notice?.id || 0 });
+    if (notice) await db.update(notificationsDb).set({ pushStatus: push.accepted > 0 ? "accepted" : push.attempted === 0 ? "no_devices" : "failed", pushAttempts: 1, pushLastError: push.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: push.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, notice.id));
+    await audit(request, authorization.actor, "grant", "course_access", `${userEmail}:${courseSlug}`, null, { expiresAt: grantedExpiry, price, orderNumber, grantType });
+    return Response.json({ ok: true, orderNumber, price, grantType, push });
+  }
+
+  if (action === "updateAccess") {
+    const accessId = Math.floor(Number(payload.id));
+    const operation = cleanText(payload.operation, 30);
+    const reason = cleanText(payload.reason, 500);
+    const suppliedOperationKey = cleanText(payload.operationKey, 100);
+    const operationKey = /^[A-Za-z0-9_-]{12,90}$/.test(suppliedOperationKey) ? suppliedOperationKey : crypto.randomUUID();
+    if (!accessId || !["pause", "resume", "extend", "revoke"].includes(operation)) return jsonError("إجراء الاشتراك غير صالح");
+    if (["pause", "revoke"].includes(operation) && reason.length < 3) return jsonError("اكتب سبب الإجراء ليظهر في سجل الاشتراك");
+    const [before] = await db.select().from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
+    if (!before) return jsonError("الاشتراك غير موجود", 404);
+    const [course] = await Promise.all([getCourseCatalog(before.courseSlug, true)]);
+    const changes: Partial<typeof courseAccess.$inferInsert> = { updatedAt: now };
+    let extensionDays = 0;
+    let notificationTitle = "تم تحديث اشتراكك";
+    let notificationBody = `تم تحديث الوصول إلى مادة «${course?.title || before.courseSlug}».`;
+    if (operation === "pause") {
+      if (before.revokedAt) return jsonError("الاشتراك ملغي ولا يمكن إيقافه مؤقتًا", 409);
+      changes.suspendedAt = now; changes.suspensionReason = reason;
+      notificationTitle = "تم إيقاف الوصول مؤقتًا"; notificationBody = `أُوقف الوصول إلى مادة «${course?.title || before.courseSlug}» مؤقتًا. السبب: ${reason}`;
+    } else if (operation === "resume") {
+      if (before.revokedAt) return jsonError("الاشتراك ملغي؛ امنح صلاحية جديدة بدل الاستئناف", 409);
+      if (before.suspendedAt && before.expiresAt) {
+        const pauseDuration = Math.max(0, Date.now() - Date.parse(before.suspendedAt));
+        if (Number.isFinite(pauseDuration)) changes.expiresAt = new Date(Date.parse(before.expiresAt) + pauseDuration).toISOString();
+      }
+      changes.suspendedAt = null; changes.suspensionReason = null;
+      notificationTitle = "تم استئناف الوصول"; notificationBody = `يمكنك متابعة مادة «${course?.title || before.courseSlug}» الآن.`;
+    } else if (operation === "extend") {
+      const days = Math.floor(Number(payload.days));
+      extensionDays = days;
+      if (!Number.isInteger(days) || days < 1 || days > 3650) return jsonError("مدة التمديد يجب أن تكون بين يوم و3650 يومًا");
+      const currentEnd = before.expiresAt && Date.parse(before.expiresAt) > Date.now() ? new Date(before.expiresAt) : new Date();
+      changes.expiresAt = accessExpiryIso(days, currentEnd);
+      notificationTitle = "تم تمديد اشتراكك"; notificationBody = `مُدّد وصولك إلى مادة «${course?.title || before.courseSlug}» لمدة ${days} يومًا.`;
+    } else {
+      changes.revokedAt = now; changes.revocationReason = reason; changes.suspendedAt = null; changes.suspensionReason = null;
+      notificationTitle = "تم إيقاف الوصول"; notificationBody = `تم إيقاف الوصول إلى مادة «${course?.title || before.courseSlug}». السبب: ${reason}`;
+    }
+    let noticeId: number | undefined;
+    let transactionError: { message: string; status: number } | null = null;
+    let committedBefore = before;
+    let committedChanges = changes;
+    let replayed = false;
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${accessId}`}))`);
+      const [current] = await tx.select().from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
+      if (!current) { transactionError = { message: "الاشتراك غير موجود", status: 404 }; return; }
+      const eventKey = `admin-access:${accessId}:${operationKey}`;
+      const [previousEvent] = await tx.select({ id: courseAccessEvents.id }).from(courseAccessEvents).where(eq(courseAccessEvents.eventKey, eventKey)).limit(1);
+      if (previousEvent) { replayed = true; committedBefore = current; return; }
+      if (operation === "pause" && current.revokedAt) { transactionError = { message: "الاشتراك ملغي ولا يمكن إيقافه مؤقتًا", status: 409 }; return; }
+      if (operation === "pause" && current.suspendedAt) { transactionError = { message: "الاشتراك متوقف مؤقتًا بالفعل", status: 409 }; return; }
+      if (operation === "resume" && current.revokedAt) { transactionError = { message: "الاشتراك ملغي؛ امنح صلاحية جديدة بدل الاستئناف", status: 409 }; return; }
+      if (operation === "resume" && !current.suspendedAt) { transactionError = { message: "الاشتراك غير متوقف مؤقتًا", status: 409 }; return; }
+      if (operation === "extend" && current.revokedAt) { transactionError = { message: "لا يمكن تمديد اشتراك ملغي", status: 409 }; return; }
+      if (operation === "revoke" && current.revokedAt) { transactionError = { message: "الاشتراك ملغي بالفعل", status: 409 }; return; }
+
+      const lockedChanges: Partial<typeof courseAccess.$inferInsert> = { ...changes, updatedAt: now };
+      if (operation === "resume") {
+        delete lockedChanges.expiresAt;
+        if (current.suspendedAt && current.expiresAt) {
+          const pauseDuration = Math.max(0, Date.now() - Date.parse(current.suspendedAt));
+          if (Number.isFinite(pauseDuration)) lockedChanges.expiresAt = new Date(Date.parse(current.expiresAt) + pauseDuration).toISOString();
+        }
+      } else if (operation === "extend") {
+        const currentEnd = current.expiresAt && Date.parse(current.expiresAt) > Date.now() ? new Date(current.expiresAt) : new Date();
+        lockedChanges.expiresAt = accessExpiryIso(extensionDays, currentEnd);
+      }
+      const [after] = await tx.update(courseAccess).set(lockedChanges).where(eq(courseAccess.id, accessId)).returning();
+      if (!after) { transactionError = { message: "تعذر تحديث الاشتراك", status: 409 }; return; }
+      committedBefore = current;
+      committedChanges = lockedChanges;
+      await tx.insert(courseAccessEvents).values({ eventKey, accessId, userEmail: current.userEmail, courseSlug: current.courseSlug, action: operation, actorEmail: authorization.actor, reason: reason || null, orderNumber: current.orderNumber, beforeJson: JSON.stringify(current), afterJson: JSON.stringify(after), createdAt: now });
+      const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.userEmail, audience: "student", title: notificationTitle, body: notificationBody, actionUrl: operation === "revoke" ? "/dashboard?view=orders" : `/learn/${current.courseSlug}`, actionLabel: operation === "revoke" ? "عرض الطلبات" : "فتح المادة", template: operation === "revoke" || operation === "pause" ? "urgent" : "success", dedupeKey: `access:${accessId}:${operationKey}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+      noticeId = notice?.id;
+    });
+    const accessError = transactionError as { message: string; status: number } | null;
+    if (accessError) return jsonError(accessError.message, accessError.status);
+    if (replayed) return Response.json({ ok: true, replayed: true });
+    const push = await sendPushNotification({ userEmail: committedBefore.userEmail }, notificationTitle, notificationBody, { route: operation === "revoke" ? "/dashboard?view=orders" : `/learn/${committedBefore.courseSlug}`, notificationId: noticeId || 0 });
+    if (noticeId) await db.update(notificationsDb).set({ pushStatus: push.accepted > 0 ? "accepted" : push.attempted === 0 ? "no_devices" : "failed", pushAttempts: 1, pushLastError: push.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: push.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, noticeId));
+    await audit(request, authorization.actor, operation, "course_access", String(accessId), committedBefore, committedChanges);
+    return Response.json({ ok: true, push });
   }
 
   if (action === "revokeUserSession") {
     const sessionId = Math.floor(Number(payload.sessionId));
     if (!sessionId) return jsonError("الجلسة غير صحيحة");
-    const [target] = await db.select({ id: authSessions.id, userId: authSessions.userId, revokedAt: authSessions.revokedAt }).from(authSessions).where(eq(authSessions.id, sessionId)).limit(1);
+    const [target] = await db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, revokedAt: authSessions.revokedAt }).from(authSessions).where(eq(authSessions.id, sessionId)).limit(1);
     if (!target) return jsonError("الجهاز غير موجود", 404);
     const [targetUser] = await db.select({ id: users.id, email: users.email, role: users.role }).from(users).where(eq(users.id, target.userId)).limit(1);
     if (!targetUser) return jsonError("المستخدم غير موجود", 404);
     if (targetUser.role === "admin" && authorization.user?.id === targetUser.id) return jsonError("لا يمكن تسجيل خروج جلستك الإدارية الحالية من هنا", 409);
-    await db.update(authSessions).set({ revokedAt: now }).where(eq(authSessions.id, sessionId));
+    await db.transaction(async (tx) => {
+      await tx.update(authSessions).set({ revokedAt: now }).where(eq(authSessions.id, sessionId));
+      if (target.deviceId) await tx.update(pushDevices).set({ status: "revoked", lastSeenAt: now }).where(and(eq(pushDevices.userId, target.userId), eq(pushDevices.deviceId, target.deviceId)));
+    });
     await audit(request, authorization.actor, "revoke", "auth_session", String(sessionId), { userId: target.userId, revokedAt: target.revokedAt }, { userId: target.userId, revokedAt: now });
     return Response.json({ ok: true });
   }
@@ -444,8 +573,11 @@ export async function POST(request: Request) {
       if (student) {
         const title = "تم تجهيز المادة المطلوبة";
         const body = `تم تجهيز مادة «${course.title}» وأصبحت متاحة الآن في حسابك.`;
-        await db.insert(notificationsDb).values({ userEmail: student.email, audience: "student", title, body, actionUrl: `/learn/${course.slug}`, actionLabel: "فتح المادة", createdAt: now }).catch(() => undefined);
-        await sendPushNotification({ userEmail: student.email }, title, body, { route: `/learn/${course.slug}` });
+        await createAndSendNotification({
+          values: { userEmail: student.email, audience: "student", title, body, actionUrl: `/learn/${course.slug}`, actionLabel: "فتح المادة", createdAt: now },
+          target: { userEmail: student.email },
+          data: { route: `/learn/${course.slug}` },
+        });
       }
     }
     await audit(request, authorization.actor, "prepare", "course_request", String(id), { status: before.status, preparedCourseSlug: before.preparedCourseSlug }, { status: "available", preparedCourseSlug: course.slug });
@@ -467,10 +599,13 @@ export async function POST(request: Request) {
       const [student] = await db.select({ email: users.email }).from(users).where(eq(users.id, before.userId)).limit(1);
       if (student) {
         const title = matchedCourse ? "مادتك أصبحت متاحة" : "تحديث طلب المادة";
-        const body = matchedCourse ? `أصبحت مادة «${matchedCourse.title}» متاحة الآن في مراس.` : `تغيرت حالة طلب «${before.courseName}» إلى ${status}.`;
+        const body = matchedCourse ? `أصبحت مادة «${matchedCourse.title}» متاحة الآن في مراس.` : `تغيرت حالة طلب «${before.courseName}» إلى «${courseRequestStatusArabic[status] || status}».`;
         const actionUrl = matchedCourse ? `/learn/${matchedCourse.slug}` : "/dashboard?view=requests";
-        await db.insert(notificationsDb).values({ userEmail: student.email, audience: "student", title, body, actionUrl, actionLabel: matchedCourse ? "افتح المادة" : "عرض الطلب", createdAt: now }).catch(() => undefined);
-        await sendPushNotification({ userEmail: student.email }, title, body, { route: matchedCourse ? `/learn/${matchedCourse.slug}` : "/requests" });
+        await createAndSendNotification({
+          values: { userEmail: student.email, audience: "student", title, body, actionUrl, actionLabel: matchedCourse ? "افتح المادة" : "عرض الطلب", createdAt: now },
+          target: { userEmail: student.email },
+          data: { route: matchedCourse ? `/learn/${matchedCourse.slug}` : "/requests" },
+        });
       }
     }
     await audit(request, authorization.actor, "update", "course_request", String(id), { status: before.status }, { status });
@@ -488,9 +623,12 @@ export async function POST(request: Request) {
     if (reply) await db.insert(supportReplies).values({ ticketId: id, authorEmail: authorization.actor, authorRole: authorization.user?.role || "admin", body: reply, internal: payload.internal === true, createdAt: now });
     if (before.userEmail && (reply || before.status !== status)) {
       const title = reply ? "رد جديد من دعم مراس" : "تحديث تذكرة الدعم";
-      const body = reply ? reply.slice(0, 240) : `تغيرت حالة التذكرة ${before.ticketNumber} إلى ${status}.`;
-      await db.insert(notificationsDb).values({ userEmail: before.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة", createdAt: now }).catch(() => undefined);
-      await sendPushNotification({ userEmail: before.userEmail }, title, body, { route: "/support" });
+      const body = reply ? reply.slice(0, 240) : `تغيرت حالة التذكرة ${before.ticketNumber} إلى «${supportStatusArabic[status] || status}».`;
+      await createAndSendNotification({
+        values: { userEmail: before.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة", createdAt: now },
+        target: { userEmail: before.userEmail },
+        data: { route: "/support" },
+      });
     }
     await audit(request, authorization.actor, "update", "support_ticket", String(id), { status: before.status }, { status, replied: Boolean(reply) });
     return Response.json({ ok: true });
@@ -519,6 +657,7 @@ export async function POST(request: Request) {
       if (key === "support_email" && value && !validEmail(value)) return jsonError("بريد الدعم غير صالح");
       if (key === "whatsapp_number" && value && !/^\+?[0-9\s-]{9,20}$/.test(value)) return jsonError("رقم واتساب غير صالح");
       if (key === "max_student_devices" && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 10)) return jsonError("حد أجهزة الطالب يجب أن يكون بين 1 و10");
+      if (key === "content_view_mode" && !["both", "app_only", "web_only"].includes(value)) return jsonError("اختر طريقة مشاهدة محتوى صالحة");
       const meta = SETTING_META[key];
       await db.insert(platformSettings).values({ key, value, category: meta.category, isPublic: meta.isPublic, updatedBy: authorization.actor, updatedAt: now }).onConflictDoUpdate({ target: platformSettings.key, set: { value, category: meta.category, isPublic: meta.isPublic, updatedBy: authorization.actor, updatedAt: now } });
     }
@@ -544,12 +683,13 @@ export async function POST(request: Request) {
     if (!["student", "public", "supervisor", "admin", "user"].includes(audience) || !["inbox", "banner", "modal", "all"].includes(presentation) || !["general", "discount", "new-course", "new-service", "urgent", "success"].includes(template) || title.length < 3 || body.length < 3 || (userEmail && !validEmail(userEmail)) || (audience === "user" && !userEmail) || !actionIsValid || (startsAt && Number.isNaN(new Date(startsAt).getTime())) || (expiresAt && Number.isNaN(new Date(expiresAt).getTime()))) return jsonError("تحقق من بيانات الإشعار");
     if (startsAt && expiresAt && new Date(expiresAt).getTime() <= new Date(startsAt).getTime()) return jsonError("فترة الإعلان غير صحيحة");
     const pushScheduled = Boolean(pushEnabled && startsAt && new Date(startsAt).getTime() > Date.now());
-    const [created] = await db.insert(notificationsDb).values({ audience, title, body, userEmail, actionUrl, actionLabel, presentation, template, pushEnabled, pushDeliveredAt: pushScheduled ? null : now, startsAt, expiresAt, dismissible, createdAt: now }).returning({ id: notificationsDb.id });
+    const [created] = await db.insert(notificationsDb).values({ audience, title, body, userEmail, actionUrl, actionLabel, presentation, template, pushEnabled, pushStatus: !pushEnabled ? "disabled" : pushScheduled ? "pending" : "processing", pushClaimedAt: pushEnabled && !pushScheduled ? now : null, startsAt, expiresAt, dismissible, createdAt: now }).returning({ id: notificationsDb.id });
     const push = pushScheduled
       ? { scheduled: true, attempted: 0, accepted: 0, rejected: 0, invalidated: 0, providerErrors: [] as string[] }
       : pushEnabled
         ? { scheduled: false, ...await sendPushNotification({ userEmail, audience }, title, body, { ...(actionUrl?.startsWith("https://") ? { url: actionUrl } : { route: actionUrl || "/notifications" }), notificationId: created.id }) }
         : { scheduled: false, attempted: 0, accepted: 0, rejected: 0, invalidated: 0, providerErrors: [] as string[] };
+    if (!pushScheduled && pushEnabled) await db.update(notificationsDb).set({ pushStatus: push.accepted > 0 ? "accepted" : push.attempted === 0 ? "no_devices" : "failed", pushAttempts: 1, pushLastError: push.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: push.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, created.id));
     await audit(request, authorization.actor, "create", "notification", String(created.id), null, { audience, title, userEmail, template, actionUrl, push });
     return Response.json({ ok: true, id: created.id, push }, { status: 201 });
   }

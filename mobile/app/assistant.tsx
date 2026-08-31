@@ -7,7 +7,7 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { BrandMark } from "@/src/components/Brand";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { api, ApiError, jsonBody } from "@/src/lib/api";
+import { absoluteUrl, api, ApiError, jsonBody } from "@/src/lib/api";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
@@ -16,12 +16,17 @@ type Action = { label: string; href: string };
 type Reply = { answer: string; actions: Action[]; suggestions?: string[] };
 type Message = { id: string; role: "user" | "assistant"; text: string; actions?: Action[]; suggestions?: string[] };
 
-const initial: Message = {
-  id: "welcome",
-  role: "assistant",
-  text: "أهلًا بك، أنا مساعد مراس الذكي. اسألني عن الجامعات والتخصصات والمواد والتسجيل والدفع والمشغل وطلب مادة والدعم.",
+const initialMessage = (isRTL: boolean): Message => isRTL ? {
+  id: "welcome-ar", role: "assistant",
+  text: "أهلًا بك، أنا مساعد مراس الذكي. اسألني بطريقتك عن الجامعات والتخصصات والمواد والدروس والتسجيل والدفع والمشغل وطلب مادة والدعم.",
   suggestions: ["ما لقيت مادتي", "كيف أشاهد درسًا مجانيًا؟", "كيف أتواصل مع الدعم؟"],
+} : {
+  id: "welcome-en", role: "assistant",
+  text: "Hello, I’m the Meras assistant. Ask naturally about institutions, majors, courses, lessons, registration, payment, playback, or support.",
+  suggestions: ["Find a course", "How can I watch a free lesson?", "I need support"],
 };
+
+const isArabicText = (value: string) => (value.match(/[\u0600-\u06ff]/g) || []).length >= (value.match(/[a-z]/gi) || []).length;
 
 function mobileRoute(href: string) {
   if (/^https:\/\//.test(href)) return href;
@@ -46,7 +51,10 @@ function mobileRoute(href: string) {
   if (path === "/universities") return "/(tabs)/universities";
   if (path.startsWith("/universities/")) return path.replace("/universities/", "/university/");
   if (["/login", "/register"].includes(path)) return `/(auth)${path}`;
+  if (path === "/forgot-password") return "/forgot-password";
   if (["/admin", "/supervisor", "/notifications"].includes(path)) return path;
+  if (["/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility", "/how-it-works"].includes(path)) return absoluteUrl(path);
+  if (path === "/") return "/(tabs)";
   return "/support";
 }
 
@@ -55,7 +63,7 @@ export default function Assistant() {
   const { isRTL } = useLanguage();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
-  const [messages, setMessages] = useState<Message[]>([initial]);
+  const [messages, setMessages] = useState<Message[]>(() => [initialMessage(isRTL)]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const list = useRef<FlatList<Message>>(null);
@@ -90,13 +98,13 @@ export default function Assistant() {
       setMessages((rows) => [...rows, {
         id: `e-${Date.now()}-${Math.random()}`,
         role: "assistant",
-        text: reason instanceof ApiError ? reason.message : "تعذر الوصول للمساعد الآن. يمكنك فتح الدعم مباشرة.",
+        text: reason instanceof ApiError ? reason.message : isRTL ? "تعذر الوصول للمساعد الآن. يمكنك فتح الدعم مباشرة." : "The assistant is unavailable right now. You can open Support directly.",
       }]);
     } finally {
       setSending(false);
       setTimeout(() => scrollToBottom(), 80);
     }
-  }, [history, input, scrollToBottom, sending]);
+  }, [history, input, isRTL, scrollToBottom, sending]);
 
   const openAction = async (href: string) => {
     const route = mobileRoute(href);
@@ -106,20 +114,21 @@ export default function Assistant() {
 
   const renderMessage = ({ item }: { item: Message }) => {
     const mine = item.role === "user";
+    const messageRTL = isArabicText(item.text);
     return <View style={[styles.messageRow, mine ? styles.userRow : styles.assistantRow]}>
       <View style={[styles.bubble, mine ? styles.userBubble : styles.assistantBubble, { backgroundColor: mine ? colors.primary : colors.surface, borderColor: mine ? colors.primary : colors.border }]}>
-        {!mine && <View style={styles.assistantLabel}><BrandMark size={27} /><Text style={{ color: colors.primary, fontSize: 10, fontWeight: "900" }}>مراس</Text></View>}
-        <Text style={[styles.messageText, { color: mine ? "#FFFFFF" : colors.text }]}>{item.text}</Text>
-        {!!item.actions?.length && <View style={styles.actions}>{item.actions.map((action) => <Pressable key={`${item.id}-${action.href}`} onPress={() => void openAction(action.href)} style={[styles.action, { backgroundColor: mine ? "rgba(255,255,255,.14)" : colors.surfaceAlt }]}><Ionicons name={isRTL ? "arrow-back" : "arrow-forward"} size={14} color={mine ? "#FFF" : colors.primary} /><Text numberOfLines={2} style={{ color: mine ? "#FFF" : colors.primary, fontSize: 10, fontWeight: "800", flexShrink: 1 }}>{action.label}</Text></Pressable>)}</View>}
-        {!!item.suggestions?.length && <View style={styles.suggestions}>{item.suggestions.map((suggestion) => <Pressable key={`${item.id}-${suggestion}`} onPress={() => void send(suggestion)} style={[styles.suggestion, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}><Text style={{ color: colors.textSoft, fontSize: 9, textAlign: "right" }}>{suggestion}</Text></Pressable>)}</View>}
+        {!mine && <View style={[styles.assistantLabel, { flexDirection: messageRTL ? "row-reverse" : "row" }]}><BrandMark size={27} /><Text style={{ color: colors.primary, fontSize: 10, fontWeight: "900" }}>{messageRTL ? "مراس" : "Meras"}</Text></View>}
+        <Text style={[styles.messageText, { color: mine ? "#FFFFFF" : colors.text, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }]}>{item.text}</Text>
+        {!!item.actions?.length && <View style={styles.actions}>{item.actions.map((action) => <Pressable key={`${item.id}-${action.href}`} onPress={() => void openAction(action.href)} style={[styles.action, { backgroundColor: mine ? "rgba(255,255,255,.14)" : colors.surfaceAlt, flexDirection: messageRTL ? "row" : "row-reverse" }]}><Ionicons name={messageRTL ? "arrow-back" : "arrow-forward"} size={14} color={mine ? "#FFF" : colors.primary} /><Text numberOfLines={2} style={{ color: mine ? "#FFF" : colors.primary, fontSize: 10, fontWeight: "800", flexShrink: 1, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{action.label}</Text></Pressable>)}</View>}
+        {!!item.suggestions?.length && <View style={[styles.suggestions, { justifyContent: messageRTL ? "flex-end" : "flex-start" }]}>{item.suggestions.map((suggestion) => <Pressable key={`${item.id}-${suggestion}`} onPress={() => void send(suggestion)} style={[styles.suggestion, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}><Text style={{ color: colors.textSoft, fontSize: 9, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{suggestion}</Text></Pressable>)}</View>}
       </View>
     </View>;
   };
 
   return <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: colors.background }]}>
-    <View style={[styles.header, { borderBottomColor: colors.border }]}>
+    <View style={[styles.header, { borderBottomColor: colors.border, flexDirection: isRTL ? "row" : "row-reverse" }]}>
       <Pressable onPress={() => router.back()} style={[styles.close, { backgroundColor: colors.surface }]}><Ionicons name="close" size={23} color={colors.text} /></Pressable>
-      <View style={styles.headCopy}><Text style={[styles.title, { color: colors.text }]}>مساعد مراس</Text><Text style={[styles.online, { color: colors.success }]}>● متصل بسياق المنصة{user ? " وحسابك" : ""}</Text></View>
+      <View style={[styles.headCopy, { alignItems: isRTL ? "flex-end" : "flex-start" }]}><Text style={[styles.title, { color: colors.text }]}>{isRTL ? "مساعد مراس" : "Meras Assistant"}</Text><Text style={[styles.online, { color: colors.success, textAlign: isRTL ? "right" : "left" }]}>{isRTL ? `● متصل بسياق المنصة${user ? " وحسابك" : ""}` : `● Connected to the live platform${user ? " and your account" : ""}`}</Text></View>
       <BrandMark size={50} whiteTile={!dark} />
     </View>
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}>
@@ -134,19 +143,19 @@ export default function Assistant() {
         keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
         removeClippedSubviews={false}
         onContentSizeChange={() => scrollToBottom(false)}
-        ListFooterComponent={sending ? <View style={[styles.typing, { backgroundColor: colors.surface, borderColor: colors.border }]}><ActivityIndicator size="small" color={colors.primary} /><Text style={{ color: colors.textSoft, fontSize: 10 }}>يراجع سياق حسابك...</Text></View> : <View style={{ height: 2 }} />}
+        ListFooterComponent={sending ? <View style={[styles.typing, { backgroundColor: colors.surface, borderColor: colors.border, alignSelf: isRTL ? "flex-start" : "flex-end", flexDirection: isRTL ? "row" : "row-reverse" }]}><ActivityIndicator size="small" color={colors.primary} /><Text style={{ color: colors.textSoft, fontSize: 10 }}>{isRTL ? "يبحث في البيانات الحالية..." : "Searching current data..."}</Text></View> : <View style={{ height: 2 }} />}
       />
       <View style={[styles.composerWrap, { paddingBottom: Math.max(8, insets.bottom), backgroundColor: colors.background, borderTopColor: colors.border }]}>
-        <View style={[styles.composer, { backgroundColor: colors.surface, borderColor: colors.border }]}>
+        <View style={[styles.composer, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: isRTL ? "row" : "row-reverse" }]}>
           <Pressable disabled={input.trim().length < 2 || sending} onPress={() => void send()} style={[styles.send, { backgroundColor: input.trim().length >= 2 && !sending ? colors.primary : colors.surfaceAlt }]}><Ionicons name="arrow-up" size={21} color={input.trim().length >= 2 && !sending ? "#FFF" : colors.textSoft} /></Pressable>
           <TextInput
             multiline
             value={input}
             onChangeText={setInput}
             onFocus={() => setTimeout(() => scrollToBottom(), 160)}
-            placeholder="اسأل عن أي شيء في مراس..."
+            placeholder={isRTL ? "اسأل عن أي شيء في مراس..." : "Ask anything about Meras..."}
             placeholderTextColor={colors.textSoft}
-            style={[styles.input, { color: colors.text }]}
+            style={[styles.input, { color: colors.text, writingDirection: isRTL ? "rtl" : "ltr", textAlign: isRTL ? "right" : "left" }]}
            
             maxLength={500}
             returnKeyType="default"

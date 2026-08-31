@@ -1,10 +1,10 @@
 import { desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseRequestFiles, courseRequests, notificationsDb, supervisorAssignments, users } from "@/db/schema";
+import { courseRequestFiles, courseRequests, supervisorAssignments, users } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { getInstitutionCatalog } from "@/lib/catalog-store";
-import { sendPushNotification } from "@/lib/push";
+import { createAndSendNotification } from "@/lib/notifications";
 import { deleteStoredMultipartFiles, parseStoredMultipart } from "@/lib/multipart-upload";
 
 const MAX_TOTAL_FILE_BYTES = 100 * 1024 * 1024;
@@ -85,16 +85,22 @@ export async function POST(request: Request) {
 
   const studentTitle = "تم استلام طلب المادة";
   const studentBody = `استلمنا طلب «${courseName}»${files.length ? ` مع ${files.length} مرفقات` : ""}.`;
-  await db.insert(notificationsDb).values({ userEmail: user.email, audience: "student", title: studentTitle, body: studentBody, actionUrl: "/dashboard?view=requests", actionLabel: "متابعة الطلب" }).catch(() => undefined);
-  await sendPushNotification({ userEmail: user.email }, studentTitle, studentBody, { route: "/requests" });
+  await createAndSendNotification({
+    values: { userEmail: user.email, audience: "student", title: studentTitle, body: studentBody, actionUrl: "/dashboard?view=requests", actionLabel: "متابعة الطلب" },
+    target: { userEmail: user.email },
+    data: { route: "/requests" },
+  });
   if (assignedSupervisorId) {
     try {
       const [supervisor] = await db.select({ email: users.email }).from(users).where(eq(users.id, assignedSupervisorId)).limit(1);
       if (supervisor) {
         const title = "طلب مادة جديد";
         const body = `${institution.name} · ${user.specialty} · ${courseName}`;
-        await db.insert(notificationsDb).values({ userEmail: supervisor.email, audience: "supervisor", title, body, actionUrl: "/supervisor?view=requests", actionLabel: "فتح الطلبات" }).catch(() => undefined);
-        await sendPushNotification({ userEmail: supervisor.email }, title, body, { route: "/supervisor" });
+        await createAndSendNotification({
+          values: { userEmail: supervisor.email, audience: "supervisor", title, body, actionUrl: "/supervisor?view=requests", actionLabel: "فتح الطلبات" },
+          target: { userEmail: supervisor.email },
+          data: { route: "/supervisor" },
+        });
       }
     } catch { /* The saved request remains available in the supervisor workspace. */ }
   }

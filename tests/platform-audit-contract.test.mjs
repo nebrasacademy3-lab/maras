@@ -22,6 +22,20 @@ test("checkout has abuse protection, atomic order creation, and an upstream time
   assert.match(checkout, /status: "failed"/);
 });
 
+test("checkout serializes matching carts and gives Tap a bounded redirect lifetime", () => {
+  assert.match(checkout, /const requestedSorted = \[\.\.\.uniqueSlugs\]\.sort\(\)/);
+  assert.match(checkout, /const requestedCartJson = JSON\.stringify\(requestedSorted\)/);
+  assert.match(checkout, /checkout:\$\{user\.id\}:\$\{requestedCartJson\}/);
+  assert.match(checkout, /pg_advisory_xact_lock\(hashtext\(/);
+  assert.match(checkout, /INTERVAL '30 minutes'/);
+  assert.match(checkout, /jsonb_agg\(oi\.course_slug ORDER BY oi\.course_slug\)/);
+  assert.match(checkout, /IS NOT DISTINCT FROM/);
+  assert.ok(checkout.indexOf("pg_advisory_xact_lock") < checkout.indexOf("jsonb_agg"));
+  assert.ok(checkout.indexOf("jsonb_agg") < checkout.indexOf("tx.insert(orders)"));
+  assert.doesNotMatch(checkout, /recentOrders[\s\S]{0,500}\.limit\(20\)/);
+  assert.match(checkout, /transaction: \{ expiry: \{ period: CHECKOUT_EXPIRY_MINUTES, type: "MINUTE" \} \}/);
+});
+
 test("published courses require at least one ready lesson before cart or payment", () => {
   assert.match(catalogStore, /lessons\.length > 0 && readyLessons > 0/);
   assert.doesNotMatch(catalogStore, /readyLessons === lessons\.length/);
