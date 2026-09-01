@@ -11,6 +11,7 @@ import { ThemeProvider } from "@/components/theme-provider";
 import { DeferredEnhancements } from "@/components/deferred-enhancements";
 import { AnnouncementCampaign } from "@/components/announcement-campaign";
 import { RealtimeSync } from "@/components/realtime-sync";
+import { PlatformAnalytics } from "@/components/platform-analytics";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
@@ -56,7 +57,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
   return (
     <html lang="ar" dir="rtl" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /><script dangerouslySetInnerHTML={{ __html: homeIntroScript }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} /></head>
-      <body><ThemeProvider><RealtimeSync><AnnouncementCampaign />{children}<DeferredEnhancements /></RealtimeSync></ThemeProvider></body>
+      <body><ThemeProvider><RealtimeSync><PlatformAnalytics /><AnnouncementCampaign />{children}<DeferredEnhancements /></RealtimeSync></ThemeProvider></body>
     </html>
   );
 }

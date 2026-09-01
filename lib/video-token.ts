@@ -1,4 +1,4 @@
-type VideoGrant = {
+export type VideoGrant = {
   courseSlug: string;
   lessonId: string;
   email: string;

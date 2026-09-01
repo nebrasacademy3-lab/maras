@@ -16,10 +16,39 @@ RUN_DB_MIGRATIONS=true
 AUTO_SEED_CATALOG=true
 CATALOG_SEED_MODE=core
 
+# اختياري: تخزين S3/R2 خاص. إذا تُرك فارغًا يستمر التخزين على Railway Volume.
+S3_ENDPOINT=
+S3_BUCKET=
+S3_REGION=auto
+S3_ACCESS_KEY_ID=
+S3_SECRET_ACCESS_KEY=
+S3_FORCE_PATH_STYLE=true
+
+# معالجة الفيديو المتكيفة. صورة Docker تتضمن FFmpeg؛ الفيديو الأصلي يبقى متاحًا عند تعذر المعالجة.
+VIDEO_WORKER_ENABLED=true
+VIDEO_WORKER_POLL_MS=5000
+VIDEO_WORKER_BATCH_SIZE=1
+VIDEO_FFMPEG_PATH=ffmpeg
+VIDEO_FFPROBE_PATH=ffprobe
+VIDEO_FFMPEG_PRESET=medium
+VIDEO_TOKEN_TTL_SECONDS=14400
+
 # احتفظ بقيمك الحالية في الإنتاج ولا تضع هذه النصوص الحرفية.
 ADMIN_API_TOKEN=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
 ADMIN_UPLOAD_TOKEN=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
 VIDEO_SIGNING_SECRET=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
+# مفتاح مستقل لتشفير أسرار المصادقة الإضافية؛ لا تعِد استخدام أي سر آخر.
+ADMIN_MFA_ENCRYPTION_KEY=REPLACE_WITH_AN_INDEPENDENT_RANDOM_32_BYTE_KEY
+# Independent token used only by the notification scheduler.
+SCHEDULED_TASK_TOKEN=REPLACE_WITH_A_DIFFERENT_32_PLUS_CHAR_SECRET
+# ملح مستقل لتجزئة إشارات مكافحة إساءة استخدام الإحالات.
+REFERRAL_HASH_SALT=REPLACE_WITH_AN_INDEPENDENT_RANDOM_32_PLUS_CHAR_SECRET
+# Railway يعيد كتابة X-Forwarded-For؛ لا تستخدم هذا الخيار خلف بروكسي لا تثق به.
+REFERRAL_TRUSTED_IP_HEADER=x-forwarded-for
+
+# خدمة فحص المرفقات؛ في الإنتاج تبقى الملفات غير قابلة للتنزيل حتى نجاح الفحص.
+MALWARE_SCAN_URL=
+MALWARE_SCAN_TOKEN=
 
 # موجود للتوافق مع إعدادات المشروع الحالية؛ اترك قيمة إنتاجك الحالية إن كنت قد عرّفتها.
 SESSION_SECRET=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
@@ -28,6 +57,18 @@ SESSION_COOKIE_SECURE=true
 # Tap — اتركها فارغة حتى تفعيل الدفع الحقيقي.
 TAP_SECRET_KEY=
 TAP_WEBHOOK_SECRET=
+
+# مراس AI — أدخل مفاتيح Gemini الحقيقية في Railway ولا تضعها في المستودع.
+GEMINI_API_KEY=
+GEMINI_API_KEYS=
+AI_KEYS_ENCRYPTION_KEY=REPLACE_WITH_AN_INDEPENDENT_RANDOM_32_BYTE_KEY
+AI_MONTHLY_PRICE_SAR=30
+AI_MAX_STORED_FILES_PER_USER=30
+AI_MAX_STORED_BYTES_PER_USER=209715200
+AI_MAX_CONCURRENT_FILE_ACTIONS=4
+AI_GEMINI_MAX_KEY_ATTEMPTS=3
+AI_GEMINI_ATTEMPT_TIMEOUT_MS=35000
+AI_GEMINI_OVERALL_TIMEOUT_MS=85000
 
 # البريد — اختياري.
 RESEND_API_KEY=

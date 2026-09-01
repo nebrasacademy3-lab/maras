@@ -5,6 +5,7 @@ import { checkRateLimit, clientIp, createSession, DeviceLimitError, hashPassword
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
 import { validAcademicLevel } from "@/lib/academic-levels";
+import { provisionReferralCodeTx, recordReferralRegistrationTx, referralCodeFromRegistration } from "@/lib/referrals";
 
 function canonicalPhone(value: string) {
   const digits = value.replace(/\D/g, "").replace(/^00966/, "966");
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
   const universitySlug = cleanText(payload.universitySlug, 120);
   const specialty = cleanText(payload.specialty, 120);
   const academicLevel = cleanText(payload.academicLevel, 80);
+  const referralCode = referralCodeFromRegistration(payload, request);
 
   if (!await checkRateLimit("register-identity", `${email}:${phone}`, 5, 60 * 60)) return jsonError("محاولات كثيرة لهذا الحساب. حاول بعد ساعة.", 429);
 
@@ -43,20 +45,27 @@ export async function POST(request: Request) {
   const [existing] = await db.select({ id: users.id }).from(users).where(or(eq(users.email, email), eq(users.phone, phone))).limit(1);
   if (existing) return jsonError("يوجد حساب مرتبط بالبريد أو رقم الجوال", 409);
   const now = new Date().toISOString();
-  const [created] = await db.insert(users).values({
-    email,
-    phone,
-    fullName,
-    passwordHash: await hashPassword(password),
-    role: "student",
-    universitySlug,
-    specialty,
-    academicLevel,
-    profileCompletedAt: now,
-    status: "active",
-    createdAt: now,
-    updatedAt: now,
-  }).onConflictDoNothing().returning({ id: users.id, email: users.email, fullName: users.fullName });
+  const passwordHash = await hashPassword(password);
+  const created = await db.transaction(async (tx) => {
+    const [user] = await tx.insert(users).values({
+      email,
+      phone,
+      fullName,
+      passwordHash,
+      role: "student",
+      universitySlug,
+      specialty,
+      academicLevel,
+      profileCompletedAt: now,
+      status: "active",
+      createdAt: now,
+      updatedAt: now,
+    }).onConflictDoNothing().returning({ id: users.id, email: users.email, fullName: users.fullName });
+    if (!user) return null;
+    await provisionReferralCodeTx(tx, user.id, now);
+    await recordReferralRegistrationTx(tx, { referralCode, referredUserId: user.id, request, now });
+    return user;
+  });
   if (!created) return jsonError("يوجد حساب مرتبط بالبريد أو رقم الجوال", 409);
   let session;
   try { session = await createSession(created.id, request, true); }

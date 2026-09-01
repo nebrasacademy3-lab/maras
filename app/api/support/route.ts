@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
@@ -6,6 +6,7 @@ import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/l
 import { deleteObject } from "@/lib/storage";
 import { deleteStoredMultipartFiles, parseStoredMultipart, type StoredMultipartFile } from "@/lib/multipart-upload";
 import { createAndSendNotification } from "@/lib/notifications";
+import { scanColumns, scanStoredFile } from "@/lib/file-security";
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_FILES = 8;
@@ -47,6 +48,7 @@ function normalizedReplies(ticket: TicketRow, sourceReplies: ReplyRow[], sourceF
     originalName: file.originalName,
     contentType: file.contentType,
     sizeBytes: file.sizeBytes,
+    scanStatus: file.scanStatus,
     createdAt: file.createdAt,
   }));
 
@@ -121,6 +123,12 @@ export async function POST(request: Request) {
     } else values = await request.json() as Record<string, unknown>;
   } catch (error) { return jsonError(error instanceof Error ? error.message : "بيانات الدعم غير صالحة", multipart ? 413 : 400); }
   const discardFiles = () => deleteStoredMultipartFiles(files);
+  const fileScans = new Map<string, Awaited<ReturnType<typeof scanStoredFile>>>();
+  for (const file of files) {
+    const result = await scanStoredFile(file);
+    fileScans.set(file.objectKey, result);
+    if (result.status === "quarantined") { await discardFiles(); return jsonError("رُفض أحد المرفقات بعد الفحص الأمني", 422); }
+  }
 
   const ticketId = Math.floor(Number(values.ticketId));
   const body = cleanText(values.message ?? values.body, 4000);
@@ -143,8 +151,13 @@ export async function POST(request: Request) {
     try {
       replyId = await db.transaction(async (tx) => {
         const [reply] = await tx.insert(supportReplies).values({ ticketId, authorEmail: current.email, authorRole: current.role, body, internal, replyToId, createdAt: now }).returning({ id: supportReplies.id });
-        if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: reply.id, ticketId, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: now })));
-        await tx.update(supportTickets).set({ status: nextStatus, assignedTo: isManager(current) ? current.email : ticket.assignedTo, updatedAt: now }).where(eq(supportTickets.id, ticketId));
+        if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: reply.id, ticketId, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, ...scanColumns(fileScans.get(file.objectKey)!), createdAt: now })));
+        await tx.update(supportTickets).set({
+          status: nextStatus,
+          assignedTo: isManager(current) ? current.email : ticket.assignedTo,
+          firstResponseAt: isManager(current) && !internal ? sql`COALESCE(${supportTickets.firstResponseAt}, ${now})` : ticket.firstResponseAt,
+          updatedAt: now,
+        }).where(eq(supportTickets.id, ticketId));
         return reply.id;
       });
     } catch {
@@ -178,7 +191,7 @@ export async function POST(request: Request) {
     ticket = await db.transaction(async (tx) => {
       const [created] = await tx.insert(supportTickets).values({ ticketNumber, category, priority, title, message: body || "مرفق", contactChannel, userEmail: current.email, createdAt: now, updatedAt: now }).returning({ id: supportTickets.id, ticketNumber: supportTickets.ticketNumber, status: supportTickets.status });
       const [initialReply] = await tx.insert(supportReplies).values({ ticketId: created.id, authorEmail: current.email, authorRole: current.role, body, createdAt: now }).returning({ id: supportReplies.id });
-      if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: initialReply.id, ticketId: created.id, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: now })));
+      if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: initialReply.id, ticketId: created.id, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, ...scanColumns(fileScans.get(file.objectKey)!), createdAt: now })));
       return created;
     });
   } catch {
@@ -242,15 +255,23 @@ export async function PATCH(request: Request) {
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
   const ticketId = Math.floor(Number(payload.ticketId));
   const action = cleanText(payload.action, 20);
-  if (!ticketId || !["reopen", "close"].includes(action)) return jsonError("إجراء التذكرة غير صالح");
+  if (!ticketId || !["reopen", "close", "rate"].includes(action)) return jsonError("إجراء التذكرة غير صالح");
   const db = getDb();
   const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
   if (!isManager(current) && ticket.userEmail !== current.email) return jsonError("غير مصرح", 403);
+  if (action === "rate") {
+    if (ticket.userEmail !== current.email || !["resolved", "closed"].includes(ticket.status)) return jsonError("يمكن تقييم تذكرة مغلقة تخص حسابك فقط", 403);
+    const rating = Math.floor(Number(payload.rating));
+    if (rating < 1 || rating > 5) return jsonError("التقييم يجب أن يكون من 1 إلى 5");
+    const comment = cleanText(payload.comment, 800) || null;
+    await db.update(supportTickets).set({ satisfactionRating: rating, satisfactionComment: comment, updatedAt: new Date().toISOString() }).where(eq(supportTickets.id, ticketId));
+    return Response.json({ ok: true, rating }, { headers: { "cache-control": "no-store" } });
+  }
   if (action === "close" && !isManager(current)) return jsonError("إغلاق التذكرة من صلاحية المشرف", 403);
   const status = action === "close" ? "closed" : "open";
   const now = new Date().toISOString();
-  await db.update(supportTickets).set({ status, updatedAt: now, assignedTo: isManager(current) ? current.email : ticket.assignedTo }).where(eq(supportTickets.id, ticketId));
+  await db.update(supportTickets).set({ status, resolvedAt: action === "close" ? now : null, updatedAt: now, assignedTo: isManager(current) ? current.email : ticket.assignedTo }).where(eq(supportTickets.id, ticketId));
   if (ticket.userEmail && isManager(current)) {
     const title = status === "closed" ? "أُغلقت تذكرة الدعم" : "أُعيد فتح تذكرة الدعم";
     const body = `${ticket.ticketNumber}: ${status === "closed" ? "تم إنهاء المحادثة ويمكنك إعادة فتحها عند الحاجة." : "أصبحت المحادثة مفتوحة من جديد."}`;

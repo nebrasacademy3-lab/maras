@@ -9,6 +9,15 @@ export function openNotificationRoute(actionUrl: unknown) {
   }
   if (!actionUrl.startsWith("/") || actionUrl.startsWith("//")) return;
   const [path = "", query = ""] = actionUrl.split("?", 2);
+  if (path === "/meras-ai") {
+    const params = new URLSearchParams(query);
+    const conversationId = params.get("conversation")?.trim();
+    const quizId = params.get("quiz")?.trim();
+    if (conversationId && /^[A-Za-z0-9_-]{1,120}$/.test(conversationId)) router.push({ pathname: "/ai/conversation/[id]", params: { id: conversationId } });
+    else if (quizId && /^[A-Za-z0-9_-]{1,120}$/.test(quizId)) router.push({ pathname: "/ai/quiz/[id]", params: { id: quizId } });
+    else router.push("/(tabs)/ai");
+    return;
+  }
   if (path.startsWith("/learn/")) {
     const slug = decodeURIComponent(path.slice("/learn/".length));
     if (slug) router.push({ pathname: "/learn/[slug]", params: { slug } });
@@ -25,6 +34,7 @@ export function openNotificationRoute(actionUrl: unknown) {
   else if (path === "/support") router.push("/support");
   else if (path === "/request-course" || path === "/requests") router.push("/requests");
   else if (path === "/notifications") router.push("/notifications");
+  else if (path === "/referrals") router.push("/referrals");
   else if (path === "/cart") router.push("/cart");
   else if (path === "/favorites") router.push("/favorites");
   else if (path === "/orders") router.push("/orders");

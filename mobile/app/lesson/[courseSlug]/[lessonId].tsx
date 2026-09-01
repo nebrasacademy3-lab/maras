@@ -31,7 +31,7 @@ type PreparedPlayback = {
   source: {
     uri: string;
     headers: Record<string, string>;
-    contentType: "progressive";
+    contentType: "progressive" | "hls";
     useCaching: false;
     metadata: { title: string; artist: string };
   };
@@ -177,7 +177,7 @@ export default function LessonPlayer() {
         if (!selectedLesson) throw new Error("الدرس غير موجود");
         if (cancelled) return;
         const [session, progress, noteResult] = await Promise.all([
-          api<{ streamUrl: string; expiresAt: string }>("/api/video/session", {
+          api<{ streamUrl: string; expiresAt: string; adaptive?: boolean }>("/api/video/session", {
             method: "POST",
             body: jsonBody({ courseSlug, lessonId }),
           }),
@@ -206,7 +206,7 @@ export default function LessonPlayer() {
           source: {
             uri: absoluteUrl(session.streamUrl),
             headers,
-            contentType: "progressive",
+            contentType: session.adaptive ? "hls" : "progressive",
             useCaching: false,
             metadata: { title: selectedLesson.title, artist: "مراس العلم" },
           },

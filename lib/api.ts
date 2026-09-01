@@ -6,6 +6,11 @@ function secretEquals(expected: string, actual: string) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+function validMachineSecret(value: string | undefined) {
+  const secret = value?.trim() || "";
+  return secret.length >= 32 && !/(?:replace[-_ ]?with|change[-_ ]?me|example[-_ ]?secret)/i.test(secret) ? secret : "";
+}
+
 export function jsonError(message: string, status = 400) {
   return Response.json({ ok: false, error: message }, {
     status,
@@ -39,10 +44,18 @@ export function requestOrigin(request: Request) {
   return new URL(request.url).origin;
 }
 
-export function isAdminRequest(request: Request) {
-  const expected = process.env.ADMIN_API_TOKEN?.trim();
-  if (!expected) return false;
+function requestHasSecret(request: Request, expected: string | undefined, directHeader: string) {
+  const secret = validMachineSecret(expected);
+  if (!secret) return false;
   const bearer = request.headers.get("authorization")?.replace(/^Bearer\s+/i, "").trim();
-  const direct = request.headers.get("x-admin-token")?.trim();
-  return Boolean((bearer && secretEquals(expected, bearer)) || (direct && secretEquals(expected, direct)));
+  const direct = request.headers.get(directHeader)?.trim();
+  return Boolean((bearer && secretEquals(secret, bearer)) || (direct && secretEquals(secret, direct)));
+}
+
+export function isAdminRequest(request: Request) {
+  return requestHasSecret(request, process.env.ADMIN_API_TOKEN, "x-admin-token");
+}
+
+export function isScheduledTaskRequest(request: Request) {
+  return requestHasSecret(request, process.env.SCHEDULED_TASK_TOKEN, "x-scheduled-task-token");
 }

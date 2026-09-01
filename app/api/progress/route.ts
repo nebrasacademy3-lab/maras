@@ -1,6 +1,6 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseAccess, lessonProgress, lessonsDb } from "@/db/schema";
+import { analyticsEvents, courseAccess, lessonProgress, lessonsDb } from "@/db/schema";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { activeCourseAccessWhere } from "@/lib/course-access";
@@ -39,13 +39,21 @@ export async function POST(request: Request) {
   const completionThreshold = lessonRow.durationSeconds > 0 ? Math.max(5, Math.floor(lessonRow.durationSeconds * .85)) : 30;
   const completed = payload.completed === true && watchedSeconds >= completionThreshold;
   const now = new Date().toISOString();
-  await db.insert(lessonProgress).values({ userEmail: user.email, courseSlug, lessonId, watchedSeconds, completed, updatedAt: now }).onConflictDoUpdate({
-    target: [lessonProgress.userEmail, lessonProgress.lessonId],
-    set: {
-      watchedSeconds: sql`GREATEST(${lessonProgress.watchedSeconds}, ${watchedSeconds})`,
-      completed: sql`${lessonProgress.completed} OR ${completed}`,
-      updatedAt: now,
-    },
+  const [existingLesson, existingCourse] = await Promise.all([
+    db.select({ completed: lessonProgress.completed }).from(lessonProgress).where(and(eq(lessonProgress.userEmail, user.email), eq(lessonProgress.lessonId, lessonId))).limit(1),
+    db.select({ id: lessonProgress.id }).from(lessonProgress).where(and(eq(lessonProgress.userEmail, user.email), eq(lessonProgress.courseSlug, courseSlug))).limit(1),
+  ]);
+  await db.transaction(async (tx) => {
+    await tx.insert(lessonProgress).values({ userEmail: user.email, courseSlug, lessonId, watchedSeconds, completed, updatedAt: now }).onConflictDoUpdate({
+      target: [lessonProgress.userEmail, lessonProgress.lessonId],
+      set: {
+        watchedSeconds: sql`GREATEST(${lessonProgress.watchedSeconds}, ${watchedSeconds})`,
+        completed: sql`${lessonProgress.completed} OR ${completed}`,
+        updatedAt: now,
+      },
+    });
+    if (!existingCourse.length && watchedSeconds > 0) await tx.insert(analyticsEvents).values({ event: "first_lesson_start", userEmail: user.email, courseSlug, metadataJson: JSON.stringify({ lessonId }), createdAt: now });
+    if (completed && !existingLesson[0]?.completed) await tx.insert(analyticsEvents).values({ event: "lesson_complete", userEmail: user.email, courseSlug, metadataJson: JSON.stringify({ lessonId, watchedSeconds }), createdAt: now });
   });
   return Response.json({ ok: true, savedAt: now });
 }

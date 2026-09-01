@@ -6,6 +6,7 @@ import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { getInstitutionCatalog } from "@/lib/catalog-store";
 import { createAndSendNotification } from "@/lib/notifications";
 import { deleteStoredMultipartFiles, parseStoredMultipart } from "@/lib/multipart-upload";
+import { scanColumns, scanStoredFile } from "@/lib/file-security";
 
 const MAX_TOTAL_FILE_BYTES = 100 * 1024 * 1024;
 const MAX_FILE_BYTES = MAX_TOTAL_FILE_BYTES;
@@ -71,11 +72,17 @@ export async function POST(request: Request) {
   try { assignedSupervisorId = await supervisorFor(user.universitySlug, user.specialty); }
   catch { await discardFiles(); return jsonError("تعذر إسناد الطلب حاليًا", 503); }
   const now = new Date().toISOString();
+  const fileScans = new Map<string, Awaited<ReturnType<typeof scanStoredFile>>>();
+  for (const file of files) {
+    const result = await scanStoredFile(file);
+    fileScans.set(file.objectKey, result);
+    if (result.status === "quarantined") { await discardFiles(); return jsonError("رُفض أحد المرفقات بعد الفحص الأمني", 422); }
+  }
   let row: { id: number; status: string };
   try {
     row = await db.transaction(async (tx) => {
       const [created] = await tx.insert(courseRequests).values({ userId: user.id, university: institution.name, universitySlug: user.universitySlug!, specialty: user.specialty!, courseName: courseCode ? `${courseName} (${courseCode})` : courseName, name: user.fullName, phone: user.phone!, notes, courseUrl, notify: fields.notify !== undefined, status: assignedSupervisorId ? "assigned" : "new", assignedSupervisorId, attachmentsCount: files.length, createdAt: now, updatedAt: now }).returning({ id: courseRequests.id, status: courseRequests.status });
-      if (files.length) await tx.insert(courseRequestFiles).values(files.map((file) => ({ requestId: created.id, userId: user.id, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes })));
+      if (files.length) await tx.insert(courseRequestFiles).values(files.map((file) => ({ requestId: created.id, userId: user.id, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, ...scanColumns(fileScans.get(file.objectKey)!) })));
       return created;
     });
   } catch {

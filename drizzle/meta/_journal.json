@@ -127,6 +127,41 @@
       "when": 1788220800000,
       "tag": "0017_push_dispatch_claims",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1788224400000,
+      "tag": "0018_adaptive_video_pipeline",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1788231600000,
+      "tag": "0019_growth_finance_governance",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1788242400000,
+      "tag": "0020_referrals_rewards",
+      "breakpoints": true
+    },
+    {
+      "idx": 21,
+      "version": "7",
+      "when": 1788246000000,
+      "tag": "0021_meras_ai",
+      "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1788249600000,
+      "tag": "0022_referral_abuse_indexes",
+      "breakpoints": true
     }
   ]
 }

@@ -10,6 +10,7 @@ coverage
 *.tsbuildinfo
 .vercel
 /data
+/.data/
 /outputs
 /work
 .sites-runtime/

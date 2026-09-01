@@ -1,23 +1,42 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { couponsDb, courseAccess, courseAccessEvents, invoices, notificationsDb, orderItems, orders, paymentEvents } from "@/db/schema";
+import { aiEntitlements, aiSubscriptionOrders, analyticsEvents, cartItems, couponUses, courseAccess, courseAccessEvents, courseWaitlist, invoices, notificationsDb, orderItems, orders, paymentEvents, refundRequests } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 import { accessExpiryIso, normalizeAccessDurationDays } from "@/lib/course-access";
 import { sendPushNotification } from "@/lib/push";
+import { createAndSendNotification } from "@/lib/notifications";
+import { qualifyReferralForPaidOrderTx, reconcileReferralQualificationAfterRefundTx } from "@/lib/referrals";
+import { redeemCouponReservationTx } from "@/lib/coupons";
+import {
+  applyConfirmedRefundToOrder,
+  issueCreditNote,
+  majorAmountToMinor,
+  reconcileRefundRequest,
+  tapRefundRequestStatus,
+} from "@/lib/refunds";
 
-type TapReference = { order?: string; transaction?: string; gateway?: string; payment?: string };
+type TapReference = { order?: string; transaction?: string; gateway?: string; payment?: string; merchant?: string; idempotent?: string };
 type TapCharge = {
   id?: string;
+  object?: string;
+  charge_id?: string;
   status?: string;
   amount?: number;
   currency?: string;
   updated?: string;
   created?: string;
+  date?: string;
   transaction?: { created?: string };
-  metadata?: { order_number?: string; course_slug?: string; course_slugs?: string };
+  metadata?: { order_number?: string; course_slug?: string; course_slugs?: string; refund_request?: string; product?: string; ai_order_number?: string; user_id?: string };
   reference?: TapReference;
   customer?: { email?: string };
+};
+
+type TapRefund = TapCharge & {
+  object?: "refund";
+  charge_id?: string;
+  reason?: string;
 };
 
 function orderState(status: string) {
@@ -52,6 +71,250 @@ function secureEquals(expected: string, actual: string) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
+function isRefundPayload(value: TapCharge): value is TapRefund {
+  return cleanText(value.object, 30).toLowerCase() === "refund" || cleanText(value.id, 160).startsWith("re_");
+}
+
+async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
+  const refundId = cleanText(posted.id, 160);
+  if (!refundId || !refundId.startsWith("re_")) return jsonError("معرّف الاسترداد غير صالح");
+
+  let verifiedResponse: Response;
+  try {
+    verifiedResponse = await fetch(`https://api.tap.company/v2/refunds/${encodeURIComponent(refundId)}`, {
+      headers: { authorization: `Bearer ${tapSecretKey}`, accept: "application/json" },
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch {
+    return jsonError("تعذر الاتصال بخدمة Tap للتحقق من الاسترداد", 502);
+  }
+  if (!verifiedResponse.ok) return jsonError("تعذر التحقق من الاسترداد لدى Tap", 502);
+  let verified: TapRefund;
+  try { verified = await verifiedResponse.json() as TapRefund; } catch { return jsonError("استجابة Tap للاسترداد غير صالحة", 502); }
+  if (cleanText(verified.id, 160) !== refundId || cleanText(verified.object, 30).toLowerCase() !== "refund") return jsonError("تعذر مطابقة عملية الاسترداد", 409);
+
+  const chargeId = cleanText(verified.charge_id, 160);
+  const postedChargeId = cleanText(posted.charge_id, 160);
+  if (!chargeId || !chargeId.startsWith("chg_") || (postedChargeId && postedChargeId !== chargeId)) return jsonError("عملية Tap الأصلية لا تطابق الاسترداد", 409);
+  const status = cleanText(verified.status, 60).toUpperCase();
+  const db = getDb();
+  const [order] = await db.select().from(orders).where(eq(orders.tapChargeId, chargeId)).limit(1);
+  const [aiOrder] = await db.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.tapChargeId, chargeId)).limit(1);
+  if (order && aiOrder) return jsonError("عملية Tap مرتبطة بأكثر من طلب محلي", 409);
+  if (aiOrder) {
+    const amountMinor = majorAmountToMinor(verified.amount);
+    const currency = cleanText(verified.currency, 10).toUpperCase();
+    const metadataOrderNumber = cleanText(verified.metadata?.ai_order_number || verified.metadata?.order_number, 160);
+    const matchFailed = !amountMinor
+      || amountMinor > aiOrder.amountMinor
+      || currency !== aiOrder.currency.toUpperCase()
+      || (metadataOrderNumber && metadataOrderNumber !== aiOrder.orderNumber);
+    const eventVersion = cleanText(verified.updated || verified.date || verified.created || verified.transaction?.created, 100) || "unknown";
+    const eventStatus = matchFailed ? "AI_REFUND_REJECTED_MATCH" : `AI_REFUND_${status || "UNKNOWN"}`;
+    await db.insert(paymentEvents).values({
+      provider: "tap",
+      providerEventId: `tap:ai-refund:${refundId}:${eventStatus}:${eventVersion}`,
+      orderNumber: aiOrder.orderNumber,
+      chargeId,
+      objectType: "refund",
+      eventType: "ai_subscription_refund",
+      amountMinor,
+      currency: currency || null,
+      signatureVerified: true,
+      processedAt: new Date().toISOString(),
+      status: eventStatus,
+      payload: JSON.stringify(verified).slice(0, 60_000),
+    }).onConflictDoNothing({ target: paymentEvents.providerEventId });
+    if (matchFailed) return jsonError("فشلت مطابقة مبلغ أو عملة استرداد اشتراك مراس AI", 409);
+    if (status !== "REFUNDED") {
+      return Response.json({ ok: true, received: true, matched: true, kind: "ai_subscription_refund", refundStatus: status, status: aiOrder.status });
+    }
+
+    const now = new Date().toISOString();
+    const refundedStatus = amountMinor >= aiOrder.amountMinor ? "refunded" : "partially_refunded";
+    let newlyRefunded = false;
+    await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-order:${aiOrder.orderNumber}`}))`);
+      const [current] = await tx.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.id, aiOrder.id)).limit(1).for("update");
+      if (!current) return;
+      newlyRefunded = !["refunded", "partially_refunded"].includes(current.status);
+      await tx.update(aiSubscriptionOrders).set({ status: refundedStatus, updatedAt: now }).where(eq(aiSubscriptionOrders.id, current.id));
+      await tx.update(aiEntitlements).set({ status: "revoked", updatedAt: now }).where(and(
+        eq(aiEntitlements.userId, current.userId),
+        eq(aiEntitlements.source, "paid"),
+        eq(aiEntitlements.externalRef, current.orderNumber),
+      ));
+    });
+    if (newlyRefunded) {
+      await createAndSendNotification({
+        values: {
+          userEmail: aiOrder.customerEmail,
+          audience: "student",
+          title: refundedStatus === "refunded" ? "اكتمل استرداد اشتراك مراس AI" : "تم تسجيل استرداد جزئي لاشتراك مراس AI",
+          body: "تم إيقاف مدة الاشتراك المرتبطة بهذه الدفعة. يمكنك مراجعة حالة الطلب من صفحة مراس AI.",
+          actionUrl: "/meras-ai/subscribe",
+          actionLabel: "عرض الاشتراك",
+          template: "ai_entitlement",
+          dedupeKey: `ai-order:${aiOrder.orderNumber}:refund:${refundId}`,
+        },
+        target: { userEmail: aiOrder.customerEmail },
+        data: { route: "/meras-ai/subscribe" },
+      });
+    }
+    return Response.json({ ok: true, received: true, matched: true, kind: "ai_subscription_refund", refundStatus: status, status: refundedStatus });
+  }
+  const managedReference = cleanText(verified.metadata?.refund_request || verified.reference?.merchant || verified.reference?.idempotent, 160);
+  const metadataOrderNumber = cleanText(verified.metadata?.order_number, 160);
+  const [managedByProvider] = await db.select().from(refundRequests).where(eq(refundRequests.providerRefundId, refundId)).limit(1);
+  const [managedByReference] = managedReference ? await db.select().from(refundRequests).where(eq(refundRequests.requestNumber, managedReference)).limit(1) : [];
+  if (managedByProvider && managedByReference && managedByProvider.id !== managedByReference.id) return jsonError("تعارض مرجع الاسترداد لدى Tap مع معرّف المزود", 409);
+  const managedRequest = managedByProvider || managedByReference;
+  const amountMinor = majorAmountToMinor(verified.amount);
+  const orderTotalMinor = order ? order.totalMinor ?? majorAmountToMinor(order.total) ?? 0 : 0;
+  const currency = cleanText(verified.currency, 10).toUpperCase();
+  const matchFailed = Boolean(
+    (managedRequest && !order)
+    || (order && (
+      !amountMinor
+      || amountMinor > orderTotalMinor
+      || order.currency.toUpperCase() !== "SAR"
+      || currency !== order.currency.toUpperCase()
+      || (metadataOrderNumber && metadataOrderNumber !== order.orderNumber)
+      || (managedRequest && (
+        managedRequest.orderNumber !== order.orderNumber
+        || managedRequest.amountMinor !== amountMinor
+        || managedRequest.currency.toUpperCase() !== currency
+        || Boolean(managedRequest.providerRefundId && managedRequest.providerRefundId !== refundId)
+      ))
+    ))
+  );
+  const eventVersion = cleanText(verified.updated || verified.date || verified.created || verified.transaction?.created, 100) || "unknown";
+  const eventStatus = matchFailed ? "REFUND_REJECTED_MATCH" : `REFUND_${status || "UNKNOWN"}`;
+  await db.insert(paymentEvents).values({
+    provider: "tap",
+    providerEventId: `tap:refund:${refundId}:${eventStatus}:${eventVersion}`,
+    orderNumber: order?.orderNumber || managedRequest?.orderNumber || null,
+    chargeId,
+    objectType: cleanText(verified.object, 40) || "refund",
+    eventType: "refund_status",
+    amountMinor,
+    currency: currency || null,
+    signatureVerified: true,
+    processedAt: new Date().toISOString(),
+    status: eventStatus,
+    payload: JSON.stringify(verified).slice(0, 60_000),
+  }).onConflictDoNothing({ target: paymentEvents.providerEventId });
+
+  if (!order) {
+    if (managedRequest) return jsonError("طلب الاسترداد المحلي لا يرتبط بعملية Tap الأصلية", 409);
+    return Response.json({ ok: true, received: true, matched: false, kind: "refund" });
+  }
+  if (matchFailed) return jsonError("فشلت مطابقة مبلغ أو عملة الاسترداد", 409);
+
+  const providerRequestStatus = tapRefundRequestStatus(status);
+  if (managedRequest) {
+    const reconciled = await reconcileRefundRequest({ id: managedRequest.id, providerRefundId: refundId, status: providerRequestStatus, reviewNote: providerRequestStatus === "provider_failed" ? cleanText(verified.reason, 500) || `Tap ${status}` : null, completedAt: status === "REFUNDED" ? new Date().toISOString() : null });
+    if (!reconciled.ok) return jsonError("تعارض معرّف الاسترداد لدى Tap مع السجل المحلي", 409);
+  }
+
+  // Pending or accepted refund requests stay in the audit trail only. Course
+  // access changes exclusively after Tap independently confirms REFUNDED.
+  if (status !== "REFUNDED") return Response.json({ ok: true, received: true, matched: true, kind: "refund", refundStatus: status, status: order.status });
+
+  const applied = await applyConfirmedRefundToOrder({ orderNumber: order.orderNumber, chargeId });
+  if (!applied.ok) return jsonError(applied.error === "invalid_refund_total" ? "إجمالي أحداث الاسترداد غير صالح" : `لا يمكن تسجيل الاسترداد للطلب في حالته الحالية (${applied.status || applied.error})`, 409);
+
+  const now = new Date().toISOString();
+  let notify: { id: number; title: string; body: string; route: string } | null = null;
+  if (applied.fullyRefunded && applied.newlyFullyRefunded) {
+    await db.transaction((tx) => reconcileReferralQualificationAfterRefundTx(tx, applied.customerEmail, now));
+    const title = "اكتمل استرداد طلبك";
+    const body = `اكتمل استرداد الطلب ${order.orderNumber} وتم إيقاف الوصول المرتبط به.`;
+    const [notice] = await db.insert(notificationsDb).values({ userEmail: applied.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${order.orderNumber}:refunded`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+    if (notice) notify = { id: notice.id, title, body, route: "/dashboard?view=orders" };
+  } else if (!applied.fullyRefunded) {
+    const title = "تم تسجيل استرداد جزئي";
+    const body = `تم استرداد ${(applied.refundedAmountMinor / 100).toFixed(2)} ${applied.currency} من الطلب ${order.orderNumber}.`;
+    const [notice] = await db.insert(notificationsDb).values({ userEmail: applied.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${order.orderNumber}:partial-refund:${refundId}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+    if (notice) notify = { id: notice.id, title, body, route: "/dashboard?view=orders" };
+  }
+
+  await issueCreditNote({ orderNumber: order.orderNumber, reference: managedRequest?.requestNumber || refundId, amountMinor: amountMinor!, reason: managedRequest?.reason || cleanText(verified.reason, 500) || "Tap refund" });
+
+  const queuedNotice = notify as { id: number; title: string; body: string; route: string } | null;
+  if (queuedNotice) {
+    const delivery = await sendPushNotification({ userEmail: order.customerEmail }, queuedNotice.title, queuedNotice.body, { route: queuedNotice.route, notificationId: queuedNotice.id });
+    const pushStatus = delivery.accepted > 0 ? "accepted" : delivery.attempted === 0 ? "no_devices" : "failed";
+    await db.update(notificationsDb).set({ pushStatus, pushAttempts: sql`${notificationsDb.pushAttempts} + 1`, pushLastError: delivery.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: delivery.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, queuedNotice.id));
+  }
+  return Response.json({ ok: true, received: true, matched: true, kind: "refund", refundStatus: status, status: applied.status });
+}
+
+function plusCalendarMonth(value: string) {
+  const date = new Date(value);
+  const day = date.getUTCDate();
+  date.setUTCDate(1);
+  date.setUTCMonth(date.getUTCMonth() + 1);
+  const lastDay = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
+  date.setUTCDate(Math.min(day, lastDay));
+  return date.toISOString();
+}
+
+async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string, status: string, orderNumber: string) {
+  const db = getDb();
+  const [byCharge] = await db.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.tapChargeId, chargeId)).limit(1);
+  const [byNumber] = orderNumber ? await db.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.orderNumber, orderNumber)).limit(1) : [];
+  if (byCharge && byNumber && byCharge.id !== byNumber.id) return jsonError("تعارض معرّف اشتراك AI مع عملية Tap", 409);
+  const order = byCharge || byNumber;
+  if (!order) return Response.json({ ok: true, received: true, matched: false, kind: "ai_subscription" });
+  if (order.tapChargeId && order.tapChargeId !== chargeId) return jsonError("طلب AI مرتبط بعملية Tap مختلفة", 409);
+  if (orderNumber && order.orderNumber !== orderNumber) return jsonError("رقم طلب AI لا يطابق العملية", 409);
+  const nextStatus = orderState(status);
+  const requiresFinancialMatch = ["paid", "refunded", "partially_refunded"].includes(nextStatus);
+  if (requiresFinancialMatch) {
+    const amountMatches = typeof verified.amount === "number" && Math.abs(Math.round(verified.amount * 100) - order.amountMinor) === 0;
+    const currencyMatches = cleanText(verified.currency, 10).toUpperCase() === "SAR" && order.currency.toUpperCase() === "SAR";
+    const emailMatches = !verified.customer?.email || verified.customer.email.toLowerCase() === order.customerEmail.toLowerCase();
+    const productMatches = cleanText(verified.metadata?.product, 40) === "meras-ai";
+    if (!amountMatches || !currencyMatches || !emailMatches || !productMatches) return jsonError("فشلت مطابقة تفاصيل اشتراك مراس AI", 409);
+  }
+  const now = new Date().toISOString();
+  let newlyPaid = false;
+  let effectiveStatus = nextStatus;
+  let entitlementExpiresAt = order.entitlementExpiresAt;
+  await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-order:${order.orderNumber}`}))`);
+    const [current] = await tx.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.id, order.id)).limit(1);
+    if (!current) return;
+    if (nextStatus === "paid") {
+      if (["refunded", "partially_refunded"].includes(current.status)) {
+        effectiveStatus = current.status;
+        entitlementExpiresAt = current.entitlementExpiresAt;
+        return;
+      }
+      if (current.status !== "paid") {
+        const activePaid = await tx.select({ expiresAt: aiEntitlements.expiresAt }).from(aiEntitlements).where(and(eq(aiEntitlements.userId, current.userId), eq(aiEntitlements.source, "paid"), eq(aiEntitlements.status, "active"), ne(aiEntitlements.externalRef, current.orderNumber)));
+        const latestExpiry = activePaid.map((item) => item.expiresAt ? Date.parse(item.expiresAt) : 0).filter(Number.isFinite).reduce((latest, value) => Math.max(latest, value), 0);
+        const base = latestExpiry > Date.now() ? new Date(latestExpiry).toISOString() : now;
+        entitlementExpiresAt = plusCalendarMonth(base);
+        await tx.insert(aiEntitlements).values({ userId: current.userId, source: "paid", externalRef: current.orderNumber, status: "active", startsAt: base, expiresAt: entitlementExpiresAt, createdBy: "tap-webhook", createdAt: now, updatedAt: now }).onConflictDoNothing({ target: [aiEntitlements.userId, aiEntitlements.source, aiEntitlements.externalRef] });
+        await tx.update(aiSubscriptionOrders).set({ status: "paid", tapChargeId: chargeId, paidAt: current.paidAt || now, entitlementExpiresAt, updatedAt: now }).where(eq(aiSubscriptionOrders.id, current.id));
+        newlyPaid = true;
+      } else entitlementExpiresAt = current.entitlementExpiresAt;
+      return;
+    }
+    if (nextStatus === "refunded" || nextStatus === "partially_refunded") {
+      effectiveStatus = nextStatus;
+      await tx.update(aiSubscriptionOrders).set({ status: nextStatus, tapChargeId: chargeId, updatedAt: now }).where(eq(aiSubscriptionOrders.id, current.id));
+      await tx.update(aiEntitlements).set({ status: "revoked", updatedAt: now }).where(and(eq(aiEntitlements.userId, current.userId), eq(aiEntitlements.source, "paid"), eq(aiEntitlements.externalRef, current.orderNumber)));
+      return;
+    }
+    if (current.status !== "paid" && current.status !== "refunded") await tx.update(aiSubscriptionOrders).set({ status: nextStatus, tapChargeId: chargeId, updatedAt: now }).where(eq(aiSubscriptionOrders.id, current.id));
+  });
+  if (newlyPaid) await createAndSendNotification({ values: { userEmail: order.customerEmail, audience: "student", title: "تم تفعيل اشتراك مراس AI", body: "أصبح اشتراك مراس AI بلس متاحًا في حسابك لمدة شهر.", actionUrl: "/meras-ai", actionLabel: "ابدأ الآن", template: "ai_entitlement", dedupeKey: `ai-order:${order.orderNumber}:paid` }, target: { userEmail: order.customerEmail }, data: { route: "/meras-ai" } });
+  return Response.json({ ok: true, received: true, matched: true, kind: "ai_subscription", status: effectiveStatus, entitlementExpiresAt });
+}
+
 export async function POST(request: Request) {
   const tapSecretKey = process.env.TAP_SECRET_KEY?.trim();
   const webhookSecret = process.env.TAP_WEBHOOK_SECRET?.trim() || tapSecretKey;
@@ -70,6 +333,8 @@ export async function POST(request: Request) {
 
   const hashString = request.headers.get("hashstring") || request.headers.get("x-hashstring") || "";
   if (!hashString || !secureEquals(hashValue(posted, webhookSecret), hashString)) return jsonError("توقيع Tap غير صالح", 401);
+
+  if (isRefundPayload(posted)) return handleRefundWebhook(posted, tapSecretKey);
 
   const chargeId = cleanText(posted.id, 160);
   if (!chargeId) return jsonError("معرّف العملية مفقود");
@@ -98,9 +363,20 @@ export async function POST(request: Request) {
     providerEventId: `${chargeId}:${status}:${eventVersion}:${verified.amount ?? "na"}`,
     orderNumber: orderNumber || null,
     chargeId,
+    objectType: cleanText(verified.object, 40) || "charge",
+    eventType: "charge_status",
+    amountMinor: typeof verified.amount === "number" ? Math.round(verified.amount * 100) : null,
+    currency: cleanText(verified.currency, 10).toUpperCase() || null,
+    signatureVerified: true,
+    processedAt: new Date().toISOString(),
     status,
     payload: JSON.stringify(verified).slice(0, 60_000),
   }).onConflictDoNothing({ target: paymentEvents.providerEventId });
+
+  if (cleanText(verified.metadata?.product, 40) === "meras-ai") {
+    const aiOrderNumber = cleanText(verified.metadata?.ai_order_number || orderNumber, 160);
+    return handleAiSubscriptionCharge(verified, chargeId, status, aiOrderNumber);
+  }
 
   const [orderByCharge] = await db.select().from(orders).where(eq(orders.tapChargeId, chargeId)).limit(1);
   const [orderByNumber] = orderNumber ? await db.select().from(orders).where(eq(orders.orderNumber, orderNumber)).limit(1) : [];
@@ -134,6 +410,26 @@ export async function POST(request: Request) {
 
     if (nextStatus === "paid" && current.status !== "refunded") {
       const purchaseItems = itemRows.length ? itemRows : [{ courseSlug: current.courseSlug, accessDurationDays: 90 }];
+      if (current.couponCode) {
+        const redeemed = await redeemCouponReservationTx(tx, {
+          orderNumber: current.orderNumber,
+          couponCode: current.couponCode,
+          customerEmail: current.customerEmail,
+          now,
+        });
+        if (!redeemed.ok) {
+          const newlyUnderReview = current.status !== "payment_review";
+          await tx.update(orders).set({ status: "payment_review", tapChargeId: chargeId, paidAt: current.paidAt || now, updatedAt: now }).where(eq(orders.id, current.id));
+          if (newlyUnderReview) {
+            const title = "استلمنا دفعتك ونراجع الكوبون";
+            const body = `تم استلام دفعة الطلب ${current.orderNumber}، ونراجع أهلية الكوبون قبل تفعيل المحتوى لحماية حسابك.`;
+            const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:coupon-review`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+            if (notice) notify = { id: notice.id, title, body, route: "/dashboard?view=orders" };
+          }
+          effectiveStatus = "payment_review";
+          return;
+        }
+      }
       for (const item of [...purchaseItems].sort((left, right) => left.courseSlug.localeCompare(right.courseSlug))) {
         await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`access:${current.customerEmail}:${item.courseSlug}`}))`);
       }
@@ -150,6 +446,7 @@ export async function POST(request: Request) {
         const newlyUnderReview = current.status !== "payment_review";
         await tx.update(orders).set({ status: "payment_review", tapChargeId: chargeId, paidAt: current.paidAt || now, updatedAt: now }).where(eq(orders.id, current.id));
         if (newlyUnderReview) {
+          await qualifyReferralForPaidOrderTx(tx, current.customerEmail, now);
           const title = "استلمنا دفعتك ونتحقق من الاشتراك";
           const body = `لديك وصول قائم إلى ${duplicateEntitlement.courseSlug}. أوقفنا التفعيل المكرر للطلب ${current.orderNumber} وسيُراجع تلقائيًا قبل أي تفعيل مكرر.`;
           const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:payment-review`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
@@ -177,8 +474,29 @@ export async function POST(request: Request) {
         if (canRepair) await tx.insert(courseAccessEvents).values({ eventKey: `order:${current.orderNumber}:grant:${item.courseSlug}`, accessId, userEmail: current.customerEmail, courseSlug: item.courseSlug, action: newlyPaid ? "purchase_granted" : "purchase_reconciled", actorEmail: "tap-webhook", orderNumber: current.orderNumber, afterJson: JSON.stringify({ startsAt, expiresAt, durationDays }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
       }
 
-      await tx.insert(invoices).values({ invoiceNumber: `INV-${current.orderNumber}`, orderNumber: current.orderNumber, customerEmail: current.customerEmail, total: current.total, taxAmount: Math.round((current.total * 15 / 115) * 100) / 100, currency: current.currency, issuedAt: startsAt }).onConflictDoNothing({ target: invoices.orderNumber });
-      if (newlyPaid && current.couponCode) await tx.update(couponsDb).set({ usedCount: sql`${couponsDb.usedCount} + 1` }).where(eq(couponsDb.code, current.couponCode));
+      const invoiceTax = Math.round((current.total * 15 / 115) * 100) / 100;
+      await tx.insert(invoices).values({
+        invoiceNumber: `INV-${current.orderNumber}`,
+        orderNumber: current.orderNumber,
+        customerEmail: current.customerEmail,
+        total: current.total,
+        taxAmount: invoiceTax,
+        currency: current.currency,
+        status: "issued",
+        version: 1,
+        subtotalMinor: current.subtotalMinor ?? Math.round(current.subtotal * 100),
+        discountMinor: current.discountMinor ?? Math.round(current.discount * 100),
+        taxAmountMinor: Math.round(invoiceTax * 100),
+        totalMinor: current.totalMinor ?? Math.round(current.total * 100),
+        snapshotJson: JSON.stringify({ orderNumber: current.orderNumber, customer: { name: current.customerName, email: current.customerEmail, phone: current.customerPhone }, items: purchaseItems, paymentMethod: current.paymentMethod, bundleSlug: current.bundleSlug, issuedAt: startsAt }),
+        issuedAt: startsAt,
+      }).onConflictDoNothing({ target: invoices.orderNumber });
+      for (const item of purchaseItems) {
+        await tx.delete(cartItems).where(and(eq(cartItems.userEmail, current.customerEmail), eq(cartItems.courseSlug, item.courseSlug)));
+        await tx.update(courseWaitlist).set({ status: "converted", convertedAt: now, updatedAt: now }).where(and(eq(courseWaitlist.userEmail, current.customerEmail), eq(courseWaitlist.courseSlug, item.courseSlug)));
+      }
+      if (newlyPaid) await tx.insert(analyticsEvents).values({ event: "payment_paid", userEmail: current.customerEmail, courseSlug: purchaseItems[0]?.courseSlug || current.courseSlug, metadataJson: JSON.stringify({ orderNumber: current.orderNumber, method: current.paymentMethod, value: current.total, currency: current.currency }), createdAt: now });
+      if (newlyPaid) await qualifyReferralForPaidOrderTx(tx, current.customerEmail, now);
       const title = "تم تفعيل اشتراكك";
       const body = expectedCourseSlugs.length > 1 ? `تم تفعيل ${expectedCourseSlugs.length} مواد ضمن الطلب ${current.orderNumber}.` : "أصبحت المادة متاحة الآن في مساحة التعلم الخاصة بك.";
       const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=courses", actionLabel: "ابدأ التعلم", template: "success", dedupeKey: `order:${current.orderNumber}:paid`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
@@ -210,6 +528,7 @@ export async function POST(request: Request) {
       }
       const newlyRefunded = current.status !== "refunded";
       await tx.update(orders).set({ status: "refunded", tapChargeId: chargeId, updatedAt: now }).where(eq(orders.id, current.id));
+      await reconcileReferralQualificationAfterRefundTx(tx, current.customerEmail, now);
       const affected = await tx.select().from(courseAccess).where(and(eq(courseAccess.orderNumber, current.orderNumber), eq(courseAccess.userEmail, current.customerEmail)));
       for (const access of affected) {
         await tx.update(courseAccess).set({ revokedAt: now, revocationReason: "payment_refunded", suspendedAt: null, suspensionReason: null, updatedAt: now }).where(eq(courseAccess.id, access.id));
@@ -225,6 +544,9 @@ export async function POST(request: Request) {
       return;
     }
 
+    if (["cancelled", "failed", "voided"].includes(nextStatus)) {
+      await tx.update(couponUses).set({ status: "released", releasedAt: now }).where(and(eq(couponUses.orderNumber, current.orderNumber), eq(couponUses.status, "reserved")));
+    }
     if (current.status !== "paid" && current.status !== "refunded") await tx.update(orders).set({ status: nextStatus, tapChargeId: chargeId, updatedAt: now }).where(eq(orders.id, current.id));
     else effectiveStatus = current.status;
   });

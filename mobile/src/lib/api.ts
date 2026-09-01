@@ -7,7 +7,9 @@ if (!/^https:\/\//i.test(configured)) {
   throw new Error("EXPO_PUBLIC_API_URL must be an HTTPS URL");
 }
 export const API_URL = configured;
-export const STORE_MODE = String(Constants.expoConfig?.extra?.storeMode || "reader");
+const configuredStoreMode = String(Constants.expoConfig?.extra?.storeMode || "reader").trim().toLowerCase();
+export const STORE_MODE: "reader" | "direct" = configuredStoreMode === "direct" || configuredStoreMode === "external" ? "direct" : "reader";
+export const STORE_COMMERCE_ENABLED = STORE_MODE === "direct";
 
 // OkHttp (Android) only accepts ASCII values in HTTP headers. Device names may
 // contain Arabic/emoji and the UI label intentionally contains a middle dot, so
@@ -18,9 +20,11 @@ function safeHeaderText(value: string) {
 }
 
 let sessionToken = "";
+let adminStepUpToken = "";
 let deviceIdentity: { id: string; label: string; platform: string } | null = null;
-export function setApiToken(token: string | null) { sessionToken = token || ""; }
+export function setApiToken(token: string | null) { const next = token || ""; if (sessionToken !== next) adminStepUpToken = ""; sessionToken = next; }
 export function getApiToken() { return sessionToken; }
+export function setAdminStepUpToken(token: string | null) { adminStepUpToken = token || ""; }
 export function setApiDeviceIdentity(value: { id: string; label: string; platform: string } | null) { deviceIdentity = value; }
 
 export class ApiError extends Error {
@@ -37,6 +41,9 @@ export function absoluteUrl(path?: string | null) {
 export type ApiRequestInit = RequestInit & { timeoutMs?: number };
 
 export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  if (!STORE_COMMERCE_ENABLED && new URL(absoluteUrl(path)).pathname === "/api/checkout") {
+    throw new ApiError("نسخة المتجر مخصصة لمشاهدة الاشتراكات الحالية ولا تنفذ شراء المحتوى الرقمي داخل التطبيق.", 403);
+  }
   const { timeoutMs = 15_000, ...requestInit } = init;
   const headers = new Headers(requestInit.headers);
   headers.set("accept", "application/json");
@@ -48,6 +55,7 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
     headers.set("x-meras-platform", deviceIdentity.platform);
   }
   if (sessionToken) headers.set("authorization", `Bearer ${sessionToken}`);
+  if (adminStepUpToken && new URL(absoluteUrl(path)).pathname.startsWith("/api/admin/")) headers.set("x-meras-admin-stepup", adminStepUpToken);
   if (requestInit.body && !(requestInit.body instanceof FormData) && !headers.has("content-type")) headers.set("content-type", "application/json");
   const controller = new AbortController();
   const safeTimeout = Math.max(1_000, Math.min(15 * 60_000, Math.floor(timeoutMs)));

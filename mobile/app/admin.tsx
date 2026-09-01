@@ -8,10 +8,12 @@ import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
+import { AdminAi } from "@/src/components/AdminAi";
+import { AdminReferrals } from "@/src/components/AdminReferrals";
 import { AppearanceSettings } from "@/src/components/AppearanceSettings";
 import { SearchPicker } from "@/src/components/SearchPicker";
 import { AppButton, Card, EmptyState, Field, LoadingState, Screen, SearchBox, SectionTitle } from "@/src/components/ui";
-import { absoluteUrl, api, ApiError, getApiToken, jsonBody } from "@/src/lib/api";
+import { absoluteUrl, api, ApiError, getApiToken, jsonBody, setAdminStepUpToken } from "@/src/lib/api";
 import { downloadProtectedFile } from "@/src/lib/downloads";
 import { assetMimeType } from "@/src/lib/file-types";
 import { useAuth } from "@/src/providers/AuthProvider";
@@ -47,7 +49,7 @@ type AdminData = {
   settings: Record<string, string>;
 };
 
-type Tab = "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "reviews" | "communication" | "appearance";
+type Tab = "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "bundles" | "referrals" | "ai" | "reviews" | "communication" | "security" | "appearance";
 type Mutate = (payload: Record<string, unknown>, success?: string) => Promise<boolean>;
 type DeleteEntity = (entityType: string, entityId: string | number, label: string, impact: string) => void;
 const arabicMap: Record<string, string> = { ا: "a", أ: "a", إ: "i", آ: "a", ب: "b", ت: "t", ث: "th", ج: "j", ح: "h", خ: "kh", د: "d", ذ: "dh", ر: "r", ز: "z", س: "s", ش: "sh", ص: "s", ض: "d", ط: "t", ظ: "z", ع: "a", غ: "gh", ف: "f", ق: "q", ك: "k", ل: "l", م: "m", ن: "n", ه: "h", و: "w", ي: "y", ة: "h", ى: "a", ء: "a" };
@@ -93,7 +95,7 @@ const requestStatusLabels: Record<"ar" | "en", Record<string, string>> = {
   ar: { new: "جديد", assigned: "مسند", reviewing: "قيد المراجعة", planned: "مخطط له", producing: "قيد الإنتاج", available: "متاح", declined: "متعذر" },
   en: { new: "New", assigned: "Assigned", reviewing: "Reviewing", planned: "Planned", producing: "In production", available: "Available", declined: "Declined" },
 };
-const notificationAudienceLabels: Record<string, string> = { student: "جميع الطلاب", public: "الزوار والطلاب", supervisor: "المشرفون", admin: "الإدارة", user: "مستخدم محدد" };
+const notificationAudienceLabels: Record<string, string> = { student: "جميع الطلاب", public: "الزوار والطلاب", supervisor: "المشرفون", admin: "الإدارة", user: "مستخدم محدد", segment: "شريحة طلاب مستهدفة" };
 const notificationPresentationLabels: Record<string, string> = { inbox: "مركز الإشعارات", banner: "شريط إعلاني", modal: "نافذة منبثقة", all: "مركز الإشعارات والشريط والنافذة" };
 const roleLabels: Record<string, string> = { student: "طالب", supervisor: "مشرف", admin: "مدير" };
 const accountStatusLabels: Record<string, string> = { active: "نشط", suspended: "معلّق", inactive: "غير نشط", pending: "قيد التفعيل", invited: "بانتظار قبول الدعوة", banned: "محظور", deleted: "محذوف" };
@@ -113,8 +115,12 @@ const tabs: { key: Tab; label: string; icon: React.ComponentProps<typeof Ionicon
   { key: "support", label: "الدعم", icon: "headset-outline" },
   { key: "catalog", label: "الكتالوج", icon: "library-outline" },
   { key: "commerce", label: "المبيعات", icon: "card-outline" },
+  { key: "bundles", label: "الباقات", icon: "albums-outline" },
+  { key: "referrals", label: "الإحالات", icon: "gift-outline" },
+  { key: "ai", label: "مراس AI", icon: "sparkles-outline" },
   { key: "reviews", label: "التقييمات", icon: "star-outline" },
   { key: "communication", label: "التواصل", icon: "megaphone-outline" },
+  { key: "security", label: "الأمان", icon: "shield-checkmark-outline" },
   { key: "appearance", label: "المظهر", icon: "color-palette-outline" },
 ];
 
@@ -158,8 +164,12 @@ export default function Admin() {
     {tab === "support" && <Support rows={data.tickets} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
     {tab === "catalog" && <CatalogAdmin data={data} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
     {tab === "commerce" && <Commerce data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
+    {tab === "bundles" && <MobileBundleAdmin colors={colors} institutions={data.institutions}/>}
+    {tab === "referrals" && <AdminReferrals />}
+    {tab === "ai" && <AdminAi />}
     {tab === "reviews" && <Reviews data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "communication" && <Communication data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
+    {tab === "security" && <MobileAdminSecurity colors={colors} />}
     {tab === "appearance" && <AppearanceSettings />}
   </Screen>;
 }
@@ -379,10 +389,11 @@ function CatalogAdmin({ data, colors, mutate, refresh, onDelete }: { data: Admin
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
-      const payload = JSON.parse(result.body || "{}") as { error?: string; asset?: { durationSeconds?: number | null } };
+      const payload = JSON.parse(result.body || "{}") as { error?: string; asset?: { durationSeconds?: number | null }; processing?: { message?: string } };
       if (result.status < 200 || result.status >= 300) throw new Error(payload.error || "تعذر رفع الفيديو");
       setVideo(null); setVideoLessonId(""); await refresh();
-      Alert.alert(t("تم رفع الفيديو"), t(payload.asset?.durationSeconds ? `حُسبت المدة تلقائيًا: ${Math.floor(payload.asset.durationSeconds / 60)}:${String(payload.asset.durationSeconds % 60).padStart(2, "0")}` : "تم ربط الفيديو بالدرس، وسيستخدم الخادم بيانات المدة المتاحة."));
+      const durationMessage = payload.asset?.durationSeconds ? `حُسبت المدة تلقائيًا: ${Math.floor(payload.asset.durationSeconds / 60)}:${String(payload.asset.durationSeconds % 60).padStart(2, "0")}` : "تم ربط الفيديو بالدرس.";
+      Alert.alert(t("تم رفع الفيديو"), t(`${durationMessage}\n${payload.processing?.message || "بدأ تجهيز الجودات المتعددة تلقائيًا."}`));
     } catch (reason) {
       Alert.alert(t("تعذر رفع الفيديو"), t(reason instanceof Error ? reason.message : "تحقق من الاتصال وحاول مرة أخرى"));
     } finally { setVideoBusy(false); }
@@ -471,9 +482,115 @@ function Reviews({ data, colors, mutate, onDelete }: { data: AdminData; colors: 
   return <><SectionTitle title="التقييمات الموثقة" subtitle="تنشر فقط آراء أصحاب الشراء والتقدم الحقيقيين" />{data.reviews.map((row) => <Card key={row.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={styles.stars}>{"★".repeat(row.rating)}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.userEmail}</Text></View><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{data.courses.find((course) => course.slug === row.courseSlug)?.title || row.courseSlug} · {reviewStatusLabels[row.status] || "حالة تقييم غير معروفة"}</Text><Text style={[styles.ticketBody, { color: colors.text }]}>{row.body}</Text><View style={styles.actionRow}><AppButton full={false} title="نشر" variant="soft" onPress={() => mutate({ action: "updateReview", id: row.id, status: "published" }, "تم نشر التقييم")} /><AppButton full={false} title="رفض" variant="danger" onPress={() => mutate({ action: "updateReview", id: row.id, status: "rejected" }, "تم رفض التقييم")} /><AppButton full={false} title="تعليق" variant="ghost" onPress={() => mutate({ action: "updateReview", id: row.id, status: "pending" })} /><AppButton full={false} title="حذف التقييم" variant="danger" onPress={() => onDelete("review", row.id, `تقييم ${row.courseSlug}`, "سيُحذف التقييم فقط، مع إبقاء المادة والحساب وسجل التدقيق.")} /></View></Card>)}</>;
 }
 
+type MobileBundleCatalogCourse = { slug:string;title:string;university:string;universitySlug:string;specialty:string;specialtySlug:string;price:number;availableForPurchase:boolean };
+type MobileBundle = { id:number;slug:string;title:string;description:string;institutionSlug:string|null;specialtySlug:string|null;discountType:"percent"|"fixed";discountValue:number;status:"draft"|"published"|"archived";featured:boolean;startsAt:string|null;expiresAt:string|null;courseSlugs:string[];courses:{slug:string;title:string;price:number;status:string}[] };
+
+function MobileBundleAdmin({ colors, institutions }:{ colors:Colors;institutions:AdminData["institutions"] }) {
+  const bundles = useQuery({ queryKey:["admin-bundles"], queryFn:()=>api<{bundles:MobileBundle[];catalog:MobileBundleCatalogCourse[]}>("/api/admin/bundles"), staleTime:10_000, retry:1 });
+  const [editingId,setEditingId] = useState<number|null>(null);
+  const [courseQuery,setCourseQuery] = useState("");
+  const [feedback,setFeedback] = useState("");
+  const [busy,setBusy] = useState(false);
+  const [form,setForm] = useState({ slug:"",title:"",description:"",institutionSlug:"",specialtySlug:"",discountType:"percent" as "percent"|"fixed",discountValue:"10",status:"draft" as "draft"|"published"|"archived",featured:false,startsAt:"",expiresAt:"",courseSlugs:[] as string[] });
+  const catalog=bundles.data?.catalog || [];
+  const reset=()=>{setEditingId(null);setCourseQuery("");setForm({slug:"",title:"",description:"",institutionSlug:"",specialtySlug:"",discountType:"percent",discountValue:"10",status:"draft",featured:false,startsAt:"",expiresAt:"",courseSlugs:[]});};
+  const edit=(bundle:MobileBundle)=>{setEditingId(bundle.id);setForm({slug:bundle.slug,title:bundle.title,description:bundle.description,institutionSlug:bundle.institutionSlug||"",specialtySlug:bundle.specialtySlug||"",discountType:bundle.discountType,discountValue:String(bundle.discountValue),status:bundle.status,featured:bundle.featured,startsAt:bundle.startsAt||"",expiresAt:bundle.expiresAt||"",courseSlugs:bundle.courseSlugs});setFeedback("");};
+  const toggle=(slug:string)=>setForm((current)=>({...current,courseSlugs:current.courseSlugs.includes(slug)?current.courseSlugs.filter((item)=>item!==slug):[...current.courseSlugs,slug]}));
+  const selected=catalog.filter((course)=>form.courseSlugs.includes(course.slug));
+  const subtotal=selected.reduce((sum,course)=>sum+course.price,0);
+  const discountValue=Math.max(0,Number(form.discountValue)||0);
+  const discount=form.discountType==="percent"?subtotal*discountValue/100:discountValue;
+  const total=Math.max(0,subtotal-Math.min(subtotal,discount));
+  const visibleCourses=catalog.filter((course)=>{
+    if(form.institutionSlug&&course.universitySlug!==form.institutionSlug)return false;
+    if(form.specialtySlug&&course.specialtySlug!==form.specialtySlug)return false;
+    const normalized=courseQuery.trim().toLowerCase();
+    return !normalized||`${course.title} ${course.university} ${course.specialty}`.toLowerCase().includes(normalized);
+  });
+  const specialtyOptions=[...new Map(catalog.filter((course)=>!form.institutionSlug||course.universitySlug===form.institutionSlug).map((course)=>[course.specialtySlug,course.specialty])).entries()].filter(([slug])=>Boolean(slug));
+  const save=async()=>{
+    if(form.title.trim().length<2||form.slug.trim().length<2||form.courseSlugs.length<2){setFeedback("أدخل الاسم والمعرّف واختر مادتين على الأقل.");return;}
+    setBusy(true);setFeedback("");
+    try{await api("/api/admin/bundles",{method:editingId?"PATCH":"POST",body:jsonBody({...form,id:editingId,discountValue:Number(form.discountValue),institutionSlug:form.institutionSlug||null,specialtySlug:form.specialtySlug||null,startsAt:form.startsAt||null,expiresAt:form.expiresAt||null})});setFeedback(editingId?"تم تحديث الباقة.":"تم إنشاء الباقة.");reset();await bundles.refetch();}
+    catch(reason){setFeedback(reason instanceof ApiError?reason.message:"تعذر حفظ الباقة.");}finally{setBusy(false);}
+  };
+  const archive=async(bundle:MobileBundle)=>{setBusy(true);setFeedback("");try{await api("/api/admin/bundles",{method:"PATCH",body:jsonBody({...bundle,status:"archived",courseSlugs:bundle.courseSlugs})});setFeedback("تمت أرشفة الباقة وإيقاف ظهورها.");await bundles.refetch();}catch(reason){setFeedback(reason instanceof ApiError?reason.message:"تعذر أرشفة الباقة.");}finally{setBusy(false);}};
+  if(bundles.isLoading)return <LoadingState label="جارٍ تحميل الباقات..."/>;
+  if(!bundles.data)return <EmptyState icon="albums-outline" title="تعذر تحميل الباقات" text={bundles.error instanceof Error?bundles.error.message:"تحقق من الاتصال ثم أعد المحاولة."} action={<AppButton title="إعادة المحاولة" onPress={()=>void bundles.refetch()}/>}/>;
+  return <>
+    <SectionTitle title="الباقات والعروض" subtitle="إنشاء باقات مواد وتسعيرها وجدولتها من التطبيق"/>
+    <Card style={styles.dataCard}>
+      <View style={styles.dataHead}><Text style={[styles.role,{color:colors.primary}]}>{editingId?"تعديل":"جديد"}</Text><Text style={[styles.dataTitle,{color:colors.text}]}>{editingId?form.title||"تعديل الباقة":"إنشاء باقة"}</Text></View>
+      <Field label="اسم الباقة" value={form.title} onChangeText={(value)=>setForm({...form,title:value,slug:form.slug||`${asciiSlug(value)}-${stableHash(value)}`})}/>
+      <Field label="المعرّف الإنجليزي" value={form.slug} onChangeText={(value)=>setForm({...form,slug:value.toLowerCase().replace(/[^a-z0-9._-]/g,"-")})} autoCapitalize="none"/>
+      <TextInput multiline value={form.description} onChangeText={(value)=>setForm({...form,description:value})} placeholder="وصف مختصر للعرض" placeholderTextColor={colors.textSoft} style={[styles.area,{color:colors.text,backgroundColor:colors.surfaceAlt,borderColor:colors.border}]}/>
+      <SearchPicker label="الجامعة — اختياري" value={form.institutionSlug} placeholder="كل الجامعات" items={institutions.map((row)=>({key:row.slug,label:row.name,detail:row.region||""}))} onSelect={(item)=>setForm({...form,institutionSlug:item.key,specialtySlug:""})}/>
+      <SearchPicker label="التخصص — اختياري" value={form.specialtySlug} placeholder="كل التخصصات" items={specialtyOptions.map(([key,label])=>({key,label}))} onSelect={(item)=>setForm({...form,specialtySlug:item.key})}/>
+      <Text style={[styles.dataMeta,{color:colors.textSoft}]}>نوع الخصم</Text><ChoiceRow values={["percent","fixed"]} selected={form.discountType} onSelect={(value)=>setForm({...form,discountType:value as "percent"|"fixed"})} colors={colors} labels={{percent:"نسبة مئوية",fixed:"مبلغ ثابت"}}/>
+      <Field label="قيمة الخصم" value={form.discountValue} onChangeText={(value)=>setForm({...form,discountValue:value.replace(/[^0-9.]/g,"")})} keyboardType="decimal-pad"/>
+      <Text style={[styles.dataMeta,{color:colors.textSoft}]}>حالة الباقة</Text><ChoiceRow values={["draft","published","archived"]} selected={form.status} onSelect={(value)=>setForm({...form,status:value as typeof form.status})} colors={colors} labels={{draft:"مسودة",published:"منشورة",archived:"مؤرشفة"}}/>
+      <ChoiceRow values={["normal","featured"]} selected={form.featured?"featured":"normal"} onSelect={(value)=>setForm({...form,featured:value==="featured"})} colors={colors} labels={{normal:"عرض عادي",featured:"إبراز في الواجهة"}}/>
+      <Field label="بداية العرض ISO — اختياري" value={form.startsAt} onChangeText={(value)=>setForm({...form,startsAt:value})} autoCapitalize="none"/><Field label="نهاية العرض ISO — اختياري" value={form.expiresAt} onChangeText={(value)=>setForm({...form,expiresAt:value})} autoCapitalize="none"/>
+      <SearchBox value={courseQuery} onChangeText={setCourseQuery} placeholder="ابحث عن مادة لإضافتها"/>
+      <View style={styles.bundleCourseGrid}>{visibleCourses.slice(0,50).map((course)=>{const active=form.courseSlugs.includes(course.slug);return <Pressable key={course.slug} onPress={()=>toggle(course.slug)} style={[styles.bundleCourse,{borderColor:active?colors.primary:colors.border,backgroundColor:active?`${colors.primary}12`:colors.surfaceAlt}]}><Ionicons name={active?"checkmark-circle":"add-circle-outline"} size={20} color={active?colors.primary:colors.textSoft}/><View style={{flex:1}}><Text style={[styles.dataTitle,{color:colors.text}]}>{course.title}</Text><Text style={[styles.dataMeta,{color:colors.textSoft}]}>{course.university} · {course.specialty}</Text></View><Text style={{color:course.availableForPurchase?colors.primary:colors.warning,fontSize:9,fontWeight:"900"}}>{course.availableForPurchase?`${course.price} ر.س`:"قيد التجهيز"}</Text></Pressable>;})}</View>
+      {visibleCourses.length>50?<Text style={[styles.dataMeta,{color:colors.textSoft}]}>استخدم البحث للوصول إلى بقية المواد.</Text>:null}
+      <View style={[styles.bundleQuote,{backgroundColor:colors.surfaceAlt,borderColor:colors.border}]}><Text style={[styles.dataMeta,{color:colors.textSoft}]}>{form.courseSlugs.length} مواد · قبل الخصم {subtotal.toFixed(2)} ر.س</Text><Text style={[styles.dataTitle,{color:colors.primary}]}>سعر الباقة {total.toFixed(2)} ر.س</Text></View>
+      {feedback?<Text style={[styles.message,{color:feedback.startsWith("تم")?colors.success:colors.danger}]}>{feedback}</Text>:null}
+      <View style={styles.actionRow}><AppButton full={false} title={editingId?"حفظ التعديلات":"إنشاء الباقة"} icon="save-outline" loading={busy} onPress={()=>void save()}/>{editingId?<AppButton full={false} title="إلغاء" variant="soft" onPress={reset}/>:null}</View>
+    </Card>
+    <SectionTitle title="الباقات الحالية" subtitle={`${bundles.data.bundles.length} باقة`}/>
+    {bundles.data.bundles.length?bundles.data.bundles.map((bundle)=><Card key={bundle.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={[styles.role,{color:bundle.status==="published"?colors.success:colors.warning}]}>{({draft:"مسودة",published:"منشورة",archived:"مؤرشفة"} as Record<string,string>)[bundle.status]}</Text><Text style={[styles.dataTitle,{color:colors.text}]}>{bundle.title}</Text></View><Text style={[styles.dataMeta,{color:colors.textSoft}]}>{bundle.courseSlugs.length} مواد · خصم {bundle.discountType==="percent"?`${bundle.discountValue}%`:`${bundle.discountValue} ر.س`}</Text><View style={styles.actionRow}><AppButton full={false} title="تعديل" variant="soft" icon="create-outline" onPress={()=>edit(bundle)}/>{bundle.status!=="archived"?<AppButton full={false} title="أرشفة" variant="danger" icon="archive-outline" loading={busy} onPress={()=>void archive(bundle)}/>:null}</View></Card>):<EmptyState icon="albums-outline" title="لا توجد باقات" text="أنشئ أول باقة من النموذج أعلاه."/>}
+  </>;
+}
+
+type MobileMfaStatus = { enabled:boolean; pendingSetup:boolean; stepUpValid:boolean; stepUpExpiresAt:string|null; factor?:{label:string;verifiedAt:string}|null; error?:string };
+
+function MobileAdminSecurity({ colors }:{ colors:Colors }) {
+  const mfa = useQuery({ queryKey:["admin-mfa-status"], queryFn:()=>api<MobileMfaStatus>("/api/admin/security/mfa"), staleTime:10_000, retry:0 });
+  const [code,setCode] = useState("");
+  const [setup,setSetup] = useState<{secret:string;otpauthUri:string}|null>(null);
+  const [feedback,setFeedback] = useState("");
+  const [busy,setBusy] = useState(false);
+  const submit = async (action:"setup"|"verify"|"stepUp"|"disable") => {
+    setBusy(true); setFeedback("");
+    try {
+      if (action !== "setup" && !/^\d{6}$/.test(code)) throw new ApiError("أدخل رمزًا صحيحًا من 6 أرقام.", 400);
+      const result = await api<MobileMfaStatus & { secret?:string;otpauthUri?:string;stepUpToken?:string }>("/api/admin/security/mfa", { method:"POST", body:jsonBody(action === "setup" ? { action, label:"تطبيق المصادقة — الجوال" } : { action, code }) });
+      if (action === "setup" && result.secret && result.otpauthUri) {
+        setSetup({ secret:result.secret, otpauthUri:result.otpauthUri });
+        setFeedback("أضف المفتاح إلى تطبيق المصادقة، ثم أدخل أول رمز يظهر لك.");
+      } else if (action === "verify") {
+        setSetup(null); setCode(""); setFeedback("تم تفعيل المصادقة الإضافية بنجاح."); await mfa.refetch();
+      } else if (action === "stepUp") {
+        setAdminStepUpToken(result.stepUpToken || null); setCode(""); setFeedback("تم تأكيد هويتك للعمليات الحساسة لمدة 10 دقائق."); await mfa.refetch();
+      } else {
+        setAdminStepUpToken(null); setCode(""); setSetup(null); setFeedback("تم تعطيل المصادقة الإضافية لهذا الحساب."); await mfa.refetch();
+      }
+    } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر إكمال إجراء الأمان."); }
+    finally { setBusy(false); }
+  };
+  if (mfa.isLoading) return <LoadingState label="جارٍ تحميل إعدادات أمان الإدارة..."/>;
+  if (!mfa.data) return <><SectionTitle title="أمان حساب الإدارة"/><EmptyState icon="shield-outline" title="تعذر تحميل حالة الأمان" text={mfa.error instanceof Error ? mfa.error.message : "أعد المحاولة بعد التحقق من الاتصال."} action={<AppButton title="إعادة المحاولة" onPress={()=>void mfa.refetch()}/>} /></>;
+  const status=mfa.data;
+  return <>
+    <SectionTitle title="أمان حساب الإدارة" subtitle="مصادقة إضافية وتأكيد قصير المدة قبل الحذف والإشعارات والتغييرات الحساسة"/>
+    <Card style={styles.dataCard}>
+      <View style={styles.dataHead}><Text style={[styles.role,{color:status.enabled?colors.success:colors.warning}]}>{status.enabled?"مفعّلة":"تحتاج إعدادًا"}</Text><Text style={[styles.dataTitle,{color:colors.text}]}>رمز تحقق متغير TOTP</Text></View>
+      <Text style={[styles.dataMeta,{color:colors.textSoft}]}>استخدم تطبيق مصادقة موثوقًا. المفتاح مشفّر على الخادم ولا يظهر مجددًا بعد التفعيل.</Text>
+      {!status.enabled ? <AppButton title={status.pendingSetup?"إنشاء مفتاح إعداد جديد":"بدء إعداد المصادقة"} icon="key-outline" loading={busy} onPress={()=>void submit("setup")}/> : null}
+      {setup ? <View style={[styles.securitySetup,{backgroundColor:colors.surfaceAlt,borderColor:colors.border}]}><Text style={[styles.dataMeta,{color:colors.textSoft}]}>مفتاح الإعداد — احفظه الآن</Text><Text selectable style={[styles.securitySecret,{color:colors.text}]}>{setup.secret}</Text><AppButton title="فتح تطبيق المصادقة" variant="soft" icon="open-outline" onPress={()=>void Linking.openURL(setup.otpauthUri).catch(()=>setFeedback("انسخ المفتاح يدويًا إلى تطبيق المصادقة."))}/></View> : null}
+      {(setup || status.enabled) ? <Field label={status.enabled?"رمز المصادقة الحالي":"رمز التفعيل الأول"} value={code} onChangeText={(value)=>setCode(value.replace(/[^0-9]/g,"").slice(0,6))} keyboardType="number-pad"/> : null}
+      {setup ? <AppButton title="تفعيل الحماية" icon="shield-checkmark-outline" loading={busy} disabled={code.length!==6} onPress={()=>void submit("verify")}/> : null}
+      {status.enabled ? <View style={styles.actionRow}><AppButton full={false} title={status.stepUpValid?"الهوية مؤكدة الآن":"تأكيد عملية حساسة"} icon="checkmark-circle-outline" loading={busy} disabled={code.length!==6 || status.stepUpValid} onPress={()=>void submit("stepUp")}/><AppButton full={false} title="تعطيل المصادقة" variant="danger" loading={busy} disabled={code.length!==6} onPress={()=>void submit("disable")}/></View> : null}
+      {status.stepUpValid && status.stepUpExpiresAt ? <Text style={[styles.dataMeta,{color:colors.success}]}>التأكيد صالح حتى {new Date(status.stepUpExpiresAt).toLocaleTimeString("ar-SA",{hour:"2-digit",minute:"2-digit"})}</Text> : null}
+      {feedback ? <Text style={[styles.message,{color:feedback.startsWith("تم")?colors.success:colors.warning}]}>{feedback}</Text> : null}
+    </Card>
+  </>;
+}
+
 function Communication({ data, colors, mutate, onDelete }: { data: AdminData; colors: Colors; mutate: Mutate; onDelete: DeleteEntity }) {
   const [settings, setSettings] = useState({ whatsapp_number: data.settings.whatsapp_number || "", whatsapp_message: data.settings.whatsapp_message || "", support_email: data.settings.support_email || "", support_hours: data.settings.support_hours || "", social_x: data.settings.social_x || "", social_instagram: data.settings.social_instagram || "", social_tiktok: data.settings.social_tiktok || "", social_youtube: data.settings.social_youtube || "", social_telegram: data.settings.social_telegram || "", social_linkedin: data.settings.social_linkedin || "", social_facebook: data.settings.social_facebook || "", social_snapchat: data.settings.social_snapchat || "", social_threads: data.settings.social_threads || "" });
-  const [notice, setNotice] = useState({ title: "", body: "", audience: "student", userEmail: "", actionUrl: "/notifications", actionLabel: "فتح التفاصيل", presentation: "inbox", template: "general", pushEnabled: true, startsAt: "", expiresAt: "", dismissible: true });
+  const [notice, setNotice] = useState({ title: "", body: "", audience: "student", userEmail: "", actionUrl: "/notifications", actionLabel: "فتح التفاصيل", presentation: "inbox", template: "general", pushEnabled: true, startsAt: "", expiresAt: "", dismissible: true, segmentUniversity: "", segmentSpecialty: "", segmentCourse: "", segmentAccessState: "", segmentInactiveDays: "" });
   const update = (key: keyof typeof settings, value: string) => setSettings((current) => ({ ...current, [key]: value }));
   const students = data.users.filter((row) => row.role === "student");
   const templateLabels: Record<string, string> = { general: "إعلان عام", discount: "تخفيض", "new-course": "مادة جديدة", "new-service": "خدمة جديدة", urgent: "تنبيه مهم", success: "خبر سار" };
@@ -489,8 +606,18 @@ function Communication({ data, colors, mutate, onDelete }: { data: AdminData; co
       <Text style={[styles.dataMeta, { color: colors.textSoft }]}>طريقة الظهور</Text>
       <ChoiceRow values={["inbox", "banner", "modal", "all"]} selected={notice.presentation} onSelect={(value) => setNotice({ ...notice, presentation: value })} colors={colors} labels={{ inbox: "مركز الإشعارات", banner: "شريط إعلاني", modal: "نافذة منبثقة", all: "كل طرق العرض" }} />
       <Text style={[styles.dataMeta, { color: colors.textSoft }]}>الجمهور</Text>
-      <ChoiceRow values={["student", "public", "supervisor", "admin", "user"]} selected={notice.audience} onSelect={(value) => setNotice({ ...notice, audience: value, userEmail: value === "user" ? notice.userEmail : "" })} colors={colors} labels={{ student: "كل الطلاب", public: "الزوار", supervisor: "المشرفون", admin: "الإدارة", user: "مستخدم محدد" }} />
+      <ChoiceRow values={["student", "public", "supervisor", "admin", "user", "segment"]} selected={notice.audience} onSelect={(value) => setNotice({ ...notice, audience: value, userEmail: value === "user" ? notice.userEmail : "" })} colors={colors} labels={{ student: "كل الطلاب", public: "الزوار", supervisor: "المشرفون", admin: "الإدارة", user: "مستخدم محدد", segment: "شريحة مستهدفة" }} />
       {notice.audience === "user" ? <SearchPicker label="ابحث عن المستخدم" value={notice.userEmail} placeholder="ابحث بالاسم أو البريد" items={students.map((row) => ({ key: row.email, label: row.fullName, detail: `${row.email} · ${row.phone || ""}` }))} onSelect={(item) => setNotice({ ...notice, userEmail: item.key })} /> : null}
+      {notice.audience === "segment" ? <View style={[styles.segmentBox, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+        <Text style={[styles.dataTitle, { color: colors.text }]}>تحديد شريحة الطلاب</Text>
+        <Text style={[styles.dataMeta, { color: colors.textSoft }]}>يمكن جمع أكثر من معيار، ولن يصل الإعلان إلا للطلاب المطابقين لها جميعًا.</Text>
+        <SearchPicker label="الجامعة — اختياري" value={notice.segmentUniversity} placeholder="اختر الجامعة" items={data.institutions.map((row) => ({ key: row.slug, label: row.name, detail: row.region || "" }))} onSelect={(item) => setNotice({ ...notice, segmentUniversity: item.key })} />
+        <SearchPicker label="التخصص — اختياري" value={notice.segmentSpecialty} placeholder="اختر التخصص" items={data.specialties.map((row) => ({ key: row.name, label: row.name, detail: row.slug }))} onSelect={(item) => setNotice({ ...notice, segmentSpecialty: item.key })} />
+        <SearchPicker label="مشتركون في مادة — اختياري" value={notice.segmentCourse} placeholder="اختر المادة" items={data.courses.map((row) => ({ key: row.slug, label: row.title, detail: `${row.university} · ${row.specialty}` }))} onSelect={(item) => setNotice({ ...notice, segmentCourse: item.key })} />
+        <Text style={[styles.dataMeta, { color: colors.textSoft }]}>حالة الوصول — اختياري</Text>
+        <ChoiceRow values={["", "active", "expired", "none"]} selected={notice.segmentAccessState} onSelect={(value) => setNotice({ ...notice, segmentAccessState: value })} colors={colors} labels={{ "": "الكل", active: "وصول نشط", expired: "منتهي أو موقوف", none: "دون اشتراك" }} />
+        <Field label="لم يدخل منذ عدد أيام — اختياري" value={notice.segmentInactiveDays} onChangeText={(value) => setNotice({ ...notice, segmentInactiveDays: value.replace(/[^0-9]/g, "") })} keyboardType="number-pad" />
+      </View> : null}
       <Field label="عنوان الإعلان" value={notice.title} onChangeText={(value) => setNotice({ ...notice, title: value })} />
       <TextInput value={notice.body} onChangeText={(value) => setNotice({ ...notice, body: value })} placeholder="نص الإعلان أو الإشعار" placeholderTextColor={colors.textSoft} multiline style={[styles.area, { color: colors.text, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} />
       <SearchPicker label="ربط الزر بمادة — اختياري" value={notice.actionUrl.startsWith("/courses/") ? notice.actionUrl : ""} placeholder="اختر مادة من النظام" items={data.courses.map((row) => ({ key: `/courses/${row.slug}`, label: row.title, detail: `${row.university} · ${row.specialty}` }))} onSelect={(item) => setNotice({ ...notice, actionUrl: item.key, actionLabel: "فتح المادة" })} />
@@ -500,7 +627,7 @@ function Communication({ data, colors, mutate, onDelete }: { data: AdminData; co
       <Field label="نهاية الظهور — اختياري" value={notice.expiresAt} onChangeText={(value) => setNotice({ ...notice, expiresAt: value })} autoCapitalize="none" />
       <ChoiceRow values={["dismissible", "fixed"]} selected={notice.dismissible ? "dismissible" : "fixed"} onSelect={(value) => setNotice({ ...notice, dismissible: value === "dismissible" })} colors={colors} labels={{ dismissible: "يمكن إخفاؤه", fixed: "ثابت" }} />
       <ChoiceRow values={["push", "no-push"]} selected={notice.pushEnabled ? "push" : "no-push"} onSelect={(value) => setNotice({ ...notice, pushEnabled: value === "push" })} colors={colors} labels={{ push: "إرسال إشعار فوري", "no-push": "داخل المنصة فقط" }} />
-      <AppButton title="نشر الإعلان" icon="send-outline" disabled={notice.title.length < 3 || notice.body.length < 3 || (notice.audience === "user" && !notice.userEmail)} onPress={() => mutate({ action: "createNotification", ...notice, userEmail: notice.userEmail || null }, "تم نشر الإعلان والإشعار")} />
+      <AppButton title="نشر الإعلان" icon="send-outline" disabled={notice.title.length < 3 || notice.body.length < 3 || (notice.audience === "user" && !notice.userEmail) || (notice.audience === "segment" && !notice.segmentUniversity && !notice.segmentSpecialty && !notice.segmentCourse && !notice.segmentAccessState && !notice.segmentInactiveDays)} onPress={() => mutate({ action: "createNotification", ...notice, userEmail: notice.userEmail || null, segmentInactiveDays: Number(notice.segmentInactiveDays) || 0 }, "تم نشر الإعلان والإشعار للشريحة المحددة")} />
     </Card>
     <SectionTitle title="الإعلانات الحالية" />
     <View>{data.notifications.slice(0, 30).map((row) => <Card key={row.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={[styles.role, { color: colors.primary }]}>{templateLabels[row.template || "general"] || "إعلان مخصص"}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.title}</Text></View><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{notificationAudienceLabels[row.audience] || "جمهور مخصص"} · {row.userEmail || "عام"} · {notificationPresentationLabels[row.presentation || "inbox"] || "عرض مخصص"}</Text>{row.actionUrl ? <Text numberOfLines={1} style={[styles.dataMeta, { color: colors.primary }]}>{row.actionUrl}</Text> : null}<AppButton full={false} title="حذف الإشعار" variant="danger" onPress={() => onDelete("notification", row.id, row.title, "سيُحذف الإشعار فقط، مع إبقاء سجل التدقيق محفوظًا.")} /></Card>)}</View>
@@ -513,7 +640,7 @@ function ChoiceRow({ values, selected, onSelect, colors, labels }: { values: str
 }
 
 const styles = StyleSheet.create({
-  tabs: { gap: 8, paddingBottom: 14 }, tab: { width: 100, height: 62, flexShrink: 0, overflow: "hidden", borderWidth: 1, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 4 }, tabIcon: { width: 24, height: 24, flexShrink: 0, alignItems: "center", justifyContent: "center" }, tabLabel: { width: "100%", paddingHorizontal: 5, textAlign: "center", fontSize: 9, fontWeight: "900" }, message: { fontSize: 10, textAlign: "center", marginBottom: 8, fontWeight: "800" },
+  tabs: { gap: 8, paddingBottom: 14 }, tab: { width: 100, height: 62, flexShrink: 0, overflow: "hidden", borderWidth: 1, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 4 }, tabIcon: { width: 24, height: 24, flexShrink: 0, alignItems: "center", justifyContent: "center" }, tabLabel: { width: "100%", paddingHorizontal: 5, textAlign: "center", fontSize: 9, fontWeight: "900" }, message: { fontSize: 10, textAlign: "center", marginBottom: 8, fontWeight: "800" }, segmentBox: { gap: 10, padding: 12, borderWidth: 1, borderRadius: 15 }, securitySetup: { gap: 9, padding: 12, borderWidth: 1, borderRadius: 14 }, securitySecret: { fontSize: 14, fontWeight: "900", letterSpacing: 2, textAlign: "center" }, bundleCourseGrid: { maxHeight: 420, gap: 7 }, bundleCourse: { minHeight: 58, flexDirection: "row-reverse", alignItems: "center", gap: 9, padding: 10, borderWidth: 1, borderRadius: 13 }, bundleQuote: { gap: 5, padding: 12, borderWidth: 1, borderRadius: 13 },
   metricGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 }, metric: { width: "48%", minHeight: 130, alignItems: "flex-start" }, metricValue: { fontSize: 20, fontWeight: "900", marginTop: 12 }, metricLabel: { fontSize: 9, marginTop: 4 },
   queue: { minHeight: 54, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, queueValue: { fontSize: 18, fontWeight: "900" }, queueLabel: { fontSize: 11, fontWeight: "800" }, service: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: 9 }, serviceText: { flex: 1, fontSize: 11, fontWeight: "800", textAlign: "right" },
   dataCard: { marginBottom: 9 }, coverPreview: { width: "100%", height: 150, borderRadius: 16, marginTop: 10, backgroundColor: "#CBD5E1" }, requestFiles: { marginTop: 6, gap: 5 }, requestFile: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6 }, requestLink: { marginTop: 9, borderWidth: 1, borderRadius: 13, padding: 10, flexDirection: "row", alignItems: "center", gap: 9 }, deviceBox: { marginTop: 10, borderWidth: 1, borderRadius: 14, padding: 10, gap: 7 }, deviceTitle: { fontSize: 10, fontWeight: "900" }, deviceRow: { minHeight: 52, borderTopWidth: 1, paddingTop: 7, flexDirection: "row", alignItems: "center", gap: 8 }, deviceCopy: { flex: 1 }, deviceName: { fontSize: 10, fontWeight: "900" }, noticePreview: { minHeight: 86, borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center", gap: 12 }, dataHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }, dataTitle: { flex: 1, fontSize: 13, fontWeight: "900", textAlign: "right" }, role: { fontSize: 9, fontWeight: "900" }, dataMeta: { fontSize: 8, textAlign: "right", marginTop: 5 }, actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 12 }, statuses: { gap: 6, marginTop: 11 }, status: { minHeight: 34, borderRadius: 11, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },

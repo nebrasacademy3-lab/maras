@@ -5,7 +5,7 @@ import { ScaledText as Text } from "@/src/components/ScaledText";
 import { Pressable, StyleSheet, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { BrandMark } from "@/src/components/Brand";
-import { api } from "@/src/lib/api";
+import { api, STORE_COMMERCE_ENABLED } from "@/src/lib/api";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
@@ -14,7 +14,7 @@ export function AppHeader({ title, subtitle, back = false, home = false, unread 
   const { colors, dark, setMode } = useTheme();
   const { isRTL, direction, rowDirection, startAlignment } = useLanguage();
   const { user } = useAuth();
-  const cart = useQuery({ queryKey: ["cart", user?.id], queryFn: () => api<{ count?: number; courseSlugs?: string[]; items?: unknown[] }>("/api/cart"), enabled: Boolean(user) && !auth });
+  const cart = useQuery({ queryKey: ["cart", user?.id], queryFn: () => api<{ count?: number; courseSlugs?: string[]; items?: unknown[] }>("/api/cart"), enabled: STORE_COMMERCE_ENABLED && Boolean(user) && !auth });
   const favorites = useQuery({ queryKey: ["favorites", user?.id], queryFn: () => api<{ courseSlugs: string[] }>("/api/mobile/favorites"), enabled: Boolean(user) && !auth });
   const cartCount = cart.data?.count ?? cart.data?.courseSlugs?.length ?? cart.data?.items?.length ?? 0;
   const favoriteCount = favorites.data?.courseSlugs?.length || 0;
@@ -24,7 +24,7 @@ export function AppHeader({ title, subtitle, back = false, home = false, unread 
     {back ? <Pressable accessibilityRole="button" accessibilityLabel="رجوع" onPress={() => onBack ? onBack() : (router.canGoBack() ? router.back() : router.replace("/(tabs)"))} style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name={isRTL ? "arrow-forward" : "arrow-back"} size={21} color={colors.text} /></Pressable> : <BrandMark size={48} whiteTile />}
     {home && <Pressable accessibilityRole="button" accessibilityLabel="الرئيسية" onPress={() => router.replace("/(tabs)")} style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="home-outline" size={20} color={colors.text} /></Pressable>}
     <View style={[styles.copy, { alignItems: startAlignment }]}><Text numberOfLines={1} style={[styles.title, { color: colors.text }]}>{title || "مراس العلم"}</Text>{subtitle && <Text numberOfLines={1} style={[styles.subtitle, { color: colors.textSoft }]}>{subtitle}</Text>}</View>
-    {user && <View style={[styles.commerceActions, { flexDirection: rowDirection }]}><Pressable accessibilityRole="button" accessibilityLabel={`السلة${cartCount ? `، ${cartCount} مواد` : ""}`} onPress={() => router.push("/cart")} style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="bag-handle-outline" size={20} color={colors.text} />{badge(cartCount)}</Pressable><Pressable accessibilityRole="button" accessibilityLabel={`المفضلة${favoriteCount ? `، ${favoriteCount} مواد` : ""}`} onPress={() => router.push("/favorites")} style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="heart" size={20} color={favoriteCount ? colors.danger : colors.text} />{badge(favoriteCount)}</Pressable></View>}
+    {user && <View style={[styles.commerceActions, { flexDirection: rowDirection }]}>{STORE_COMMERCE_ENABLED ? <Pressable accessibilityRole="button" accessibilityLabel={`السلة${cartCount ? `، ${cartCount} مواد` : ""}`} onPress={() => router.push("/cart")} style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="bag-handle-outline" size={20} color={colors.text} />{badge(cartCount)}</Pressable> : null}<Pressable accessibilityRole="button" accessibilityLabel={`المفضلة${favoriteCount ? `، ${favoriteCount} مواد` : ""}`} onPress={() => router.push("/favorites")} style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="heart" size={20} color={favoriteCount ? colors.danger : colors.text} />{badge(favoriteCount)}</Pressable></View>}
     <Pressable accessibilityRole="button" accessibilityLabel="الإشعارات" onPress={() => router.push("/notifications")} style={[styles.iconButton, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="notifications-outline" size={21} color={colors.text} />{badge(unread)}</Pressable>
   </View>;
 }

@@ -13,6 +13,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const db = getDb();
   const [file] = await db.select().from(supportReplyFiles).where(eq(supportReplyFiles.id, id)).limit(1);
   if (!file) return jsonError("المرفق غير موجود", 404);
+  if (file.scanStatus === "quarantined") return jsonError("المرفق غير متاح لأسباب أمنية", 404);
+  if (file.scanStatus !== "clean") return jsonError("المرفق قيد الفحص الأمني", 423);
   const [ticket] = await db.select({ userEmail: supportTickets.userEmail }).from(supportTickets).where(eq(supportTickets.id, file.ticketId)).limit(1);
   const manager = current.role === "admin" || current.role === "supervisor";
   if (!ticket || (!manager && ticket.userEmail !== current.email)) return jsonError("غير مصرح", 403);

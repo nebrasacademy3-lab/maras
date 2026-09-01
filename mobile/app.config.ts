@@ -13,6 +13,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   if (!/^https:\/\//i.test(apiUrl)) {
     throw new Error("EXPO_PUBLIC_API_URL must be an HTTPS URL");
   }
+  const requestedStoreMode = String(process.env.EXPO_PUBLIC_STORE_MODE || "reader").trim().toLowerCase();
+  if (!new Set(["reader", "direct"]).has(requestedStoreMode)) {
+    throw new Error("EXPO_PUBLIC_STORE_MODE must be either reader or direct");
+  }
 
   return {
     ...config,
@@ -132,8 +136,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     extra: {
       apiUrl,
 
-      storeMode:
-        process.env.EXPO_PUBLIC_STORE_MODE || "reader",
+      storeMode: requestedStoreMode,
 
       eas: {
         projectId:

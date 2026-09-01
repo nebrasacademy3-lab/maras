@@ -113,7 +113,7 @@ img { max-width: 100%; }
 .top-announcement span { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px; border-radius: 99px; background: rgba(255,255,255,.15); font-weight: 700; }
 .top-announcement p { margin: 0; opacity: .93; }
 .top-announcement a { display: inline-flex; align-items: center; gap: 5px; font-weight: 700; }
-.site-header { position: sticky; top: 0; z-index: 80; background: color-mix(in srgb, var(--surface) 89%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent); backdrop-filter: blur(18px); }
+.site-header { position: sticky; top: var(--announcement-bar-height, 0px); z-index: 80; background: color-mix(in srgb, var(--surface) 89%, transparent); border-bottom: 1px solid color-mix(in srgb, var(--line) 80%, transparent); backdrop-filter: blur(18px); }
 .header-inner { min-height: 76px; display: flex; align-items: center; justify-content: space-between; gap: 28px; }
 .brand-logo { width: 154px; max-width: 40vw; display: flex; align-items: center; flex: 0 0 auto; }
 .brand-logo-compact { width: 124px; }
@@ -133,6 +133,14 @@ img { max-width: 100%; }
 .notification-button i { position: absolute; inset-block-start: -4px; inset-inline-start: -3px; display: grid; place-items: center; width: 17px; height: 17px; border: 2px solid var(--surface); border-radius: 50%; background: var(--danger); color: #fff; font-size: calc(9px * var(--font-scale, 1)); font-style: normal; }
 .user-chip { display: inline-flex; align-items: center; gap: 8px; padding: 5px 6px 5px 12px; border: 1px solid var(--line); border-radius: 13px; background: var(--surface); font-size: calc(13px * var(--font-scale, 1)); font-weight: 700; }
 .user-chip i { width: 31px; height: 31px; display: grid; place-items: center; color: #fff; background: linear-gradient(135deg, var(--primary), var(--primary-2)); border-radius: 10px; font-style: normal; }
+.account-utilities-menu { position: relative; }
+.account-utilities-menu summary { cursor: pointer; list-style: none; transition: border-color .2s ease, box-shadow .2s ease; }
+.account-utilities-menu summary::-webkit-details-marker { display: none; }
+.account-utilities-menu[open] summary { border-color: color-mix(in srgb, var(--primary) 40%, var(--line)); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 9%, transparent); }
+.account-utilities-menu > div { position: absolute; z-index: 125; inset-block-start: calc(100% + 10px); inset-inline-end: 0; width: 232px; display: grid; gap: 4px; padding: 8px; border: 1px solid var(--line-strong); border-radius: 16px; background: color-mix(in srgb, var(--surface) 96%, transparent); box-shadow: 0 22px 55px rgba(13, 35, 82, .17); backdrop-filter: blur(18px); animation: panelIn .16s ease both; }
+.account-utilities-menu > div > a, .account-utilities-menu > div > button { width: 100%; min-height: 42px; display: flex; align-items: center; gap: 10px; padding: 9px 11px; border: 0; border-radius: 11px; color: var(--text-soft); background: transparent; font: inherit; font-size: calc(13px * var(--font-scale, 1)); font-weight: 750; text-align: start; cursor: pointer; transition: color .16s ease, background .16s ease, transform .16s ease; }
+.account-utilities-menu > div > a:hover, .account-utilities-menu > div > a:focus-visible, .account-utilities-menu > div > button:hover, .account-utilities-menu > div > button:focus-visible { color: var(--primary); background: color-mix(in srgb, var(--primary) 8%, var(--surface)); transform: translateX(-2px); outline: none; }
+.account-utilities-menu > div > button { margin-top: 3px; border-top: 1px solid var(--line); border-radius: 0 0 10px 10px; color: var(--danger); }
 
 /* Search dialog */
 .search-overlay { position: fixed; inset: 0; z-index: 150; display: grid; place-items: start center; padding: 11vh 18px 30px; }

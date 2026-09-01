@@ -1,24 +1,22 @@
 .public-announcement-banner {
   --announcement-accent: #3159e8;
-  position: relative;
-  z-index: 65;
+  position: sticky;
+  inset-block-start: 0;
+  z-index: 95;
   overflow: hidden;
-  border-block-end: 1px solid color-mix(in srgb, var(--announcement-accent) 23%, var(--line));
-  color: var(--text);
-  background:
-    radial-gradient(circle at 88% -40%, color-mix(in srgb, var(--announcement-accent) 22%, transparent), transparent 42%),
-    color-mix(in srgb, var(--announcement-accent) 6%, var(--surface));
+  border-block-end: 1px solid rgba(255,255,255,.14);
+  color: #fff;
+  background: linear-gradient(96deg,#071d54,#105de9 52%,#7242e9);
+  box-shadow: 0 8px 24px rgba(8,38,105,.15);
 }
-.public-announcement-banner::before { content:""; position:absolute; inset-block:0; inset-inline-start:0; width:4px; background:var(--announcement-accent); }
-.public-announcement-banner>.container { min-height: 62px; display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 13px; padding-block: 9px; }
-.announcement-mark { width: 39px; height: 39px; display: grid; place-items: center; border-radius: 13px; color: var(--announcement-accent); background: color-mix(in srgb, var(--announcement-accent) 12%, var(--surface)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--announcement-accent) 15%, transparent); }
-.public-announcement-banner>.container>div { min-width: 0; }
-.public-announcement-banner strong { display:block; font-size:14px; line-height:1.5; }
-.public-announcement-banner p { overflow:hidden; margin:2px 0 0; color:var(--text-soft); font-size:12px; line-height:1.6; text-overflow:ellipsis; white-space:nowrap; }
-.announcement-action { min-height:36px; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:7px 12px; border:1px solid color-mix(in srgb,var(--announcement-accent) 24%,var(--line)); border-radius:11px; color:var(--announcement-accent); background:var(--surface); font-size:12px; font-weight:900; transition:transform var(--motion-fast),box-shadow var(--motion-fast),background var(--motion-fast); }
-.announcement-action:hover { transform:translateY(-1px); background:color-mix(in srgb,var(--announcement-accent) 7%,var(--surface)); box-shadow:0 8px 20px color-mix(in srgb,var(--announcement-accent) 12%,transparent); }
+.public-announcement-banner::before { content:""; position:absolute; inset:-100% auto -100% -28%; width:24%; transform:rotate(17deg); background:linear-gradient(90deg,transparent,rgba(255,255,255,.17),transparent); animation:announcement-shine 8s ease-in-out infinite; pointer-events:none; }
+.public-announcement-banner>.container { min-height: 48px; display: grid; grid-template-columns: auto minmax(0,1fr) auto auto; align-items: center; gap: 11px; padding-block: 5px; }
+.announcement-mark { width: 32px; height: 32px; display: grid; place-items: center; border:1px solid rgba(255,255,255,.2); border-radius: 11px; color: #fff!important; background: rgba(255,255,255,.12); box-shadow: inset 0 1px 0 rgba(255,255,255,.14); }
+.announcement-mark svg{width:17px;height:17px}.announcement-ticker{min-width:0;overflow:hidden;direction:rtl;mask-image:linear-gradient(90deg,transparent,#000 5%,#000 95%,transparent)}.announcement-ticker-track{width:max-content;display:flex;align-items:center;gap:56px;will-change:transform;animation:announcement-ticker 24s linear infinite}.announcement-ticker-track>span{display:inline-flex;align-items:center;gap:10px;white-space:nowrap}.announcement-ticker strong{font-size:13px;line-height:1.5}.announcement-ticker b{color:rgba(255,255,255,.82);font-size:12px;font-weight:600}.announcement-ticker i{color:#ffd66b;font-size:10px;font-style:normal}.public-announcement-banner:hover .announcement-ticker-track{animation-play-state:paused}
+.announcement-action { min-height:34px; display:inline-flex; align-items:center; justify-content:center; gap:6px; padding:6px 11px; border:1px solid rgba(255,255,255,.24); border-radius:10px; color:#fff; background:rgba(255,255,255,.12); font-size:11px; font-weight:900; white-space:nowrap; transition:transform var(--motion-fast),box-shadow var(--motion-fast),background var(--motion-fast); }
+.announcement-action:hover { transform:translateY(-1px); background:rgba(255,255,255,.2); box-shadow:0 8px 20px rgba(2,13,48,.16); }
 .announcement-banner-close,.announcement-modal-close { width:36px; height:36px; display:grid; place-items:center; border:0; border-radius:11px; color:var(--text-soft); background:transparent; cursor:pointer; transition:color var(--motion-fast),background var(--motion-fast),transform var(--motion-fast); }
-.announcement-banner-close:hover,.announcement-modal-close:hover { color:var(--text); background:var(--surface-2); transform:rotate(4deg); }
+.announcement-banner-close{width:32px;height:32px;color:rgba(255,255,255,.78)}.announcement-banner-close:hover{color:#fff;background:rgba(255,255,255,.14);transform:rotate(4deg)}.announcement-modal-close:hover { color:var(--text); background:var(--surface-2); transform:rotate(4deg); }
 
 .announcement-modal-backdrop { position:fixed; z-index:1000; inset:0; display:grid; place-items:center; padding:18px; background:rgba(4,10,26,.63); backdrop-filter:blur(9px); animation:campaign-backdrop-in .28s var(--ease-standard) both; }
 .announcement-modal { --announcement-accent:#3159e8; position:relative; width:min(520px,100%); overflow:hidden; display:grid; grid-template-columns:74px minmax(0,1fr); gap:17px; padding:27px; border:1px solid rgba(255,255,255,.65); border-radius:28px; color:var(--text); background:linear-gradient(145deg,color-mix(in srgb,var(--announcement-accent) 7%,var(--surface)),var(--surface) 62%); box-shadow:0 30px 95px rgba(2,8,23,.32); outline:0; animation:campaign-card-in .46s var(--ease-emphasized) both; }
@@ -36,5 +34,6 @@
 .announcement-template-discount{--announcement-accent:#d97706}.announcement-template-new-course{--announcement-accent:#2563eb}.announcement-template-new-service{--announcement-accent:#7c3aed}.announcement-template-urgent{--announcement-accent:#dc2626}.announcement-template-success{--announcement-accent:#059669}
 @keyframes campaign-backdrop-in { from { opacity:0 } to { opacity:1 } }
 @keyframes campaign-card-in { from { opacity:0; transform:translateY(18px) scale(.96) } to { opacity:1; transform:none } }
-@media(max-width:680px){.public-announcement-banner>.container{grid-template-columns:auto minmax(0,1fr) auto;gap:9px}.public-announcement-banner .announcement-action{grid-column:2;justify-self:start}.public-announcement-banner p{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.announcement-modal{grid-template-columns:55px minmax(0,1fr);gap:13px;padding:21px;border-radius:23px}.announcement-modal-icon{width:53px;height:53px;border-radius:17px}.announcement-modal-icon svg{width:23px;height:23px}.announcement-modal-copy{padding-inline-end:16px}.announcement-modal-copy h2{font-size:21px}.announcement-modal-copy p{font-size:13px}.announcement-modal-actions{display:grid;grid-template-columns:1fr}.announcement-modal-actions>*{width:100%}}
-@media(prefers-reduced-motion:reduce){.announcement-modal-backdrop,.announcement-modal{animation:none}.announcement-action,.announcement-banner-close,.announcement-modal-close{transition:none}}
+@keyframes announcement-ticker{to{transform:translateX(-50%)}}@keyframes announcement-shine{0%,68%{transform:translateX(0) rotate(17deg)}88%,100%{transform:translateX(620%) rotate(17deg)}}
+@media(max-width:680px){.public-announcement-banner>.container{width:calc(100% - 18px);grid-template-columns:auto minmax(0,1fr) auto;gap:8px}.public-announcement-banner .announcement-action{display:none}.announcement-ticker-track{gap:38px;animation-duration:18s}.announcement-ticker strong{font-size:11px}.announcement-ticker b{font-size:10px}.announcement-modal{grid-template-columns:55px minmax(0,1fr);gap:13px;padding:21px;border-radius:23px}.announcement-modal-icon{width:53px;height:53px;border-radius:17px}.announcement-modal-icon svg{width:23px;height:23px}.announcement-modal-copy{padding-inline-end:16px}.announcement-modal-copy h2{font-size:21px}.announcement-modal-copy p{font-size:13px}.announcement-modal-actions{display:grid;grid-template-columns:1fr}.announcement-modal-actions>*{width:100%}}
+@media(prefers-reduced-motion:reduce){.announcement-modal-backdrop,.announcement-modal,.public-announcement-banner::before,.announcement-ticker-track{animation:none}.announcement-ticker-track>span+span{display:none}.announcement-action,.announcement-banner-close,.announcement-modal-close{transition:none}}

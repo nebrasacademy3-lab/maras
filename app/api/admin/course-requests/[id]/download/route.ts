@@ -16,6 +16,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!courseRequest) return jsonError("الطلب غير موجود", 404);
   const files = await db.select().from(courseRequestFiles).where(eq(courseRequestFiles.requestId, id));
   if (!files.length) return jsonError("لا توجد مرفقات لهذا الطلب", 404);
+  if (files.some((file) => file.scanStatus === "quarantined")) return jsonError("توجد مرفقات محجورة أمنيًا ولا يمكن تضمينها", 422);
+  if (files.some((file) => file.scanStatus !== "clean")) return jsonError("بعض المرفقات ما زالت قيد الفحص الأمني", 423);
   const entries: Array<{ name: string; data: Uint8Array }> = [];
   for (const file of files) {
     const object = await getObject(file.objectKey);

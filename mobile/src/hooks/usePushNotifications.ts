@@ -24,6 +24,10 @@ export async function clearNativeNotificationBadge() {
   ]);
 }
 
+export async function setNativeNotificationBadge(count: number) {
+  await Notifications.setBadgeCountAsync(Math.max(0, Math.floor(count)));
+}
+
 export function usePushNotifications() {
   const { user } = useAuth();
   const client = useQueryClient();

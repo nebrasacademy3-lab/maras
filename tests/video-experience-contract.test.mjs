@@ -6,27 +6,29 @@ const root = new URL("..", import.meta.url);
 const read = (relative) => readFile(new URL(relative, root), "utf8");
 
 test("content viewing policy is enforced again for every protected stream request", async () => {
-  const [session, stream, mobileApi, settings] = await Promise.all([
+  const [session, stream, streamAccess, mobileApi, settings] = await Promise.all([
     read("app/api/video/session/route.ts"),
     read("app/api/video/[lessonId]/route.ts"),
+    read("lib/video-access.ts"),
     read("lib/mobile-api.ts"),
     read("lib/platform-settings.ts"),
   ]);
   assert.match(session, /if \(!lesson\.free\)[\s\S]*getContentViewMode/);
   assert.match(session, /const tokenEmail = lesson\.free \? "preview" : email/);
-  assert.match(stream, /if \(!lesson\.freePreview\)[\s\S]*getContentViewMode/);
-  assert.match(stream, /if \(!lesson\.freePreview && grant\.email !== "preview"\)/);
-  assert.match(stream, /if \(grant\.email === "preview"\) return jsonError\("انتهت صلاحية المعاينة المجانية لهذا الدرس", 403\)/);
+  assert.match(stream, /authorizeVideoRequest\(request, lessonId, courseSlug/);
+  assert.match(streamAccess, /if \(!lesson\.freePreview\)[\s\S]*getContentViewMode/);
+  assert.match(streamAccess, /if \(grant\.email === "preview"\)/);
+  assert.match(streamAccess, /getSessionUser\(request\)/);
   assert.match(stream, /Cross-Origin-Resource-Policy", "cross-origin/);
   assert.match(stream, /Referrer-Policy", "no-referrer/);
-  assert.match(stream, /videoAssetId: lessonsDb\.videoAssetId/);
-  assert.match(stream, /lesson\.videoAssetId[\s\S]*eq\(videoAssets\.id, lesson\.videoAssetId\)/);
+  assert.match(streamAccess, /videoAssetId: lessonsDb\.videoAssetId/);
+  assert.match(streamAccess, /lesson\.videoAssetId[\s\S]*eq\(videoAssets\.id, lesson\.videoAssetId\)/);
   assert.match(session, /isNativeAppRequest\(request\)/);
   assert.match(mobileApi, /\^Bearer\\s\+\\S\+\$\/i/);
   assert.match(mobileApi, /sec-fetch-site/);
   assert.doesNotMatch(settings, /getContentViewMode[\s\S]*catch \{[\s\S]*return fallback/);
   assert.match(session, /سياسة المشاهدة[\s\S]*503/);
-  assert.match(stream, /سياسة المشاهدة[\s\S]*503/);
+  assert.match(streamAccess, /getContentViewMode\(\)[\s\S]*503/);
 });
 
 test("timestamped notes remain account scoped and seekable on web and native", async () => {

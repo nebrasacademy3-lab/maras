@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getObject } from "@/lib/storage";
+import { getObject, type StorageProvider } from "@/lib/storage";
 
 const MAX_PROBE_BYTES = 8 * 1024 * 1024;
 
@@ -92,20 +92,20 @@ export function detectVideoDuration(bytes: Uint8Array, contentType: string) {
   return 0;
 }
 
-async function readRange(objectKey: string, offset: number, length: number) {
-  const object = await getObject(objectKey, { offset, length });
+async function readRange(objectKey: string, offset: number, length: number, provider?: StorageProvider) {
+  const object = await getObject(objectKey, { offset, length }, provider);
   if (!object) return new Uint8Array();
   return new Uint8Array(await new Response(object.body as BodyInit).arrayBuffer());
 }
 
-export async function probeStoredVideoDuration(objectKey: string, sizeBytes: number, contentType: string) {
+export async function probeStoredVideoDuration(objectKey: string, sizeBytes: number, contentType: string, provider?: StorageProvider) {
   if (!Number.isSafeInteger(sizeBytes) || sizeBytes <= 0) return 0;
   const firstLength = Math.min(sizeBytes, MAX_PROBE_BYTES);
-  const first = await readRange(objectKey, 0, firstLength);
+  const first = await readRange(objectKey, 0, firstLength, provider);
   let seconds = detectVideoDuration(first, contentType);
   if (!seconds && (contentType === "video/mp4" || contentType === "video/quicktime") && sizeBytes > firstLength) {
     const tailLength = Math.min(sizeBytes, MAX_PROBE_BYTES);
-    const tail = await readRange(objectKey, sizeBytes - tailLength, tailLength);
+    const tail = await readRange(objectKey, sizeBytes - tailLength, tailLength, provider);
     seconds = detectVideoDuration(tail, contentType);
   }
   return seconds > 0 && seconds < 7 * 24 * 60 * 60 ? Math.max(1, Math.round(seconds)) : 0;

@@ -8,7 +8,7 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_STORE_MODE": "external",
+        "EXPO_PUBLIC_STORE_MODE": "direct",
         "EXPO_PUBLIC_API_URL": "https://marase.up.railway.app",
         "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
       }
@@ -19,7 +19,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_STORE_MODE": "external",
+        "EXPO_PUBLIC_STORE_MODE": "direct",
         "EXPO_PUBLIC_API_URL": "https://marase.up.railway.app",
         "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
       },
@@ -29,6 +29,15 @@
       "autoIncrement": true,
       "env": {
         "EXPO_PUBLIC_STORE_MODE": "reader",
+        "EXPO_PUBLIC_API_URL": "https://marase.up.railway.app",
+        "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
+      }
+    },
+    "production-direct": {
+      "distribution": "internal",
+      "autoIncrement": true,
+      "env": {
+        "EXPO_PUBLIC_STORE_MODE": "direct",
         "EXPO_PUBLIC_API_URL": "https://marase.up.railway.app",
         "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
       }

@@ -2,11 +2,16 @@ import Link from "next/link";
 import {
   ArrowLeft,
   BadgeCheck,
+  Bot,
   BookOpenCheck,
   CirclePlay,
   Clock3,
+  FileText,
   GraduationCap,
   Headphones,
+  Languages,
+  ListChecks,
+  MessageSquareText,
   Play,
   ShieldCheck,
   Sparkles,
@@ -89,6 +94,48 @@ export default async function Home() {
           <article><i><GraduationCap size={22} /></i><span><strong>حسب جامعتك</strong><small>مواد وتخصصات مرتبة بلا قوائم مربكة.</small></span></article>
           <article><i><BookOpenCheck size={22} /></i><span><strong>تعلّم متصل</strong><small>تقدمك وملاحظاتك محفوظة على كل أجهزتك.</small></span></article>
           <article><i><Headphones size={22} /></i><span><strong>دعم واضح</strong><small>تابع طلبك وردود الفريق من مكان واحد.</small></span></article>
+        </div>
+      </section>
+
+      <section className="section home-ai-section" aria-labelledby="meras-ai-title">
+        <div className="container home-ai-shell">
+          <div className="home-ai-glow home-ai-glow-one" aria-hidden="true" />
+          <div className="home-ai-glow home-ai-glow-two" aria-hidden="true" />
+          <div className="home-ai-copy">
+            <span className="home-ai-kicker"><Sparkles size={16} /> مراس AI</span>
+            <h2 id="meras-ai-title">حوّل سلايداتك إلى<br /><span>جلسة مذاكرة كاملة.</span></h2>
+            <p>ارفع ملفك مرة واحدة، ثم لخّص المحتوى أو ترجمه بدقة أكاديمية أو أنشئ اختبارًا تفاعليًا مع شرح الإجابات — وكل أعمالك محفوظة في سجل واحد.</p>
+            <div className="home-ai-actions">
+              <Link href="/meras-ai" className="button button-white">ابدأ مع مراس AI <ArrowLeft size={17} /></Link>
+              <Link href="/register" className="home-ai-secondary">أنشئ حسابًا مجانيًا</Link>
+            </div>
+            <div className="home-ai-benefits">
+              <span><FileText size={15} /> تلخيص منظم</span>
+              <span><Languages size={15} /> ترجمة علمية</span>
+              <span><ListChecks size={15} /> اختبارات تفاعلية</span>
+              <span><MessageSquareText size={15} /> سجل محفوظ</span>
+            </div>
+          </div>
+
+          <div className="home-ai-stage" aria-label="معاينة أدوات مراس AI">
+            <div className="home-ai-orbit" aria-hidden="true"><i /><i /><i /></div>
+            <div className="home-ai-window">
+              <header><span><Bot size={19} /> مراس AI</span><small><i /> جاهز لمساعدتك</small></header>
+              <div className="home-ai-file">
+                <i><FileText size={19} /></i>
+                <span><strong>محاضرة الديناميكا الحرارية.pdf</strong><small>42 شريحة · تم تحليلها بأمان</small></span>
+                <b>100%</b>
+              </div>
+              <div className="home-ai-tools">
+                <article><i><Sparkles size={17} /></i><span><strong>ملخص ذكي</strong><small>المفاهيم والقوانين الأهم</small></span><b>جاهز</b></article>
+                <article><i><Languages size={17} /></i><span><strong>ترجمة أكاديمية</strong><small>مع الحفاظ على المصطلحات</small></span><b>AR ⇄ EN</b></article>
+                <article><i><ListChecks size={17} /></i><span><strong>اختبار تفاعلي</strong><small>12 سؤالًا مع شرح الإجابة</small></span><b>ابدأ</b></article>
+              </div>
+              <footer><span>اسأل عن الملف…</span><i><ArrowLeft size={16} /></i></footer>
+            </div>
+            <div className="home-ai-score"><strong>12 سؤالًا</strong><small>اختبار تفاعلي جاهز</small></div>
+            <div className="home-ai-language"><Languages size={17} /><span><strong>مصطلحات علمية</strong><small>ترجمة تراعي السياق</small></span></div>
+          </div>
         </div>
       </section>
 

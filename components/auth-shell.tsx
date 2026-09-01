@@ -78,7 +78,8 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
     if (!data.termsAccepted) { setError("يلزم الموافقة على الشروط وسياسة الخصوصية"); return; }
     setLoading(true);
     try {
-      const response = await fetch("/api/auth/register", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", ...webDeviceHeaders() }, body: JSON.stringify(data) });
+      const referralCode = typeof window === "undefined" ? "" : new URLSearchParams(window.location.search).get("ref") || "";
+      const response = await fetch("/api/auth/register", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", ...webDeviceHeaders() }, body: JSON.stringify({ ...data, referralCode }) });
       const result = await readAuthResponse(response);
       if (!response.ok) throw new Error(result.error || "تعذر إنشاء الحساب");
       const returnTo = safeReturnTo();

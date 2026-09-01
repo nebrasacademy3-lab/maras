@@ -7,6 +7,7 @@ import {
 } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest, validEmail } from "@/lib/auth";
+import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { getCourseCatalog, getCoursesCatalog, getInstitutionCatalog, getInstitutionsCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { ADMIN_SETTING_DEFAULTS, invalidatePublicSettingsCache, PUBLIC_SETTING_DEFAULTS, SETTING_META, type SettingKey } from "@/lib/platform-settings";
 import { createAndSendNotification } from "@/lib/notifications";
@@ -17,10 +18,12 @@ import { syncOfficialInstitutionPrograms } from "@/lib/catalog-official-sync";
 import { courseSlug, institutionSlug as makeInstitutionSlug, lessonId, specialtySlug } from "@/lib/catalog-templates";
 import { deleteAdminEntity, DeletionPolicyError, type AdminDeletionType } from "@/lib/admin-deletion";
 import { accessExpiryIso, normalizeAccessDurationDays } from "@/lib/course-access";
+import { ADMIN_PERMISSIONS, hasPermission, type AdminPermission } from "@/lib/permissions";
 
-async function authorize(request: Request) {
+async function authorize(request: Request, delegatedPermission?: AdminPermission) {
   const user = await getSessionUser(request);
   if (roleAllowed(user, ["admin"])) return { actor: user!.email, user };
+  if (user && delegatedPermission && await hasPermission(user, delegatedPermission)) return { actor: user.email, user };
   if (isAdminRequest(request)) return { actor: "admin-api-token", user: null };
   return null;
 }
@@ -191,17 +194,33 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const machineAuthorized = isAdminRequest(request);
   if (!machineAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
-  const authorization = await authorize(request);
-  if (!authorization) return jsonError("غير مصرح", 403);
-  const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
-  if (!await checkRateLimit("admin-console-write", identity, 60, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
   const action = cleanText(payload.action, 50);
+  const delegatedPermission = action === "deleteEntity"
+    ? ADMIN_PERMISSIONS.RECORDS_DELETE
+    : action === "dispatchNotifications"
+      ? ADMIN_PERMISSIONS.NOTIFICATIONS_DISPATCH
+      : action === "createNotification"
+        ? ADMIN_PERMISSIONS.NOTIFICATIONS_MANAGE
+      : undefined;
+  const authorization = await authorize(request, delegatedPermission);
+  if (!authorization) return jsonError("غير مصرح", 403);
+  const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
+  if (!await checkRateLimit("admin-console-write", identity, 60, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
   const now = new Date().toISOString();
 
   if (action === "deleteEntity") {
+    if (!authorization.user || !await hasPermission(authorization.user, ADMIN_PERMISSIONS.RECORDS_DELETE)) return jsonError("غير مصرح بتنفيذ الحذف", 403);
+    try {
+      await requireAdminStepUp(request, authorization.user);
+    } catch (error) {
+      if (error instanceof AdminMfaError) {
+        return Response.json({ ok: false, code: error.code, error: error.message }, { status: error.status, headers: { "cache-control": "no-store" } });
+      }
+      throw error;
+    }
     const entityType = cleanText(payload.entityType, 50) as AdminDeletionType;
     const entityId = cleanText(payload.entityId, 180);
     const confirmation = typeof payload.confirmation === "string" ? payload.confirmation.trim() : "";
@@ -218,6 +237,15 @@ export async function POST(request: Request) {
   }
 
   if (action === "dispatchNotifications") {
+    if (!authorization.user || !await hasPermission(authorization.user, ADMIN_PERMISSIONS.NOTIFICATIONS_DISPATCH)) return jsonError("غير مصرح بإرسال الإشعارات", 403);
+    try {
+      await requireAdminStepUp(request, authorization.user);
+    } catch (error) {
+      if (error instanceof AdminMfaError) {
+        return Response.json({ ok: false, code: error.code, error: error.message }, { status: error.status, headers: { "cache-control": "no-store" } });
+      }
+      throw error;
+    }
     const result = await dispatchDuePushNotifications(50);
     await audit(request, authorization.actor, "dispatch", "notification_campaigns", "due", null, result);
     return Response.json({ ok: true, push: { scheduled: false, ...result } });
@@ -667,6 +695,15 @@ export async function POST(request: Request) {
   }
 
   if (action === "createNotification") {
+    if (!authorization.user || !await hasPermission(authorization.user, ADMIN_PERMISSIONS.NOTIFICATIONS_MANAGE)) return jsonError("غير مصرح بإنشاء الإشعارات", 403);
+    try {
+      await requireAdminStepUp(request, authorization.user);
+    } catch (error) {
+      if (error instanceof AdminMfaError) {
+        return Response.json({ ok: false, code: error.code, error: error.message }, { status: error.status, headers: { "cache-control": "no-store" } });
+      }
+      throw error;
+    }
     const audience = cleanText(payload.audience, 30) || "student";
     const title = cleanText(payload.title, 160);
     const body = cleanText(payload.body, 1000);
@@ -680,8 +717,60 @@ export async function POST(request: Request) {
     const expiresAt = cleanText(payload.expiresAt, 40) || null;
     const dismissible = payload.dismissible !== false;
     const actionIsValid = !actionUrl || (actionUrl.startsWith("/") && !actionUrl.startsWith("//")) || (() => { try { return new URL(actionUrl).protocol === "https:"; } catch { return false; } })();
-    if (!["student", "public", "supervisor", "admin", "user"].includes(audience) || !["inbox", "banner", "modal", "all"].includes(presentation) || !["general", "discount", "new-course", "new-service", "urgent", "success"].includes(template) || title.length < 3 || body.length < 3 || (userEmail && !validEmail(userEmail)) || (audience === "user" && !userEmail) || !actionIsValid || (startsAt && Number.isNaN(new Date(startsAt).getTime())) || (expiresAt && Number.isNaN(new Date(expiresAt).getTime()))) return jsonError("تحقق من بيانات الإشعار");
+    if (!["student", "public", "supervisor", "admin", "user", "segment"].includes(audience) || !["inbox", "banner", "modal", "all"].includes(presentation) || !["general", "discount", "new-course", "new-service", "urgent", "success"].includes(template) || title.length < 3 || body.length < 3 || (userEmail && !validEmail(userEmail)) || (audience === "user" && !userEmail) || !actionIsValid || (startsAt && Number.isNaN(new Date(startsAt).getTime())) || (expiresAt && Number.isNaN(new Date(expiresAt).getTime()))) return jsonError("تحقق من بيانات الإشعار");
     if (startsAt && expiresAt && new Date(expiresAt).getTime() <= new Date(startsAt).getTime()) return jsonError("فترة الإعلان غير صحيحة");
+    if (audience === "segment") {
+      const universitySlug = cleanText(payload.segmentUniversity, 120);
+      const specialty = cleanText(payload.segmentSpecialty, 160);
+      const segmentCourse = cleanText(payload.segmentCourse, 120);
+      const accessState = cleanText(payload.segmentAccessState, 30);
+      const inactiveDays = Math.min(3650, Math.max(0, Math.floor(Number(payload.segmentInactiveDays) || 0)));
+      if (!universitySlug && !specialty && !segmentCourse && !accessState && !inactiveDays) return jsonError("اختر معيارًا واحدًا على الأقل للشريحة المستهدفة");
+      const candidates = await db.select({ id: users.id, email: users.email, universitySlug: users.universitySlug, specialty: users.specialty, lastLoginAt: users.lastLoginAt }).from(users).where(and(eq(users.role, "student"), eq(users.status, "active"))).limit(10_000);
+      const accessRows = segmentCourse || accessState ? await db.select().from(courseAccess).limit(50_000) : [];
+      const accessByEmail = new Map<string, typeof accessRows>();
+      for (const row of accessRows) accessByEmail.set(row.userEmail.toLowerCase(), [...(accessByEmail.get(row.userEmail.toLowerCase()) || []), row]);
+      const threshold = inactiveDays ? Date.now() - inactiveDays * 86_400_000 : 0;
+      const recipients = candidates.filter((candidate) => {
+        if (universitySlug && candidate.universitySlug !== universitySlug) return false;
+        if (specialty && candidate.specialty !== specialty) return false;
+        if (inactiveDays && candidate.lastLoginAt && Date.parse(candidate.lastLoginAt) > threshold) return false;
+        const grants = accessByEmail.get(candidate.email.toLowerCase()) || [];
+        if (segmentCourse && !grants.some((grant) => grant.courseSlug === segmentCourse)) return false;
+        if (accessState) {
+          const active = grants.some((grant) => !grant.revokedAt && !grant.suspendedAt && (!grant.expiresAt || Date.parse(grant.expiresAt) > Date.now()));
+          const expired = grants.some((grant) => Boolean(grant.revokedAt || grant.suspendedAt || (grant.expiresAt && Date.parse(grant.expiresAt) <= Date.now())));
+          if (accessState === "active" && !active) return false;
+          if (accessState === "expired" && !expired) return false;
+          if (accessState === "none" && grants.length) return false;
+        }
+        return true;
+      }).slice(0, 5_000);
+      if (!recipients.length) return jsonError("لا يوجد طلاب مطابقون للشريحة المختارة", 409);
+      const campaignId = crypto.randomUUID();
+      for (let offset = 0; offset < recipients.length; offset += 250) {
+        await db.insert(notificationsDb).values(recipients.slice(offset, offset + 250).map((recipient) => ({
+          audience: "user",
+          userEmail: recipient.email.toLowerCase(),
+          title,
+          body,
+          actionUrl,
+          actionLabel,
+          presentation,
+          template,
+          pushEnabled,
+          pushStatus: pushEnabled ? "pending" : "disabled",
+          startsAt,
+          expiresAt,
+          dismissible,
+          dedupeKey: `segment:${campaignId}:${recipient.id}`,
+          createdAt: now,
+        })));
+      }
+      const segment = { universitySlug, specialty, courseSlug: segmentCourse, accessState, inactiveDays, recipients: recipients.length };
+      await audit(request, authorization.actor, "create", "notification_segment", campaignId, null, { title, template, actionUrl, segment });
+      return Response.json({ ok: true, campaignId, recipients: recipients.length, queued: pushEnabled }, { status: 201 });
+    }
     const pushScheduled = Boolean(pushEnabled && startsAt && new Date(startsAt).getTime() > Date.now());
     const [created] = await db.insert(notificationsDb).values({ audience, title, body, userEmail, actionUrl, actionLabel, presentation, template, pushEnabled, pushStatus: !pushEnabled ? "disabled" : pushScheduled ? "pending" : "processing", pushClaimedAt: pushEnabled && !pushScheduled ? now : null, startsAt, expiresAt, dismissible, createdAt: now }).returning({ id: notificationsDb.id });
     const push = pushScheduled

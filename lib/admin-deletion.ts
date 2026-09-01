@@ -1,7 +1,7 @@
 import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
-  analyticsEvents, auditLogs, authSessions, cartItems, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb,
+  adminMfaFactors, analyticsEvents, auditLogs, authSessions, cartItems, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb,
   courseAccess, courseRequestFiles, courseRequests, courseReviews, courseUnitsDb, favorites, invoices,
   institutionSpecialties, lessonNotes, lessonProgress, lessonsDb, notificationsDb, orderItems, orders,
   passwordResetTokens, paymentEvents, pushDevices, supportReplyFiles, supportReplies,
@@ -243,6 +243,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       await tx.delete(authSessions).where(eq(authSessions.userId, targetId));
       await tx.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, targetId));
       await tx.delete(pushDevices).where(eq(pushDevices.userId, targetId));
+      await tx.delete(adminMfaFactors).where(eq(adminMfaFactors.userId, targetId));
       await tx.delete(userRoles).where(eq(userRoles.userId, targetId));
       await tx.delete(supervisorAssignments).where(eq(supervisorAssignments.supervisorId, targetId));
       await tx.update(courseRequests).set({ assignedSupervisorId: null, updatedAt: now }).where(eq(courseRequests.assignedSupervisorId, targetId));
@@ -320,4 +321,3 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
   }
   return { entityType: input.entityType, entityId: input.entityId, deleted: true, deletedRows, cleanupFailures };
 }
-

@@ -14,6 +14,7 @@
   display: grid;
   place-items: center;
   flex: 0 0 auto;
+  overflow: visible;
 }
 
 .brand-logo-symbol > img {
@@ -21,15 +22,20 @@
   width: 100% !important;
   height: 100% !important;
   object-fit: contain !important;
+  transform-origin: center;
 }
+
+/* The dark artwork has wider transparent padding than the light export. */
+.brand-logo-symbol > .brand-logo-dark { transform: scale(1.36); }
 
 .brand-logo-word {
   display: block;
   color: var(--primary-dark);
-  font-family: inherit;
+  font-family: Tahoma, "Segoe UI", Arial, sans-serif;
   font-size: calc(20px * var(--font-scale, 1));
-  font-weight: 900;
-  line-height: .95;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: .005em;
   white-space: nowrap;
   text-rendering: geometricPrecision;
 }
@@ -40,7 +46,8 @@
 .brand-logo-mark-only .brand-logo-symbol { width: 100%; height: 100%; }
 
 .brand-mark { display: grid; place-items: center; overflow: hidden; }
-.brand-mark img { inset: auto; width: 100%; height: 100%; object-fit: contain; }
+.brand-mark img { inset: auto; width: 100%; height: 100%; object-fit: contain; transform-origin:center; }
+.brand-mark .brand-mark-dark { transform:scale(1.36); }
 .brand-mark-dark { display: none !important; }
 .dark .brand-mark-light { display: none !important; }
 .dark .brand-mark-dark { display: block !important; }

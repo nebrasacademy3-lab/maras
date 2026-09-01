@@ -14,11 +14,15 @@
     "lint": "eslint . --ignore-pattern .next --ignore-pattern node_modules --ignore-pattern mobile",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:push": "drizzle-kit push"
+    "db:push": "drizzle-kit push",
+    "video:worker": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/video-worker.ts",
+    "video:worker:once": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/video-worker.ts --once",
+    "lifecycle:dispatch": "bash scripts/dispatch-lifecycle.sh"
   },
   "dependencies": {
     "busboy": "1.6.0",
     "drizzle-orm": "0.45.2",
+    "hls.js": "^1.6.13",
     "lucide-react": "^0.468.0",
     "next": "16.3.2",
     "pg": "^8.16.3",
@@ -27,8 +31,8 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "4.2.1",
-    "@types/node": "22.19.19",
     "@types/busboy": "1.5.4",
+    "@types/node": "22.19.19",
     "@types/pg": "^8.15.5",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",

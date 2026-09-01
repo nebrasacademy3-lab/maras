@@ -878,7 +878,11 @@ Object.assign(exact, {
   "يُعرض الفيديو بالحجم الأصلي داخل الإطار بدون قص أو تقريب.": "The video is shown at its original aspect ratio without cropping or zooming.",
   "يُفرض الاختيار من خادم البث، بينما يبقى الدرس التجريبي متاحًا في الويب والتطبيق": "The streaming server enforces this choice, while preview lessons remain available on both web and app.",
   "يحسب الخادم مدة MP4/MOV/WebM/MKV/AVI تلقائيًا ويحدّث مدة الدرس": "The server automatically detects MP4/MOV/WebM/MKV/AVI duration and updates the lesson.",
-  "أوقف الفيديو عند الموضع المطلوب واحفظ أول ملاحظة؛ ستظهر هنا ويمكنك الضغط عليها للعودة لنفس الثانية.": "Pause the video at the desired point and save your first note. It will appear here, and you can tap it to return to the same second."
+  "أوقف الفيديو عند الموضع المطلوب واحفظ أول ملاحظة؛ ستظهر هنا ويمكنك الضغط عليها للعودة لنفس الثانية.": "Pause the video at the desired point and save your first note. It will appear here, and you can tap it to return to the same second.",
+  "الوصول موقوف مؤقتًا": "Access temporarily paused",
+  "انتهت الصلاحية · اضغط للتجديد": "Access expired · tap to renew",
+  "مواد تحتاج تجديدًا": "Courses to renew",
+  "تقدمك وملاحظاتك محفوظة ولن تبدأ من جديد": "Your progress and notes are saved, so you will not start over"
 });
 
 
@@ -888,6 +892,7 @@ const dynamicEnglish: [RegExp, (...parts: string[]) => string][] = [
   [/^مرحبًا، (.+)$/, (_all, name) => `Hello, ${name}`],
   [/^(\d+) جهة تعليمية قابلة للتصفح$/, (_all, n) => `${n} institutions available to browse`],
   [/^(\d+) مادة بصلاحية نشطة$/, (_all, n) => `${n} courses with active access`],
+  [/^(\d+)% محفوظ$/, (_all, n) => `${n}% saved`],
   [/^حتى (.+)$/, (_all, date) => `Until ${date}`],
   [/^(\d+) جهة مطابقة$/, (_all, n) => `${n} matching institutions`],
   [/^(\d+) حساب إداري أو إشرافي$/, (_all, n) => `${n} admin or supervisor accounts`],

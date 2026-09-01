@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import { useQueryClient } from "@tanstack/react-query";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Platform } from "react-native";
 import { api, ApiError, jsonBody, setApiToken } from "@/src/lib/api";
@@ -7,7 +8,7 @@ import { ensureDeviceIdentity } from "@/src/lib/device";
 
 const TOKEN_KEY = "meras_session_token";
 type Credentials = { identifier: string; password: string; remember?: boolean };
-type Registration = { fullName: string; email: string; phone: string; password: string; universitySlug: string; specialty: string; academicLevel: string; termsAccepted: true };
+type Registration = { fullName: string; email: string; phone: string; password: string; universitySlug: string; specialty: string; academicLevel: string; referralCode?: string; termsAccepted: true };
 type AuthResponse = { ok: true; token: string; expiresAt: string; user: SessionUser; next: string };
 type AuthContextValue = {
   user: SessionUser | null;
@@ -46,10 +47,12 @@ async function clearPersistedToken() {
   try {
     if (Platform.OS === "web") { if (typeof window !== "undefined") window.localStorage.removeItem(TOKEN_KEY); }
     else await SecureStore.deleteItemAsync(TOKEN_KEY);
-  } catch { /* Local state is still cleared if persistence is temporarily unavailable. */ }
+    return true;
+  } catch { return false; }
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<SessionUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -83,12 +86,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const register = useCallback(async (value: Registration) => accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) })), [accept]);
   const logout = useCallback(async () => {
     // Start revocation while the bearer token is still attached, then clear local state immediately.
-    const remote = api("/api/mobile/auth/logout", { method: "POST", timeoutMs: 8_000 }).catch(() => undefined);
-    await clearPersistedToken();
-    setToken(null);
+    const remote = api("/api/mobile/auth/logout", { method: "POST", timeoutMs: 2_000 }).then(() => true).catch(() => false);
     setUser(null);
-    void remote;
-  }, []);
+    setToken(null);
+    queryClient.clear();
+    const [revoked, cleared] = await Promise.all([remote, clearPersistedToken()]);
+    if (!revoked) console.warn("[auth] Remote session revocation was not confirmed before local logout.");
+    if (!cleared) console.warn("[auth] Persisted session storage could not be cleared completely.");
+  }, [queryClient]);
   const value = useMemo(() => ({ user, loading, token, login, register, logout, refresh, setUser }), [user, loading, token, login, register, logout, refresh]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
@@ -98,4 +103,3 @@ export function useAuth() {
   if (!value) throw new Error("AuthProvider is missing");
   return value;
 }
-

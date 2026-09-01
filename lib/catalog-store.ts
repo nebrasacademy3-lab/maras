@@ -258,6 +258,7 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       university: institutionBySlug.get(row.institutionSlug) || row.institutionSlug,
       universitySlug: row.institutionSlug,
       specialty: specialtyBySlug.get(row.specialtySlug) || row.specialtySlug,
+      specialtySlug: row.specialtySlug,
       description: studentFacingCopy(row.description),
       coverImage: publicCover(row.slug, row.coverImageUrl),
       price: row.price,

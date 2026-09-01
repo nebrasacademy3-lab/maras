@@ -1,6 +1,6 @@
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
-import { cartItems, courseAccess } from "@/db/schema";
+import { analyticsEvents, cartItems, courseAccess } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { getCoursesCatalog } from "@/lib/catalog-store";
@@ -43,6 +43,7 @@ export async function POST(request: Request) {
   const [owned] = await db.select({ id: courseAccess.id }).from(courseAccess).where(and(eq(courseAccess.userEmail, user.email), eq(courseAccess.courseSlug, courseSlug), isNull(courseAccess.revokedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, new Date().toISOString())))).limit(1);
   if (owned) return jsonError("هذه المادة مفعلة في حسابك بالفعل", 409);
   if (payload.active === false) await db.delete(cartItems).where(and(eq(cartItems.userEmail, user.email), eq(cartItems.courseSlug, courseSlug)));
-  else await db.insert(cartItems).values({ userEmail: user.email, courseSlug }).onConflictDoNothing();
+  else await db.insert(cartItems).values({ userEmail: user.email, courseSlug, createdAt: new Date().toISOString() }).onConflictDoUpdate({ target: [cartItems.userEmail, cartItems.courseSlug], set: { createdAt: new Date().toISOString() } });
+  await db.insert(analyticsEvents).values({ event: payload.active === false ? "remove_from_cart" : "add_to_cart", userEmail: user.email, courseSlug, metadataJson: JSON.stringify({ source: "cart_api" }), createdAt: new Date().toISOString() });
   return Response.json({ ok: true, ...(await cartFor(user.email)) }, { headers: { "cache-control": "no-store" } });
 }

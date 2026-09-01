@@ -5,6 +5,8 @@ import { Captions, Check, Gauge, LoaderCircle, Maximize, Minimize, Pause, Play, 
 import { BrandLockup } from "./brand-logo";
 
 export type VideoSeekRequest = { seconds: number; nonce: number };
+type SessionQuality = { label: string; width: number; height: number; bitrateKbps: number };
+type SessionResponse = { streamUrl?: string; sourceUrl?: string; hlsUrl?: string; thumbnailUrl?: string; adaptive?: boolean; qualities?: SessionQuality[]; error?: string };
 type Props = {
   title: string;
   studentLabel?: string;
@@ -27,18 +29,23 @@ const formatTime = (value: number) => {
 export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", preview = false, source, courseSlug, lessonId, seekRequest, onTimeChange }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
+  const hlsEngineRef = useRef<{ destroy: () => void } | null>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [volume, setVolume] = useState(0.8);
   const [muted, setMuted] = useState(false);
   const [rate, setRate] = useState(1);
-  const [quality, setQuality] = useState("تلقائي");
+  const [quality, setQuality] = useState(source ? "الأصلية" : "تلقائي");
   const [captions, setCaptions] = useState(false);
   const [settings, setSettings] = useState(false);
   const [watermark, setWatermark] = useState(0);
   const [hasError, setHasError] = useState(false);
   const [streamSource, setStreamSource] = useState(source || "");
+  const [originalSource, setOriginalSource] = useState(source || "");
+  const [managedHls, setManagedHls] = useState(false);
+  const [posterSource, setPosterSource] = useState("");
+  const [qualitySources, setQualitySources] = useState<Record<string, string>>(source ? { "الأصلية": source } : {});
   const [sessionLoading, setSessionLoading] = useState(Boolean(!source && courseSlug && lessonId));
   const [sessionError, setSessionError] = useState("");
   const [sessionAttempt, setSessionAttempt] = useState(0);
@@ -47,6 +54,7 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   const [rotated, setRotated] = useState(false);
   const [privacyCovered, setPrivacyCovered] = useState(false);
   const lastSavedRef = useRef(0);
+  const pendingPlaybackRef = useRef<{ seconds: number; playing: boolean } | null>(null);
 
   useEffect(() => {
     const timer = window.setInterval(() => setWatermark((value) => (value + 1) % 4), 9000);
@@ -94,9 +102,22 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
           body: JSON.stringify({ courseSlug, lessonId }),
           signal: controller.signal,
         });
-        const data = await response.json() as { streamUrl?: string; error?: string };
+        const data = await response.json() as SessionResponse;
         if (!response.ok || !data.streamUrl) throw new Error(data.error || "تعذر إنشاء جلسة المشاهدة");
-        setStreamSource(data.streamUrl);
+        const supportsNativeHls = Boolean(data.hlsUrl && videoRef.current?.canPlayType("application/vnd.apple.mpegurl"));
+        const supportsManagedHls = Boolean(data.hlsUrl && typeof window.MediaSource !== "undefined");
+        const adaptivePlayback = supportsNativeHls || supportsManagedHls;
+        const sources: Record<string, string> = { "الأصلية": data.sourceUrl || data.streamUrl };
+        if (adaptivePlayback && data.hlsUrl) {
+          sources["تلقائي"] = data.hlsUrl;
+          for (const item of data.qualities || []) sources[item.label] = data.hlsUrl.replace(/\/master\.m3u8(?=\?|$)/, `/${item.label}/index.m3u8`);
+        }
+        setQualitySources(sources);
+        setQuality(adaptivePlayback ? "تلقائي" : "الأصلية");
+        setPosterSource(data.thumbnailUrl || "");
+        setOriginalSource(data.sourceUrl || data.streamUrl);
+        setManagedHls(Boolean(supportsManagedHls && !supportsNativeHls));
+        setStreamSource(adaptivePlayback && data.hlsUrl ? data.hlsUrl : data.sourceUrl || data.streamUrl);
         setSessionLoading(false);
       } catch (caught) {
         if ((caught as Error).name === "AbortError") return;
@@ -107,6 +128,36 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
     void loadSession();
     return () => controller.abort();
   }, [courseSlug, lessonId, sessionAttempt, source]);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!managedHls || !video || !streamSource) {
+      hlsEngineRef.current?.destroy();
+      hlsEngineRef.current = null;
+      return;
+    }
+    let disposed = false;
+    const fallback = () => {
+      if (disposed || !originalSource) return;
+      setManagedHls(false);
+      setQuality("الأصلية");
+      setStreamSource(originalSource);
+    };
+    void import("hls.js").then(({ default: Hls }) => {
+      if (disposed) return;
+      if (!Hls.isSupported()) { fallback(); return; }
+      const engine = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 90, maxBufferLength: 45 });
+      hlsEngineRef.current = engine;
+      engine.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) fallback(); });
+      engine.attachMedia(video);
+      engine.on(Hls.Events.MEDIA_ATTACHED, () => engine.loadSource(streamSource));
+    }).catch(fallback);
+    return () => {
+      disposed = true;
+      hlsEngineRef.current?.destroy();
+      hlsEngineRef.current = null;
+    };
+  }, [managedHls, originalSource, streamSource]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -125,6 +176,17 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   };
   const jump = (seconds: number) => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + seconds)); };
   const changeRate = (value: number) => { setRate(value); if (videoRef.current) videoRef.current.playbackRate = value; };
+  const changeQuality = (value: string) => {
+    const nextSource = qualitySources[value];
+    if (!nextSource || nextSource === streamSource) { setQuality(value); return; }
+    const video = videoRef.current;
+    pendingPlaybackRef.current = { seconds: video?.currentTime || 0, playing: Boolean(video && !video.paused) };
+    const nativeHls = Boolean(video?.canPlayType("application/vnd.apple.mpegurl"));
+    setManagedHls(nextSource.includes("/hls/") && !nativeHls && typeof window.MediaSource !== "undefined");
+    setQuality(value);
+    setStreamSource(nextSource);
+    setSettings(false);
+  };
   const changeVolume = (value: number) => { setVolume(value); setMuted(value === 0); if (videoRef.current) { videoRef.current.volume = value; videoRef.current.muted = value === 0; } };
   const toggleMute = () => { const next = !muted; setMuted(next); if (videoRef.current) videoRef.current.muted = next; };
   const fullScreen = useCallback(async () => {
@@ -151,7 +213,7 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   return (
     <div ref={shellRef} className={`secure-player ${fallbackFullscreen ? "browser-fullscreen" : ""} ${rotated ? "video-rotated" : ""}`} onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => { if (event.key === " ") { event.preventDefault(); void togglePlay(); } if (event.key === "ArrowRight") jump(-10); if (event.key === "ArrowLeft") jump(10); if (event.key.toLowerCase() === "m") toggleMute(); if (event.key.toLowerCase() === "f") void fullScreen(); if (event.key.toLowerCase() === "r" && fullscreen) setRotated((value) => !value); }} tabIndex={0} aria-label={`مشغل فيديو: ${title}`}>
       <div className="secure-player-stage">
-      <video ref={videoRef} src={streamSource || undefined} playsInline preload="auto" disablePictureInPicture disableRemotePlayback controlsList="nodownload noremoteplayback nofullscreen" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; setTime(current); onTimeChange?.(current); if (current - lastSavedRef.current >= 15) { lastSavedRef.current = current; saveProgress(Math.floor(current)); } }} onLoadedMetadata={(event) => { setDuration(event.currentTarget.duration); setHasError(false); }} onCanPlay={() => setHasError(false)} onEnded={(event) => { setPlaying(false); saveProgress(Math.floor(event.currentTarget.duration), true); }} onError={() => { if (streamSource) setHasError(true); }} />
+      <video ref={videoRef} src={managedHls ? undefined : streamSource || undefined} poster={posterSource || undefined} playsInline preload="auto" disablePictureInPicture disableRemotePlayback controlsList="nodownload noremoteplayback nofullscreen" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; setTime(current); onTimeChange?.(current); if (current - lastSavedRef.current >= 15) { lastSavedRef.current = current; saveProgress(Math.floor(current)); } }} onLoadedMetadata={(event) => { const pending = pendingPlaybackRef.current; if (pending) { event.currentTarget.currentTime = Math.min(event.currentTarget.duration || pending.seconds, pending.seconds); pendingPlaybackRef.current = null; if (pending.playing) void event.currentTarget.play().catch(() => undefined); } setDuration(event.currentTarget.duration); setHasError(false); }} onCanPlay={() => setHasError(false)} onEnded={(event) => { setPlaying(false); saveProgress(Math.floor(event.currentTarget.duration), true); }} onError={() => { if (streamSource && !managedHls) setHasError(true); }} />
       <div className="secure-player-bg" />
       <div className={`video-watermark watermark-${watermark}`}>{preview ? "درس تجريبي مجاني" : studentLabel}</div>
       <div className="video-brand"><BrandLockup compact /></div>
@@ -182,7 +244,7 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
           </div>
         </div>
       </div>
-      {settings && <div className="player-settings"><div><Settings size={16} /><strong>إعدادات المشاهدة</strong><button onClick={() => setSettings(false)}>×</button></div><label>السرعة<span>{[.5,.75,1,1.25,1.5,2].map((value) => <button key={value} className={rate === value ? "active" : ""} onClick={() => changeRate(value)}>{rate === value && <Check size={11} />}{value}×</button>)}</span></label><label>الجودة<span>{["تلقائي","الأصلية"].map((value) => <button key={value} className={quality === value ? "active" : ""} onClick={() => setQuality(value)}>{quality === value && <Check size={11} />}{value}</button>)}</span></label><p><ShieldCheck size={14} /> الفيديو يُعرض كاملًا بالجودة الأصلية بدون قص أو تقريب.</p></div>}
+      {settings && <div className="player-settings"><div><Settings size={16} /><strong>إعدادات المشاهدة</strong><button onClick={() => setSettings(false)}>×</button></div><label>السرعة<span>{[.5,.75,1,1.25,1.5,2].map((value) => <button key={value} className={rate === value ? "active" : ""} onClick={() => changeRate(value)}>{rate === value && <Check size={11} />}{value}×</button>)}</span></label><label>الجودة<span>{Object.keys(qualitySources).map((value) => <button key={value} className={quality === value ? "active" : ""} onClick={() => changeQuality(value)}>{quality === value && <Check size={11} />}{value}</button>)}</span></label><p><ShieldCheck size={14} /> عند توفر البث المتكيف يختار المشغل أفضل جودة للاتصال تلقائيًا، مع بقاء الفيديو الأصلي خيارًا احتياطيًا.</p></div>}
       </div>
     </div>
   );

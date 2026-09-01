@@ -17,16 +17,28 @@ function TemplateIcon({ template }: { template?: string }) { if (template === "d
 export function AnnouncementCampaign() {
   const [modal, setModal] = useState<Announcement | null>(null); const [banner, setBanner] = useState<Announcement | null>(null);
   const modalRef = useRef<HTMLElement | null>(null);
+  const bannerRef = useRef<HTMLElement | null>(null);
   const load = useCallback((signal?: AbortSignal) => fetch("/api/public/announcements", { cache: "no-store", signal }).then(async (response) => response.ok ? await response.json() as { announcements?: Announcement[] } : null).then((payload) => {
     if (signal?.aborted) return;
     const active = (payload?.announcements || []).filter((item) => !dismissed(item.id));
     const modalCandidate = active.find((item) => (item.presentation === "modal" || item.presentation === "all") && !modalSeen(item.id) && (item.dismissible || Boolean(item.actionUrl))) || null;
-    const bannerCandidate = active.find((item) => item.presentation === "banner" || (item.presentation === "all" && modalSeen(item.id)) || (item.presentation === "modal" && !item.dismissible && !item.actionUrl)) || null;
+    const bannerCandidate = active.find((item) => item.presentation === "banner" || (item.presentation === "all" && modalSeen(item.id)) || ((item.presentation === "modal" || item.presentation === "all") && !item.dismissible && !item.actionUrl)) || null;
     setModal(modalCandidate);
     setBanner(bannerCandidate?.id === modalCandidate?.id ? null : bannerCandidate);
   }).catch(() => undefined), []);
   const closeModal = useCallback((item: Announcement) => { rememberModal(item.id); setModal(null); if (item.presentation === "all") setBanner(item); else dismiss(item.id); }, []);
   useEffect(() => { const controller = new AbortController(); void load(controller.signal); return () => controller.abort(); }, [load]);
+  useEffect(() => {
+    const root = document.documentElement;
+    const node = bannerRef.current;
+    if (!banner || !node) { root.style.setProperty("--announcement-bar-height", "0px"); return; }
+    const update = () => root.style.setProperty("--announcement-bar-height", `${Math.ceil(node.getBoundingClientRect().height)}px`);
+    update();
+    const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(update);
+    observer?.observe(node);
+    window.addEventListener("resize", update);
+    return () => { observer?.disconnect(); window.removeEventListener("resize", update); root.style.setProperty("--announcement-bar-height", "0px"); };
+  }, [banner]);
   useRealtimeSync((payload) => { if (!payload.changed || payload.changed.some((channel) => channel === "announcements" || channel === "settings")) void load(); });
   useEffect(() => {
     if (!modal) return;
@@ -48,5 +60,6 @@ export function AnnouncementCampaign() {
   }, [modal, closeModal]);
   const closeBanner = (item: Announcement) => { dismiss(item.id); setBanner(null); };
   const action = (item: Announcement, closeBeforeNavigation = false) => { const inside = internalPath(item.actionUrl); const outside = externalUrl(item.actionUrl); const onClick = closeBeforeNavigation ? () => closeModal(item) : undefined; if (inside) return <Link href={inside} className="announcement-action" onClick={onClick}>{item.actionLabel || "اعرف المزيد"}<ArrowLeft size={15}/></Link>; if (outside) return <a href={outside} target="_blank" rel="noopener noreferrer" className="announcement-action" onClick={onClick}>{item.actionLabel || "فتح الرابط"}<ArrowLeft size={15}/></a>; return null; };
-  return <>{banner && <aside className={`public-announcement-banner announcement-template-${banner.template || "general"}`} role="status" aria-live="polite"><div className="container"><span className="announcement-mark"><TemplateIcon template={banner.template}/></span><div><strong>{banner.title}</strong><p>{banner.body}</p></div>{action(banner)}{banner.dismissible && <button type="button" className="announcement-banner-close" onClick={() => closeBanner(banner)} aria-label="إخفاء الإعلان"><X size={18}/></button>}</div></aside>}{modal && <div className="announcement-modal-backdrop"><section ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={`announcement-${modal.id}`} aria-describedby={`announcement-body-${modal.id}`} className={`announcement-modal announcement-template-${modal.template || "general"}`}><div className="announcement-modal-icon"><TemplateIcon template={modal.template}/></div><div className="announcement-modal-copy"><span>إعلان من مراس</span><h2 id={`announcement-${modal.id}`}>{modal.title}</h2><p id={`announcement-body-${modal.id}`}>{modal.body}</p></div><div className="announcement-modal-actions">{action(modal, true)}{modal.dismissible && <button type="button" className="announcement-dismiss" onClick={() => closeModal(modal)}>لاحقًا</button>}</div>{modal.dismissible && <button type="button" className="announcement-modal-close" onClick={() => closeModal(modal)} aria-label="إغلاق الإعلان"><X size={18}/></button>}</section></div>}</>;
+  const ticker=(item:Announcement)=><div className="announcement-ticker" aria-label={`${item.title} — ${item.body}`}><div className="announcement-ticker-track">{[0,1].map((copy)=><span key={copy} aria-hidden="true"><strong>{item.title}</strong><b>{item.body}</b><i>✦</i></span>)}</div></div>;
+  return <>{banner && <aside ref={bannerRef} className={`public-announcement-banner announcement-template-${banner.template || "general"}`} role="status" aria-live="polite"><div className="container"><span className="announcement-mark"><TemplateIcon template={banner.template}/></span>{ticker(banner)}{action(banner)}{banner.dismissible && <button type="button" className="announcement-banner-close" onClick={() => closeBanner(banner)} aria-label="إخفاء الإعلان"><X size={18}/></button>}</div></aside>}{modal && <div className="announcement-modal-backdrop"><section ref={modalRef} tabIndex={-1} role="dialog" aria-modal="true" aria-labelledby={`announcement-${modal.id}`} aria-describedby={`announcement-body-${modal.id}`} className={`announcement-modal announcement-template-${modal.template || "general"}`}><div className="announcement-modal-icon"><TemplateIcon template={modal.template}/></div><div className="announcement-modal-copy"><span>إعلان من مراس</span><h2 id={`announcement-${modal.id}`}>{modal.title}</h2><p id={`announcement-body-${modal.id}`}>{modal.body}</p></div><div className="announcement-modal-actions">{action(modal, true)}{modal.dismissible && <button type="button" className="announcement-dismiss" onClick={() => closeModal(modal)}>لاحقًا</button>}</div>{modal.dismissible && <button type="button" className="announcement-modal-close" onClick={() => closeModal(modal)} aria-label="إغلاق الإعلان"><X size={18}/></button>}</section></div>}</>;
 }

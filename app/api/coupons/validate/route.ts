@@ -15,7 +15,7 @@ export async function POST(request: Request) {
   const courses = await getCoursesCatalog();
   const selected = requestedSlugs.map((slug) => courses.find((course) => course.slug === slug)).filter((course): course is NonNullable<typeof course> => Boolean(course));
   if (!selected.length || selected.length !== requestedSlugs.length) return jsonError("إحدى المواد غير موجودة أو غير منشورة", 404);
-  const quote = selected.length === 1 ? await quoteCoupon(cleanText(payload.code, 40), selected[0].slug, selected[0].price) : await quoteCouponForCart(cleanText(payload.code, 40), selected.map((course) => ({ courseSlug: course.slug, price: course.price })));
+  const quote = selected.length === 1 ? await quoteCoupon(cleanText(payload.code, 40), selected[0].slug, selected[0].price, user.id) : await quoteCouponForCart(cleanText(payload.code, 40), selected.map((course) => ({ courseSlug: course.slug, price: course.price })), user.id);
   if (!quote) return jsonError("الكود غير صالح أو منتهي أو غير مخصص لهذه المادة أو السلة", 404);
   return Response.json({ ok: true, ...quote });
 }

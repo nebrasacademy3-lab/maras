@@ -1,12 +1,6 @@
-import { and, desc, eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { courseAccess, lessonsDb, videoAssets } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
-import { getSessionUser } from "@/lib/auth";
-import { contentViewModeError, getContentViewMode } from "@/lib/platform-settings";
-import { verifyVideoToken } from "@/lib/video-token";
-import { getObject } from "@/lib/storage";
-import { activeCourseAccessWhere } from "@/lib/course-access";
+import { getObject, type StorageProvider } from "@/lib/storage";
+import { authorizeVideoRequest } from "@/lib/video-access";
 
 type RouteContext = { params: Promise<{ lessonId: string }> };
 
@@ -30,42 +24,17 @@ function requestedRange(value: string | null, sizeBytes: number) {
 }
 
 async function serveVideo(request: Request, context: RouteContext, headOnly: boolean) {
-  const secret = process.env.VIDEO_SIGNING_SECRET?.trim();
-  if (!secret) return jsonError("بث الفيديو غير مفعّل", 503);
   const lessonId = cleanText((await context.params).lessonId, 120);
   const url = new URL(request.url);
   const courseSlug = cleanText(url.searchParams.get("course"), 120);
-  const grant = await verifyVideoToken(cleanText(url.searchParams.get("token"), 4096), secret);
-  if (!grant || grant.lessonId !== lessonId || grant.courseSlug !== courseSlug) return jsonError("رابط المشاهدة منتهي أو غير صالح", 403);
-
-  const db = getDb();
-  const [lesson] = await db.select({ freePreview: lessonsDb.freePreview, videoAssetId: lessonsDb.videoAssetId }).from(lessonsDb).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug), eq(lessonsDb.status, "published"))).limit(1);
-  if (!lesson) return jsonError("الدرس غير موجود", 404);
-  if (!lesson.freePreview) {
-    let mode;
-    try { mode = await getContentViewMode(); }
-    catch { return jsonError("تعذر التحقق من سياسة المشاهدة حاليًا. حاول مجددًا بعد قليل.", 503); }
-    const policyError = contentViewModeError(mode, grant.client === "app" ? "app" : "web");
-    if (policyError) return jsonError(policyError, 403);
-    if (grant.email === "preview") return jsonError("انتهت صلاحية المعاينة المجانية لهذا الدرس", 403);
-  }
-
-  if (!lesson.freePreview && grant.email !== "preview") {
-    const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لمتابعة هذا الفيديو", 401);
-    if (user.email !== grant.email) return jsonError("جلسة المشاهدة لا تخص هذا الحساب", 403);
-    const [access] = await db.select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(grant.email, courseSlug)).limit(1);
-    if (!access) return jsonError("انتهت صلاحية الوصول إلى هذه المادة", 403);
-  }
-
-  const [asset] = lesson.videoAssetId
-    ? await db.select().from(videoAssets).where(and(eq(videoAssets.id, lesson.videoAssetId), eq(videoAssets.courseSlug, courseSlug), eq(videoAssets.lessonId, lessonId), eq(videoAssets.status, "ready"))).limit(1)
-    : await db.select().from(videoAssets).where(and(eq(videoAssets.courseSlug, courseSlug), eq(videoAssets.lessonId, lessonId), eq(videoAssets.status, "ready"))).orderBy(desc(videoAssets.createdAt)).limit(1);
-  if (!asset) return jsonError("ملف الفيديو غير جاهز", 404);
+  const authorization = await authorizeVideoRequest(request, lessonId, courseSlug, cleanText(url.searchParams.get("token"), 4096));
+  if (!authorization.ok) return authorization.response;
+  const { asset } = authorization;
   const parsed = requestedRange(request.headers.get("range"), asset.sizeBytes);
   if ("invalid" in parsed) return new Response(null, { status: 416, headers: { "Accept-Ranges": "bytes", "Content-Range": `bytes */${asset.sizeBytes}` } });
   const range = parsed.range;
-  const object = await getObject(asset.objectKey, headOnly ? { offset: 0, length: 1 } : range);
+  const provider = (asset.storageProvider === "s3" ? "s3" : "local") as StorageProvider;
+  const object = await getObject(asset.objectKey, headOnly ? { offset: 0, length: 1 } : range, provider);
   if (!object) return jsonError("ملف الفيديو غير موجود", 404);
 
   const headers = new Headers();

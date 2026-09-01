@@ -6,8 +6,9 @@ import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginReques
 import { cleanText, jsonError } from "@/lib/api";
 import { getCourseCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { isNativeAppRequest } from "@/lib/mobile-api";
-import { deleteObject, putObject } from "@/lib/storage";
+import { activeStorageProvider, deleteObject, deletePrefix, putObject, type StorageProvider } from "@/lib/storage";
 import { probeStoredVideoDuration } from "@/lib/video-metadata";
+import { enqueueVideoProcessing, videoProcessingSummary } from "@/lib/video-processing";
 
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska", "video/x-msvideo"]);
@@ -154,29 +155,41 @@ export async function POST(request: Request) {
   const db = getDb();
   const [existingLesson] = await db.select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug))).limit(1);
   if (!existingLesson) { await discardRawUpload(); return jsonError("أنشئ سجل الدرس في الإدارة قبل رفع الفيديو", 409); }
-  const objectKey = `private/${courseSlug}/${lessonId}/${crypto.randomUUID()}.${extensionFor(contentType)}`;
+  const objectKey = `private/video-source/${courseSlug}/${lessonId}/${crypto.randomUUID()}.${extensionFor(contentType)}`;
+  const provider = activeStorageProvider();
+  let committed = false;
   try {
-    await putObject(objectKey, uploadStream, contentType);
+    const stored = await putObject(objectKey, uploadStream, contentType, provider);
     const actualSize = measuredSize();
     if (actualSize <= 0 || actualSize > MAX_VIDEO_BYTES || (rawUpload && actualSize !== sizeBytes)) throw new Error("video-size-mismatch");
     sizeBytes = actualSize;
-    const probedDurationSeconds = await probeStoredVideoDuration(objectKey, sizeBytes, contentType).catch(() => 0);
+    const probedDurationSeconds = await probeStoredVideoDuration(objectKey, sizeBytes, contentType, stored.provider).catch(() => 0);
     const durationSeconds = probedDurationSeconds || suppliedDurationSeconds || 0;
     const now = new Date().toISOString();
     const { asset, replacedAssets } = await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`video-upload:${courseSlug}:${lessonId}`}))`);
-      const previous = await tx.select({ id: videoAssets.id, objectKey: videoAssets.objectKey }).from(videoAssets).where(and(eq(videoAssets.courseSlug, courseSlug), eq(videoAssets.lessonId, lessonId)));
-      const [created] = await tx.insert(videoAssets).values({ courseSlug, lessonId, objectKey, contentType, sizeBytes, status: "ready", durationSeconds: durationSeconds || null, createdAt: now, updatedAt: now }).returning({ id: videoAssets.id, objectKey: videoAssets.objectKey, status: videoAssets.status, durationSeconds: videoAssets.durationSeconds });
+      const previous = await tx.select({ id: videoAssets.id, objectKey: videoAssets.objectKey, storageProvider: videoAssets.storageProvider, derivativesPrefix: videoAssets.derivativesPrefix }).from(videoAssets).where(and(eq(videoAssets.courseSlug, courseSlug), eq(videoAssets.lessonId, lessonId)));
+      const [created] = await tx.insert(videoAssets).values({ courseSlug, lessonId, objectKey, storageProvider: stored.provider, contentType, sizeBytes, status: "ready", durationSeconds: durationSeconds || null, processingStatus: "queued", processingProgress: 0, createdAt: now, updatedAt: now }).returning({ id: videoAssets.id, objectKey: videoAssets.objectKey, status: videoAssets.status, durationSeconds: videoAssets.durationSeconds, processingStatus: videoAssets.processingStatus, processingProgress: videoAssets.processingProgress });
       const [linked] = await tx.update(lessonsDb).set({ videoAssetId: created.id, durationSeconds, updatedAt: now }).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug))).returning({ id: lessonsDb.id });
       if (!linked) throw new Error("lesson-link-failed");
       if (previous.length) await tx.delete(videoAssets).where(inArray(videoAssets.id, previous.map((item) => item.id)));
       return { asset: created, replacedAssets: previous };
     });
-    await Promise.all(replacedAssets.map(async (item) => { try { await deleteObject(item.objectKey); } catch { console.warn("[video-upload] previous object cleanup failed", item.objectKey); } }));
+    committed = true;
+    const processing = await enqueueVideoProcessing(asset.id).catch(async () => {
+      await db.update(videoAssets).set({ processingStatus: "failed", processingProgress: 100, processingError: "تعذر إضافة مهمة الجودات المتعددة؛ الفيديو الأصلي ما زال جاهزًا.", updatedAt: new Date().toISOString() }).where(eq(videoAssets.id, asset.id)).catch(() => undefined);
+      return { status: "failed", capability: { available: false, message: "تعذر إضافة مهمة المعالجة" } };
+    });
+    await Promise.all(replacedAssets.map(async (item) => {
+      const previousProvider = (item.storageProvider === "s3" ? "s3" : "local") as StorageProvider;
+      try { await deleteObject(item.objectKey, previousProvider); } catch { console.warn("[video-upload] previous object cleanup failed", item.objectKey); }
+      if (item.derivativesPrefix) try { await deletePrefix(item.derivativesPrefix, previousProvider); } catch { console.warn("[video-upload] previous derivatives cleanup failed", item.derivativesPrefix); }
+    }));
     invalidateCatalogCache();
-    return Response.json({ ok: true, asset }, { status: 201, headers: { "cache-control": "no-store" } });
+    const summary = await videoProcessingSummary(asset.id).catch(() => null);
+    return Response.json({ ok: true, asset: summary || { ...asset, processingStatus: processing.status }, processing: { status: processing.status, available: processing.capability.available, message: processing.capability.message } }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch {
-    await deleteObject(objectKey).catch(() => undefined);
+    if (!committed) await deleteObject(objectKey, provider).catch(() => undefined);
     return jsonError("تعذر حفظ الفيديو", 500);
   }
 }

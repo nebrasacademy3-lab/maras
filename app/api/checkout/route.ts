@@ -1,11 +1,13 @@
 import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseAccess, orderItems, orders } from "@/db/schema";
+import { analyticsEvents, courseAccess, courseBundleItems, courseBundles, orderItems, orders } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError, requestOrigin } from "@/lib/api";
 import { getCoursesCatalog } from "@/lib/catalog-store";
-import { quoteCoupon, quoteCouponForCart } from "@/lib/coupons";
+import { allocateBundleDiscountMinor, getActiveCourseBundleQuote } from "@/lib/course-bundles";
+import { quoteCoupon, quoteCouponForCart, releaseCouponReservation, reserveCouponForCheckoutTx } from "@/lib/coupons";
 import { normalizeAccessDurationDays } from "@/lib/course-access";
+import { fromMinorUnits, toMinorUnits } from "@/lib/finance";
 
 type TapChargeResponse = { id?: string; status?: string; transaction?: { url?: string }; errors?: Array<{ description?: string }> };
 type PaymentMethod = "tap" | "tabby" | "tamara";
@@ -31,9 +33,13 @@ function existingCheckoutResponse(existing: OrderRow, courseSlugs: string[]) {
       paymentMethod: existing.paymentMethod,
       orderNumber: existing.orderNumber,
       courseSlugs,
+      bundleSlug: existing.bundleSlug,
       subtotal: existing.subtotal,
       discount: existing.discount,
       total: existing.total,
+      subtotalMinor: existing.subtotalMinor ?? toMinorUnits(existing.subtotal),
+      discountMinor: existing.discountMinor ?? toMinorUnits(existing.discount),
+      totalMinor: existing.totalMinor ?? toMinorUnits(existing.total),
       checkoutUrl: existing.checkoutUrl,
     }, { status: 200, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   }
@@ -72,6 +78,9 @@ export async function POST(request: Request) {
   const uniqueSlugs = [...new Set(requestedSlugs)];
   const requestedSorted = [...uniqueSlugs].sort();
   const requestedCoupon = cleanText(payload.coupon, 40).toUpperCase();
+  const requestedBundleSlug = cleanText(payload.bundleSlug, 120).toLowerCase();
+  if (requestedBundleSlug && !/^[a-z0-9][a-z0-9._-]*$/.test(requestedBundleSlug)) return jsonError("معرّف الباقة غير صالح", 400);
+  if (requestedCoupon && requestedBundleSlug) return jsonError("لا يمكن الجمع بين باقة مخفضة وكود خصم في الطلب نفسه", 409);
   const courses = await getCoursesCatalog();
   const selected = uniqueSlugs.map((slug) => courses.find((course) => course.slug === slug)).filter((course): course is NonNullable<typeof course> => Boolean(course));
   if (selected.length !== uniqueSlugs.length) return jsonError("إحدى المواد غير موجودة أو غير منشورة", 404);
@@ -87,6 +96,7 @@ export async function POST(request: Request) {
     const sameRequest = existing.customerEmail === user.email
       && existing.paymentMethod === paymentMethod
       && existing.couponCode === (requestedCoupon || null)
+      && existing.bundleSlug === (requestedBundleSlug || null)
       && existingSlugs.length === requestedSorted.length
       && existingSlugs.every((slug, index) => slug === requestedSorted[index]);
     if (!sameRequest) return jsonError("مفتاح محاولة الدفع مستخدم لطلب مختلف. حدّث الصفحة وابدأ محاولة جديدة.", 409);
@@ -102,13 +112,20 @@ export async function POST(request: Request) {
   const activeAccess = await db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(and(eq(courseAccess.userEmail, user.email), inArray(courseAccess.courseSlug, uniqueSlugs), isNull(courseAccess.revokedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, now))));
   if (activeAccess.length) return jsonError(`لديك وصول مفعّل مسبقًا إلى: ${activeAccess.map((row) => row.courseSlug).join(", ")}`, 409);
 
+  const bundleQuote = requestedBundleSlug ? await getActiveCourseBundleQuote(requestedBundleSlug, uniqueSlugs) : null;
+  if (requestedBundleSlug && !bundleQuote) return jsonError("الباقة غير متاحة حاليًا أو لا تطابق مواد السلة كاملة", 409);
   const coupon = requestedCoupon;
-  const couponQuote = coupon ? selected.length === 1 ? await quoteCoupon(coupon, selected[0].slug, selected[0].price) : await quoteCouponForCart(coupon, selected.map((course) => ({ courseSlug: course.slug, price: course.price }))) : null;
+  const couponQuote = coupon ? selected.length === 1 ? await quoteCoupon(coupon, selected[0].slug, selected[0].price, user.id) : await quoteCouponForCart(coupon, selected.map((course) => ({ courseSlug: course.slug, price: course.price })), user.id) : null;
   if (coupon && !couponQuote) return jsonError("كود الخصم غير صالح أو منتهي أو غير مخصص لهذه السلة", 409);
-  const subtotal = Math.round(selected.reduce((sum, course) => sum + course.price, 0) * 100) / 100;
-  const discount = Math.min(couponQuote?.discount || 0, Math.max(0, subtotal - 1));
-  const total = Math.max(0, Math.round((subtotal - discount) * 100) / 100);
-  if (paymentMethod === "tabby" && total < 10) return jsonError("الحد الأدنى للدفع عبر تابي هو 10 ر.س", 409);
+  const subtotalMinor = selected.reduce((sum, course) => sum + toMinorUnits(course.price), 0);
+  const discountMinor = bundleQuote
+    ? Math.min(bundleQuote.discountMinor, Math.max(0, subtotalMinor - 100))
+    : Math.min(toMinorUnits(couponQuote?.discount || 0), Math.max(0, subtotalMinor - 100));
+  const totalMinor = Math.max(0, subtotalMinor - discountMinor);
+  const subtotal = fromMinorUnits(subtotalMinor);
+  const discount = fromMinorUnits(discountMinor);
+  const total = fromMinorUnits(totalMinor);
+  if (paymentMethod === "tabby" && totalMinor < 1_000) return jsonError("الحد الأدنى للدفع عبر تابي هو 10 ر.س", 409);
   const orderNumber = createOrderNumber();
   const customerName = user.fullName;
   const customerEmail = user.email;
@@ -116,35 +133,73 @@ export async function POST(request: Request) {
   const tapSecretKey = process.env.TAP_SECRET_KEY?.trim();
   if (!tapSecretKey) return jsonError("بوابة الدفع قيد الإعداد. لم تُنشأ أي عملية أو مطالبة مالية.", 503);
 
-  const discountIndex = couponQuote?.courseSlug ? selected.findIndex((course) => course.slug === couponQuote.courseSlug) : 0;
-  const orderItemValues = selected.map((course, index) => { const itemDiscount = index === discountIndex ? discount : 0; return { orderNumber, courseSlug: course.slug, unitPrice: course.price, discount: itemDiscount, total: Math.max(0, course.price - itemDiscount), accessDurationDays: normalizeAccessDurationDays(course.accessDurationDays, course.access) }; });
+  const priceMinors = selected.map((course) => toMinorUnits(course.price));
+  let itemDiscountMinors = allocateBundleDiscountMinor(priceMinors, discountMinor);
+  if (!bundleQuote && couponQuote?.courseSlug) {
+    const discountIndex = selected.findIndex((course) => course.slug === couponQuote.courseSlug);
+    if (discountIndex >= 0 && discountMinor <= priceMinors[discountIndex]) {
+      itemDiscountMinors = selected.map((_, index) => index === discountIndex ? discountMinor : 0);
+    }
+  }
+  const orderItemValues = selected.map((course, index) => ({
+    orderNumber,
+    courseSlug: course.slug,
+    unitPrice: fromMinorUnits(priceMinors[index]),
+    discount: fromMinorUnits(itemDiscountMinors[index]),
+    total: fromMinorUnits(priceMinors[index] - itemDiscountMinors[index]),
+    accessDurationDays: normalizeAccessDurationDays(course.accessDurationDays, course.access),
+  }));
   const creation = await db.transaction(async (tx) => {
     const requestedCartJson = JSON.stringify(requestedSorted);
     const cartLockKey = `checkout:${user.id}:${requestedCartJson}`;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${cartLockKey}))`);
+    if (bundleQuote) {
+      const [lockedBundle] = await tx.select({ id: courseBundles.id, discountType: courseBundles.discountType, discountValue: courseBundles.discountValue }).from(courseBundles).where(and(
+        eq(courseBundles.slug, bundleQuote.slug),
+        eq(courseBundles.status, "published"),
+        sql`(${courseBundles.startsAt} IS NULL OR ${courseBundles.startsAt}::timestamptz <= NOW())`,
+        sql`(${courseBundles.expiresAt} IS NULL OR ${courseBundles.expiresAt}::timestamptz > NOW())`,
+      )).limit(1).for("share");
+      if (!lockedBundle || lockedBundle.discountType !== bundleQuote.discountType || lockedBundle.discountValue !== bundleQuote.discountValue) return { kind: "bundle_changed" as const };
+      const lockedItems = await tx.select({ courseSlug: courseBundleItems.courseSlug }).from(courseBundleItems).where(eq(courseBundleItems.bundleId, lockedBundle.id));
+      const lockedSlugs = lockedItems.map((item) => item.courseSlug).sort();
+      if (lockedSlugs.length !== requestedSorted.length || lockedSlugs.some((slug, index) => slug !== requestedSorted[index])) return { kind: "bundle_changed" as const };
+    }
     const recentOrders = await tx.select().from(orders).where(and(
       eq(orders.customerEmail, customerEmail),
       inArray(orders.status, OPEN_CHECKOUT_STATUSES),
       sql`${orders.createdAt}::timestamptz >= NOW() - INTERVAL '30 minutes'`,
       sql`COALESCE((SELECT jsonb_agg(oi.course_slug ORDER BY oi.course_slug) FROM order_items AS oi WHERE oi.order_number = ${orders.orderNumber}), jsonb_build_array(${orders.courseSlug})) = ${requestedCartJson}::jsonb`,
     )).orderBy(
-      sql`CASE WHEN ${orders.paymentMethod} = ${paymentMethod} AND ${orders.couponCode} IS NOT DISTINCT FROM ${couponQuote?.code || null} THEN 0 ELSE 1 END`,
+      sql`CASE WHEN ${orders.paymentMethod} = ${paymentMethod} AND ${orders.couponCode} IS NOT DISTINCT FROM ${couponQuote?.code || null} AND ${orders.bundleSlug} IS NOT DISTINCT FROM ${bundleQuote?.slug || null} THEN 0 ELSE 1 END`,
       sql`${orders.createdAt}::timestamptz DESC`,
     ).limit(1);
     const [existing] = recentOrders;
     if (existing) {
-      const sameConfiguration = existing.paymentMethod === paymentMethod && existing.couponCode === (couponQuote?.code || null);
+      const sameConfiguration = existing.paymentMethod === paymentMethod
+        && existing.couponCode === (couponQuote?.code || null)
+        && existing.bundleSlug === (bundleQuote?.slug || null);
       if (!sameConfiguration) return { kind: "conflict" as const, existing };
       return { kind: "existing" as const, existing, existingSlugs: requestedSorted };
     }
-    const inserted = await tx.insert(orders).values({ orderNumber, customerEmail, customerName, customerPhone: customerPhone || undefined, courseSlug: selected[0].slug, subtotal, discount, couponCode: couponQuote?.code || null, total, currency: "SAR", status: "pending", paymentMethod, checkoutKey, createdAt: now, updatedAt: now }).onConflictDoNothing({ target: orders.checkoutKey }).returning({ orderNumber: orders.orderNumber });
+    if (couponQuote) {
+      const reservation = await reserveCouponForCheckoutTx(tx, { quote: couponQuote, userId: user.id, orderNumber, eligibleCourseSlugs: requestedSorted, now, reservationMinutes: CHECKOUT_EXPIRY_MINUTES });
+      if (!reservation.ok) return { kind: "coupon_unavailable" as const, reason: reservation.reason };
+    }
+    const inserted = await tx.insert(orders).values({ orderNumber, customerEmail, customerName, customerPhone: customerPhone || undefined, courseSlug: selected[0].slug, subtotal, discount, couponCode: couponQuote?.code || null, bundleSlug: bundleQuote?.slug || null, total, subtotalMinor, discountMinor, taxAmountMinor: 0, totalMinor, currency: "SAR", status: "pending", paymentMethod, checkoutKey, createdAt: now, updatedAt: now }).onConflictDoNothing({ target: orders.checkoutKey }).returning({ orderNumber: orders.orderNumber });
     if (!inserted.length) return { kind: "checkout_key_conflict" as const };
     await tx.insert(orderItems).values(orderItemValues);
+    await tx.insert(analyticsEvents).values({ event: "checkout_start", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: now });
     return { kind: "created" as const };
   });
+  if (creation.kind === "bundle_changed") return jsonError("تغيرت الباقة أثناء بدء الدفع. حدّث السلة ثم أعد اختيار العرض.", 409);
+  if (creation.kind === "coupon_unavailable") return jsonError("تغيرت حالة الكوبون أو تم حجزه في محاولة دفع أخرى. حدّث السلة ثم حاول مجددًا.", 409);
   if (creation.kind === "existing") return existingCheckoutResponse(creation.existing, creation.existingSlugs);
-  if (creation.kind === "conflict") return Response.json({ error: "توجد محاولة دفع حديثة لهذه السلة بطريقة دفع أو قسيمة مختلفة. استخدم المحاولة الحالية أو انتظر انتهاءها قبل تغيير الخيار.", pending: true, orderNumber: creation.existing.orderNumber }, { status: 409, headers: { "cache-control": "no-store", "retry-after": "3" } });
-  if (creation.kind === "checkout_key_conflict") return await replayExistingCheckout() || jsonError("محاولة الدفع نفسها قيد التجهيز. حاول بعد لحظات.", 409);
+  if (creation.kind === "conflict") return Response.json({ error: "توجد محاولة دفع حديثة لهذه السلة بطريقة دفع أو عرض مختلف. استخدم المحاولة الحالية أو انتظر انتهاءها قبل تغيير الخيار.", pending: true, orderNumber: creation.existing.orderNumber }, { status: 409, headers: { "cache-control": "no-store", "retry-after": "3" } });
+  if (creation.kind === "checkout_key_conflict") {
+    await releaseCouponReservation(orderNumber);
+    return await replayExistingCheckout() || jsonError("محاولة الدفع نفسها قيد التجهيز. حاول بعد لحظات.", 409);
+  }
 
   const siteOrigin = (process.env.APP_URL || requestOrigin(request)).replace(/\/$/, "");
   const nameParts = customerName.split(/\s+/);
@@ -154,7 +209,7 @@ export async function POST(request: Request) {
     chargeResponse = await fetch("https://api.tap.company/v2/charges/", {
       method: "POST",
       headers: { authorization: `Bearer ${tapSecretKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ amount: total, currency: "SAR", customer_initiated: true, threeDSecure: true, save_card: false, description: `اشتراك ${selected.length} مواد في مراس`, transaction: { expiry: { period: CHECKOUT_EXPIRY_MINUTES, type: "MINUTE" } }, metadata: { order_number: orderNumber, course_slugs: uniqueSlugs.join(","), payment_method: paymentMethod }, reference: { transaction: orderNumber, order: orderNumber }, customer: { first_name: nameParts[0] || customerName, last_name: nameParts.slice(1).join(" ") || "طالب مراس", email: customerEmail, phone: { country_code: "966", number: localPhone } }, source: { id: paymentSource(paymentMethod) }, post: { url: `${siteOrigin}/api/webhooks/tap` }, redirect: { url: `${siteOrigin}/dashboard?payment=return&order=${encodeURIComponent(orderNumber)}` } }),
+      body: JSON.stringify({ amount: total, currency: "SAR", customer_initiated: true, threeDSecure: true, save_card: false, description: bundleQuote ? `باقة ${bundleQuote.title} في مراس` : `اشتراك ${selected.length} مواد في مراس`, transaction: { expiry: { period: CHECKOUT_EXPIRY_MINUTES, type: "MINUTE" } }, metadata: { order_number: orderNumber, course_slugs: uniqueSlugs.join(","), payment_method: paymentMethod, bundle_slug: bundleQuote?.slug || "" }, reference: { transaction: orderNumber, order: orderNumber }, customer: { first_name: nameParts[0] || customerName, last_name: nameParts.slice(1).join(" ") || "طالب مراس", email: customerEmail, phone: { country_code: "966", number: localPhone } }, source: { id: paymentSource(paymentMethod) }, post: { url: `${siteOrigin}/api/webhooks/tap` }, redirect: { url: `${siteOrigin}/dashboard?payment=return&order=${encodeURIComponent(orderNumber)}` } }),
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
@@ -162,14 +217,18 @@ export async function POST(request: Request) {
     // when our server did not receive its response. Keep the order reconcilable
     // and never invite an immediate duplicate charge.
     await db.update(orders).set({ status: "verification_pending", updatedAt: new Date().toISOString() }).where(eq(orders.orderNumber, orderNumber));
+    await db.insert(analyticsEvents).values({ event: "checkout_pending", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: new Date().toISOString() });
     return Response.json({ error: "تعذر تأكيد استجابة بوابة الدفع. لم نكرر المطالبة، وسنتحقق من المحاولة الحالية تلقائيًا.", pending: true, orderNumber }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
   }
   let charge: TapChargeResponse;
   try { charge = await chargeResponse.json() as TapChargeResponse; } catch { charge = {}; }
   if (!chargeResponse.ok || !charge.id || !charge.transaction?.url) {
     await db.update(orders).set({ status: "failed", updatedAt: new Date().toISOString() }).where(eq(orders.orderNumber, orderNumber));
+    await releaseCouponReservation(orderNumber);
+    await db.insert(analyticsEvents).values({ event: "payment_failed", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: new Date().toISOString() });
     return jsonError(charge.errors?.[0]?.description || "تعذر بدء عملية الدفع. حاول مرة أخرى.", 502);
   }
   await db.update(orders).set({ tapChargeId: charge.id, checkoutUrl: charge.transaction.url, status: "initiated", updatedAt: new Date().toISOString() }).where(eq(orders.orderNumber, orderNumber));
-  return Response.json({ ok: true, mode: "live", paymentMethod, orderNumber, courseSlugs: uniqueSlugs, subtotal, discount, total, checkoutUrl: charge.transaction.url }, { status: 201, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+  await db.insert(analyticsEvents).values({ event: "checkout_redirect", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: new Date().toISOString() });
+  return Response.json({ ok: true, mode: "live", paymentMethod, orderNumber, courseSlugs: uniqueSlugs, bundleSlug: bundleQuote?.slug || null, subtotal, discount, total, subtotalMinor, discountMinor, totalMinor, checkoutUrl: charge.transaction.url }, { status: 201, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }

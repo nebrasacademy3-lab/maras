@@ -15,8 +15,8 @@ test("coupon service validates active windows and preserves course scope", async
   assert.match(coupons, /coupon\.startsAt/);
   assert.match(coupons, /coupon\.expiresAt/);
   assert.match(coupons, /courseSlug: coupon\.courseSlug/);
-  assert.match(checkout, /const discountIndex = couponQuote\?\.courseSlug/);
-  assert.match(checkout, /const itemDiscount = index === discountIndex \? discount : 0/);
+  assert.match(checkout, /if \(!bundleQuote && couponQuote\?\.courseSlug\)/);
+  assert.match(checkout, /index === discountIndex \? discountMinor : 0/);
   assert.match(admin, /\["active", "disabled"\]/);
   assert.match(admin, /المادة المحددة للكوبون غير موجودة/);
 });

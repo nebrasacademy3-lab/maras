@@ -8,10 +8,12 @@ import { SecureVideoPlayer } from "@/components/secure-video-player";
 import { CourseCard } from "@/components/course-card";
 import { CourseReviews } from "@/components/course-reviews";
 import { CourseCoverImage } from "@/components/course-cover-image";
+import { CourseWaitlistButton } from "@/components/course-waitlist-button";
 import { courses as staticCourses } from "@/lib/data";
 import { getCourseCatalog, getCoursesCatalog } from "@/lib/catalog-store";
 
 type Props = { params: Promise<{ slug: string }> };
+const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
 export const dynamic = "force-dynamic";
 export function generateStaticParams() { return staticCourses.map((course) => ({ slug: course.slug })); }
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
@@ -19,7 +21,14 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!course) return {};
   const hasPreview = course.units.some((unit) => unit.lessons.some((lesson) => lesson.free && lesson.ready));
   const description = `${course.description}${hasPreview ? " شاهد درسًا تجريبيًا مجانيًا قبل الاشتراك." : " تُنشر الدروس تباعًا وتصل التحديثات للمشترك تلقائيًا."}`;
-  return { title: course.title, description, openGraph: { title: `${course.title} | مراس العلم`, description, images: [] }, twitter: { title: `${course.title} | مراس العلم`, description, images: [] } };
+  const image = course.coverImage || "/og.png";
+  return {
+    title: course.title,
+    description,
+    alternates: { canonical: `/courses/${course.slug}` },
+    openGraph: { type: "website", url: `/courses/${course.slug}`, title: `${course.title} | مراس العلم`, description, images: [image] },
+    twitter: { card: "summary_large_image", title: `${course.title} | مراس العلم`, description, images: [image] },
+  };
 }
 
 export default async function CoursePage({ params }: Props) {
@@ -29,7 +38,34 @@ export default async function CoursePage({ params }: Props) {
   const related = courses.filter((item) => item.slug !== course.slug && (item.specialty === course.specialty || item.universitySlug === course.universitySlug)).slice(0, 3);
   const freeLesson = course.units.flatMap((unit) => unit.lessons).find((lesson) => lesson.free);
   const previewLesson = course.units.flatMap((unit) => unit.lessons).find((lesson) => lesson.free && lesson.ready);
-  return <main><SiteHeader />
+  const courseUrl = `${siteUrl}/courses/${course.slug}`;
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Course",
+        "@id": `${courseUrl}#course`,
+        name: course.title,
+        alternateName: course.titleEn,
+        description: course.description,
+        url: courseUrl,
+        inLanguage: "ar-SA",
+        courseCode: course.code,
+        provider: { "@type": "Organization", name: "مراس العلم", url: siteUrl },
+        offers: { "@type": "Offer", price: course.price, priceCurrency: "SAR", availability: course.availableForPurchase ? "https://schema.org/InStock" : "https://schema.org/PreOrder", url: courseUrl },
+        ...(course.ratingsCount > 0 ? { aggregateRating: { "@type": "AggregateRating", ratingValue: course.rating, ratingCount: course.ratingsCount, bestRating: 5, worstRating: 1 } } : {}),
+      },
+      {
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "الرئيسية", item: siteUrl },
+          { "@type": "ListItem", position: 2, name: "المواد", item: `${siteUrl}/courses` },
+          { "@type": "ListItem", position: 3, name: course.title, item: courseUrl },
+        ],
+      },
+    ],
+  };
+  return <main><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }} /><SiteHeader />
     <section className="course-detail-hero"><div className="course-detail-glow" /><div className="container"><div className="breadcrumbs breadcrumbs-light"><Link href="/">الرئيسية</Link><ChevronLeft size={13} /><Link href="/courses">المواد</Link><ChevronLeft size={13} /><span>{course.title}</span></div><div className="course-detail-grid"><div className="course-detail-copy"><div className="course-badges"><span><BadgeCheck size={14} /> متوافق مع محتوى المقرر</span><span><Clock3 size={14} /> تحديثات دروس مستمرة</span>{previewLesson && <span><PlayCircle size={14} /> درس مجاني</span>}</div><h1>{course.title}</h1><p className="course-detail-en">{course.titleEn} {course.code && `· ${course.code}`}</p><p className="course-detail-description">{course.description}</p><div className="course-detail-context"><Link href={`/universities/${course.universitySlug}`}><GraduationCap size={15} /> {course.university}</Link><span><BookOpen size={15} /> {course.specialty}</span></div><div className="course-detail-rating"><span><Star size={17} fill="currentColor" /> {course.rating}</span><u>{course.ratingsCount} تقييمًا</u><i /><span><UsersRound size={17} /> {course.students.toLocaleString("ar-SA")} طالب</span><i /><span><Clock3 size={17} /> {course.duration}</span></div><div className="course-instructor-mini"><span>{course.instructor.replace(/^(د\.|م\.|أ\.)\s*/, "")[0]}</span><div><small>إعداد وشرح</small><strong>{course.instructor}</strong></div><BadgeCheck size={18} /></div></div><div className={`course-detail-art bg-gradient-to-br ${course.color}`}><span className="course-cover-grid" />{course.coverImage ? <CourseCoverImage className="course-detail-image" src={course.coverImage} alt={`غلاف ${course.title}`} sizes="(max-width: 900px) 100vw, 44vw" priority /> : <div>{course.icon}</div>}<small>{course.titleEn}</small><strong>{course.code || "مراس"}</strong></div></div></div></section>
     <section className="course-detail-body"><div className="container course-detail-layout"><div className="course-main-column">
       <section className="course-preview-block" id="preview"><div className="block-title"><div><span className="section-kicker">تعرّف على أسلوب المادة</span><h2>{previewLesson ? "الدرس التجريبي المجاني" : "معاينة المادة"}</h2><p>{previewLesson?.title || freeLesson?.title || "ستُضاف المعاينة المجانية ضمن تحديثات المادة القادمة"}</p></div>{previewLesson && <span className="free-badge"><Gift size={16} /> مجاني بالكامل</span>}</div>{previewLesson ? <SecureVideoPlayer title={previewLesson.title} preview courseSlug={course.slug} lessonId={previewLesson.id} /> : <div className="course-video-unavailable">المعاينة المجانية قادمة قريبًا، ويمكنك الآن استعراض خطة الوحدات والدروس كاملة.</div>}</section>
@@ -37,7 +73,7 @@ export default async function CoursePage({ params }: Props) {
       <section className="course-curriculum"><div className="curriculum-head"><div><h2>محتويات المادة</h2><p>{course.units.length} وحدات · {course.lessons} درسًا · {course.duration}</p></div><span>عرض جميع الوحدات</span></div>{course.units.map((unit, unitIndex) => <details key={unit.title} open={unitIndex === 0}><summary><span><b>{unitIndex + 1}</b><strong>{unit.title}<small>{unit.lessons.length} دروس</small>{unit.description && <em>{unit.description}</em>}</strong></span><ChevronLeft size={18} /></summary><div className="lessons-list">{unit.lessons.map((lesson, index) => <div key={lesson.id}><span><i>{lesson.type === "pdf" ? <FileText size={16} /> : <PlayCircle size={16} />}</i><strong>{index + 1}. {lesson.title}{lesson.free && lesson.ready && <em>مجاني</em>}{lesson.description && <small>{lesson.description}</small>}</strong></span><span>{lesson.duration}{lesson.free && lesson.ready ? <Link href="#preview">تشغيل</Link> : lesson.ready ? <LockKeyhole size={14} /> : <Clock3 size={14} />}</span></div>)}</div></details>)}</section>
       <section className="instructor-block"><div className="instructor-avatar">{course.instructor.replace(/^(د\.|م\.|أ\.)\s*/, "")[0]}</div><div><span className="section-kicker">إعداد المادة</span><h2>{course.instructor}</h2><p>محتوى جامعي منظم إلى وحدات ودروس، ويخضع للتحديث والإشراف من فريق المنصة.</p><div><span><Star size={15} fill="currentColor" /> {course.ratingsCount ? `${course.rating} من ${course.ratingsCount} تقييم موثّق` : "بانتظار أول تقييم موثّق"}</span><span><UsersRound size={15} /> {course.students} اشتراك فعلي</span><span><PlayCircle size={15} /> {course.lessons} درسًا</span></div></div></section>
       <CourseReviews courseSlug={course.slug} catalogRating={course.rating} catalogCount={course.ratingsCount} />
-    </div><aside className="course-purchase-card"><div className="purchase-price"><span>سعر المادة</span><div><strong>{course.price}</strong><b>ر.س</b>{course.oldPrice && <del>{course.oldPrice} ر.س</del>}</div></div>{course.availableForPurchase ? <Link href={`/checkout/${course.slug}`} className="button button-primary purchase-main-button">اشترك الآن <ArrowLeft size={17} /></Link> : <span className="button button-soft purchase-main-button purchase-preparing"><Clock3 size={17} /> قريبًا</span>}{previewLesson && <Link href="#preview" className="button button-ghost purchase-preview-button"><PlayCircle size={17} /> شاهد الدرس المجاني</Link>}<p className="purchase-guarantee"><ShieldCheck size={15} /> {course.availableForPurchase ? "دفع آمن ويشمل كل تحديثات المادة القادمة" : "يفتح الاشتراك عند نشر أول درس متاح"}</p><ul><li><Infinity size={16} /><span>الوصول<strong>{course.access}</strong></span></li><li><PlayCircle size={16} /><span>المحتوى<strong>{course.readyLessons || 0} متاح الآن · والبقية تُضاف تباعًا</strong></span></li><li><Languages size={16} /><span>اللغة<strong>العربية مع مصطلحات إنجليزية</strong></span></li><li><MessageCircle size={16} /><span>الدعم<strong>فريق مراس متاح للمساعدة</strong></span></li></ul><small>{course.availableForPurchase ? "اشتراك واحد يشمل الدروس الحالية وكل درس يُنشر لاحقًا، وفق الشروط وسياسة الاسترداد." : "خطة المادة منشورة الآن، وسيُفتح الاشتراك تلقائيًا عند إطلاق أول درس."}</small></aside></div></section>
+    </div><aside className="course-purchase-card"><div className="purchase-price"><span>سعر المادة</span><div><strong>{course.price}</strong><b>ر.س</b>{course.oldPrice && <del>{course.oldPrice} ر.س</del>}</div></div>{course.availableForPurchase ? <Link href={`/checkout/${course.slug}`} className="button button-primary purchase-main-button">اشترك الآن <ArrowLeft size={17} /></Link> : <CourseWaitlistButton courseSlug={course.slug} />}{previewLesson && <Link href="#preview" className="button button-ghost purchase-preview-button"><PlayCircle size={17} /> شاهد الدرس المجاني</Link>}<p className="purchase-guarantee"><ShieldCheck size={15} /> {course.availableForPurchase ? "دفع آمن ويشمل كل تحديثات المادة القادمة" : "سنعلمك فور نشر أول درس وفتح الاشتراك"}</p><ul><li><Infinity size={16} /><span>الوصول<strong>{course.access}</strong></span></li><li><PlayCircle size={16} /><span>المحتوى<strong>{course.readyLessons || 0} متاح الآن · والبقية تُضاف تباعًا</strong></span></li><li><Languages size={16} /><span>اللغة<strong>العربية مع مصطلحات إنجليزية</strong></span></li><li><MessageCircle size={16} /><span>الدعم<strong>فريق مراس متاح للمساعدة</strong></span></li></ul><small>{course.availableForPurchase ? "اشتراك واحد يشمل الدروس الحالية وكل درس يُنشر لاحقًا، وفق الشروط وسياسة الاسترداد." : "خطة المادة منشورة الآن، وسيصلك إشعار مباشر عند فتحها للاشتراك."}</small></aside></div></section>
     {related.length > 0 && <section className="section related-courses"><div className="container"><div className="section-head"><div><span className="section-kicker">قد يناسبك أيضًا</span><h2>مواد مرتبطة باهتمامك</h2></div><Link href="/courses" className="button button-ghost">كل المواد <ArrowLeft size={16} /></Link></div><div className="courses-grid">{related.map((item) => <CourseCard key={item.slug} course={item} />)}</div></div></section>}
     <SiteFooter />
   </main>;
