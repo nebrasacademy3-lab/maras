@@ -72,7 +72,7 @@ CATALOG_SEED_MODE=core
 curl https://your-service.up.railway.app/api/health
 ```
 
-تعيد الواجهة `{ "ok": true, "database": "ready" }` عندما يكون PostgreSQL متاحًا.
+تعيد الواجهة HTTP 200 مع `{ "ok": true, "database": "ready" }` عندما تكون قاعدة البيانات والتخزين وأسرار النواة جاهزة. قد تكون `status` مساوية لـ`degraded` إذا كانت خدمة اختيارية، مثل الإرسال المجدول أو فحص الملفات، غير مهيأة؛ ولا تعيد HTTP 503 إلا عند تعطل متطلب أساسي.
 
 ## المصادقة
 
@@ -120,6 +120,6 @@ npm test
 | `/login` و`/register` | الدخول والتسجيل. |
 | `/dashboard` | لوحة الطالب. |
 | `/supervisor` و`/admin` | لوحات الموظفين المحمية. |
-| `/api/health` | فحص الخدمة وقاعدة البيانات. |
+| `/api/health` | فحص جاهزية الخدمة وقاعدة البيانات والتخزين، مع عرض الخدمات الاختيارية دون إسقاط النشر. |
 | `/api/assistant` | مساعد مراس المتجدد: يقرأ بيانات PostgreSQL والإعدادات الحية، ويستخدم مزودًا OpenAI-compatible اختياريًا مع fallback محلي. |
 | `/api/webhooks/tap` | Webhook الدفع عند تفعيل Tap. |

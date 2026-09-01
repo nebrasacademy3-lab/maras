@@ -39,7 +39,8 @@ ADMIN_UPLOAD_TOKEN=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
 VIDEO_SIGNING_SECRET=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
 # مفتاح مستقل لتشفير أسرار المصادقة الإضافية؛ لا تعِد استخدام أي سر آخر.
 ADMIN_MFA_ENCRYPTION_KEY=REPLACE_WITH_AN_INDEPENDENT_RANDOM_32_BYTE_KEY
-# Independent token used only by the notification scheduler.
+# اختياري لبدء المنصة، ومطلوب عند تشغيل مرسل الإشعارات المجدول.
+# استخدم سرًا مستقلًا ولا تعِد استخدام أي سر آخر.
 SCHEDULED_TASK_TOKEN=REPLACE_WITH_A_DIFFERENT_32_PLUS_CHAR_SECRET
 # ملح مستقل لتجزئة إشارات مكافحة إساءة استخدام الإحالات.
 REFERRAL_HASH_SALT=REPLACE_WITH_AN_INDEPENDENT_RANDOM_32_PLUS_CHAR_SECRET

@@ -18,9 +18,15 @@ test("health readiness reports bounded service states without returning secrets"
   const health = await read("app/api/health/route.ts");
   assert.match(health, /databaseReadiness/);
   assert.match(health, /storageReadiness/);
+  assert.match(health, /requiredConfiguration/);
+  assert.match(health, /optionalConfiguration/);
+  assert.match(health, /strongSecret\("SESSION_SECRET"\)/);
   assert.match(health, /scheduledTasks/);
   assert.match(health, /capabilities/);
   assert.match(health, /observeRequest/);
+  assert.match(health, /Object\.values\(requiredConfiguration\)\.every/);
+  assert.doesNotMatch(health, /Object\.values\(configuration\)\.every/);
+  assert.match(health, /degraded \? "degraded" : "ready"/);
   assert.doesNotMatch(health, /message:\s*error|String\(error\)|error\.message/);
 });
 
