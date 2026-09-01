@@ -9,6 +9,7 @@ const selectors = [
   ".catalog-filter-context", ".filter-bar", ".catalog-filter-selection", ".course-detail-copy > *", ".course-detail-art",
   ".course-preview-block", ".course-about-block", ".course-curriculum details", ".learning-points span", ".course-purchase-card",
   ".footer-grid > *", ".footer-app-download", ".footer-store-link",
+  "[data-home-reveal]",
 ].join(",");
 
 export function MotionOrchestrator() {

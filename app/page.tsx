@@ -2,172 +2,261 @@ import Link from "next/link";
 import {
   ArrowLeft,
   BadgeCheck,
+  BookMarked,
   Bot,
-  BookOpenCheck,
+  Check,
   CirclePlay,
   Clock3,
   FileText,
   GraduationCap,
-  Headphones,
   Languages,
   ListChecks,
+  LockKeyhole,
   MessageSquareText,
-  Play,
+  MonitorSmartphone,
+  NotebookPen,
   ShieldCheck,
   Sparkles,
+  TimerReset,
   WalletCards,
   Zap,
 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HeroSearch } from "@/components/hero-search";
-import { UniversityCard } from "@/components/university-card";
-import { CourseCard } from "@/components/course-card";
-import { HomeIntro } from "@/components/home-intro";
 import { BrandMark } from "@/components/brand-mark";
-import { faq } from "@/lib/data";
+import { UniversityLogo } from "@/components/university-logo";
+import { CourseCoverImage } from "@/components/course-cover-image";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
+import type { Course } from "@/lib/data";
+import styles from "./home.module.css";
 
 export const revalidate = 60;
 
+const priceFormatter = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 });
+
+function hasReadyPreview(course: Course) {
+  return course.units.some((unit) => unit.lessons.some((lesson) => lesson.free && lesson.ready));
+}
+function uniqueCourses(courses: Course[]) {
+  const seen = new Set<string>();
+  return courses.filter((course) => {
+    if (seen.has(course.slug)) return false;
+    seen.add(course.slug);
+    return true;
+  });
+}
+
 export default async function Home() {
   const [institutions, courses] = await Promise.all([getInstitutionsCatalog(), getCoursesCatalog()]);
-  const tabbyEnabled = process.env.TAP_TABBY_ENABLED === "true";
-  const tamaraEnabled = process.env.TAP_TAMARA_ENABLED === "true";
-  const featuredUniversities = institutions.filter((institution) => institution.featured).slice(0, 4);
-  const featuredCourses = courses.filter((course) => course.featured).slice(0, 4);
-  const universityPreview = featuredUniversities.length ? featuredUniversities : institutions.slice(0, 4);
-  const coursePreview = featuredCourses.length ? featuredCourses : courses.slice(0, 4);
+  const universityPreview = [...institutions]
+    .sort((left, right) => Number(Boolean(right.featured)) - Number(Boolean(left.featured)) || right.courses - left.courses)
+    .slice(0, 4);
+  const readyFeatured = courses.filter((course) => course.featured && (course.availableForPurchase || hasReadyPreview(course)));
+  const readyOthers = courses.filter((course) => !course.featured && (course.availableForPurchase || hasReadyPreview(course)));
+  const coursePreview = uniqueCourses([...readyFeatured, ...readyOthers, ...courses]).slice(0, 3);
+  const searchCourses = courses.map(({ slug, title, titleEn, university, specialty }) => ({ slug, title, titleEn, university, specialty }));
+  const searchInstitutions = institutions.map(({ slug, name, nameEn, region, type }) => ({ slug, name, nameEn, region, type }));
 
   return (
-    <main className="home-page">
-      <HomeIntro />
+    <main className={styles.page}>
       <SiteHeader />
 
-      <section className="home-hero">
-        <div className="home-hero-mesh" aria-hidden="true" />
-        <div className="container home-hero-grid">
-          <div className="home-hero-copy">
-            <div className="home-eyebrow"><BadgeCheck size={17} /> منصة جامعية مبنية للطالب السعودي</div>
-            <h1>افهم مادتك.<br /><span>وتقدّم بثقة.</span></h1>
-            <p>اختر جامعتك أو ابحث عن المادة، شاهد درسًا تجريبيًا، ثم أكمل تعلّمك من آخر ثانية وصلت إليها.</p>
-            <HeroSearch courses={courses} institutions={institutions} />
-            <div className="home-hero-actions">
-              <Link href="/courses" className="button button-primary">استكشف المواد <ArrowLeft size={17} /></Link>
-              <Link href="/register" className="button button-ghost">أنشئ حسابك مجانًا</Link>
+      <section className={styles.hero} aria-labelledby="home-title">
+        <div className={styles.heroGridPattern} aria-hidden="true" />
+        <div className={styles.heroAurora} aria-hidden="true" />
+        <div className={"container " + styles.heroLayout}>
+          <div className={styles.heroCopy}>
+            <span className={styles.eyebrow}><i /> تجربة تعلم جامعية، بُنيت بالعربية</span>
+            <h1 id="home-title">كل ما تحتاجه<br /><span>لفهم مقرراتك.</span></h1>
+            <p>مواد مرتبة حسب جامعتك، تجربة مشاهدة تحفظ تقدّمك، ومراس AI يحوّل ملفاتك إلى مذاكرة أوضح—كلها في مكان واحد.</p>
+
+            <div className={styles.searchShell}>
+              <HeroSearch courses={searchCourses} institutions={searchInstitutions} />
             </div>
-            <div className="home-hero-trust" aria-label="مزايا مراس">
-              <span><CirclePlay size={16} /> درس تجريبي قبل الاشتراك</span>
-              <span><ShieldCheck size={16} /> دفع آمن وتفعيل تلقائي</span>
-              <span><WalletCards size={16} /> تابي وتمارا عبر Tap</span>
+
+            <div className={styles.heroLinks}>
+              <Link href="/courses" className={styles.primaryLink}>استكشف جميع المواد <ArrowLeft size={18} /></Link>
+              <Link href="/meras-ai" className={styles.secondaryLink}><Sparkles size={17} /> اكتشف مراس AI</Link>
+            </div>
+
+            <div className={styles.heroAssurances} aria-label="مزايا المنصة">
+              <span><CirclePlay size={17} /> جرّب قبل الاشتراك</span>
+              <span><TimerReset size={17} /> أكمل من نفس اللحظة</span>
+              <span><ShieldCheck size={17} /> دفع وتفعيل آمن</span>
             </div>
           </div>
 
-          <div className="home-preview" aria-label="معاينة تجربة التعلم في مراس">
-            <div className="home-preview-card">
-              <header>
-                <BrandMark />
-                <span><small>مراس العلم</small><strong>غرفتك التعليمية</strong></span>
-                <em><i /> درس تجريبي</em>
+          <div className={styles.heroStage} role="img" aria-label="معاينة لتجربة الدرس والملاحظات ومراس AI داخل المنصة">
+            <div className={styles.stageHalo} aria-hidden="true" />
+            <div className={styles.workspace} aria-hidden="true">
+              <header className={styles.workspaceHeader}>
+                <div className={styles.workspaceBrand}><BrandMark /><span><small>مراس العلم</small><strong>مساحة التعلّم</strong></span></div>
+                <div className={styles.windowDots}><i /><i /><i /></div>
+                <span className={styles.livePill}><i /> درس تجريبي</span>
               </header>
-              <div className="home-preview-screen">
-                <div className="home-preview-grid" aria-hidden="true" />
-                <span className="home-preview-chip">الهياكل المتقطعة</span>
-                <div className="home-preview-title"><small>الوحدة الأولى · الدرس 3</small><strong>جداول الصواب</strong></div>
-                <span className="home-preview-play" aria-hidden="true"><Play size={25} fill="currentColor" /></span>
-                <div className="home-preview-progress"><i><b /></i><span>18:32</span><span>31:44</span></div>
+
+              <div className={styles.workspaceBody}>
+                <aside className={styles.lessonRail}>
+                  <div><small>هياكل البيانات</small><strong>الوحدة الأولى</strong></div>
+                  <span className={styles.lessonDone}><Check size={13} /> مقدمة المقرر</span>
+                  <span className={styles.lessonActive}><CirclePlay size={13} /> القوائم المتصلة</span>
+                  <span><Clock3 size={13} /> المكدسات والطوابير</span>
+                  <span><LockKeyhole size={13} /> الأشجار الثنائية</span>
+                </aside>
+
+                <div className={styles.playerPanel}>
+                  <div className={styles.playerTop}><span>الدرس 03 · القوائم المتصلة</span><b>18:32</b></div>
+                  <div className={styles.playerCanvas}>
+                    <div className={styles.dataNodes}><i>01</i><span /><i>02</i><span /><i>03</i></div>
+                    <div className={styles.playDisc}><BookMarked size={25} /></div>
+                    <span className={styles.noteMarker}><NotebookPen size={12} /> ملاحظة</span>
+                  </div>
+                  <div className={styles.timeline}><i><b /></i><span>18:32</span><span>31:44</span></div>
+                </div>
               </div>
-              <footer>
-                <span><small>تقدّمك في المادة</small><strong>68% مكتمل</strong></span>
-                <i><b /></i>
-                <Link href="/courses">متابعة التعلّم <ArrowLeft size={15} /></Link>
+
+              <footer className={styles.workspaceFooter}>
+                <div><NotebookPen size={17} /><span><small>ملاحظة عند 18:32</small><strong>راجع الفرق بين العقدة والرابط</strong></span></div>
+                <div><Sparkles size={17} /><span><small>مراس AI</small><strong>لخّص لي هذه الجزئية</strong></span><ArrowLeft size={15} /></div>
               </footer>
             </div>
-            <div className="home-float-card home-float-one"><Clock3 size={18} /><span><strong>محفوظ تلقائيًا</strong><small>ارجع لنفس الثانية</small></span></div>
-            <div className="home-float-card home-float-two"><Sparkles size={18} /><span><strong>ملاحظات ذكية</strong><small>مرتبطة بوقت الفيديو</small></span></div>
+            <div className={styles.stageBadge}><BadgeCheck size={18} /><span><strong>تقدّمك محفوظ</strong><small>على الويب والتطبيق</small></span></div>
           </div>
         </div>
       </section>
 
-      <section className="home-proof" aria-label="لماذا مراس">
-        <div className="container home-proof-grid">
-          <article><i><GraduationCap size={22} /></i><span><strong>حسب جامعتك</strong><small>مواد وتخصصات مرتبة بلا قوائم مربكة.</small></span></article>
-          <article><i><BookOpenCheck size={22} /></i><span><strong>تعلّم متصل</strong><small>تقدمك وملاحظاتك محفوظة على كل أجهزتك.</small></span></article>
-          <article><i><Headphones size={22} /></i><span><strong>دعم واضح</strong><small>تابع طلبك وردود الفريق من مكان واحد.</small></span></article>
+      <section className={styles.proofStrip} aria-label="لماذا مراس">
+        <div className={"container " + styles.proofGrid}>
+          <article><i><GraduationCap size={21} /></i><span><strong>مصمم لمسارك الجامعي</strong><small>جامعة، تخصص، ثم المادة التي تحتاجها.</small></span></article>
+          <article><i><NotebookPen size={21} /></i><span><strong>تعلم لا يضيع منك</strong><small>تقدّم وملاحظات مرتبطة بوقت الفيديو.</small></span></article>
+          <article><i><MonitorSmartphone size={21} /></i><span><strong>تجربة متصلة</strong><small>ابدأ من الويب وأكمل من التطبيق.</small></span></article>
         </div>
       </section>
 
-      <section className="section home-ai-section" aria-labelledby="meras-ai-title">
-        <div className="container home-ai-shell">
-          <div className="home-ai-glow home-ai-glow-one" aria-hidden="true" />
-          <div className="home-ai-glow home-ai-glow-two" aria-hidden="true" />
-          <div className="home-ai-copy">
-            <span className="home-ai-kicker"><Sparkles size={16} /> مراس AI</span>
-            <h2 id="meras-ai-title">حوّل سلايداتك إلى<br /><span>جلسة مذاكرة كاملة.</span></h2>
-            <p>ارفع ملفك مرة واحدة، ثم لخّص المحتوى أو ترجمه بدقة أكاديمية أو أنشئ اختبارًا تفاعليًا مع شرح الإجابات — وكل أعمالك محفوظة في سجل واحد.</p>
-            <div className="home-ai-actions">
-              <Link href="/meras-ai" className="button button-white">ابدأ مع مراس AI <ArrowLeft size={17} /></Link>
-              <Link href="/register" className="home-ai-secondary">أنشئ حسابًا مجانيًا</Link>
-            </div>
-            <div className="home-ai-benefits">
-              <span><FileText size={15} /> تلخيص منظم</span>
-              <span><Languages size={15} /> ترجمة علمية</span>
-              <span><ListChecks size={15} /> اختبارات تفاعلية</span>
-              <span><MessageSquareText size={15} /> سجل محفوظ</span>
-            </div>
-          </div>
-
-          <div className="home-ai-stage" aria-label="معاينة أدوات مراس AI">
-            <div className="home-ai-orbit" aria-hidden="true"><i /><i /><i /></div>
-            <div className="home-ai-window">
-              <header><span><Bot size={19} /> مراس AI</span><small><i /> جاهز لمساعدتك</small></header>
-              <div className="home-ai-file">
-                <i><FileText size={19} /></i>
-                <span><strong>محاضرة الديناميكا الحرارية.pdf</strong><small>42 شريحة · تم تحليلها بأمان</small></span>
-                <b>100%</b>
-              </div>
-              <div className="home-ai-tools">
-                <article><i><Sparkles size={17} /></i><span><strong>ملخص ذكي</strong><small>المفاهيم والقوانين الأهم</small></span><b>جاهز</b></article>
-                <article><i><Languages size={17} /></i><span><strong>ترجمة أكاديمية</strong><small>مع الحفاظ على المصطلحات</small></span><b>AR ⇄ EN</b></article>
-                <article><i><ListChecks size={17} /></i><span><strong>اختبار تفاعلي</strong><small>12 سؤالًا مع شرح الإجابة</small></span><b>ابدأ</b></article>
-              </div>
-              <footer><span>اسأل عن الملف…</span><i><ArrowLeft size={16} /></i></footer>
-            </div>
-            <div className="home-ai-score"><strong>12 سؤالًا</strong><small>اختبار تفاعلي جاهز</small></div>
-            <div className="home-ai-language"><Languages size={17} /><span><strong>مصطلحات علمية</strong><small>ترجمة تراعي السياق</small></span></div>
-          </div>
-        </div>
-      </section>
-
-      <section className="section home-catalog-section">
+      <section className={styles.discovery} id="discover" aria-labelledby="discovery-title" data-home-reveal>
         <div className="container">
-          <div className="section-head"><div><span className="section-kicker">ابدأ من جامعتك</span><h2>اختر وجهتك التعليمية</h2><p>نوصلك مباشرة إلى التخصصات والمواد المتاحة لك.</p></div><Link href="/universities" className="button button-ghost">كل الجامعات <ArrowLeft size={16} /></Link></div>
-          <div className="universities-grid home-universities-grid">{universityPreview.map((institution) => <UniversityCard key={institution.slug} institution={institution} />)}</div>
-        </div>
-      </section>
+          <header className={styles.sectionHeader}>
+            <div>
+              <span className={styles.sectionKicker}>ابدأ من مسارك</span>
+              <h2 id="discovery-title">ابحث أقل. ابدأ أسرع.</h2>
+              <p>اختر جامعتك أو افتح مادة جاهزة، وستجد التفاصيل والدرس التجريبي قبل أي قرار.</p>
+            </div>
+            <Link href="/courses" className={styles.textLink}>عرض جميع المواد <ArrowLeft size={17} /></Link>
+          </header>
 
-      <section className="section home-courses-section">
-        <div className="container">
-          <div className="section-head"><div><span className="section-kicker">جاهزة للبدء</span><h2>مواد مختارة لك</h2><p>شاهد الدرس المجاني ثم قرر إن كانت المادة مناسبة لك.</p></div><Link href="/courses" className="button button-ghost">كل المواد <ArrowLeft size={16} /></Link></div>
-          <div className="courses-grid home-courses-grid">{coursePreview.map((course) => <CourseCard key={course.slug} course={course} />)}</div>
-        </div>
-      </section>
+          <div className={styles.discoveryGrid}>
+            <aside className={styles.universityPanel} aria-label="جامعات مميزة">
+              <div className={styles.panelHeading}><span><GraduationCap size={18} /> جامعات مميزة</span><Link href="/universities">عرض الكل</Link></div>
+              <div className={styles.universityList}>
+                {universityPreview.map((institution) => (
+                  <Link key={institution.slug} href={"/universities/" + institution.slug} className={styles.universityRow}>
+                    <span className={styles.universityLogo}><UniversityLogo institution={institution} /></span>
+                    <span><strong>{institution.name}</strong><small><bdi dir="ltr">{institution.nameEn}</bdi></small></span>
+                    <ArrowLeft size={17} />
+                  </Link>
+                ))}
+              </div>
+              <Link href="/universities" className={styles.panelAction}>اختر جامعتك <ArrowLeft size={17} /></Link>
+            </aside>
 
-      <section className="section home-payments-section">
-        <div className="container home-payments-card">
-          <div className="home-payment-copy"><span className="section-kicker">ميزة التقسيط المرن</span><h2>تابي وتمارا ضمن خيارات الدفع في مراس عبر Tap.</h2><p>قسّط اشتراكك بسهولة من خلال صفحة Tap الآمنة، وستظهر لك خيارات تابي وتمارا المناسبة وفق أهلية الخدمة وقيمة الطلب.</p><div><ShieldCheck size={17} /> لا نخزن بيانات بطاقتك داخل مراس</div></div>
-          <div className="home-payment-options" aria-label="مزايا الدفع والتقسيط عبر Tap">
-            <article className="payment-option-tap"><span>tap</span><strong>دفع إلكتروني</strong><small>مدى · Visa · Mastercard · Apple Pay</small></article>
-            <article className={`payment-option-tabby${tabbyEnabled ? " is-enabled" : ""}`}><span>تابي</span><strong>قسّمها على 4</strong><small>{tabbyEnabled ? "دفعات مرنة وفق أهلية تابي عبر Tap" : "خيار تقسيط عبر Tap وفق أهلية الطلب"}</small></article>
-            <article className={`payment-option-tamara${tamaraEnabled ? " is-enabled" : ""}`}><span>تمارا</span><strong>اشترِ الآن وادفع لاحقًا</strong><small>{tamaraEnabled ? "خيارات التقسيط وفق أهلية تمارا عبر Tap" : "خيار تقسيط عبر Tap وفق أهلية الطلب"}</small></article>
+            <div className={styles.coursePanel}>
+              <div className={styles.panelHeading}><span><BookMarked size={18} /> مواد مختارة للبدء</span><small>معلومات واضحة قبل الاشتراك</small></div>
+              <div className={styles.courseGrid}>
+                {coursePreview.map((course) => {
+                  const previewReady = hasReadyPreview(course);
+                  return (
+                    <Link key={course.slug} href={"/courses/" + course.slug} className={styles.courseCard}>
+                      <span className={styles.courseMedia + " bg-gradient-to-br " + course.color}>
+                        <span className={styles.courseOverlay} />
+                        {course.coverImage ? <CourseCoverImage className={styles.courseImage} src={course.coverImage} alt="" sizes="(max-width: 680px) 92vw, (max-width: 1100px) 44vw, 24vw" /> : <b>{course.icon}</b>}
+                        <em>{previewReady ? <><CirclePlay size={13} /> درس تجريبي</> : course.availableForPurchase ? "متاحة الآن" : "قيد الإعداد"}</em>
+                      </span>
+                      <span className={styles.courseBody}>
+                        <small>{course.university} · {course.specialty}</small>
+                        <strong>{course.title}</strong>
+                        <bdi dir="ltr">{course.titleEn}{course.code ? " · " + course.code : ""}</bdi>
+                        <span className={styles.courseMeta}><i>{course.lessons} درسًا</i><i>{course.duration}</i></span>
+                        <span className={styles.courseFooter}>
+                          <span>{course.price > 0 ? <><b>{priceFormatter.format(course.price)}</b> ر.س</> : <b>مجاني</b>}{course.oldPrice ? <del>{priceFormatter.format(course.oldPrice)}</del> : null}</span>
+                          <em>عرض المادة <ArrowLeft size={15} /></em>
+                        </span>
+                      </span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="section home-final-section">
-        <div className="container home-final-grid">
-          <div className="home-request-card"><i><Zap size={25} /></i><span><small>لم تجد مادتك؟</small><h2>اطلبها وسنخبرك عند توفرها.</h2><p>أرسل اسم المادة والجامعة خلال أقل من دقيقة، وتابع الحالة من حسابك.</p></span><Link href="/request-course" className="button button-white">اطلب مادة <ArrowLeft size={16} /></Link></div>
-          <div className="home-faq-card" id="faq"><div><span className="section-kicker">قبل أن تبدأ</span><h2>أسئلة سريعة</h2></div><div>{faq.slice(0, 4).map((item, index) => <details key={item.q} open={index === 0}><summary>{item.q}<span>+</span></summary><p>{item.a}</p></details>)}</div></div>
+      <section className={styles.aiSection} aria-labelledby="ai-title" data-home-reveal>
+        <div className={"container " + styles.aiShell}>
+          <div className={styles.aiCopy}>
+            <span className={styles.aiKicker}><Sparkles size={16} /> مراس AI</span>
+            <h2 id="ai-title">حوّل ملفاتك إلى<br /><span>جلسة مذاكرة تفاعلية.</span></h2>
+            <p>ارفع ملفك، ثم اطلب ملخصًا مركزًا، أو ترجمة تراعي المصطلحات العلمية، أو اختبارًا ببطاقات تفاعلية مع شرح الإجابات.</p>
+            <div className={styles.aiFeatures}>
+              <span><FileText size={16} /> تلخيص منظم</span>
+              <span><Languages size={16} /> ترجمة أكاديمية</span>
+              <span><ListChecks size={16} /> اختبار مع شرح</span>
+              <span><MessageSquareText size={16} /> سجل محفوظ</span>
+            </div>
+            <Link href="/meras-ai" className={styles.aiAction}>ابدأ مع مراس AI <ArrowLeft size={18} /></Link>
+            <small className={styles.aiNote}>مراس AI أداة مساعدة للتعلّم؛ راجع النتائج المهمة مع محتوى مقررك.</small>
+          </div>
+
+          <div className={styles.aiStudio} role="img" aria-label="معاينة لتحويل ملف دراسي إلى ملخص وترجمة واختبار">
+            <div className={styles.aiStudioBar}><span><Bot size={18} /> استوديو مراس AI</span><small><i /> جاهز</small></div>
+            <div className={styles.aiFile}>
+              <i><FileText size={20} /></i>
+              <span><strong>محاضرة الديناميكا الحرارية.pdf</strong><small>42 شريحة · اكتمل التحليل</small></span>
+              <b>100%</b>
+            </div>
+            <div className={styles.aiFlow}>
+              <article><i><Sparkles size={18} /></i><span><strong>ملخص مركز</strong><small>القوانين والمفاهيم الأساسية</small></span><em>جاهز</em></article>
+              <article><i><Languages size={18} /></i><span><strong>ترجمة علمية</strong><small>مصطلحات محفوظة في سياقها</small></span><em>AR ⇄ EN</em></article>
+              <article><i><ListChecks size={18} /></i><span><strong>اختبار تفاعلي</strong><small>12 سؤالًا مع شرح الإجابة</small></span><em>ابدأ</em></article>
+            </div>
+            <div className={styles.aiPrompt}><span>اسأل عن الملف أو اطلب شرحًا أبسط…</span><i><ArrowLeft size={16} /></i></div>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.paymentSection} aria-labelledby="payment-title" data-home-reveal>
+        <div className={"container " + styles.paymentCard}>
+          <div className={styles.paymentCopy}>
+            <span className={styles.sectionKicker}>دفع واضح ومرن</span>
+            <h2 id="payment-title">اشتراك آمن عبر Tap، وخيارات تقسيط عند توفرها.</h2>
+            <p>تتم عملية الدفع من بوابة Tap، وتظهر تابي وتمارا وفق أهلية الطالب وقيمة الطلب والخدمات المفعّلة لدى مزود الدفع.</p>
+          </div>
+          <div className={styles.paymentProviders} aria-label="خيارات الدفع">
+            <article className={styles.tapProvider}><span dir="ltr">tap</span><small>بوابة الدفع</small></article>
+            <article><span>تابي</span><small>قسّمها على 4</small></article>
+            <article><span>تمارا</span><small>ادفع لاحقًا</small></article>
+          </div>
+          <div className={styles.paymentTrust}>
+            <span><ShieldCheck size={17} /> لا نخزن بيانات بطاقتك</span>
+            <span><LockKeyhole size={17} /> تحقق وتفعيل من الخادم</span>
+            <span><WalletCards size={17} /> الخيارات تخضع لأهلية المزود</span>
+          </div>
+        </div>
+      </section>
+
+      <section className={styles.finalSection} data-home-reveal>
+        <div className={"container " + styles.finalCard}>
+          <div className={styles.finalGlow} aria-hidden="true" />
+          <span className={styles.finalIcon}><Zap size={23} /></span>
+          <div>
+            <small>خطوتك التالية واضحة</small>
+            <h2>ابدأ من المادة التي تهمك اليوم.</h2>
+            <p>استكشف المحتوى، شاهد المتاح للتجربة، ثم اختر ما يناسب مسارك.</p>
+          </div>
+          <div className={styles.finalActions}>
+            <Link href="/courses">استكشف المواد <ArrowLeft size={17} /></Link>
+            <Link href="/request-course">لم تجد مادتك؟ اطلبها</Link>
+          </div>
         </div>
       </section>
 
