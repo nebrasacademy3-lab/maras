@@ -724,6 +724,45 @@ export const courseWaitlist = pgTable("course_waitlist", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [uniqueIndex("course_waitlist_user_course_unique").on(table.userEmail, table.courseSlug), index("course_waitlist_course_status_idx").on(table.courseSlug, table.status)]);
 
+export const learningTracks = pgTable("learning_tracks", {
+  id: serial("id").primaryKey(),
+  slug: text("slug").notNull(),
+  title: text("title").notNull(),
+  subtitle: text("subtitle").notNull().default(""),
+  description: text("description").notNull().default(""),
+  category: text("category").notNull().default("skills"),
+  iconKey: text("icon_key").notNull().default("sparkles"),
+  accent: text("accent").notNull().default("blue"),
+  status: text("status").notNull().default("draft"),
+  ctaLabel: text("cta_label").notNull().default("أبلغني عند الإطلاق"),
+  destination: text("destination"),
+  position: integer("position").notNull().default(0),
+  featured: boolean("featured").notNull().default(false),
+  showInterestCount: boolean("show_interest_count").notNull().default(false),
+  releaseVersion: integer("release_version").notNull().default(0),
+  launchAt: text("launch_at"),
+  createdBy: text("created_by"),
+  updatedBy: text("updated_by"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [uniqueIndex("learning_tracks_slug_unique").on(table.slug), index("learning_tracks_public_idx").on(table.status, table.position, table.id)]);
+
+export const learningTrackInterests = pgTable("learning_track_interests", {
+  id: serial("id").primaryKey(),
+  trackId: integer("track_id").notNull().references(() => learningTracks.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  status: text("status").notNull().default("active"),
+  source: text("source").notNull().default("homepage"),
+  lastNotifiedVersion: integer("last_notified_version").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [
+  uniqueIndex("learning_track_interests_track_user_unique").on(table.trackId, table.userId),
+  index("learning_track_interests_track_status_idx").on(table.trackId, table.status, table.id),
+  index("learning_track_interests_user_status_idx").on(table.userId, table.status),
+  index("learning_track_interests_active_notify_idx").on(table.trackId, table.lastNotifiedVersion, table.id).where(sql`${table.status} = 'active'`),
+]);
+
 export const courseBundles = pgTable("course_bundles", {
   id: serial("id").primaryKey(),
   slug: text("slug").notNull(),

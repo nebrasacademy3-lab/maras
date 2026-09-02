@@ -5,7 +5,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
 import React, { useMemo, useState } from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
-import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AppearanceSettings } from "@/src/components/AppearanceSettings";
 import { AppButton, Card, EmptyState, Field, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
@@ -117,6 +117,7 @@ function ContentManager({ data, colors, run }: { data: Workspace; colors: Return
           authorization: `Bearer ${getApiToken()}`,
           "content-type": contentType,
           "x-meras-client": "mobile-v1",
+          "x-meras-platform": Platform.OS,
           "x-meras-course": courseSlug,
           "x-meras-lesson": target.id,
         },

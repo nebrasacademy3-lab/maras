@@ -11,8 +11,8 @@ function validMachineSecret(value: string | undefined) {
   return secret.length >= 32 && !/(?:replace[-_ ]?with|change[-_ ]?me|example[-_ ]?secret)/i.test(secret) ? secret : "";
 }
 
-export function jsonError(message: string, status = 400) {
-  return Response.json({ ok: false, error: message }, {
+export function jsonError(message: string, status = 400, code?: string) {
+  return Response.json(code ? { ok: false, code, error: message } : { ok: false, error: message }, {
     status,
     headers: {
       "cache-control": "no-store",

@@ -171,6 +171,10 @@ export async function getSessionUserFromHeaders(requestHeaders: Headers): Promis
   }
 }
 
+export function requestSessionToken(request: Request) {
+  return bearerToken(request.headers) || parseCookie(request.headers.get("cookie"), SESSION_COOKIE);
+}
+
 export function getSessionUser(request: Request) {
   return getSessionUserFromHeaders(request.headers);
 }

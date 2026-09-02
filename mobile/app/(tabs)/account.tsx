@@ -23,7 +23,9 @@ export default function Account() {
     { icon: "receipt-outline", title: "الطلبات والفواتير", text: "حالة الاشتراكات والفواتير", route: "/orders" },
     { icon: "cloud-upload-outline", title: "طلبات المواد", text: "طلب جديد ورفع السلايدات", route: "/requests" },
     { icon: "headset-outline", title: "الدعم الفني", text: "التذاكر ووسائل التواصل", route: "/support" },
-    { icon: "shield-checkmark-outline", title: "الأمان والخصوصية", text: "الجلسات وحذف الحساب", route: "/security" },
+    { icon: "map-outline", title: "المسارات القادمة", text: "سجّل اهتمامك بما ستطلقه مراس لاحقًا", route: "/tracks" },
+    { icon: "chatbubbles-outline", title: "تواصل معنا", text: "قنوات التواصل وساعات العمل", route: "/contact" },
+    { icon: "shield-checkmark-outline", title: "الأمان والخصوصية", text: "كلمة المرور وحذف الحساب", route: "/security" },
   ];
   if (user.role === "admin") items.unshift({ icon: "grid-outline", title: "لوحة الإدارة", text: "المستخدمون والطلبات والدعم", route: "/admin" });
   if (user.role === "supervisor" || user.role === "admin") items.unshift({ icon: "construct-outline", title: "مساحة المشرف", text: "الطلبات والمحتوى المسند", route: "/supervisor" });

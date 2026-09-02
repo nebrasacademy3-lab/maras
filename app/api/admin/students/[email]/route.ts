@@ -1,22 +1,38 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
+  aiEntitlements,
+  aiSubscriptionOrders,
+  aiUsageEvents,
   authSessions,
+  cartItems,
+  couponsDb,
   courseAccess,
   courseAccessEvents,
   courseRequests,
+  courseWaitlist,
+  favorites,
   invoices,
+  learningTrackInterests,
+  learningTracks,
+  lessonNotes,
   lessonProgress,
   notificationsDb,
   orderItems,
   orders,
+  pushDevices,
+  referralAttributions,
+  referralCodes,
+  refundRequests,
   supportReplies,
   supportTickets,
+  userRewards,
   users,
 } from "@/db/schema";
 import { jsonError } from "@/lib/api";
 import { getSessionUser, roleAllowed } from "@/lib/auth";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
+import { publicRewardLabel } from "@/lib/referrals";
 
 type Props = { params: Promise<{ email: string }> };
 
@@ -60,15 +76,34 @@ export async function GET(request: Request, { params }: Props) {
 
   const orderNumbers = orderRows.map((order) => order.orderNumber);
   const ticketIds = tickets.map((ticket) => ticket.id);
-  const [items, replies] = await Promise.all([
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 86_400_000).toISOString();
+  const [items, replies, referralCode, attributionRows, rewardRows, ownedCoupons, aiEntitlementRows, aiOrderRows, aiUsageRows, waitlistRows, trackInterestRows, devices, refundRows, favoriteRows, cartRows, noteCount] = await Promise.all([
     orderNumbers.length ? db.select().from(orderItems).where(inArray(orderItems.orderNumber, orderNumbers)).orderBy(desc(orderItems.createdAt)) : Promise.resolve([]),
     ticketIds.length ? db.select().from(supportReplies).where(inArray(supportReplies.ticketId, ticketIds)).orderBy(desc(supportReplies.createdAt)).limit(1_000) : Promise.resolve([]),
+    db.select().from(referralCodes).where(eq(referralCodes.userId, student.id)).limit(1).then((rows) => rows[0] || null),
+    db.select().from(referralAttributions).where(or(eq(referralAttributions.referrerUserId, student.id), eq(referralAttributions.referredUserId, student.id))).orderBy(desc(referralAttributions.createdAt)).limit(200),
+    db.select().from(userRewards).where(eq(userRewards.userId, student.id)).orderBy(desc(userRewards.issuedAt)).limit(100),
+    db.select().from(couponsDb).where(eq(couponsDb.ownerUserId, student.id)).orderBy(desc(couponsDb.createdAt)).limit(100),
+    db.select().from(aiEntitlements).where(eq(aiEntitlements.userId, student.id)).orderBy(desc(aiEntitlements.createdAt)).limit(50),
+    db.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.userId, student.id)).orderBy(desc(aiSubscriptionOrders.createdAt)).limit(50),
+    db.select({ service: aiUsageEvents.service, status: aiUsageEvents.status, total: count() }).from(aiUsageEvents).where(and(eq(aiUsageEvents.userId, student.id), gte(aiUsageEvents.createdAt, thirtyDaysAgo))).groupBy(aiUsageEvents.service, aiUsageEvents.status),
+    db.select().from(courseWaitlist).where(eq(courseWaitlist.userEmail, email)).orderBy(desc(courseWaitlist.createdAt)).limit(100),
+    db.select({ id: learningTrackInterests.id, status: learningTrackInterests.status, source: learningTrackInterests.source, lastNotifiedVersion: learningTrackInterests.lastNotifiedVersion, createdAt: learningTrackInterests.createdAt, trackTitle: learningTracks.title, trackSlug: learningTracks.slug, trackStatus: learningTracks.status }).from(learningTrackInterests).innerJoin(learningTracks, eq(learningTrackInterests.trackId, learningTracks.id)).where(eq(learningTrackInterests.userId, student.id)).orderBy(desc(learningTrackInterests.createdAt)).limit(100),
+    db.select({ id: pushDevices.id, deviceId: pushDevices.deviceId, platform: pushDevices.platform, deviceLabel: pushDevices.deviceLabel, status: pushDevices.status, lastSeenAt: pushDevices.lastSeenAt, createdAt: pushDevices.createdAt }).from(pushDevices).where(eq(pushDevices.userId, student.id)).orderBy(desc(pushDevices.lastSeenAt)).limit(50),
+    orderNumbers.length ? db.select().from(refundRequests).where(inArray(refundRequests.orderNumber, orderNumbers)).orderBy(desc(refundRequests.createdAt)).limit(100) : Promise.resolve([]),
+    db.select().from(favorites).where(eq(favorites.userEmail, email)).orderBy(desc(favorites.createdAt)).limit(200),
+    db.select().from(cartItems).where(eq(cartItems.userEmail, email)).orderBy(desc(cartItems.createdAt)).limit(100),
+    db.select({ total: count() }).from(lessonNotes).where(eq(lessonNotes.userEmail, email)).then((rows) => Number(rows[0]?.total || 0)),
   ]);
+  const referredUserIds = [...new Set(attributionRows.flatMap((row) => [row.referrerUserId, row.referredUserId]).filter((id) => id !== student.id))];
+  const relatedUsers = referredUserIds.length ? await db.select({ id: users.id, email: users.email, fullName: users.fullName }).from(users).where(inArray(users.id, referredUserIds)) : [];
+  const relatedById = new Map(relatedUsers.map((row) => [row.id, row]));
+  const couponById = new Map(ownedCoupons.map((coupon) => [coupon.id, coupon]));
 
   const completedLessons = progress.filter((row) => row.completed).length;
   const watchedSeconds = progress.reduce((sum, row) => sum + Math.max(0, row.watchedSeconds), 0);
   const paidOrders = orderRows.filter((row) => ["paid", "partially_refunded"].includes(row.status));
-  const relevantCourseSlugs = new Set([...access.map((item) => item.courseSlug), ...progress.map((item) => item.courseSlug), ...items.map((item) => item.courseSlug)]);
+  const relevantCourseSlugs = new Set([...access.map((item) => item.courseSlug), ...progress.map((item) => item.courseSlug), ...items.map((item) => item.courseSlug), ...waitlistRows.map((item) => item.courseSlug), ...favoriteRows.map((item) => item.courseSlug), ...cartRows.map((item) => item.courseSlug)]);
   return Response.json({
     ok: true,
     student,
@@ -80,6 +115,11 @@ export async function GET(request: Request, { params }: Props) {
       paidValue: paidOrders.reduce((sum, row) => sum + row.total, 0),
       openTickets: tickets.filter((row) => !["resolved", "closed"].includes(row.status)).length,
       unreadNotifications: notices.filter((row) => !row.readAt).length,
+      qualifiedReferrals: attributionRows.filter((row) => row.referrerUserId === student.id && row.status === "qualified").length,
+      activeRewards: rewardRows.filter((row) => row.status === "active").length,
+      aiActive: aiEntitlementRows.some((row) => row.status === "active" && (!row.expiresAt || Date.parse(row.expiresAt) > Date.now())),
+      pushDevices: devices.filter((row) => row.status === "active").length,
+      lessonNotes: noteCount,
     },
     catalog: {
       institution: institutionCatalog.find((row) => row.slug === student.universitySlug) || null,
@@ -95,5 +135,23 @@ export async function GET(request: Request, { params }: Props) {
     support: tickets.map((ticket) => ({ ...ticket, replies: replies.filter((reply) => reply.ticketId === ticket.id) })),
     notifications: notices,
     sessions,
+    referrals: {
+      code: referralCode ? { code: referralCode.code, shareCount: referralCode.shareCount, createdAt: referralCode.createdAt } : null,
+      referredBy: attributionRows.filter((row) => row.referredUserId === student.id).map((row) => ({ id: row.id, status: row.status, referrer: relatedById.get(row.referrerUserId) || { id: row.referrerUserId, email: "", fullName: "طالب" }, createdAt: row.createdAt, qualifiedAt: row.qualifiedAt, reviewReason: row.reviewReason })),
+      referred: attributionRows.filter((row) => row.referrerUserId === student.id).map((row) => ({ id: row.id, status: row.status, referred: relatedById.get(row.referredUserId) || { id: row.referredUserId, email: "", fullName: "طالب" }, createdAt: row.createdAt, qualifiedAt: row.qualifiedAt, reviewReason: row.reviewReason })),
+      rewards: rewardRows.map((row) => ({ id: row.id, rewardType: row.rewardType, rewardValue: row.rewardValue, rewardLabel: publicRewardLabel(row.rewardType, row.rewardValue), sourceType: row.sourceType, status: row.status, issuedAt: row.issuedAt, expiresAt: row.expiresAt, redeemedAt: row.redeemedAt, note: row.note, coupon: row.couponId ? (() => { const coupon = couponById.get(row.couponId!); return coupon ? { id: coupon.id, code: coupon.code, status: coupon.status, usedCount: coupon.usedCount, courseSlug: coupon.courseSlug, expiresAt: coupon.expiresAt } : null; })() : null })),
+      coupons: ownedCoupons.map((coupon) => ({ id: coupon.id, code: coupon.code, type: coupon.type, value: coupon.value, status: coupon.status, usedCount: coupon.usedCount, usageLimit: coupon.usageLimit, courseSlug: coupon.courseSlug, expiresAt: coupon.expiresAt, createdAt: coupon.createdAt })),
+    },
+    ai: {
+      entitlements: aiEntitlementRows.map((row) => ({ id: row.id, source: row.source, status: row.status, startsAt: row.startsAt, expiresAt: row.expiresAt, createdBy: row.createdBy, externalRef: row.externalRef })),
+      orders: aiOrderRows.map((row) => ({ id: row.id, orderNumber: row.orderNumber, amount: row.amount, currency: row.currency, status: row.status, paidAt: row.paidAt, entitlementExpiresAt: row.entitlementExpiresAt, createdAt: row.createdAt })),
+      usage: aiUsageRows.map((row) => ({ service: row.service, status: row.status, total: Number(row.total) })),
+    },
+    waitlist: waitlistRows,
+    trackInterests: trackInterestRows,
+    pushDevices: devices,
+    refunds: refundRows.map((row) => ({ id: row.id, requestNumber: row.requestNumber, orderNumber: row.orderNumber, amountMinor: row.amountMinor, currency: row.currency, status: row.status, reason: row.reason, createdAt: row.createdAt, completedAt: row.completedAt })),
+    favorites: favoriteRows,
+    cart: cartRows,
   }, { headers: { "cache-control": "no-store" } });
 }

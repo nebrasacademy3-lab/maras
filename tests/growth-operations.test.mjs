@@ -5,12 +5,13 @@ import { readFile } from "node:fs/promises";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
 test("waitlist is persisted, lifecycle-notified, and converted after payment", async () => {
-  const [schema, route, lifecycle, webhook] = await Promise.all([read("db/schema.ts"), read("app/api/waitlist/route.ts"), read("lib/lifecycle-automation.ts"), read("app/api/webhooks/tap/route.ts")]);
+  const [schema, route, lifecycle, webhook, fulfillment] = await Promise.all([read("db/schema.ts"), read("app/api/waitlist/route.ts"), read("lib/lifecycle-automation.ts"), read("app/api/webhooks/tap/route.ts"), read("lib/order-fulfillment.ts")]);
   assert.match(schema, /courseWaitlist = pgTable\("course_waitlist"/);
   assert.match(route, /waitlist_join/);
   assert.match(lifecycle, /launchNotifications/);
   assert.match(lifecycle, /المادة التي تنتظرها أصبحت متاحة/);
-  assert.match(webhook, /status: "converted"/);
+  assert.match(webhook, /fulfillPaidOrderTx/);
+  assert.match(fulfillment, /status: "converted"/);
 });
 
 test("bundle, refund and settlement governance are server-side", async () => {

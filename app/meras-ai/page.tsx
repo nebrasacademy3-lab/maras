@@ -11,10 +11,11 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function MerasAiPage({ searchParams }: { searchParams: Promise<{ conversation?: string; quiz?: string }> }) {
+export default async function MerasAiPage({ searchParams }: { searchParams: Promise<{ conversation?: string; quiz?: string; service?: string }> }) {
   const user = await requireUser("/meras-ai");
   const query = await searchParams;
   const conversationId = Math.max(0, Math.floor(Number(query.conversation)) || 0);
   const quizId = Math.max(0, Math.floor(Number(query.quiz)) || 0);
-  return <main><SiteHeader appMode userName={user.fullName}/><MerasAiWorkspace studentName={user.fullName} initialConversationId={conversationId || null} initialQuizId={quizId || null}/></main>;
+  const service = query.service === "summary" || query.service === "translation" || query.service === "quiz" ? query.service : null;
+  return <main><SiteHeader appMode userName={user.fullName}/><MerasAiWorkspace studentName={user.fullName} initialConversationId={conversationId || null} initialQuizId={quizId || null} initialService={service}/></main>;
 }

@@ -1,19 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useQuery } from "@tanstack/react-query";
 import React, { useEffect, useState } from "react";
 import { AccessibilityInfo, Animated, Linking, Modal, Platform, Pressable, StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { api } from "@/src/lib/api";
+import { openNotificationRoute } from "@/src/lib/notification-routing";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 
 type Announcement = { id:number; title:string; body:string; actionUrl:string|null; actionLabel:string|null; presentation:"banner"|"modal"|"all"; template?:string; dismissible:boolean };
 const DISMISSED_KEY="meras-dismissed-announcements";
 
-function routeFor(url:string|null){if(!url||!url.startsWith("/")||url.startsWith("//"))return null;if(url==="/courses")return "/(tabs)/courses";if(url==="/universities")return "/(tabs)/universities";if(url.startsWith("/courses/"))return {pathname:"/course/[slug]" as const,params:{slug:decodeURIComponent(url.slice("/courses/".length))}};if(url.startsWith("/learn/"))return {pathname:"/course/[slug]" as const,params:{slug:decodeURIComponent(url.slice("/learn/".length))}};return url as never;}
+function internalPath(url:string|null){return url&&url.startsWith("/")&&!url.startsWith("//")?url:null;}
 function externalFor(url:string|null){if(!url)return null;try{return new URL(url).protocol==="https:"?url:null}catch{return null}}
 function iconFor(template?:string):React.ComponentProps<typeof Ionicons>["name"]{return template==="discount"?"pricetag-outline":template==="new-course"?"book-outline":template==="new-service"?"sparkles-outline":template==="urgent"?"warning-outline":template==="success"?"checkmark-circle-outline":"megaphone-outline";}
 function gradientFor(template?:string):[string,string,string]{if(template==="discount")return["#7C2D12","#D97706","#F59E0B"];if(template==="urgent")return["#7F1D1D","#DC2626","#F43F5E"];if(template==="success")return["#064E3B","#059669","#10B981"];if(template==="new-service")return["#312E81","#6D28D9","#8B5CF6"];return["#071D54","#155EEF","#7242E9"];}
@@ -42,7 +42,7 @@ export function AnnouncementCampaign(){
   const banner=rows.find((item)=>item.id!==modal?.id&&(item.presentation==="banner"||(item.presentation==="all"&&seenModal.has(item.id))||((item.presentation==="modal"||item.presentation==="all")&&!item.dismissible&&!item.actionUrl)))||null;
   const close=(id:number)=>setDismissed((current)=>{const next=new Set(current).add(id);void writeDismissed(next);return next});
   const later=(item:Announcement)=>{if(item.presentation==="all")setSeenModal((current)=>new Set(current).add(item.id));else close(item.id)};
-  const action=(item:Announcement,compact=false)=>{const route=routeFor(item.actionUrl);const external=externalFor(item.actionUrl);if(!route&&!external)return null;return <Pressable style={[compact?styles.bannerAction:styles.modalAction,{borderColor:compact?"rgba(255,255,255,.25)":colors.primary,backgroundColor:compact?"rgba(255,255,255,.13)":colors.primary}]} onPress={()=>{close(item.id);if(external)void Linking.openURL(external);else if(route)router.push(route)}}><Text style={styles.actionText}>{item.actionLabel||"اعرف المزيد"}</Text><Ionicons name={isRTL?"arrow-back":"arrow-forward"} size={14} color="#FFF"/></Pressable>};
+  const action=(item:Announcement,compact=false)=>{const route=internalPath(item.actionUrl);const external=externalFor(item.actionUrl);if(!route&&!external)return null;return <Pressable style={[compact?styles.bannerAction:styles.modalAction,{borderColor:compact?"rgba(255,255,255,.25)":colors.primary,backgroundColor:compact?"rgba(255,255,255,.13)":colors.primary}]} onPress={()=>{close(item.id);if(external)void Linking.openURL(external);else if(route)openNotificationRoute(route)}}><Text style={styles.actionText}>{item.actionLabel||"اعرف المزيد"}</Text><Ionicons name={isRTL?"arrow-back":"arrow-forward"} size={14} color="#FFF"/></Pressable>};
   return <>{banner?<LinearGradient colors={gradientFor(banner.template)} start={{x:0,y:0}} end={{x:1,y:1}} style={[styles.banner,{direction,flexDirection:rowDirection}]}><View style={styles.bannerIcon}><Ionicons name={iconFor(banner.template)} size={18} color="#FFF"/></View><MarqueeText text={`${banner.title} — ${banner.body}`} isRTL={isRTL}/>{action(banner,true)}{banner.dismissible?<Pressable accessibilityRole="button" accessibilityLabel="إخفاء الإعلان" onPress={()=>close(banner.id)} hitSlop={10} style={styles.close}><Ionicons name="close" size={18} color="#FFF"/></Pressable>:null}</LinearGradient>:null}{modal?<Modal visible transparent animationType="fade" onRequestClose={()=>modal.dismissible&&later(modal)}><View style={[styles.backdrop,{direction}]}><View style={[styles.modal,{direction,backgroundColor:colors.surface,borderColor:colors.border}]}><LinearGradient colors={gradientFor(modal.template)} style={styles.modalIcon}><Ionicons name={iconFor(modal.template)} size={28} color="#FFF"/></LinearGradient><Text style={[styles.kicker,{color:colors.primary}]}>إعلان من مراس</Text><Text style={[styles.modalTitle,{color:colors.text}]}>{modal.title}</Text><Text style={[styles.modalBody,{color:colors.textSoft}]}>{modal.body}</Text>{action(modal)}{modal.dismissible?<Pressable onPress={()=>later(modal)} style={styles.later}><Text style={{color:colors.textSoft,fontWeight:"800"}}>لاحقًا</Text></Pressable>:null}</View></View></Modal>:null}</>;
 }
 

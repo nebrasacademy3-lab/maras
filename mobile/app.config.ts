@@ -18,6 +18,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     throw new Error("EXPO_PUBLIC_STORE_MODE must be either reader or direct");
   }
 
+  const appLinkHost = String(process.env.EXPO_PUBLIC_APP_LINK_HOST || new URL(apiUrl).hostname)
+    .trim()
+    .toLowerCase()
+    .replace(/^https?:\/\//, "")
+    .replace(/\/.*$/, "");
+  if (!/^[a-z0-9.-]+$/.test(appLinkHost)) {
+    throw new Error("EXPO_PUBLIC_APP_LINK_HOST must be a bare hostname such as merasalelm.com");
+  }
+  const appLinkPaths = ["/r", "/courses", "/learn", "/referrals", "/notifications", "/meras-ai", "/support", "/cart", "/favorites", "/dashboard", "/tracks", "/learning-tracks"];
+
   return {
     ...config,
 
@@ -41,6 +51,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       bundleIdentifier: "sa.merasalelm.app",
       supportsTablet: true,
       requireFullScreen: false,
+      associatedDomains: [`applinks:${appLinkHost}`],
 
       infoPlist: {
         NSAppTransportSecurity: {
@@ -64,6 +75,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
       predictiveBackGestureEnabled: true,
       softwareKeyboardLayoutMode: "resize",
+
+      intentFilters: [
+        {
+          action: "VIEW",
+          autoVerify: true,
+          category: ["DEFAULT", "BROWSABLE"],
+          data: appLinkPaths.map((pathPrefix) => ({ scheme: "https", host: appLinkHost, pathPrefix })),
+        },
+      ],
 
       permissions: [
         "POST_NOTIFICATIONS",
@@ -135,6 +155,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
     extra: {
       apiUrl,
+
+      appLinkHost,
 
       storeMode: requestedStoreMode,
 

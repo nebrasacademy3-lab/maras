@@ -55,6 +55,15 @@ function masterKey() {
   return material;
 }
 
+export function adminMfaConfigured() {
+  try {
+    masterKey();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function derivedKey(purpose: "encryption" | "step-up") {
   return createHmac("sha256", masterKey()).update(`meras-admin-mfa:v1:${purpose}`).digest();
 }

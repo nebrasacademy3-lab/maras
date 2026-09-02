@@ -1,6 +1,15 @@
 import { router } from "expo-router";
 import { Linking } from "react-native";
 
+export function safeInternalPath(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed.startsWith("/") || trimmed.startsWith("//") || /^\/[\\]/.test(trimmed)) return null;
+  if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return null;
+  if (/[\u0000-\u001f\s]/.test(trimmed)) return null;
+  return trimmed;
+}
+
 export function openNotificationRoute(actionUrl: unknown) {
   if (typeof actionUrl !== "string" || !actionUrl) return;
   if (actionUrl.startsWith("https://")) {
@@ -9,13 +18,26 @@ export function openNotificationRoute(actionUrl: unknown) {
   }
   if (!actionUrl.startsWith("/") || actionUrl.startsWith("//")) return;
   const [path = "", query = ""] = actionUrl.split("?", 2);
-  if (path === "/meras-ai") {
+  if (path === "/meras-ai" || path.startsWith("/meras-ai")) {
     const params = new URLSearchParams(query);
     const conversationId = params.get("conversation")?.trim();
     const quizId = params.get("quiz")?.trim();
     if (conversationId && /^[A-Za-z0-9_-]{1,120}$/.test(conversationId)) router.push({ pathname: "/ai/conversation/[id]", params: { id: conversationId } });
     else if (quizId && /^[A-Za-z0-9_-]{1,120}$/.test(quizId)) router.push({ pathname: "/ai/quiz/[id]", params: { id: quizId } });
     else router.push("/(tabs)/ai");
+    return;
+  }
+  if (path === "/") {
+    router.push("/(tabs)");
+    return;
+  }
+  if (path === "/tracks" || path === "/learning-tracks" || path.startsWith("/tracks/") || path.startsWith("/learning-tracks/")) {
+    router.push("/tracks");
+    return;
+  }
+  if (path.startsWith("/r/")) {
+    const code = decodeURIComponent(path.slice("/r/".length)).trim();
+    if (code) router.push({ pathname: "/r/[code]", params: { code } });
     return;
   }
   if (path.startsWith("/learn/")) {

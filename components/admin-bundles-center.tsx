@@ -1,11 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   Archive, BadgePercent, Boxes, CalendarDays, Check, ChevronLeft, CircleDollarSign,
   CopyPlus, Edit3, PackageCheck, RefreshCw, Search, Sparkles, Trash2, X,
 } from "lucide-react";
+import { AdminCenterNav } from "@/components/admin-center-nav";
+import { fromDateTimeLocal, toDateTimeLocal } from "@/components/admin-datetime";
+import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
+import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./admin-bundles-center.module.css";
 
 type CatalogCourse = {
@@ -71,7 +75,7 @@ const emptyForm: FormState = {
 const statusLabel: Record<BundleStatus,string> = { draft:"مسودة", published:"منشورة", archived:"مؤرشفة" };
 const money = (value:number) => new Intl.NumberFormat("ar-SA", { style:"currency", currency:"SAR", maximumFractionDigits:2 }).format(value || 0);
 const localDate = (value:string|null) => value ? new Date(value).toLocaleString("ar-SA", { dateStyle:"medium", timeStyle:"short" }) : "—";
-const dateInput = (value:string|null) => value ? value.slice(0, 16) : "";
+const dateInput = (value:string|null) => toDateTimeLocal(value);
 
 export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
   const [bundles,setBundles] = useState<Bundle[]>([]);
@@ -84,7 +88,9 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
   const [saving,setSaving] = useState(false);
   const [notice,setNotice] = useState<{tone:"ok"|"error";text:string}|null>(null);
 
+  const lastLoad = useRef(0);
   const load = useCallback(async (signal?:AbortSignal) => {
+    lastLoad.current = Date.now();
     try {
       const response = await fetch("/api/admin/bundles", { cache:"no-store", credentials:"same-origin", signal });
       const payload = await response.json() as { bundles?:Bundle[]; catalog?:CatalogCourse[]; error?:string };
@@ -104,6 +110,11 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
     const timer = window.setTimeout(() => void load(controller.signal), 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [load]);
+  useRealtimeSync((payload) => {
+    if (payload.changed && !payload.changed.includes("admin") && !payload.changed.includes("catalog")) return;
+    if (Date.now() - lastLoad.current < 5000) return;
+    void load();
+  });
 
   const universities = useMemo(() => {
     const map = new Map<string,string>();
@@ -194,9 +205,10 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
         method:editingId ? "PATCH" : "POST",
         credentials:"same-origin",
         headers:{ "content-type":"application/json" },
-        body:JSON.stringify({ ...form, id:editingId, discountValue:Number(form.discountValue), institutionSlug:form.institutionSlug || null, specialtySlug:form.specialtySlug || null, startsAt:form.startsAt || null, expiresAt:form.expiresAt || null }),
+        body:JSON.stringify({ ...form, id:editingId, discountValue:Number(form.discountValue), institutionSlug:form.institutionSlug || null, specialtySlug:form.specialtySlug || null, startsAt:fromDateTimeLocal(form.startsAt), expiresAt:fromDateTimeLocal(form.expiresAt) }),
       });
       const payload = await response.json() as { error?:string };
+      if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(payload.error || "تعذر حفظ الباقة");
       setNotice({ tone:"ok", text:editingId ? "تم تحديث الباقة وحفظ سجل التعديل." : "تم إنشاء الباقة بنجاح." });
       setEditingId(null); setForm(emptyForm); setCourseQuery("");
@@ -211,6 +223,7 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
     try {
       const response = await fetch("/api/admin/bundles", { method:"PATCH", credentials:"same-origin", headers:{ "content-type":"application/json" }, body:JSON.stringify({ ...bundle, status:"archived", courseSlugs:bundle.courseSlugs }) });
       const payload = await response.json() as { error?:string };
+      if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(payload.error || "تعذر أرشفة الباقة");
       setNotice({ tone:"ok", text:"تم إيقاف ظهور الباقة وأرشفتها." }); await load();
     } catch (error) { setNotice({ tone:"error", text:error instanceof Error ? error.message : "تعذر أرشفة الباقة" }); }
@@ -223,6 +236,7 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
     try {
       const response = await fetch(`/api/admin/bundles?id=${bundle.id}`, { method:"DELETE", credentials:"same-origin" });
       const payload = await response.json() as { error?:string };
+      if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(payload.error || "تعذر حذف الباقة");
       setNotice({ tone:"ok", text:"تم حذف الباقة غير المستخدمة." }); await load();
     } catch (error) { setNotice({ tone:"error", text:error instanceof Error ? error.message : "تعذر حذف الباقة" }); }
@@ -230,12 +244,13 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
   };
 
   return <main className={styles.page} dir="rtl"><div className={styles.shell}>
+    <AdminCenterNav />
     <header className={styles.header}>
       <div><span><Boxes size={16}/> الباقات والعروض المركبة</span><h1>مركز إدارة الباقات</h1><p>{adminName} · كوّن عروضًا واضحة من مواد جاهزة مع تسعير محكوم وسجل تدقيق.</p></div>
-      <nav><Link href="/admin">لوحة الإدارة</Link><Link href="/admin/finance">المركز المالي</Link><Link href="/admin/operations">التشغيل والتحليلات</Link></nav>
+      <nav><Link href="/admin/finance">المركز المالي</Link><Link href="/admin/operations">التشغيل والتحليلات</Link></nav>
     </header>
 
-    {notice ? <div className={`${styles.notice} ${styles[notice.tone]}`}>{notice.tone === "ok" ? <Check size={17}/> : <X size={17}/>}<span>{notice.text}</span></div> : null}
+    {notice && notice.tone === "error" && isAdminStepUpMessage(notice.text) ? <AdminMfaNotice /> : notice ? <div className={`${styles.notice} ${styles[notice.tone]}`}>{notice.tone === "ok" ? <Check size={17}/> : <X size={17}/>}<span>{notice.text}</span></div> : null}
 
     <section className={styles.editor}>
       <div className={styles.editorHeading}><div><span>{editingId ? "تعديل الباقة" : "باقة جديدة"}</span><h2>{editingId ? form.title || "تعديل البيانات" : "أنشئ عرضًا متكاملًا"}</h2></div>{editingId ? <button type="button" onClick={reset}><X size={16}/> إلغاء التعديل</button> : null}</div>

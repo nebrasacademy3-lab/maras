@@ -57,6 +57,36 @@ function createOrderNumber() {
   return `MR-${Date.now().toString(36).toUpperCase()}-${random}`;
 }
 
+export async function GET(request: Request) {
+  const user = await getSessionUser(request);
+  if (!user) return jsonError("سجّل الدخول لمتابعة حالة الطلب", 401);
+  const orderNumber = cleanText(new URL(request.url).searchParams.get("order"), 100);
+  if (!/^[A-Za-z0-9._:-]{3,100}$/.test(orderNumber)) return jsonError("رقم الطلب غير صالح");
+  if (!await checkRateLimit("checkout-status", `user:${user.id}`, 60, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
+  const db = getDb();
+  const [order] = await db.select().from(orders).where(and(eq(orders.orderNumber, orderNumber), eq(orders.customerEmail, user.email))).limit(1);
+  if (!order) return jsonError("الطلب غير موجود", 404);
+  const items = await db.select({ courseSlug: orderItems.courseSlug }).from(orderItems).where(eq(orderItems.orderNumber, order.orderNumber));
+  const courseSlugs = items.length ? items.map((item) => item.courseSlug) : [order.courseSlug];
+  const catalog = await getCoursesCatalog();
+  const phase = order.status === "paid" || order.status === "partially_refunded" ? "paid"
+    : ["verification_pending", "payment_review"].includes(order.status) ? "review"
+      : ["failed", "declined", "cancelled", "canceled", "voided"].includes(order.status) ? "failed"
+        : order.status === "refunded" ? "refunded" : "pending";
+  return Response.json({
+    ok: true,
+    orderNumber: order.orderNumber,
+    status: order.status,
+    phase,
+    total: order.total,
+    currency: order.currency,
+    paidAt: order.paidAt,
+    createdAt: order.createdAt,
+    checkoutUrl: phase === "pending" && checkoutIsFresh(order.createdAt) ? order.checkoutUrl : null,
+    courses: courseSlugs.map((slug) => ({ slug, title: catalog.find((course) => course.slug === slug)?.title || slug })),
+  }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+}
+
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);

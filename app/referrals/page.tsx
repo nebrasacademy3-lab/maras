@@ -12,7 +12,8 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function ReferralsPage() {
+export default async function ReferralsPage({ searchParams }: { searchParams: Promise<{ reward?: string }> }) {
   await requireUser("/referrals");
-  return <><SiteHeader /><ReferralsCenter /><SiteFooter /></>;
+  const rewardId = Math.floor(Number((await searchParams).reward)) || 0;
+  return <><SiteHeader /><ReferralsCenter highlightRewardId={rewardId > 0 ? rewardId : 0} /><SiteFooter /></>;
 }

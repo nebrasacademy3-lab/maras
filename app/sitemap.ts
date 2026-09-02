@@ -8,7 +8,7 @@ function catalogDate(value?: string) {
 }
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const [courses, institutions] = await Promise.all([getCoursesCatalog(), getInstitutionsCatalog()]);
-  const staticPaths = ["", "/universities", "/courses", "/meras-ai", "/how-it-works", "/request-course", "/support", "/contact", "/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility"];
+  const staticPaths = ["", "/universities", "/courses", "/how-it-works", "/contact", "/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility"];
   return [
     ...staticPaths.map((path) => ({ url: `${baseUrl}${path}`, lastModified: new Date("2026-08-22"), changeFrequency: path === "" ? "daily" as const : "weekly" as const, priority: path === "" ? 1 : 0.7 })),
     ...institutions.map((institution) => ({ url: `${baseUrl}/universities/${institution.slug}`, lastModified: new Date("2026-08-22"), changeFrequency: "weekly" as const, priority: 0.75 })),

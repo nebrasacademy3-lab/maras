@@ -1,11 +1,19 @@
 import type { Instrumentation } from "next";
 import { logEvent, pathnameOnly, requestIdFromHeaders } from "./lib/observability";
 
-export function register() {
+export async function register() {
   logEvent("info", "service.runtime.started", {
     runtime: process.env.NEXT_RUNTIME || "unknown",
     environment: process.env.NODE_ENV || "unknown",
   });
+  if (process.env.NEXT_RUNTIME === "nodejs" && process.env.NEXT_PHASE !== "phase-production-build") {
+    try {
+      const { startLifecycleScheduler } = await import("./lib/lifecycle-scheduler");
+      startLifecycleScheduler();
+    } catch (caught) {
+      logEvent("warn", "lifecycle.scheduler.unavailable", { errorType: caught instanceof Error ? caught.name : "UnknownError" });
+    }
+  }
 }
 
 export const onRequestError: Instrumentation.onRequestError = (error, request, context) => {

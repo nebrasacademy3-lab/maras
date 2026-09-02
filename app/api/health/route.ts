@@ -49,8 +49,9 @@ export async function GET(request: Request) {
       uploads: strongSecret("ADMIN_UPLOAD_TOKEN") ? "configured" : "missing",
       videoSigning: strongSecret("VIDEO_SIGNING_SECRET") ? "configured" : "missing",
     } satisfies Record<string, CheckStatus>;
+    const schedulerEnabled = process.env.LIFECYCLE_SCHEDULER_ENABLED?.trim().toLowerCase() !== "false";
     const optionalConfiguration = {
-      scheduledTasks: strongSecret("SCHEDULED_TASK_TOKEN") ? "configured" : "missing",
+      scheduledTasks: strongSecret("SCHEDULED_TASK_TOKEN") || schedulerEnabled ? "configured" : "missing",
       malwareScanner: configured("MALWARE_SCAN_URL") ? "configured" : "missing",
     } satisfies Record<string, CheckStatus>;
     const configuration = { ...requiredConfiguration, ...optionalConfiguration } satisfies Record<string, CheckStatus>;
@@ -62,6 +63,7 @@ export async function GET(request: Request) {
       email: configured("RESEND_API_KEY", "EMAIL_FROM") ? "enabled" : "disabled",
       enhancedAssistant: configuredAny("GEMINI_API_KEY", "GEMINI_API_KEYS", "OPENAI_API_KEY") ? "enabled" : "disabled",
       pushDispatch: optionalConfiguration.scheduledTasks === "configured" ? "enabled" : "disabled",
+      lifecycleScheduler: schedulerEnabled ? "enabled" : "disabled",
       malwareScanning: optionalConfiguration.malwareScanner === "configured" ? "enabled" : "disabled",
     } satisfies Record<string, CheckStatus>;
 

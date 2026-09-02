@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Download, FileText, HelpCircle, ListVideo, Menu, MessageSquareText, NotebookPen, PanelLeftClose, PlayCircle, Save, Search, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
+import { BookOpen, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, FileText, HelpCircle, Menu, MessageSquareText, NotebookPen, PanelLeftClose, PlayCircle, Save, Search, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import type { Course } from "@/lib/data";
 import { SecureVideoPlayer, type VideoSeekRequest } from "./secure-video-player";
 import { BrandLogo } from "./brand-logo";
@@ -21,7 +21,11 @@ function formatNoteTime(value: number) {
 export function LearningRoom({ course, studentLabel }: { course: Course; studentLabel: string }) {
   const allLessons = useMemo(() => course.units.flatMap((unit) => unit.lessons), [course]);
   const [activeLesson, setActiveLesson] = useState(allLessons[0]);
-  const [completed, setCompleted] = useState(new Set(allLessons.filter((lesson) => lesson.completed).map((lesson) => lesson.id)));
+  const [completed, setCompleted] = useState(() => new Set<string>());
+  const [watched, setWatched] = useState<Record<string, number>>({});
+  const [progressLoaded, setProgressLoaded] = useState(false);
+  const [completionMessage, setCompletionMessage] = useState("");
+  const resumeHandled = useRef(false);
   const [sidebar, setSidebar] = useState(true);
   const [tab, setTab] = useState("overview");
   const [noteDraft, setNoteDraft] = useState("");
@@ -33,15 +37,28 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
   const seekNonceRef = useRef(0);
   const [lessonQuery, setLessonQuery] = useState("");
   const currentIndex = allLessons.findIndex((lesson) => lesson.id === activeLesson.id);
-  const progress = Math.round((completed.size / allLessons.length) * 100);
+  const progress = allLessons.length ? Math.round((completed.size / allLessons.length) * 100) : 0;
 
   useEffect(() => {
+    let cancelled = false;
     fetch(`/api/progress?course=${encodeURIComponent(course.slug)}`, { credentials: "same-origin" }).then(async (response) => {
-      if (!response.ok) return;
-      const data = await response.json() as { progress?: Array<{ lessonId: string; completed: boolean }> };
-      setCompleted(new Set((data.progress || []).filter((item) => item.completed).map((item) => item.lessonId)));
-    }).catch(() => undefined);
-  }, [course.slug]);
+      if (!response.ok || cancelled) return;
+      const data = await response.json() as { progress?: Array<{ lessonId: string; completed: boolean; watchedSeconds: number }> };
+      const rows = data.progress || [];
+      const done = new Set(rows.filter((item) => item.completed).map((item) => item.lessonId));
+      const seconds = Object.fromEntries(rows.map((item) => [item.lessonId, Math.max(0, item.watchedSeconds || 0)]));
+      setCompleted(done);
+      setWatched(seconds);
+      if (!resumeHandled.current) {
+        resumeHandled.current = true;
+        const latest = rows.filter((item) => !item.completed && item.watchedSeconds > 5).sort((left, right) => right.watchedSeconds - left.watchedSeconds)[0];
+        const target = (latest && allLessons.find((lesson) => lesson.id === latest.lessonId)) || allLessons.find((lesson) => !done.has(lesson.id));
+        if (target && target.id !== allLessons[0]?.id) setActiveLesson(target);
+        if (target && seconds[target.id] > 5 && !done.has(target.id)) { seekNonceRef.current += 1; setSeekRequest({ seconds: seconds[target.id], nonce: seekNonceRef.current }); }
+      }
+    }).catch(() => undefined).finally(() => { if (!cancelled) setProgressLoaded(true); });
+    return () => { cancelled = true; };
+  }, [course.slug, allLessons]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -65,24 +82,38 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
     return () => controller.abort();
   }, [activeLesson.id]);
 
-  const saveCompletion = (lessonId: string, value: boolean) => {
-    void fetch("/api/progress", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ courseSlug: course.slug, lessonId, watchedSeconds: 0, completed: value }),
-    }).catch(() => undefined);
+  const saveCompletion = async (lessonId: string, value: boolean) => {
+    setCompletionMessage("");
+    try {
+      const response = await fetch("/api/progress", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ courseSlug: course.slug, lessonId, watchedSeconds: Math.max(Math.floor(playerTime), watched[lessonId] || 0), completed: value, manual: true }),
+      });
+      const data = await response.json() as { error?: string; progress?: { lessonId: string; completed: boolean; watchedSeconds: number } };
+      if (!response.ok) throw new Error(data.error || "تعذر حفظ حالة الدرس");
+      if (data.progress) {
+        setCompleted((current) => { const next = new Set(current); if (data.progress!.completed) next.add(data.progress!.lessonId); else next.delete(data.progress!.lessonId); return next; });
+        setWatched((current) => ({ ...current, [data.progress!.lessonId]: data.progress!.watchedSeconds }));
+      }
+    } catch (reason) {
+      setCompleted((current) => { const next = new Set(current); if (value) next.delete(lessonId); else next.add(lessonId); return next; });
+      setCompletionMessage(reason instanceof Error ? reason.message : "تعذر حفظ حالة الدرس");
+    }
   };
   const markCompleted = () => {
     const next = new Set(completed);
     const willComplete = !next.has(activeLesson.id);
     if (willComplete) next.add(activeLesson.id); else next.delete(activeLesson.id);
     setCompleted(next);
-    saveCompletion(activeLesson.id, willComplete);
+    void saveCompletion(activeLesson.id, willComplete);
   };
   const chooseLesson = (lesson: typeof activeLesson) => {
     setActiveLesson(lesson);
-    setSeekRequest(null);
+    const resumeAt = watched[lesson.id] || 0;
+    if (resumeAt > 5 && !completed.has(lesson.id)) { seekNonceRef.current += 1; setSeekRequest({ seconds: resumeAt, nonce: seekNonceRef.current }); }
+    else setSeekRequest(null);
   };
   const go = (offset: number) => {
     const next = allLessons[currentIndex + offset];
@@ -141,7 +172,8 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
       </aside>
       <section className="learning-main">
         <div className="learning-video-wrap"><SecureVideoPlayer key={activeLesson.id} title={activeLesson.title} studentLabel={studentLabel} courseSlug={course.slug} lessonId={activeLesson.id} seekRequest={seekRequest} onTimeChange={setPlayerTime} /></div>
-        <div className="lesson-toolbar"><div><span>الوحدة {course.units.findIndex((unit) => unit.lessons.some((lesson) => lesson.id === activeLesson.id)) + 1}</span><h1>{activeLesson.title}</h1></div><button onClick={markCompleted} className={completed.has(activeLesson.id) ? "completed" : ""}>{completed.has(activeLesson.id) ? <CheckCircle2 size={18} /> : <span />}{completed.has(activeLesson.id) ? "مكتمل" : "تحديد كمكتمل"}</button></div>
+        <div className="lesson-toolbar"><div><span>الوحدة {course.units.findIndex((unit) => unit.lessons.some((lesson) => lesson.id === activeLesson.id)) + 1}{watched[activeLesson.id] > 5 && !completed.has(activeLesson.id) ? ` · توقفت عند ${formatNoteTime(watched[activeLesson.id])}` : ""}</span><h1>{activeLesson.title}</h1></div><button onClick={markCompleted} disabled={!progressLoaded} className={completed.has(activeLesson.id) ? "completed" : ""}>{completed.has(activeLesson.id) ? <CheckCircle2 size={18} /> : <span />}{completed.has(activeLesson.id) ? "مكتمل" : "تحديد كمكتمل"}</button></div>
+        {completionMessage && <p className="notes-feedback">{completionMessage}</p>}
         <div className="lesson-navigation"><button disabled={currentIndex === 0} onClick={() => go(-1)}><ChevronRight size={17} /><span><small>السابق</small><strong>{allLessons[currentIndex - 1]?.title || "—"}</strong></span></button><button disabled={currentIndex === allLessons.length - 1} onClick={() => go(1)}><span><small>التالي</small><strong>{allLessons[currentIndex + 1]?.title || "—"}</strong></span><ChevronLeft size={17} /></button></div>
         <div className="lesson-tabs">
           <button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}><BookOpen size={16} /> نظرة عامة</button>
@@ -150,9 +182,9 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
           <button className={tab === "qa" ? "active" : ""} onClick={() => setTab("qa")}><MessageSquareText size={16} /> الأسئلة</button>
         </div>
         <div className="lesson-tab-content">
-          {tab === "overview" && <div className="lesson-overview"><h2>عن هذا الدرس</h2><p>في هذا الدرس نشرح المفهوم الأساسي خطوة بخطوة، ثم نطبّقه على أمثلة مشابهة لأسئلة المقرر والاختبارات.</p><h3>بعد نهاية الدرس ستستطيع:</h3><ul><li><CheckCircle2 size={16} /> تحديد عناصر الفكرة الأساسية</li><li><CheckCircle2 size={16} /> حل المسائل باستخدام الخطوات الصحيحة</li><li><CheckCircle2 size={16} /> تجنب الأخطاء الشائعة في الاختبار</li></ul></div>}
+          {tab === "overview" && (() => { const unit = course.units.find((item) => item.lessons.some((lesson) => lesson.id === activeLesson.id)); const description = activeLesson.description?.trim(); const unitDescription = unit?.description?.trim(); return <div className="lesson-overview"><h2>عن هذا الدرس</h2>{description ? <p>{description}</p> : <p>لم يُضف وصف لهذا الدرس بعد. تابع الفيديو، وسجّل ملاحظاتك المرتبطة باللحظة من تبويب «ملاحظاتي».</p>}{unitDescription && <><h3>عن الوحدة: {unit?.title}</h3><p>{unitDescription}</p></>}<h3>معلومات الدرس</h3><ul><li><CheckCircle2 size={16} /> المدة: {activeLesson.duration || "تُحسب من الفيديو"}</li><li><CheckCircle2 size={16} /> الترتيب: الدرس {currentIndex + 1} من {allLessons.length}</li><li><CheckCircle2 size={16} /> {completed.has(activeLesson.id) ? "أكملت هذا الدرس" : watched[activeLesson.id] > 5 ? `شاهدت حتى ${formatNoteTime(watched[activeLesson.id])}` : "لم تبدأ هذا الدرس بعد"}</li></ul></div>; })()}
           {tab === "notes" && <div className="notes-box"><div><NotebookPen size={18} /><span><strong>ملاحظات مرتبطة بالفيديو</strong><small>تُحفظ في حسابك وتفتح نفس الدقيقة والثانية على كل أجهزتك</small></span></div><div className="video-note-compose"><textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="اكتب ما تريد تذكره عند هذه اللحظة..." maxLength={4000} /><div><span>اللحظة الحالية: {formatNoteTime(playerTime)}</span><button className="button button-primary" type="button" onClick={() => void saveNote()}><Save size={15} /> حفظ عند هذه اللحظة</button></div></div>{noteMessage && <p className="notes-feedback">{noteMessage}</p>}{notesLoading ? <p className="notes-empty">جارٍ تحميل الملاحظات...</p> : notes.length ? <div className="video-notes-list">{notes.map((note) => <article className="video-note-item" key={note.id}><button type="button" onClick={() => openNote(note)}><time>{formatNoteTime(note.timestampSeconds)}</time><p>{note.body}</p></button><button type="button" className="video-note-delete" onClick={() => void removeNote(note)} aria-label="حذف الملاحظة"><Trash2 size={15} /></button></article>)}</div> : <p className="notes-empty">لا توجد ملاحظات بعد. أوقف الفيديو عند اللحظة المطلوبة ثم احفظ ملاحظتك.</p>}</div>}
-          {tab === "files" && <div className="lesson-files"><article><i><FileText size={21} /></i><span><strong>ملخص الدرس.pdf</strong><small>PDF · 1.8 MB</small></span><button><Download size={16} /> تنزيل</button></article><article><i><ListVideo size={21} /></i><span><strong>تمارين تطبيقية.pdf</strong><small>PDF · 920 KB</small></span><button><Download size={16} /> تنزيل</button></article></div>}
+          {tab === "files" && <div className="lesson-files"><div className="qa-box"><FileText size={30} /><h3>لا توجد ملفات مرفقة لهذا الدرس بعد</h3><p>عند إضافة ملخصات أو تمارين لهذا الدرس ستظهر هنا للتنزيل، وستصلك إشعار بذلك.</p></div></div>}
           {tab === "qa" && <div className="qa-box"><HelpCircle size={30} /><h3>عندك سؤال عن هذا الدرس؟</h3><p>افتح مساعد مراس ليشرح لك طريق الدعم أو يوجّه سؤالك.</p><button className="button button-primary" onClick={()=>window.dispatchEvent(new Event("meras:assistant"))}><Sparkles size={16} /> اسأل مساعد مراس</button></div>}
         </div>
       </section>

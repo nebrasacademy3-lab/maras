@@ -1,9 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, FileSpreadsheet, LoaderCircle, RotateCcw, ShieldCheck, XCircle } from "lucide-react";
+import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { currencyMinorDigits } from "@/lib/settlements";
 import styles from "./finance-governance.module.css";
+
+export type RefundPrefill = { orderNumber: string; amount: number; reason?: string; nonce: number };
 
 type Approval = { id:number;approverEmail:string;decision:string;note:string|null;createdAt:string };
 type RefundRow = { id:number;requestNumber:string;orderNumber:string;requestedByEmail:string;amountMinor:number;currency:string;reason:string;status:string;providerRefundId:string|null;createdAt:string;approvals:Approval[] };
@@ -14,12 +17,14 @@ const settlementIssueLabel:Record<string,string>={unmatched:"غير مرتبط �
 const money=(minor:number,currency="SAR")=>new Intl.NumberFormat("ar-SA",{style:"currency",currency}).format(minor/(10**currencyMinorDigits(currency)));
 const settlementIssues=(lines:Settlement["lines"])=>Object.entries(lines.filter((line)=>line.status!=="matched").reduce((counts,line)=>({...counts,[line.status]:(counts[line.status]||0)+line.count}),{} as Record<string,number>)).map(([status,count])=>`${settlementIssueLabel[status]||status}: ${count.toLocaleString("ar-SA")}`).join(" · ");
 
-export function FinanceGovernance() {
+export function FinanceGovernance({ prefill, refreshKey = 0 }: { prefill?: RefundPrefill | null; refreshKey?: number } = {}) {
   const [refunds, setRefunds] = useState<RefundRow[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
+  const refundFormRef = useRef<HTMLFormElement | null>(null);
+  const appliedPrefill = useRef(0);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,7 +49,20 @@ export function FinanceGovernance() {
   useEffect(() => {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
-  }, [load]);
+  }, [load, refreshKey]);
+  useEffect(() => {
+    if (!prefill || prefill.nonce === appliedPrefill.current || !refundFormRef.current) return;
+    appliedPrefill.current = prefill.nonce;
+    const form = refundFormRef.current;
+    const orderInput = form.elements.namedItem("orderNumber") as HTMLInputElement | null;
+    const amountInput = form.elements.namedItem("amount") as HTMLInputElement | null;
+    const reasonInput = form.elements.namedItem("reason") as HTMLTextAreaElement | null;
+    if (orderInput) orderInput.value = prefill.orderNumber;
+    if (amountInput) amountInput.value = prefill.amount.toFixed(2);
+    if (reasonInput && prefill.reason) reasonInput.value = prefill.reason;
+    form.scrollIntoView({ behavior: "smooth", block: "center" });
+    reasonInput?.focus();
+  }, [prefill]);
 
   async function refundAction(payload: Record<string, unknown>, key: string) {
     setBusy(key);
@@ -52,6 +70,7 @@ export function FinanceGovernance() {
     try {
       const response = await fetch("/api/admin/refunds", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json();
+      if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(result.error || "تعذر تنفيذ الإجراء");
       setMessage(result.message || `تم تحديث الطلب: ${statusLabel[result.status] || result.status || "ناجح"}`);
       await load();
@@ -64,10 +83,10 @@ export function FinanceGovernance() {
 
   return <section className={styles.section}>
     <header><div><span><ShieldCheck size={18} /></span><div><h2>الاستردادات والتسويات</h2><p>فصل منشئ الطلب عن الموافقين، موافقتان مستقلتان، ومطابقة كشف Tap بالهللة.</p></div></div><button type="button" onClick={() => void load()} aria-label="تحديث"><RotateCcw size={16} /></button></header>
-    {message && <div className={styles.notice}>{message}</div>}
+    {message && (isAdminStepUpMessage(message) ? <AdminMfaNotice compact /> : <div className={styles.notice}>{message}</div>)}
     {loading ? <div className={styles.loading}><LoaderCircle className="spin" /> جارٍ تحميل السجلات…</div> : <div className={styles.columns}>
       <div className={styles.column}>
-        <form className={styles.form} onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); void refundAction({ action: "create", orderNumber: form.get("orderNumber"), amount: form.get("amount"), reason: form.get("reason") }, "create"); }}>
+        <form ref={refundFormRef} className={styles.form} onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); void refundAction({ action: "create", orderNumber: form.get("orderNumber"), amount: form.get("amount"), reason: form.get("reason") }, "create"); }}>
           <h3>طلب استرداد جديد</h3>
           <label>رقم الطلب<input name="orderNumber" dir="ltr" required /></label>
           <label>المبلغ بالريال<input name="amount" type="number" min="0.01" step="0.01" required /></label>
@@ -103,6 +122,7 @@ export function FinanceGovernance() {
             if (from) query.set("from", from); if (to) query.set("to", to);
             const response = await fetch(`/api/admin/settlements?${query}`, { method: "POST", headers: { "content-type": "text/csv" }, body: file });
             const result = await response.json();
+            if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
             if (!response.ok) throw new Error(result.error || "تعذر استيراد التسوية");
             const issues = Object.entries(result.settlement.issueCounts || {}).map(([status, count]) => `${settlementIssueLabel[status] || status}: ${Number(count).toLocaleString("ar-SA")}`).join(" · ");
             setMessage(`تمت مطابقة ${result.settlement.matched} وبقي ${result.settlement.unmatched}${issues ? ` · ${issues}` : ""}`);

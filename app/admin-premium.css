@@ -84,3 +84,24 @@
   .admin-app .live-table-row { font-size: calc(13px * var(--font-scale, 1)); }
 }
 .notification-segment-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px;border:1px solid var(--line);border-radius:14px}.notification-segment-fields legend{padding:0 7px;color:var(--primary);font-size:12px;font-weight:900}.notification-segment-fields>small{grid-column:1/-1;color:var(--text-soft)}@media(max-width:640px){.notification-segment-fields{grid-template-columns:1fr}}
+
+.admin-app .admin-center-links a { position: relative; }
+.admin-app .admin-center-links a i { margin-inline-start: auto; min-width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; padding: 0 6px; border-radius: 999px; background: color-mix(in srgb, #d97706 18%, var(--surface)); color: #b45309; font-size: calc(10px * var(--font-scale, 1)); font-style: normal; font-weight: 900; }
+.admin-app .admin-centers { margin-bottom: 18px; }
+.admin-app .admin-centers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 10px; }
+.admin-app .admin-center-card { display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 11px; min-height: 74px; padding: 12px 13px; border: 1px solid color-mix(in srgb, var(--primary) 12%, var(--line)); border-radius: 14px; background: color-mix(in srgb, var(--surface-2) 94%, var(--primary) 6%); color: var(--text); text-decoration: none; transition: border-color 160ms ease, transform 160ms ease, background 160ms ease; }
+.admin-app .admin-center-card:hover { border-color: color-mix(in srgb, var(--primary) 36%, var(--line)); background: var(--surface-3); transform: translateY(-1px); }
+.admin-app .admin-center-card i { display: inline-flex; align-items: center; justify-content: center; width: 42px; height: 42px; border-radius: 12px; background: color-mix(in srgb, var(--primary) 14%, var(--surface)); color: var(--primary); }
+.admin-app .admin-center-card span { display: grid; gap: 3px; min-width: 0; }
+.admin-app .admin-center-card strong { font-size: calc(13px * var(--font-scale, 1)); }
+.admin-app .admin-center-card small { color: var(--muted); font-size: calc(10.5px * var(--font-scale, 1)); line-height: 1.5; }
+.admin-app .admin-center-card b { min-width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; padding: 0 9px; border-radius: 999px; background: color-mix(in srgb, #d97706 16%, var(--surface)); color: #b45309; font-size: calc(12px * var(--font-scale, 1)); font-weight: 900; }
+.admin-app .admin-center-card > svg { color: var(--muted); }
+.admin-app .admin-mfa-banner { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin: 0 0 16px; padding: 12px 14px; border-radius: 14px; border: 1px solid color-mix(in srgb, #d97706 34%, var(--line)); background: color-mix(in srgb, #fbbf24 14%, var(--surface)); color: var(--text); }
+.admin-app .admin-mfa-banner svg { color: #b45309; flex: none; }
+.admin-app .admin-mfa-banner p { flex: 1 1 260px; margin: 0; font-size: calc(12.5px * var(--font-scale, 1)); font-weight: 700; line-height: 1.7; }
+.admin-app .admin-mfa-banner a { display: inline-flex; align-items: center; min-height: 34px; padding: 0 13px; border-radius: 999px; background: #b45309; color: #fff; font-size: calc(12px * var(--font-scale, 1)); font-weight: 800; text-decoration: none; }
+.admin-app .admin-mfa-banner button { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border: 0; border-radius: 999px; background: transparent; color: var(--muted); cursor: pointer; }
+.admin-app .audit-diff summary { cursor: pointer; color: var(--primary); font-size: calc(11px * var(--font-scale, 1)); font-weight: 800; }
+.admin-app .audit-diff div { margin-top: 6px; }
+.admin-app .audit-diff pre { max-width: 100%; max-height: 220px; overflow: auto; margin: 2px 0 0; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); font-size: 10px; line-height: 1.5; white-space: pre-wrap; word-break: break-all; }

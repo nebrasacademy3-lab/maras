@@ -78,6 +78,18 @@ export default function Support() {
     finally { setSending(false); }
   };
 
+  const [rating, setRating] = useState(0);
+  const [ratingComment, setRatingComment] = useState("");
+  const [ratingBusy, setRatingBusy] = useState(false);
+  const rate = async () => {
+    if (!selected || !rating) return;
+    setRatingBusy(true);
+    try {
+      await api("/api/support", { method: "PATCH", body: JSON.stringify({ ticketId: selected.id, action: "rate", rating, comment: ratingComment.trim() }) });
+      await reload(); setFeedback("تم إرسال تقييمك، شكرًا لك"); setRating(0); setRatingComment("");
+    } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر حفظ التقييم"); }
+    finally { setRatingBusy(false); }
+  };
   const reopen = async () => {
     if (!selected) return;
     try {
@@ -96,6 +108,7 @@ export default function Support() {
       <View style={[styles.statusPill, { backgroundColor: ["closed", "resolved"].includes(selected.status) ? `${colors.success}14` : `${colors.primary}14` }]}><Text style={{ color: ["closed", "resolved"].includes(selected.status) ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{labels[selected.status] || "حالة غير معروفة"}</Text></View>
     </View>
     {["closed", "resolved"].includes(selected.status) && <View style={styles.compactAction}><AppButton full={false} title="إعادة فتح المحادثة" variant="soft" icon="refresh-outline" onPress={() => void reopen()} /></View>}
+    {["closed", "resolved"].includes(selected.status) && (selected.satisfactionRating ? <Card style={styles.ratingCard}><Text style={[styles.ratingTitle, { color: colors.text }]}>شكرًا لتقييمك: {"★".repeat(selected.satisfactionRating)}</Text>{selected.satisfactionComment ? <Text style={[styles.meta, { color: colors.textSoft }]}>{selected.satisfactionComment}</Text> : null}</Card> : <Card style={styles.ratingCard}><Text style={[styles.ratingTitle, { color: colors.text }]}>كيف كانت تجربتك مع الدعم؟</Text><View style={styles.ratingRow}>{[1, 2, 3, 4, 5].map((value) => <Pressable key={value} onPress={() => setRating(value)} accessibilityRole="radio" accessibilityState={{ selected: rating === value }} accessibilityLabel={`${value} من 5`}><Ionicons name={value <= rating ? "star" : "star-outline"} size={26} color={value <= rating ? colors.warning : colors.textSoft} /></Pressable>)}</View><Field label="ملاحظة اختيارية" value={ratingComment} onChangeText={setRatingComment} placeholder="ما الذي يمكن تحسينه؟" /><AppButton title="إرسال التقييم" icon="star-outline" variant="soft" loading={ratingBusy} disabled={!rating} onPress={() => void rate()} /></Card>)}
     <SupportChat ticket={selected} viewer="student" onReload={reload} onFeedback={setFeedback} />
     {!!feedback && <Text style={[styles.feedback, { color: feedback.startsWith("تم") ? colors.success : colors.danger }]}>{feedback}</Text>}
   </Screen>;
@@ -137,6 +150,7 @@ export default function Support() {
 }
 
 const styles = StyleSheet.create({
+  ratingCard: { gap: 8, marginBottom: 10 }, ratingTitle: { fontSize: 12, fontWeight: "900", textAlign: "right", writingDirection: "rtl" }, ratingRow: { flexDirection: "row-reverse", gap: 6 },
   hero: { borderRadius: 20, padding: 16, flexDirection: "row", gap: 11, alignItems: "center", marginTop: 4 }, heroIcon: { width: 46, height: 46, borderRadius: 15, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,.14)" }, heroTitle: { color: "#FFF", fontSize: 14, fontWeight: "900", textAlign: "right" }, heroCopy: { color: "rgba(255,255,255,.82)", fontSize: 9, lineHeight: 16, textAlign: "right", marginTop: 3 },
   quickLinks: { flexDirection: "row", gap: 7, marginTop: 10, flexWrap: "wrap" }, quickLink: { minHeight: 42, borderWidth: 1, borderRadius: 13, paddingHorizontal: 12, flexDirection: "row", gap: 6, alignItems: "center", justifyContent: "center" }, newTicketLink: { flexGrow: 1 },
   newTicketCard: { marginTop: 12 }, categories: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 12 }, category: { minHeight: 34, borderRadius: 11, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },

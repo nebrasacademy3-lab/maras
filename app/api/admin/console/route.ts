@@ -1,13 +1,14 @@
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
-  auditLogs, authSessions, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseAccessEvents, courseRequestFiles, courseRequests,
-  courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, notificationsDb, orderItems, orders, paymentEvents, platformSettings,
+  aiApiKeys, auditLogs, authSessions, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseAccessEvents, courseRequestFiles, courseRequests,
+  courseReviews, courseUnitsDb, courseWaitlist, institutionSpecialties, lessonsDb, notificationsDb, orderItems, orders, paymentEvents, platformSettings,
   pushDevices, supervisorAssignments, supportReplyFiles, supportReplies, supportTickets, users, videoAssets,
 } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest, validEmail } from "@/lib/auth";
-import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
+import { AdminMfaError, adminMfaConfigured, requireAdminStepUp } from "@/lib/admin-mfa";
+import { validGeminiApiKey } from "@/lib/ai-keys";
 import { getCourseCatalog, getCoursesCatalog, getInstitutionCatalog, getInstitutionsCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { ADMIN_SETTING_DEFAULTS, invalidatePublicSettingsCache, PUBLIC_SETTING_DEFAULTS, SETTING_META, type SettingKey } from "@/lib/platform-settings";
 import { createAndSendNotification } from "@/lib/notifications";
@@ -107,31 +108,45 @@ export async function GET(request: Request) {
   ]);
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...ADMIN_SETTING_DEFAULTS } as Record<string, string>;
   for (const row of settingRows) settings[row.key] = row.value;
-  const [managedInstitutionRows, managedCourseRows] = await Promise.all([
+  const [managedInstitutionRows, managedCourseRows, totals, waitlistRows, activeAiKeys] = await Promise.all([
     db.select().from(catalogInstitutions),
     db.select().from(catalogCourses),
+    db.execute(sql`SELECT
+      (SELECT count(*)::int FROM users WHERE role = 'student') AS students,
+      (SELECT count(*)::int FROM users WHERE role = 'student' AND status = 'active') AS active_students,
+      (SELECT count(*)::int FROM orders) AS orders,
+      (SELECT count(*)::int FROM orders WHERE status = 'paid') AS paid_orders,
+      (SELECT coalesce(sum(total), 0)::float FROM orders WHERE status = 'paid') AS revenue,
+      (SELECT count(*)::int FROM orders WHERE status IN ('verification_pending', 'payment_review')) AS review_orders,
+      (SELECT count(*)::int FROM course_requests WHERE status NOT IN ('available', 'declined')) AS open_requests,
+      (SELECT count(*)::int FROM support_tickets WHERE status NOT IN ('resolved', 'closed')) AS open_tickets,
+      (SELECT count(*)::int FROM course_reviews WHERE status = 'pending') AS pending_reviews`),
+    db.select({ courseSlug: courseWaitlist.courseSlug, total: count() }).from(courseWaitlist).where(eq(courseWaitlist.status, "active")).groupBy(courseWaitlist.courseSlug),
+    db.select({ total: count() }).from(aiApiKeys).where(eq(aiApiKeys.status, "active")),
   ]);
   const managedInstitutionMap = new Map(managedInstitutionRows.map((row) => [row.slug, row]));
   const managedCourseMap = new Map(managedCourseRows.map((row) => [row.slug, row]));
-  const paid = orderRows.filter((row) => row.status === "paid");
-  const revenue = paid.reduce((sum, row) => sum + row.total, 0);
+  const totalRow = (totals.rows[0] || {}) as Record<string, unknown>;
+  const waitlistByCourse = new Map(waitlistRows.map((row) => [row.courseSlug, Number(row.total)]));
+  const environmentAiKeys = [process.env.GEMINI_API_KEYS, process.env.GEMINI_API_KEY].filter(Boolean).join(",").split(/[\r\n,;]+/).map(validGeminiApiKey).filter(Boolean).length;
   return Response.json({
     ok: true,
     generatedAt: new Date().toISOString(),
     metrics: {
-      students: studentRows.filter((row) => row.role === "student").length,
-      activeStudents: studentRows.filter((row) => row.role === "student" && row.status === "active").length,
+      students: Number(totalRow.students || 0),
+      activeStudents: Number(totalRow.active_students || 0),
       institutions: institutionRows.length,
       publishedCourses: courses.filter((row) => row.lessons > 0).length,
-      orders: orderRows.length,
-      paidOrders: paid.length,
-      revenue,
-      openRequests: requestRows.filter((row) => !["available", "declined"].includes(row.status)).length,
-      openTickets: ticketRows.filter((row) => !["resolved", "closed"].includes(row.status)).length,
-      pendingReviews: reviewRows.filter((row) => row.status === "pending").length,
+      orders: Number(totalRow.orders || 0),
+      paidOrders: Number(totalRow.paid_orders || 0),
+      revenue: Number(totalRow.revenue || 0),
+      reviewOrders: Number(totalRow.review_orders || 0),
+      openRequests: Number(totalRow.open_requests || 0),
+      openTickets: Number(totalRow.open_tickets || 0),
+      pendingReviews: Number(totalRow.pending_reviews || 0),
     },
     institutions: institutionRows.map((row) => ({ ...row, status: managedInstitutionMap.get(row.slug)?.status || "published" })),
-    courses: courses.map((row) => ({ ...row, status: managedCourseMap.get(row.slug)?.status || "published", specialtySlug: managedCourseMap.get(row.slug)?.specialtySlug || "", coverTheme: managedCourseMap.get(row.slug)?.coverTheme || "blue-violet" })),
+    courses: courses.map((row) => ({ ...row, status: managedCourseMap.get(row.slug)?.status || "published", specialtySlug: managedCourseMap.get(row.slug)?.specialtySlug || "", coverTheme: managedCourseMap.get(row.slug)?.coverTheme || "blue-violet", waitlistCount: waitlistByCourse.get(row.slug) || 0 })),
     specialties: specialtyRows,
     specialtyLinks: links,
     units: unitRows,
@@ -184,9 +199,11 @@ export async function GET(request: Request) {
     audit: audits,
     services: {
       assistant: true,
+      merasAi: environmentAiKeys > 0 || Number(activeAiKeys[0]?.total || 0) > 0,
       payments: Boolean(process.env.TAP_SECRET_KEY?.trim()),
       email: Boolean(process.env.RESEND_API_KEY?.trim()),
       videoSigning: Boolean(process.env.VIDEO_SIGNING_SECRET?.trim() && process.env.VIDEO_SIGNING_SECRET!.trim().length >= 24),
+      mfaConfigured: adminMfaConfigured(),
     },
   }, { headers: { "cache-control": "no-store" } });
 }

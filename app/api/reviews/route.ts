@@ -1,4 +1,4 @@
-import { and, desc, eq } from "drizzle-orm";
+import { and, inArray, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, courseReviews, lessonProgress, users } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
@@ -17,7 +17,8 @@ export async function GET(request: Request) {
   const rows = courseSlug
     ? await db.select().from(courseReviews).where(and(eq(courseReviews.courseSlug, courseSlug), eq(courseReviews.status, "published"))).orderBy(desc(courseReviews.createdAt)).limit(60)
     : await db.select().from(courseReviews).where(eq(courseReviews.status, "published")).orderBy(desc(courseReviews.createdAt)).limit(100);
-  const names = rows.length ? await db.select({ email: users.email, fullName: users.fullName, universitySlug: users.universitySlug, specialty: users.specialty }).from(users) : [];
+  const reviewerEmails = [...new Set(rows.map((row) => row.userEmail))];
+  const names = reviewerEmails.length ? await db.select({ email: users.email, fullName: users.fullName, universitySlug: users.universitySlug, specialty: users.specialty }).from(users).where(inArray(users.email, reviewerEmails)) : [];
   const byEmail = new Map(names.map((row) => [row.email, row]));
   return Response.json({ ok: true, reviews: rows.map((row) => ({ id: row.id, courseSlug: row.courseSlug, rating: row.rating, body: row.body, createdAt: row.createdAt, author: displayName(byEmail.get(row.userEmail)?.fullName || "طالب مراس"), specialty: byEmail.get(row.userEmail)?.specialty || "طالب جامعي", verifiedPurchase: true })) }, { headers: { "cache-control": "public, max-age=120, stale-while-revalidate=600" } });
 }

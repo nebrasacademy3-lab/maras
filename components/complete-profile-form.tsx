@@ -19,6 +19,11 @@ export function CompleteProfileForm({ initial, institutions }: { initial: { full
     const response = await fetch("/api/profile", { method: "PATCH", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(form) });
     const data = await response.json() as { error?: string; next?: string };
     if (!response.ok) { setError(data.error || "تعذر حفظ البيانات"); setLoading(false); return; }
+    const returnTo = new URLSearchParams(window.location.search).get("return_to") || "";
+    if (returnTo.startsWith("/") && !returnTo.startsWith("//")) {
+      if (data.next && data.next !== "/onboarding") { window.location.assign(returnTo); return; }
+      sessionStorage.setItem("meras_return_to", returnTo);
+    }
     window.location.assign(data.next || "/onboarding");
   };
 

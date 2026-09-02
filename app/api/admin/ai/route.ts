@@ -1,6 +1,6 @@
-import { asc, count, desc, eq, gte } from "drizzle-orm";
+import { asc, count, desc, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiApiKeys, aiEntitlements, aiServiceSettings, aiUsageEvents, auditLogs, platformSettings, users } from "@/db/schema";
+import { aiApiKeys, aiEntitlements, aiServiceSettings, aiSubscriptionOrders, aiUsageEvents, auditLogs, platformSettings, users } from "@/db/schema";
 import { cleanText, isUniqueConstraintError, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest, validEmail } from "@/lib/auth";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
@@ -20,7 +20,7 @@ async function adminGuard(request: Request, mutation: boolean) {
   if (!await checkRateLimit(mutation ? "admin-ai-write" : "admin-ai-read", `user:${user.id}`, mutation ? 50 : 120, 60)) return { user: null, response: jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429) };
   if (mutation) {
     try { await requireAdminStepUp(request, user); }
-    catch (error) { return { user: null, response: error instanceof AdminMfaError ? jsonError(error.message, error.status) : jsonError("مطلوب تحقق إداري إضافي", 403) }; }
+    catch (error) { return { user: null, response: error instanceof AdminMfaError ? jsonError(error.message, error.status, error.code) : jsonError("مطلوب تحقق إداري إضافي", 403) }; }
   }
   return { user, response: null };
 }
@@ -44,12 +44,14 @@ export async function GET(request: Request) {
     const guarded = await adminGuard(request, false);
     if (guarded.response) return guarded.response;
     const since = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
-    const [settings, price, keys, entitlements, usage] = await Promise.all([
+    const [settings, price, keys, entitlements, usage, subscriptionOrders, subscriptionTotals] = await Promise.all([
       getAiServiceSettings(),
       getAiMonthlyPrice(),
       getDb().select().from(aiApiKeys).orderBy(asc(aiApiKeys.priority), asc(aiApiKeys.label)),
       getDb().select({ entitlement: aiEntitlements, email: users.email, fullName: users.fullName }).from(aiEntitlements).innerJoin(users, eq(aiEntitlements.userId, users.id)).orderBy(desc(aiEntitlements.createdAt)).limit(300),
       getDb().select({ service: aiUsageEvents.service, status: aiUsageEvents.status, total: count() }).from(aiUsageEvents).where(gte(aiUsageEvents.createdAt, since)).groupBy(aiUsageEvents.service, aiUsageEvents.status),
+      getDb().select({ id: aiSubscriptionOrders.id, orderNumber: aiSubscriptionOrders.orderNumber, userId: aiSubscriptionOrders.userId, customerEmail: aiSubscriptionOrders.customerEmail, customerName: aiSubscriptionOrders.customerName, amount: aiSubscriptionOrders.amount, currency: aiSubscriptionOrders.currency, status: aiSubscriptionOrders.status, paidAt: aiSubscriptionOrders.paidAt, entitlementExpiresAt: aiSubscriptionOrders.entitlementExpiresAt, createdAt: aiSubscriptionOrders.createdAt }).from(aiSubscriptionOrders).orderBy(desc(aiSubscriptionOrders.createdAt)).limit(200),
+      getDb().select({ status: aiSubscriptionOrders.status, total: count(), amount: sql<number>`coalesce(sum(${aiSubscriptionOrders.amount}), 0)::float` }).from(aiSubscriptionOrders).groupBy(aiSubscriptionOrders.status),
     ]);
     const environmentKeyCount = [process.env.GEMINI_API_KEYS, process.env.GEMINI_API_KEY].filter(Boolean).join(",").split(/[\r\n,;]+/).map(validGeminiApiKey).filter(Boolean).length;
     return Response.json({
@@ -61,6 +63,8 @@ export async function GET(request: Request) {
       environmentKeyCount,
       entitlements: entitlements.map((row) => ({ ...row.entitlement, email: row.email, fullName: row.fullName })),
       usage: usage.map((row) => ({ service: row.service, status: row.status, total: Number(row.total) })),
+      subscriptionOrders,
+      subscriptionSummary: subscriptionTotals.map((row) => ({ status: row.status, total: Number(row.total), amount: Number(row.amount || 0) })),
     }, { headers: { "cache-control": "private, no-store", "x-content-type-options": "nosniff" } });
   });
 }

@@ -1,12 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Captions, Check, Gauge, LoaderCircle, Maximize, Minimize, Pause, Play, RefreshCw, RotateCcw, RotateCw, Settings, ShieldCheck, Volume1, Volume2, VolumeX } from "lucide-react";
+import { Check, Gauge, LoaderCircle, Maximize, Minimize, Pause, Play, RefreshCw, RotateCcw, RotateCw, Settings, ShieldCheck, Volume1, Volume2, VolumeX } from "lucide-react";
 import { BrandLockup } from "./brand-logo";
 
 export type VideoSeekRequest = { seconds: number; nonce: number };
 type SessionQuality = { label: string; width: number; height: number; bitrateKbps: number };
-type SessionResponse = { streamUrl?: string; sourceUrl?: string; hlsUrl?: string; thumbnailUrl?: string; adaptive?: boolean; qualities?: SessionQuality[]; error?: string };
+type SessionProcessing = { status: string; progress: number | null; message: string };
+type SessionResponse = { streamUrl?: string; sourceUrl?: string; hlsUrl?: string; thumbnailUrl?: string; adaptive?: boolean; qualities?: SessionQuality[]; expiresAt?: string; processing?: SessionProcessing; error?: string };
 type Props = {
   title: string;
   studentLabel?: string;
@@ -37,7 +38,6 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   const [muted, setMuted] = useState(false);
   const [rate, setRate] = useState(1);
   const [quality, setQuality] = useState(source ? "الأصلية" : "تلقائي");
-  const [captions, setCaptions] = useState(false);
   const [settings, setSettings] = useState(false);
   const [watermark, setWatermark] = useState(0);
   const [hasError, setHasError] = useState(false);
@@ -49,6 +49,8 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   const [sessionLoading, setSessionLoading] = useState(Boolean(!source && courseSlug && lessonId));
   const [sessionError, setSessionError] = useState("");
   const [sessionAttempt, setSessionAttempt] = useState(0);
+  const [processing, setProcessing] = useState<SessionProcessing | null>(null);
+  const [sessionExpiresAt, setSessionExpiresAt] = useState("");
   const [fallbackFullscreen, setFallbackFullscreen] = useState(false);
   const [nativeFullscreen, setNativeFullscreen] = useState(false);
   const [rotated, setRotated] = useState(false);
@@ -103,7 +105,9 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
           signal: controller.signal,
         });
         const data = await response.json() as SessionResponse;
-        if (!response.ok || !data.streamUrl) throw new Error(data.error || "تعذر إنشاء جلسة المشاهدة");
+        setProcessing(data.processing || null);
+        setSessionExpiresAt(data.expiresAt || "");
+        if (!response.ok || !data.streamUrl) throw new Error(data.error || (data.processing && ["queued", "processing"].includes(data.processing.status) ? data.processing.message : "تعذر إنشاء جلسة المشاهدة"));
         const supportsNativeHls = Boolean(data.hlsUrl && videoRef.current?.canPlayType("application/vnd.apple.mpegurl"));
         const supportsManagedHls = Boolean(data.hlsUrl && typeof window.MediaSource !== "undefined");
         const adaptivePlayback = supportsNativeHls || supportsManagedHls;
@@ -128,6 +132,18 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
     void loadSession();
     return () => controller.abort();
   }, [courseSlug, lessonId, sessionAttempt, source]);
+
+  useEffect(() => {
+    if (!sessionExpiresAt || source) return;
+    const remaining = Date.parse(sessionExpiresAt) - Date.now() - 2 * 60_000;
+    if (!Number.isFinite(remaining)) return;
+    const timer = window.setTimeout(() => {
+      const video = videoRef.current;
+      pendingPlaybackRef.current = video ? { seconds: video.currentTime, playing: !video.paused } : null;
+      setSessionAttempt((value) => value + 1);
+    }, Math.max(30_000, remaining));
+    return () => window.clearTimeout(timer);
+  }, [sessionExpiresAt, source]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -217,9 +233,9 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
       <div className="secure-player-bg" />
       <div className={`video-watermark watermark-${watermark}`}>{preview ? "درس تجريبي مجاني" : studentLabel}</div>
       <div className="video-brand"><BrandLockup compact /></div>
-      {captions && playing && <div className="video-caption">لا يوجد ملف ترجمة مرفوع لهذا الدرس بعد.</div>}
       {sessionLoading && <div className="video-error"><LoaderCircle size={30} className="spin" /><strong>جارٍ تجهيز جلسة المشاهدة المحمية</strong><span>الرابط مؤقت ومرتبط بحسابك الحالي.</span></div>}
-      {(hasError || sessionError) && !sessionLoading && <div className="video-error"><ShieldCheck size={30} /><strong>{sessionError || "تعذّر تحميل الفيديو"}</strong><span>{sessionError || "تحقق من اتصالك ثم أعد المحاولة. يدعم المشغل طلبات النطاق اللازمة لمتصفحات الجوال."}</span><button type="button" className="video-retry" onClick={retry}><RefreshCw size={15} /> إعادة المحاولة</button></div>}
+      {(hasError || sessionError) && !sessionLoading && <div className="video-error">{processing && ["queued", "processing"].includes(processing.status) ? <LoaderCircle size={30} className="spin" /> : <ShieldCheck size={30} />}<strong>{sessionError || "تعذّر تحميل الفيديو"}</strong><span>{processing && ["queued", "processing"].includes(processing.status) ? `${processing.message}${processing.progress ? ` · ${Math.max(1, Math.min(100, processing.progress))}%` : ""}` : sessionError || "تحقق من اتصالك ثم أعد المحاولة. يدعم المشغل طلبات النطاق اللازمة لمتصفحات الجوال."}</span><button type="button" className="video-retry" onClick={retry}><RefreshCw size={15} /> إعادة المحاولة</button></div>}
+      {!hasError && !sessionError && !sessionLoading && processing && ["queued", "processing", "retrying"].includes(processing.status) && <div className="video-processing-note" role="status"><LoaderCircle size={14} className="spin" /> {processing.message}{processing.status === "processing" && processing.progress ? ` · ${Math.max(1, Math.min(100, processing.progress))}%` : ""}</div>}
       {privacyCovered && <div className="video-privacy-cover"><ShieldCheck size={36} /><strong>المحتوى محمي داخل مراس</strong></div>}
       {!playing && !hasError && !sessionError && !sessionLoading && streamSource && <button className="video-center-play" onClick={togglePlay} aria-label="تشغيل"><Play size={29} fill="currentColor" /></button>}
       <div className="video-title-overlay"><strong>{title}</strong><span>{preview ? "معاينة مجانية" : "جلسة مشاهدة محمية"}</span></div>
@@ -235,7 +251,7 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
             <span className="video-time">{formatTime(time)} / {formatTime(duration)}</span>
           </div>
           <div className="video-controls-side">
-            <button className={captions ? "active" : ""} onClick={() => setCaptions(!captions)} aria-label="الترجمة"><Captions size={19} /></button>
+
             <button className="control-label" onClick={() => setSettings(!settings)}><Gauge size={17} /><span>{rate}×</span></button>
             <button className="control-label" onClick={() => setSettings(!settings)}><span>{quality}</span></button>
             <button onClick={() => setSettings(!settings)} aria-label="الإعدادات"><Settings size={19} /></button>

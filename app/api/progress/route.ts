@@ -37,23 +37,28 @@ export async function POST(request: Request) {
     if (!access) return jsonError("لا توجد صلاحية نشطة لهذه المادة", 403);
   }
   const completionThreshold = lessonRow.durationSeconds > 0 ? Math.max(5, Math.floor(lessonRow.durationSeconds * .85)) : 30;
-  const completed = payload.completed === true && watchedSeconds >= completionThreshold;
+  // "manual" marks an explicit student decision (the completion toggle); player heartbeats only
+  // complete a lesson once the watched time crosses the threshold and never un-complete it.
+  const manual = payload.manual === true;
+  const explicitlyCompleted = payload.completed === true && (manual || watchedSeconds >= completionThreshold);
+  const explicitlyUncompleted = manual && payload.completed === false;
   const now = new Date().toISOString();
   const [existingLesson, existingCourse] = await Promise.all([
     db.select({ completed: lessonProgress.completed }).from(lessonProgress).where(and(eq(lessonProgress.userEmail, user.email), eq(lessonProgress.lessonId, lessonId))).limit(1),
     db.select({ id: lessonProgress.id }).from(lessonProgress).where(and(eq(lessonProgress.userEmail, user.email), eq(lessonProgress.courseSlug, courseSlug))).limit(1),
   ]);
-  await db.transaction(async (tx) => {
-    await tx.insert(lessonProgress).values({ userEmail: user.email, courseSlug, lessonId, watchedSeconds, completed, updatedAt: now }).onConflictDoUpdate({
+  const saved = await db.transaction(async (tx) => {
+    const [row] = await tx.insert(lessonProgress).values({ userEmail: user.email, courseSlug, lessonId, watchedSeconds, completed: explicitlyCompleted, updatedAt: now }).onConflictDoUpdate({
       target: [lessonProgress.userEmail, lessonProgress.lessonId],
       set: {
         watchedSeconds: sql`GREATEST(${lessonProgress.watchedSeconds}, ${watchedSeconds})`,
-        completed: sql`${lessonProgress.completed} OR ${completed}`,
+        completed: explicitlyUncompleted ? sql`false` : sql`${lessonProgress.completed} OR ${explicitlyCompleted}`,
         updatedAt: now,
       },
-    });
+    }).returning({ lessonId: lessonProgress.lessonId, courseSlug: lessonProgress.courseSlug, watchedSeconds: lessonProgress.watchedSeconds, completed: lessonProgress.completed, updatedAt: lessonProgress.updatedAt });
     if (!existingCourse.length && watchedSeconds > 0) await tx.insert(analyticsEvents).values({ event: "first_lesson_start", userEmail: user.email, courseSlug, metadataJson: JSON.stringify({ lessonId }), createdAt: now });
-    if (completed && !existingLesson[0]?.completed) await tx.insert(analyticsEvents).values({ event: "lesson_complete", userEmail: user.email, courseSlug, metadataJson: JSON.stringify({ lessonId, watchedSeconds }), createdAt: now });
+    if (explicitlyCompleted && !existingLesson[0]?.completed) await tx.insert(analyticsEvents).values({ event: "lesson_complete", userEmail: user.email, courseSlug, metadataJson: JSON.stringify({ lessonId, watchedSeconds, manual }), createdAt: now });
+    return row;
   });
-  return Response.json({ ok: true, savedAt: now });
+  return Response.json({ ok: true, savedAt: now, progress: saved });
 }

@@ -7,7 +7,7 @@ import {RequestCourseForm} from "@/components/request-course-form";
 import {getInstitutionCatalog} from "@/lib/catalog-store";
 import {requireUser} from "@/lib/server-auth";
 
-export const metadata:Metadata={title:"اطلب توفير مادة",description:"اطلب من مراس العلم توفير شرح مادة جامعية وارفع السلايدات أو توصيف المقرر."};
+export const metadata:Metadata={title:"اطلب توفير مادة",description:"اطلب من مراس العلم توفير شرح مادة جامعية وارفع السلايدات أو توصيف المقرر.",robots:{index:false,follow:false}};
 export const dynamic="force-dynamic";
 
 export default async function RequestCoursePage(){

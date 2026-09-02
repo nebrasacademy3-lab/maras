@@ -1,10 +1,12 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseAccess, courseAccessEvents, invoices, orderItems, orders, paymentEvents } from "@/db/schema";
+import { aiSubscriptionOrders, auditLogs, courseAccess, courseAccessEvents, creditNotes, invoices, notificationsDb, orderItems, orders, paymentEvents, refundRequests } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
-import { checkRateLimit } from "@/lib/auth";
+import { checkRateLimit, clientIp, sameOriginRequest } from "@/lib/auth";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
+import { fulfillPaidOrderTx } from "@/lib/order-fulfillment";
+import { sendPushNotification } from "@/lib/push";
 import {
   CAPTURED_ORDER_STATUSES,
   csvCell,
@@ -81,8 +83,8 @@ function sarDay(value: string) {
 }
 
 function csvResponse(rows: Array<Record<string, unknown>>) {
-  const headings = ["رقم الطلب", "التاريخ", "الطالب", "البريد", "الحالة", "وسيلة الدفع", "الجامعة", "المواد", "قبل الخصم", "الخصم", "المحصل", "المسترد", "الصافي", "الضريبة", "العملة", "رقم الفاتورة"];
-  const keys = ["orderNumber", "date", "customerName", "customerEmail", "statusLabel", "paymentLabel", "institutions", "courses", "subtotal", "discount", "gross", "refund", "net", "tax", "currency", "invoiceNumber"];
+  const headings = ["النوع", "رقم الطلب", "التاريخ", "الطالب", "البريد", "الحالة", "وسيلة الدفع", "الجامعة", "المواد", "قبل الخصم", "الخصم", "المحصل", "المسترد", "الصافي", "الضريبة", "العملة", "رقم الفاتورة"];
+  const keys = ["typeLabel", "orderNumber", "date", "customerName", "customerEmail", "statusLabel", "paymentLabel", "institutions", "courses", "subtotal", "discount", "gross", "refund", "net", "tax", "currency", "invoiceNumber"];
   const lines = [headings.map(csvCell).join(","), ...rows.map((row) => keys.map((key) => csvCell(row[key])).join(","))];
   const stamp = new Date().toISOString().slice(0, 10);
   return new Response(`\uFEFF${lines.join("\r\n")}`, {
@@ -121,12 +123,14 @@ export async function GET(request: Request) {
   if (orderNumber) {
     const [order] = await db.select().from(orders).where(eq(orders.orderNumber, orderNumber)).limit(1);
     if (!order) return jsonError("الطلب غير موجود", 404);
-    const [items, events, invoiceRows, accessRows, accessEvents] = await Promise.all([
+    const [items, events, invoiceRows, accessRows, accessEvents, refundRows, creditNoteRows] = await Promise.all([
       db.select().from(orderItems).where(eq(orderItems.orderNumber, orderNumber)).orderBy(asc(orderItems.id)),
       db.select().from(paymentEvents).where(eq(paymentEvents.orderNumber, orderNumber)).orderBy(desc(paymentEvents.receivedAt)),
       db.select().from(invoices).where(eq(invoices.orderNumber, orderNumber)).limit(1),
       db.select().from(courseAccess).where(eq(courseAccess.orderNumber, orderNumber)).orderBy(asc(courseAccess.courseSlug)),
       db.select().from(courseAccessEvents).where(eq(courseAccessEvents.orderNumber, orderNumber)).orderBy(desc(courseAccessEvents.createdAt)),
+      db.select().from(refundRequests).where(eq(refundRequests.orderNumber, orderNumber)).orderBy(desc(refundRequests.createdAt)),
+      db.select().from(creditNotes).where(eq(creditNotes.orderNumber, orderNumber)).orderBy(desc(creditNotes.issuedAt)),
     ]);
     const resolvedItems = items.length ? items : [{ id: 0, orderNumber, courseSlug: order.courseSlug, unitPrice: order.subtotal, discount: order.discount, total: order.total, accessDurationDays: 90, createdAt: order.createdAt }];
     const financeEvents: FinancePaymentEvent[] = events.map((event) => ({ providerEventId: event.providerEventId, status: event.status, payload: event.payload }));
@@ -151,15 +155,19 @@ export async function GET(request: Request) {
           events: accessEvents.filter((event) => event.courseSlug === access.courseSlug).map((event) => ({ id: event.id, action: event.action, actorEmail: event.actorEmail, reason: event.reason, createdAt: event.createdAt })),
         })),
         paymentEvents: events.map((event) => ({ id: event.id, provider: event.provider, providerEventId: event.providerEventId, chargeId: event.chargeId, status: event.status, receivedAt: event.receivedAt })),
+        refundRequests: refundRows.map((row) => ({ id: row.id, requestNumber: row.requestNumber, amount: fromMinorUnits(row.amountMinor), currency: row.currency, status: row.status, reason: row.reason, requestedByEmail: row.requestedByEmail, createdAt: row.createdAt, completedAt: row.completedAt })),
+        creditNotes: creditNoteRows.map((row) => ({ id: row.id, creditNoteNumber: row.creditNoteNumber, invoiceNumber: row.invoiceNumber, amount: fromMinorUnits(row.amountMinor), taxAmount: fromMinorUnits(row.taxAmountMinor), currency: row.currency, reason: row.reason, refundRequestNumber: row.refundRequestNumber, issuedAt: row.issuedAt })),
+        reviewable: ["payment_review", "verification_pending"].includes(order.status),
       },
     }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   }
 
-  const [orderRows, itemRows, eventRows, invoiceRows] = await Promise.all([
+  const [orderRows, itemRows, eventRows, invoiceRows, aiOrderRows] = await Promise.all([
     db.select().from(orders).orderBy(desc(orders.createdAt)),
     db.select().from(orderItems).orderBy(asc(orderItems.id)),
     db.select().from(paymentEvents).orderBy(asc(paymentEvents.receivedAt)),
     db.select().from(invoices),
+    db.select().from(aiSubscriptionOrders).orderBy(desc(aiSubscriptionOrders.createdAt)).limit(2_000),
   ]);
   const itemsByOrder = groupByOrder(itemRows);
   const eventsByOrder = groupByOrder(eventRows);
@@ -243,9 +251,58 @@ export async function GET(request: Request) {
       lastPaymentEvent: events.at(-1) ? { status: events.at(-1)!.status, receivedAt: events.at(-1)!.receivedAt } : null,
     };
   });
-  if (url.searchParams.get("format") === "csv") return csvResponse(summaries);
+  const aiFiltered = aiOrderRows.filter((order) => {
+    if (institution || course) return false;
+    const timestamp = Date.parse(order.paidAt || order.createdAt);
+    if (from != null && (!Number.isFinite(timestamp) || timestamp < from)) return false;
+    if (to != null && (!Number.isFinite(timestamp) || timestamp > to)) return false;
+    if (paymentMethod && paymentMethod !== "tap") return false;
+    if (status && order.status !== status) return false;
+    if (search && ![order.orderNumber, order.customerName, order.customerEmail, order.customerPhone || "", order.tapChargeId || ""].some((value) => value.toLocaleLowerCase("ar").includes(search))) return false;
+    return true;
+  });
+  const aiSummaries = aiFiltered.map((order) => {
+    const captured = ["paid", "refunded", "partially_refunded"].includes(order.status);
+    const grossMinor = captured ? toMinorUnits(order.amount) : 0;
+    const refundMinor = order.status === "refunded" ? grossMinor : 0;
+    return {
+      type: "ai_subscription" as const,
+      typeLabel: "اشتراك مراس AI",
+      orderNumber: order.orderNumber,
+      date: order.paidAt || order.createdAt,
+      createdAt: order.createdAt,
+      customerName: order.customerName,
+      customerEmail: order.customerEmail,
+      status: order.status,
+      statusLabel: statusArabic(order.status),
+      paymentMethod: "tap",
+      paymentLabel: paymentArabic("tap"),
+      subtotal: order.amount,
+      discount: 0,
+      gross: fromMinorUnits(grossMinor),
+      refund: fromMinorUnits(refundMinor),
+      refundComplete: true,
+      net: fromMinorUnits(Math.max(0, grossMinor - refundMinor)),
+      tax: captured ? Math.round((order.amount * 15 / 115) * 100) / 100 : 0,
+      currency: order.currency,
+      invoiceNumber: "",
+      institutions: "مراس AI",
+      courses: `اشتراك شهري${order.entitlementExpiresAt ? ` حتى ${sarDay(order.entitlementExpiresAt)}` : ""}`,
+      itemCount: 1,
+      entitlementExpiresAt: order.entitlementExpiresAt,
+    };
+  });
+  const aiPaid = aiSummaries.filter((summary) => summary.gross > 0);
+  const aiSubscriptions = {
+    orders: aiSummaries.length,
+    paidOrders: aiPaid.length,
+    gross: fromMinorUnits(aiPaid.reduce((sum, summary) => sum + toMinorUnits(summary.gross), 0)),
+    net: fromMinorUnits(aiPaid.reduce((sum, summary) => sum + toMinorUnits(summary.net), 0)),
+    rows: aiSummaries.slice(0, 300),
+  };
+  if (url.searchParams.get("format") === "csv") return csvResponse([...summaries.map((summary) => ({ ...summary, typeLabel: "مادة" })), ...aiSummaries]);
 
-  const metrics = financeMetrics(filteredOrders, new Map([...eventsByOrder].map(([key, events]) => [key, events])), taxByOrder);
+  const metrics = { ...financeMetrics(filteredOrders, new Map([...eventsByOrder].map(([key, events]) => [key, events])), taxByOrder), aiGross: aiSubscriptions.gross, aiNet: aiSubscriptions.net, aiPaidOrders: aiSubscriptions.paidOrders };
   const paymentBreakdown = new Map<string, { method: string; label: string; orders: number; netMinor: number }>();
   const institutionBreakdown = new Map<string, { institution: string; netMinor: number; orders: Set<string> }>();
   const trend = new Map<string, { date: string; grossMinor: number; refundMinor: number; netMinor: number; orders: number }>();
@@ -305,5 +362,58 @@ export async function GET(request: Request) {
       trend: [...trend.values()].sort((a, b) => a.date.localeCompare(b.date)).map((day) => ({ date: day.date, gross: fromMinorUnits(day.grossMinor), refunds: fromMinorUnits(day.refundMinor), net: fromMinorUnits(day.netMinor), orders: day.orders })),
     },
     orders: summaries,
+    aiSubscriptions,
   }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+}
+
+export async function POST(request: Request) {
+  const authorization = await authorize(request);
+  if (!authorization?.user) return jsonError("غير مصرح", 403);
+  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  if (!await hasPermission(authorization.user, ADMIN_PERMISSIONS.FINANCE_MANAGE)) return jsonError("غير مصرح بتنفيذ العمليات المالية", 403);
+  if (!await checkRateLimit("admin-finance-write", authorization.identity, 30, 60)) return jsonError("طلبات مالية كثيرة. حاول بعد دقيقة.", 429);
+  try {
+    await requireAdminStepUp(request, authorization.user);
+  } catch (error) {
+    if (error instanceof AdminMfaError) return jsonError(error.message, error.status, error.code);
+    throw error;
+  }
+  let payload: Record<string, unknown>;
+  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الطلب غير صالحة"); }
+  const action = cleanText(payload.action, 40);
+  if (action !== "resolvePaymentReview") return jsonError("الإجراء غير مدعوم");
+  const orderNumber = cleanText(payload.orderNumber, 100);
+  if (!/^[A-Za-z0-9._:-]{3,100}$/.test(orderNumber)) return jsonError("رقم الطلب غير صالح");
+  const decision = cleanText(payload.decision, 20);
+  if (decision !== "approve") return jsonError("قرار المراجعة غير مدعوم؛ لطلب الاسترداد استخدم نموذج الاسترداد المحكوم.");
+  const reason = cleanText(payload.reason, 600);
+  if (reason.length < 4) return jsonError("اكتب سبب القرار بوضوح");
+  const user = authorization.user;
+  const now = new Date().toISOString();
+  const db = getDb();
+  let notice: { id: number; title: string; body: string; route: string } | null = null;
+  const result = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${orderNumber}))`);
+    const [current] = await tx.select().from(orders).where(eq(orders.orderNumber, orderNumber)).limit(1);
+    if (!current) return { error: "الطلب غير موجود", status: 404 } as const;
+    if (!["payment_review", "verification_pending"].includes(current.status)) return { error: `لا يمكن حسم طلب حالته «${statusArabic(current.status)}»`, status: 409 } as const;
+    const items = await tx.select({ courseSlug: orderItems.courseSlug, accessDurationDays: orderItems.accessDurationDays }).from(orderItems).where(eq(orderItems.orderNumber, current.orderNumber));
+    const purchaseItems = items.length ? items : [{ courseSlug: current.courseSlug, accessDurationDays: 90 }];
+    for (const item of [...purchaseItems].sort((left, right) => left.courseSlug.localeCompare(right.courseSlug))) {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`access:${current.customerEmail}:${item.courseSlug}`}))`);
+    }
+    const fulfilled = await fulfillPaidOrderTx(tx, current, purchaseItems, { chargeId: current.tapChargeId, actorEmail: user.email, now, extendDuplicates: true });
+    notice = fulfilled.notice;
+    await tx.insert(paymentEvents).values({ provider: "admin", providerEventId: `admin-review:${current.orderNumber}:${now}`, orderNumber: current.orderNumber, chargeId: current.tapChargeId, objectType: "order", eventType: "payment_review.approved", amountMinor: current.totalMinor ?? toMinorUnits(current.total), currency: current.currency, signatureVerified: true, processedAt: now, status: "review_approved", payload: JSON.stringify({ decision, reason, actor: user.email, previousStatus: current.status }), receivedAt: now });
+    await tx.insert(auditLogs).values({ actorEmail: user.email, action: "resolve", entityType: "order", entityId: current.orderNumber, beforeJson: JSON.stringify({ status: current.status }), afterJson: JSON.stringify({ status: "paid", decision, reason, newlyPaid: fulfilled.newlyPaid }), ipAddress: clientIp(request), createdAt: now });
+    return { ok: true as const, previousStatus: current.status, customerEmail: current.customerEmail };
+  });
+  if ("error" in result) return jsonError(result.error || "تعذر حسم الطلب", result.status || 409);
+  const queued = notice as { id: number; title: string; body: string; route: string } | null;
+  if (queued) {
+    const delivery = await sendPushNotification({ userEmail: result.customerEmail }, queued.title, queued.body, { route: queued.route, notificationId: queued.id });
+    const pushStatus = delivery.accepted > 0 ? "accepted" : delivery.attempted === 0 ? "no_devices" : "failed";
+    await db.update(notificationsDb).set({ pushStatus, pushAttempts: sql`${notificationsDb.pushAttempts} + 1`, pushLastError: delivery.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: delivery.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, queued.id));
+  }
+  return Response.json({ ok: true, orderNumber, status: "paid", previousStatus: result.previousStatus }, { headers: { "cache-control": "no-store" } });
 }

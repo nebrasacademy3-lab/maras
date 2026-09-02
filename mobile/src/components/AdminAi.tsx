@@ -5,7 +5,7 @@ import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { AppButton, Card, EmptyState, Field, LoadingState, SearchBox, SectionTitle } from "@/src/components/ui";
-import { api, ApiError, jsonBody } from "@/src/lib/api";
+import { ADMIN_STEP_UP_MESSAGE, api, ApiError, isAdminStepUpError, jsonBody } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
 
 type ServiceName = "chat" | "summary" | "translation" | "quiz";
@@ -19,7 +19,7 @@ const serviceLabels: Record<ServiceName, string> = { chat: "المحادثة", s
 const serviceIcons: Record<ServiceName, React.ComponentProps<typeof Ionicons>["name"]> = { chat: "chatbubble-ellipses-outline", summary: "sparkles-outline", translation: "language-outline", quiz: "options-outline" };
 const sourceLabels: Record<string, string> = { admin: "منحة إدارة", paid: "اشتراك مدفوع", gift: "هدية", referral: "إحالة", course: "اشتراك مادة" };
 
-export function AdminAi() {
+export function AdminAi({ onStepUpRequired }: { onStepUpRequired?: (message: string) => void } = {}) {
   const { colors } = useTheme();
   const query = useQuery({ queryKey: ["admin-ai"], queryFn: () => api<AdminAiResponse>("/api/admin/ai") });
   const [section, setSection] = useState<"services" | "keys" | "plans" | "usage">("services");
@@ -38,7 +38,11 @@ export function AdminAi() {
   const mutate: Mutate = async (payload, success, key) => {
     setBusy(key); setFeedback("");
     try { await api("/api/admin/ai", { method: "POST", body: jsonBody(payload), timeoutMs: 60_000 }); setFeedback(success); await query.refetch(); return true; }
-    catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر حفظ التغيير"); return false; }
+    catch (reason) {
+      if (isAdminStepUpError(reason)) { setFeedback(ADMIN_STEP_UP_MESSAGE); onStepUpRequired?.(reason.message); return false; }
+      setFeedback(reason instanceof ApiError ? reason.message : "تعذر حفظ التغيير");
+      return false;
+    }
     finally { setBusy(""); }
   };
 

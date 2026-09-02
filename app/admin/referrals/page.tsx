@@ -10,7 +10,8 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function AdminReferralsPage() {
+export default async function AdminReferralsPage({ searchParams }: { searchParams: Promise<{ search?: string; tab?: string }> }) {
   const user = await requireRole("/admin/referrals", ["admin"]);
-  return <AdminReferralsCenter adminName={user.fullName} />;
+  const params = await searchParams;
+  return <AdminReferralsCenter adminName={user.fullName} initialSearch={typeof params.search === "string" ? params.search.slice(0, 120) : ""} initialTab={params.tab} />;
 }

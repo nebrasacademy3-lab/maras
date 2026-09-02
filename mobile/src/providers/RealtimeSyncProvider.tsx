@@ -7,16 +7,16 @@ import { useAuth } from "@/src/providers/AuthProvider";
 type SyncPayload = { ok: true; channels?: Record<string, string>; version?: string };
 
 const CHANNEL_KEYS: Record<string, readonly (readonly unknown[])[]> = {
-  catalog: [["catalog"], ["dashboard"]],
+  catalog: [["catalog"], ["dashboard"], ["learning-tracks"], ["admin-learning-tracks"]],
   settings: [["settings"], ["dashboard"]],
   announcements: [["announcements"]],
-  account: [["dashboard"], ["cart"], ["favorites"]],
-  commerce: [["dashboard"], ["cart"]],
+  account: [["dashboard"], ["cart"], ["favorites"], ["referrals"], ["ai-status"], ["ai-conversations"], ["learning-track-interests"]],
+  commerce: [["dashboard"], ["cart"], ["referrals"]],
   support: [["support"], ["dashboard"], ["notifications"]],
   notifications: [["notifications"], ["dashboard"]],
   requests: [["dashboard"], ["supervisor-requests"]],
   supervisor: [["supervisor-workspace"], ["supervisor-requests"]],
-  admin: [["admin-console"]],
+  admin: [["admin-console"], ["admin-referrals"], ["admin-ai"], ["admin-bundles"], ["admin-mfa-status"], ["admin-finance"], ["admin-operations"], ["admin-learning-tracks"], ["admin-student"]],
 };
 
 function invalidateChannels(queryClient: ReturnType<typeof useQueryClient>, changed: string[]) {

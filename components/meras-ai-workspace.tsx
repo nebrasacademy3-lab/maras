@@ -14,7 +14,7 @@ import type {
 import styles from "./meras-ai-workspace.module.css";
 
 type StatusPayload = {
-  entitlement: { tier: "free" | "subscriber"; source: string; monthlyPrice: number; currency: string };
+  entitlement: { tier: "free" | "subscriber"; source: string; monthlyPrice: number; currency: string; expiresAt?: string | null };
   services: Record<"chat" | "summary" | "translation" | "quiz", AiUsageStatus>;
   supportedFiles: { mimeType: string; extensions: readonly string[]; maxBytes: number }[];
   documentGuidance: { recommendedMimeType: string; message: string };
@@ -40,7 +40,7 @@ function sizeLabel(bytes: number) {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} م.ب` : `${Math.ceil(bytes / 1024)} ك.ب`;
 }
 
-export function MerasAiWorkspace({ studentName, initialConversationId, initialQuizId }: { studentName: string; initialConversationId: number | null; initialQuizId: number | null }) {
+export function MerasAiWorkspace({ studentName, initialConversationId, initialQuizId, initialService = null }: { studentName: string; initialConversationId: number | null; initialQuizId: number | null; initialService?: "summary" | "translation" | "quiz" | null }) {
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [conversations, setConversations] = useState<AiConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<number | null>(initialConversationId);
@@ -197,7 +197,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
       <div className={styles.workspace}>
         <header className={styles.topbar}>
           <div className={styles.title}><button className={styles.menu} onClick={()=>setSidebarOpen(true)} aria-label="فتح السجل"><Menu size={21}/></button><span><BrainCircuit size={23}/></span><div><h1>مرحبًا {studentName.split(" ")[0]}</h1><p>اسأل، لخّص، ترجم واختبر فهمك</p></div></div>
-          <div className={`${styles.plan} ${status?.entitlement.tier === "subscriber" ? styles.pro : ""}`}>{status?.entitlement.tier === "subscriber" ? <Crown size={16}/> : <Gauge size={16}/>}<span>{status?.entitlement.tier === "subscriber" ? "مراس AI بلس" : "الخطة المجانية"}</span></div>
+          <div className={`${styles.plan} ${status?.entitlement.tier === "subscriber" ? styles.pro : ""}`} title={status?.entitlement.tier === "subscriber" && status.entitlement.expiresAt ? `ينتهي في ${new Date(status.entitlement.expiresAt).toLocaleDateString("ar-SA")}` : undefined}>{status?.entitlement.tier === "subscriber" ? <Crown size={16}/> : <Gauge size={16}/>}<span>{status?.entitlement.tier === "subscriber" ? `مراس AI بلس${status.entitlement.expiresAt ? ` · حتى ${new Date(status.entitlement.expiresAt).toLocaleDateString("ar-SA")}` : ""}` : "الخطة المجانية"}</span>{status?.entitlement.tier === "subscriber" && status.entitlement.expiresAt && status.entitlement.source === "paid" ? <Link href="/meras-ai/subscribe" className={styles.renewLink}>تجديد</Link> : null}</div>
         </header>
 
         <div className={styles.usageStrip}>{usageCards.map((service) => <div key={service.service}><span>{serviceLabel[service.service]}</span><b>{service.remaining}</b><small>متبقٍ من {service.limit}</small><i style={{ "--usage": `${Math.min(100, service.limit ? service.used / service.limit * 100 : 100)}%` } as React.CSSProperties}/></div>)}{status?.entitlement.tier === "free" ? <Link href="/meras-ai/subscribe"><Crown size={15}/> ترقية بـ {status.entitlement.monthlyPrice} ر.س</Link> : null}</div>
@@ -222,13 +222,13 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
           </section>
 
           <aside className={styles.toolsPanel}>
-            <div className={styles.toolsHeading}><span><Sparkles size={17}/></span><div><b>أدوات الملفات</b><small>PDF أو صور أو نصوص</small></div></div>
+            <div className={styles.toolsHeading}><span><Sparkles size={17}/></span><div><b>أدوات الملفات</b><small>{initialService === "summary" ? "ارفع ملفك ثم اضغط «تلخيص»" : initialService === "translation" ? "ارفع الشرائح ثم اضغط «ترجمة»" : initialService === "quiz" ? "ارفع المحاضرة ثم اضغط «اختبار»" : "PDF أو صور أو نصوص"}</small></div></div>
             <input ref={fileInput} hidden type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,.md" onChange={(event)=>void upload(event.target.files?.[0])}/>
             <button className={styles.uploadButton} onClick={()=>fileInput.current?.click()} disabled={busy==="upload"}>{busy==="upload"?<LoaderCircle className={styles.spin} size={22}/>:<FileUp size={22}/>}<span><b>ارفع ملف المحاضرة</b><small>مع فحص أمني قبل المعالجة</small></span></button>
             <p className={styles.fileGuidance}><CircleAlert size={14}/>{status?.documentGuidance.message || "صدّر PowerPoint أو Word إلى PDF أولًا للحفاظ على الشرائح والمخططات والجداول بدقة."}</p>
             <label className={styles.languageField}>لغة الترجمة<input value={targetLanguage} maxLength={60} onChange={(event)=>setTargetLanguage(event.target.value)} /></label>
             <label className={styles.questionField}>عدد أسئلة الاختبار<div><input type="range" min="5" max="20" value={questionCount} onChange={(event)=>setQuestionCount(Number(event.target.value))}/><b>{questionCount}</b></div></label>
-            <div className={styles.fileList}>{files.map((file)=><article key={file.id}><header><span><Paperclip size={16}/></span><div><b>{file.originalName}</b><small>{sizeLabel(file.sizeBytes)} · {file.scanStatus === "clean" ? "آمن" : "قيد الفحص"}</small></div></header><div><button disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"summary")}><BookOpenCheck size={15}/> تلخيص</button><button disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"translation")}><Languages size={15}/> ترجمة</button><button disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"quiz")}><BrainCircuit size={15}/> اختبار</button></div>{busy.endsWith(`:${file.id}`)?<p><LoaderCircle className={styles.spin} size={15}/> يجري تحليل الملف بدقة…</p>:null}</article>)}</div>
+            <div className={styles.fileList}>{files.map((file)=><article key={file.id}><header><span><Paperclip size={16}/></span><div><b>{file.originalName}</b><small>{sizeLabel(file.sizeBytes)} · {file.scanStatus === "clean" ? "آمن" : "قيد الفحص"}</small></div></header><div><button className={initialService==="summary"?styles.suggestedAction:""} disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"summary")}><BookOpenCheck size={15}/> تلخيص</button><button className={initialService==="translation"?styles.suggestedAction:""} disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"translation")}><Languages size={15}/> ترجمة</button><button className={initialService==="quiz"?styles.suggestedAction:""} disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"quiz")}><BrainCircuit size={15}/> اختبار</button></div>{busy.endsWith(`:${file.id}`)?<p><LoaderCircle className={styles.spin} size={15}/> يجري تحليل الملف بدقة…</p>:null}</article>)}</div>
             {!files.length ? <div className={styles.fileEmpty}><FileText size={25}/><p>ارفع ملفًا لتظهر أدوات التلخيص والترجمة والاختبار.</p></div> : null}
           </aside>
         </div>

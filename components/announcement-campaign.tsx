@@ -10,6 +10,10 @@ function internalPath(url: string | null) { return url && url.startsWith("/") &&
 function externalUrl(url: string | null) { if (!url) return null; try { return new URL(url).protocol === "https:" ? url : null; } catch { return null; } }
 function dismissed(id: number) { try { return localStorage.getItem(`meras-announcement-${id}`) === "1"; } catch { return false; } }
 function dismiss(id: number) { try { localStorage.setItem(`meras-announcement-${id}`, "1"); } catch { /* private browsing may disable storage */ } }
+// The admin "تنبيه عام" setting is a single free-text notice; it gets a stable negative id derived
+// from its text so editing the text re-surfaces it while a dismissed version stays hidden.
+function settingNoticeId(text: string) { let hash = 0; for (const char of text) hash = (hash * 31 + char.charCodeAt(0)) | 0; return -(Math.abs(hash) % 1_000_000_007) - 1; }
+function settingAnnouncement(text: string): Announcement | null { const body = text.trim(); if (!body) return null; return { id: settingNoticeId(body), title: "تنبيه عام", body, actionUrl: null, actionLabel: null, presentation: "banner", template: "general", dismissible: true, createdAt: new Date(0).toISOString() }; }
 function modalSeen(id: number) { try { return sessionStorage.getItem(`meras-announcement-modal-${id}`) === "1"; } catch { return false; } }
 function rememberModal(id: number) { try { sessionStorage.setItem(`meras-announcement-modal-${id}`, "1"); } catch { /* private browsing may disable storage */ } }
 function TemplateIcon({ template }: { template?: string }) { if (template === "discount") return <BadgePercent size={20}/>; if (template === "new-course") return <BookOpen size={20}/>; if (template === "new-service" || template === "success") return <Sparkles size={20}/>; if (template === "urgent") return <TriangleAlert size={20}/>; return <Megaphone size={20}/>; }
@@ -18,9 +22,13 @@ export function AnnouncementCampaign() {
   const [modal, setModal] = useState<Announcement | null>(null); const [banner, setBanner] = useState<Announcement | null>(null);
   const modalRef = useRef<HTMLElement | null>(null);
   const bannerRef = useRef<HTMLElement | null>(null);
-  const load = useCallback((signal?: AbortSignal) => fetch("/api/public/announcements", { cache: "no-store", signal }).then(async (response) => response.ok ? await response.json() as { announcements?: Announcement[] } : null).then((payload) => {
+  const load = useCallback((signal?: AbortSignal) => Promise.all([
+    fetch("/api/public/announcements", { cache: "no-store", signal }).then(async (response) => response.ok ? await response.json() as { announcements?: Announcement[] } : null).catch(() => null),
+    fetch("/api/public/settings", { cache: "no-store", signal }).then(async (response) => response.ok ? await response.json() as { settings?: { announcement?: string } } : null).catch(() => null),
+  ]).then(([payload, settingsPayload]) => {
     if (signal?.aborted) return;
-    const active = (payload?.announcements || []).filter((item) => !dismissed(item.id));
+    const notice = settingAnnouncement(settingsPayload?.settings?.announcement || "");
+    const active = [...(payload?.announcements || []), ...(notice ? [notice] : [])].filter((item) => !dismissed(item.id));
     const modalCandidate = active.find((item) => (item.presentation === "modal" || item.presentation === "all") && !modalSeen(item.id) && (item.dismissible || Boolean(item.actionUrl))) || null;
     const bannerCandidate = active.find((item) => item.presentation === "banner" || (item.presentation === "all" && modalSeen(item.id)) || ((item.presentation === "modal" || item.presentation === "all") && !item.dismissible && !item.actionUrl)) || null;
     setModal(modalCandidate);

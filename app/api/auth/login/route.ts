@@ -30,7 +30,7 @@ export async function POST(request: Request) {
   await getDb().update(users).set({ lastLoginAt: new Date().toISOString(), updatedAt: new Date().toISOString() }).where(eq(users.id, user.id));
   let session;
   try { session = await createSession(user.id, request, payload.remember !== false); }
-  catch (error) { if (error instanceof DeviceLimitError) return jsonError(`وصل حسابك إلى الحد المسموح (${error.limit}) من الأجهزة. سجّل الخروج من جهاز سابق أو تواصل مع الإدارة.`, 409); throw error; }
+  catch (error) { if (error instanceof DeviceLimitError) return jsonError(`وصل حسابك إلى الحد المسموح (${error.limit}) من الأجهزة. سجّل الخروج من جهاز سابق من «حسابي ← الأمان والأجهزة»، أو استخدم «نسيت كلمة المرور» لإنهاء جميع الجلسات، أو تواصل مع الدعم.`, 409, "DEVICE_LIMIT_REACHED"); throw error; }
   const next = user.profileCompletedAt ? (user.onboardingCompletedAt ? "/dashboard" : "/onboarding") : "/complete-profile";
   return Response.json({ ok: true, next }, { headers: { "set-cookie": session.cookie, "cache-control": "no-store" } });
 }

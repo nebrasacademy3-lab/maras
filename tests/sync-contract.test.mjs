@@ -47,3 +47,21 @@ test("Expo sync provider is foreground-only and invalidates query channels", asy
   assert.match(source, /reason\.status === 401/);
   assert.match(source, /reason\.status === 429/);
 });
+
+test("admin centers subscribe to realtime sync and the newer tables emit the admin channel", async () => {
+  const [migration, journal, referrals, ai, bundles, tracks, finance, operations] = await Promise.all([
+    read("drizzle/0025_admin_center_sync.sql"),
+    read("drizzle/meta/_journal.json"),
+    read("components/admin-referrals-center.tsx"),
+    read("components/admin-ai-center.tsx"),
+    read("components/admin-bundles-center.tsx"),
+    read("components/admin-learning-tracks-center.tsx"),
+    read("components/finance-center.tsx"),
+    read("components/admin-operations-center.tsx"),
+  ]);
+  for (const table of ["referral_tiers", "referral_attributions", "user_rewards", "coupon_uses", "ai_api_keys", "ai_entitlements", "ai_subscription_orders", "course_bundles", "refund_requests", "payment_settlement_lines", "course_waitlist", "audit_logs"]) {
+    assert.match(migration, new RegExp(`CREATE TRIGGER sync_${table}_admin AFTER INSERT OR UPDATE OR DELETE OR TRUNCATE ON ${table} FOR EACH STATEMENT EXECUTE FUNCTION meras_sync_admin_statement\\(\\);`));
+  }
+  assert.match(journal, /"tag": "0025_admin_center_sync"/);
+  for (const component of [referrals, ai, bundles, tracks, finance, operations]) assert.match(component, /useRealtimeSync\(/);
+});

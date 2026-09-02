@@ -8,7 +8,7 @@ if (!/^https:\/\//i.test(configured)) {
 }
 export const API_URL = configured;
 const configuredStoreMode = String(Constants.expoConfig?.extra?.storeMode || "reader").trim().toLowerCase();
-export const STORE_MODE: "reader" | "direct" = configuredStoreMode === "direct" || configuredStoreMode === "external" ? "direct" : "reader";
+export const STORE_MODE: "reader" | "direct" = configuredStoreMode === "direct" ? "direct" : "reader";
 export const STORE_COMMERCE_ENABLED = STORE_MODE === "direct";
 
 // OkHttp (Android) only accepts ASCII values in HTTP headers. Device names may
@@ -30,6 +30,12 @@ export function setApiDeviceIdentity(value: { id: string; label: string; platfor
 export class ApiError extends Error {
   status: number;
   constructor(message: string, status: number) { super(message); this.status = status; }
+}
+
+export const ADMIN_STEP_UP_STATUS = 428;
+export const ADMIN_STEP_UP_MESSAGE = "هذا الإجراء يتطلب التحقق الإداري الإضافي (MFA). فعّل التحقق بخطوتين أو أدخل رمز التحقق من تبويب الأمان ثم أعد المحاولة.";
+export function isAdminStepUpError(error: unknown): error is ApiError {
+  return error instanceof ApiError && error.status === ADMIN_STEP_UP_STATUS;
 }
 
 export function absoluteUrl(path?: string | null) {
@@ -104,6 +110,7 @@ export function apiUpload<T>(path: string, body: FormData | Blob, options: ApiUp
       xhr.setRequestHeader("x-meras-platform", deviceIdentity.platform);
     }
     if (sessionToken) xhr.setRequestHeader("authorization", `Bearer ${sessionToken}`);
+    if (adminStepUpToken && new URL(absoluteUrl(path)).pathname.startsWith("/api/admin/")) xhr.setRequestHeader("x-meras-admin-stepup", adminStepUpToken);
     const abort = () => xhr.abort();
     if (options.signal?.aborted) abort();
     else options.signal?.addEventListener("abort", abort, { once: true });

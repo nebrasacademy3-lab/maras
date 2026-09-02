@@ -3,15 +3,18 @@
 /* eslint-disable @next/next/no-img-element -- authenticated support attachments cannot use the public Next image optimizer */
 
 import { useMemo, useRef, useState } from "react";
-import { Download, FileText, Image as ImageIcon, LoaderCircle, Mic, Paperclip, Reply, Send, Square, X } from "lucide-react";
+import { Download, FileText, Image as ImageIcon, LoaderCircle, Mic, Paperclip, Reply, Send, ShieldAlert, Square, Star, X } from "lucide-react";
 import { uploadWithProgress, uploadProgressLabel, type UploadProgress } from "@/lib/upload-client";
 
-export type SupportChatFile = { id:number; originalName:string; contentType:string; sizeBytes:number; createdAt?:string };
+export type SupportChatFile = { id:number; originalName:string; contentType:string; sizeBytes:number; createdAt?:string; scanStatus?:string|null };
 export type SupportChatReply = { id:number; authorEmail:string; authorRole:string; body:string; internal?:boolean; replyToId?:number|null; createdAt:string; files?:SupportChatFile[] };
-export type SupportChatTicket = { id:number; ticketNumber:string; userEmail:string|null; title:string; status:string; createdAt:string; updatedAt?:string; replies?:SupportChatReply[] };
+export type SupportChatTicket = { id:number; ticketNumber:string; userEmail:string|null; title:string; status:string; createdAt:string; updatedAt?:string; replies?:SupportChatReply[]; satisfactionRating?:number|null; satisfactionComment?:string|null };
 
 function isImage(file:SupportChatFile){return file.contentType.startsWith("image/");}
 function isAudio(file:SupportChatFile){return file.contentType.startsWith("audio/");}
+function fileReady(file:SupportChatFile){return !file.scanStatus||file.scanStatus==="clean";}
+function fileStateLabel(file:SupportChatFile){return file.scanStatus==="quarantined"?"المرفق محجوز لأسباب أمنية":"المرفق قيد الفحص الأمني";}
+function PendingFile({file}:{file:SupportChatFile}){return <span className="support-chat-file-pending" title={fileStateLabel(file)}><ShieldAlert size={14}/><span>{file.originalName}</span><small>{fileStateLabel(file)}</small></span>;}
 function fileUrl(file:SupportChatFile, inline=false){return `/api/support/files/${file.id}${inline?"?inline=1":""}`;}
 
 function downloadAll(files:SupportChatFile[]){
@@ -66,13 +69,15 @@ export function SupportChatThread({ticket,isManager=false,onReload,onReopen}:{ti
           <div className="support-chat-meta"><strong>{mine?"أنت":isManager?"الطالب":"فريق مراس"}</strong><time>{new Date(message.createdAt).toLocaleString("ar-SA")}</time></div>
           {quoted&&<div className="support-chat-quote"><b>{quoted.authorRole==="student"?"الطالب":"فريق مراس"}</b><span>{quoted.body||quoted.files?.[0]?.originalName||"مرفق"}</span></div>}
           {message.body&&<p>{message.body}</p>}
-          {message.files?.some(isImage)&&<div className="support-chat-images">{message.files.filter(isImage).map((file)=><a href={fileUrl(file,true)} target="_blank" rel="noreferrer" key={file.id}><img src={fileUrl(file,true)} alt={file.originalName}/><span><ImageIcon size={13}/>{file.originalName}</span></a>)}</div>}
-          {message.files?.filter(isAudio).map((file)=><div className="support-chat-audio" key={file.id}><audio controls preload="metadata" src={fileUrl(file,true)}/><a href={fileUrl(file)} download><Download size={14}/></a></div>)}
-          {message.files?.filter((file)=>!isImage(file)&&!isAudio(file)).length?<div className="support-chat-files">{message.files!.filter((file)=>!isImage(file)&&!isAudio(file)).map((file)=><a href={fileUrl(file)} download key={file.id}><FileText size={15}/><span>{file.originalName}</span><Download size={14}/></a>)}</div>:null}
-          <footer><button type="button" onClick={()=>setReplyTo(message)}><Reply size={13}/> رد</button>{message.files&&message.files.length>1?<button type="button" onClick={()=>downloadAll(message.files!)}><Download size={13}/> تحميل الكل</button>:null}</footer>
+          {message.files?.some((file)=>isImage(file)&&fileReady(file))&&<div className="support-chat-images">{message.files.filter((file)=>isImage(file)&&fileReady(file)).map((file)=><a href={fileUrl(file,true)} target="_blank" rel="noreferrer" key={file.id}><img src={fileUrl(file,true)} alt={file.originalName}/><span><ImageIcon size={13}/>{file.originalName}</span></a>)}</div>}
+          {message.files?.filter((file)=>isAudio(file)&&fileReady(file)).map((file)=><div className="support-chat-audio" key={file.id}><audio controls preload="metadata" src={fileUrl(file,true)}/><a href={fileUrl(file)} download><Download size={14}/></a></div>)}
+          {message.files?.filter((file)=>!isImage(file)&&!isAudio(file)&&fileReady(file)).length?<div className="support-chat-files">{message.files!.filter((file)=>!isImage(file)&&!isAudio(file)&&fileReady(file)).map((file)=><a href={fileUrl(file)} download key={file.id}><FileText size={15}/><span>{file.originalName}</span><Download size={14}/></a>)}</div>:null}
+          {message.files?.filter((file)=>!fileReady(file)).length?<div className="support-chat-files">{message.files!.filter((file)=>!fileReady(file)).map((file)=><PendingFile key={file.id} file={file}/>)}</div>:null}
+          <footer><button type="button" onClick={()=>setReplyTo(message)}><Reply size={13}/> رد</button>{message.files&&message.files.filter(fileReady).length>1?<button type="button" onClick={()=>downloadAll(message.files!.filter(fileReady))}><Download size={13}/> تحميل الكل</button>:null}</footer>
         </article>;
       })}
     </div>
+    {closed&&!isManager&&<SatisfactionRating ticket={ticket} onReload={onReload}/>}
     {closed?<div className="support-chat-closed">المحادثة مغلقة.{onReopen&&<button type="button" className="button button-soft" onClick={()=>void onReopen()}>إعادة فتح المحادثة</button>}</div>:<div className="support-chat-composer">
       {replyTo&&<div className="support-chat-replying"><Reply size={15}/><span><b>رد على {replyTo.authorRole==="student"?"الطالب":"فريق مراس"}</b><small>{replyTo.body||replyTo.files?.[0]?.originalName||"مرفق"}</small></span><button type="button" onClick={()=>setReplyTo(null)}><X size={15}/></button></div>}
       {files.length?<div className="support-chat-selected-files">{files.map((file,index)=><span key={`${file.name}-${index}`}><Paperclip size={13}/>{file.name}<button type="button" onClick={()=>setFiles((rows)=>rows.filter((_,i)=>i!==index))}><X size={12}/></button></span>)}</div>:null}
@@ -86,4 +91,11 @@ export function SupportChatThread({ticket,isManager=false,onReload,onReopen}:{ti
       </div>
     </div>}
   </div>;
+}
+
+function SatisfactionRating({ticket,onReload}:{ticket:SupportChatTicket;onReload:()=>void|Promise<void>}){
+  const [rating,setRating]=useState(0); const [comment,setComment]=useState(""); const [busy,setBusy]=useState(false); const [message,setMessage]=useState("");
+  if(ticket.satisfactionRating){return <div className="support-chat-rated"><Star size={16} fill="currentColor"/><span>شكرًا لتقييمك: {"★".repeat(ticket.satisfactionRating)}{ticket.satisfactionComment?` · ${ticket.satisfactionComment}`:""}</span></div>;}
+  const submit=async()=>{ if(!rating){setMessage("اختر عدد النجوم أولًا");return;} setBusy(true); setMessage(""); try{ const response=await fetch("/api/support",{method:"PATCH",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({ticketId:ticket.id,action:"rate",rating,comment})}); const result=await response.json() as {error?:string}; if(!response.ok)throw new Error(result.error||"تعذر حفظ التقييم"); await onReload(); }catch(caught){ setMessage(caught instanceof Error?caught.message:"تعذر حفظ التقييم"); } finally{ setBusy(false); } };
+  return <div className="support-chat-rating"><strong>كيف كانت تجربتك مع الدعم؟</strong><div className="support-rating-stars" role="radiogroup" aria-label="تقييم الدعم">{[1,2,3,4,5].map((value)=><button type="button" key={value} role="radio" aria-checked={rating===value} className={value<=rating?"active":""} onClick={()=>setRating(value)} aria-label={`${value} من 5`}><Star size={20} fill={value<=rating?"currentColor":"none"}/></button>)}</div><textarea value={comment} onChange={(event)=>setComment(event.target.value)} maxLength={800} placeholder="ملاحظة اختيارية تساعدنا على التحسين"/>{message&&<p className="form-error">{message}</p>}<button type="button" className="button button-soft" disabled={busy} onClick={()=>void submit()}>{busy?<LoaderCircle size={16} className="spin"/>:<Star size={16}/>} إرسال التقييم</button></div>;
 }

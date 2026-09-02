@@ -13,5 +13,6 @@ export default async function LearnPage({params}:{params:Promise<{slug:string}>}
   const user=await requireUser(`/learn/${slug}`);const now=new Date().toISOString();
   const [access]=await getDb().select({id:courseAccess.id}).from(courseAccess).where(activeCourseAccessWhere(user.email,slug,now)).limit(1);
   if(!access)redirect(`/courses/${slug}?access=required`);
+  if(!course.units.some((unit)=>unit.lessons.length>0))redirect(`/courses/${slug}?status=preparing`);
   return <LearningRoom course={course} studentLabel={`${user.fullName} · M-${String(user.id).padStart(5,"0")}`}/>;
 }

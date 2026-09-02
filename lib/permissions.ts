@@ -15,6 +15,7 @@ export const ADMIN_PERMISSIONS = {
   SECURITY_MANAGE_SELF: "security.manage_self",
   AI_MANAGE: "ai.manage",
   REFERRALS_MANAGE: "referrals.manage",
+  ROADMAP_MANAGE: "roadmap.manage",
 } as const;
 
 export type AdminPermission = typeof ADMIN_PERMISSIONS[keyof typeof ADMIN_PERMISSIONS];

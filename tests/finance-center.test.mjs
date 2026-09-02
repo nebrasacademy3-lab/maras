@@ -78,11 +78,12 @@ test("CSV cells neutralize spreadsheet formulas", () => {
 });
 
 test("finance API and UI expose complete filters, details, review queues, and CSV", async () => {
-  const [route, component, page, webhook] = await Promise.all([
+  const [route, component, page, webhook, fulfillment] = await Promise.all([
     readFile(new URL("app/api/admin/finance/route.ts", root), "utf8"),
     readFile(new URL("components/finance-center.tsx", root), "utf8"),
     readFile(new URL("app/admin/finance/page.tsx", root), "utf8"),
     readFile(new URL("app/api/webhooks/tap/route.ts", root), "utf8"),
+    readFile(new URL("lib/order-fulfillment.ts", root), "utf8"),
   ]);
   assert.match(route, /authorizePermission\(request, ADMIN_PERMISSIONS\.FINANCE_VIEW\)/);
   assert.match(route, /ADMIN_PERMISSIONS\.FINANCE_EXPORT/);
@@ -103,6 +104,13 @@ test("finance API and UI expose complete filters, details, review queues, and CS
   assert.match(webhook, /\/v2\/refunds\/\$\{encodeURIComponent\(refundId\)\}/);
   assert.match(webhook, /applyConfirmedRefundToOrder/);
   assert.match(webhook, /if \(status !== "REFUNDED"\)/);
-  assert.match(webhook, /event: "payment_paid"/);
-  assert.match(webhook, /tx\.delete\(cartItems\)/);
+  assert.match(webhook, /fulfillPaidOrderTx\(tx, current, purchaseItems/);
+  assert.match(fulfillment, /event: "payment_paid"/);
+  assert.match(fulfillment, /tx\.delete\(cartItems\)/);
+  assert.match(fulfillment, /qualifyReferralForPaidOrderTx/);
+  assert.match(route, /action !== "resolvePaymentReview"/);
+  assert.match(route, /fulfillPaidOrderTx\(tx, current, purchaseItems, \{ chargeId: current\.tapChargeId, actorEmail: user\.email, now, extendDuplicates: true \}\)/);
+  assert.match(route, /aiSubscriptions/);
+  assert.match(component, /resolvePaymentReview/);
+  assert.match(component, /AdminCenterNav/);
 });

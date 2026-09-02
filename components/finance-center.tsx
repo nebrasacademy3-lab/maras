@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
-  ArrowRight,
   BadgeDollarSign,
   Banknote,
   Download,
@@ -19,8 +18,11 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
+import { AdminCenterNav } from "@/components/admin-center-nav";
+import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
+import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./finance-center.module.css";
-import { FinanceGovernance } from "./finance-governance";
+import { FinanceGovernance, type RefundPrefill } from "./finance-governance";
 
 type FilterState = {
   from: string;
@@ -78,6 +80,9 @@ type FinanceData = {
     capturedOrders: number;
     averageOrderValue: number;
     unresolvedRefundOrders: number;
+    aiGross?: number;
+    aiNet?: number;
+    aiPaidOrders?: number;
   };
   queue: { verificationPending: QueueItem[]; paymentReview: QueueItem[] };
   breakdown: {
@@ -86,6 +91,7 @@ type FinanceData = {
     trend: Array<{ date: string; gross: number; refunds: number; net: number; orders: number }>;
   };
   orders: OrderSummary[];
+  aiSubscriptions?: { orders: number; paidOrders: number; gross: number; net: number; rows: Array<OrderSummary & { typeLabel: string; subtotal: number; entitlementExpiresAt: string | null }> };
 };
 
 type OrderDetail = {
@@ -118,7 +124,12 @@ type OrderDetail = {
     events: Array<{ id: number; action: string; actorEmail: string | null; reason: string | null; createdAt: string }>;
   }>;
   paymentEvents: Array<{ id: number; provider: string; providerEventId: string | null; chargeId: string | null; status: string; receivedAt: string }>;
+  refundRequests?: Array<{ id: number; requestNumber: string; amount: number; currency: string; status: string; reason: string; requestedByEmail: string; createdAt: string; completedAt: string | null }>;
+  creditNotes?: Array<{ id: number; creditNoteNumber: string; invoiceNumber: string; amount: number; taxAmount: number; currency: string; reason: string; refundRequestNumber: string | null; issuedAt: string }>;
+  reviewable?: boolean;
 };
+
+const refundStatusLabel: Record<string, string> = { pending: "بانتظار المراجعة", first_approved: "موافقة أولى", approved_pending_provider: "مكتمل الموافقات", provider_processing: "جارٍ الإرسال إلى Tap", provider_pending: "قيد المعالجة لدى Tap", provider_failed: "تعذر الإرسال", completed: "مكتمل", rejected: "مرفوض" };
 
 const EMPTY_FILTERS: FilterState = { from: "", to: "", institution: "", course: "", paymentMethod: "", status: "", search: "" };
 
@@ -165,7 +176,7 @@ function BreakdownPanel({ title, description, items }: { title: string; descript
   </section>;
 }
 
-function DetailDrawer({ detail, loading, error, onClose }: { detail: OrderDetail | null; loading: boolean; error: string; onClose: () => void }) {
+function DetailDrawer({ detail, loading, error, onClose, onApprove, onRefund, actionBusy, actionMessage }: { detail: OrderDetail | null; loading: boolean; error: string; onClose: () => void; onApprove: (orderNumber: string) => void; onRefund: (detail: OrderDetail) => void; actionBusy: boolean; actionMessage: string }) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     document.addEventListener("keydown", closeOnEscape);
@@ -184,6 +195,9 @@ function DetailDrawer({ detail, loading, error, onClose }: { detail: OrderDetail
           <div className={styles.detailMetric}><span>الصافي</span><strong>{money(detail.net, detail.currency)}</strong></div>
         </div>
         {!detail.refund.complete && <div className={styles.alert}><AlertTriangle size={18} /><span>وصلت حالة استرداد جزئي، لكن الحدث المحفوظ لا يتضمن المبلغ. أدرجنا الطلب ضمن تنبيهات المطابقة ولم نفترض قيمة غير مؤكدة.</span></div>}
+        {actionMessage && (isAdminStepUpMessage(actionMessage) ? <AdminMfaNotice compact /> : <div className={styles.alert}><ShieldAlert size={18} /><span>{actionMessage}</span></div>)}
+        {detail.reviewable && <section className={`${styles.detailSection} ${styles.decisionPanel}`}><h3>قرار المراجعة المالية</h3><p>{detail.status === "payment_review" ? "استُلمت الدفعة لكن التفعيل توقف (كوبون لم يُقبل أو اشتراك قائم). اعتماد الدفعة يفعّل المواد ويصدر الفاتورة ويمدد أي اشتراك قائم، أو أنشئ طلب استرداد محكومًا بموافقتين." : "لم تؤكد بوابة الدفع نتيجة العملية بعد. اعتمد الدفعة فقط إذا تحققت من التحصيل في لوحة Tap، أو أنشئ طلب استرداد."}</p><div className={styles.decisionActions}><button type="button" className={styles.primaryButton} disabled={actionBusy} onClick={() => onApprove(detail.orderNumber)}>{actionBusy ? <RefreshCw className={styles.spinIcon} size={16} /> : <ShieldAlert size={16} />} اعتماد الدفعة وتفعيل المواد</button><button type="button" className={styles.softButton} disabled={actionBusy} onClick={() => onRefund(detail)}><RotateCcw size={16} /> إنشاء طلب استرداد</button></div></section>}
+        {!detail.reviewable && ["paid", "partially_refunded"].includes(detail.status) && detail.tapChargeId && <div className={styles.detailActions}><button type="button" className={styles.softButton} onClick={() => onRefund(detail)}><RotateCcw size={16} /> طلب استرداد لهذا الطلب</button></div>}
         <section className={styles.detailSection}><h3>بيانات الطلب والطالب</h3>
           <div className={styles.detailRow}><span>الحالة</span><b><span className={styles.badge} data-state={detail.status}>{detail.statusLabel}</span></b></div>
           <div className={styles.detailRow}><span>الطالب</span><b>{detail.customerName}</b></div>
@@ -208,6 +222,7 @@ function DetailDrawer({ detail, loading, error, onClose }: { detail: OrderDetail
           <strong>{access.courseTitle}</strong><small>{access.revokedAt ? "ملغي" : access.suspendedAt ? "موقوف" : "نشط"} · من {dateTime(access.startsAt)} إلى {dateTime(access.expiresAt)}</small>
           {access.events.length > 0 && <small>آخر إجراء: {access.events[0].action} · {dateTime(access.events[0].createdAt)}</small>}
         </div>) : <div className={styles.empty}>لم يُربط وصول بهذا الطلب.</div>}</section>
+        {(detail.refundRequests?.length || detail.creditNotes?.length) ? <section className={styles.detailSection}><h3>الاستردادات وإشعارات الدائن</h3>{detail.refundRequests?.map((refund) => <div className={styles.itemCard} key={`refund-${refund.id}`}><strong><bdi className={styles.ltr}>{refund.requestNumber}</bdi> · {money(refund.amount, refund.currency)}</strong><small>{refundStatusLabel[refund.status] || refund.status} · طلبه {refund.requestedByEmail} · {dateTime(refund.createdAt)}</small><small>{refund.reason}</small></div>)}{detail.creditNotes?.map((note) => <div className={styles.itemCard} key={`credit-${note.id}`}><strong>إشعار دائن <bdi className={styles.ltr}>{note.creditNoteNumber}</bdi> · {money(note.amount, note.currency)}</strong><small>للفاتورة <bdi className={styles.ltr}>{note.invoiceNumber}</bdi> · ضريبة {money(note.taxAmount, note.currency)} · {dateTime(note.issuedAt)}</small><small>{note.reason}</small></div>)}</section> : null}
         <section className={styles.detailSection}><h3>تسلسل أحداث الدفع</h3>{detail.paymentEvents.length ? <div className={styles.timeline}>{detail.paymentEvents.map((event) => <div className={styles.timelineItem} key={event.id}>
           <strong><bdi className={styles.ltr}>{event.status}</bdi></strong><small>{dateTime(event.receivedAt)} · {event.provider}</small><small><bdi className={styles.ltr}>{event.chargeId || event.providerEventId || "—"}</bdi></small>
         </div>)}</div> : <div className={styles.empty}>لم تصل أحداث من بوابة الدفع بعد.</div>}</section>
@@ -226,11 +241,19 @@ export function FinanceCenter({ adminName }: { adminName: string }) {
   const [detail, setDetail] = useState<OrderDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
+  const [actionMessage, setActionMessage] = useState("");
+  const [refundPrefill, setRefundPrefill] = useState<RefundPrefill | null>(null);
+  const [governanceKey, setGovernanceKey] = useState(0);
+  const [exportError, setExportError] = useState("");
+  const [exporting, setExporting] = useState(false);
   const detailRequest = useRef(0);
+  const lastLoad = useRef(0);
 
-  const load = useCallback(async (next: FilterState, signal?: AbortSignal) => {
-    setLoading(true);
+  const load = useCallback(async (next: FilterState, signal?: AbortSignal, silent = false) => {
+    if (!silent) setLoading(true);
     setError("");
+    lastLoad.current = Date.now();
     try {
       const response = await fetch(`/api/admin/finance?${buildParams(next)}`, { cache: "no-store", signal });
       const payload = await response.json() as FinanceData & { error?: string };
@@ -249,8 +272,13 @@ export function FinanceCenter({ adminName }: { adminName: string }) {
     const timer = window.setTimeout(() => void load(appliedFilters, controller.signal), 0);
     return () => { window.clearTimeout(timer); controller.abort(); };
   }, [appliedFilters, load]);
+  useRealtimeSync((payload) => {
+    if (payload.changed && !payload.changed.includes("admin") && !payload.changed.includes("commerce")) return;
+    if (Date.now() - lastLoad.current < 5000) return;
+    void load(appliedFilters, undefined, true);
+  });
 
-  const closeDetail = useCallback(() => { detailRequest.current += 1; setSelectedOrder(""); setDetail(null); setDetailError(""); setDetailLoading(false); }, []);
+  const closeDetail = useCallback(() => { detailRequest.current += 1; setSelectedOrder(""); setDetail(null); setDetailError(""); setDetailLoading(false); setActionMessage(""); }, []);
   const openDetail = useCallback(async (orderNumber: string) => {
     const requestId = detailRequest.current + 1;
     detailRequest.current = requestId;
@@ -268,17 +296,53 @@ export function FinanceCenter({ adminName }: { adminName: string }) {
     } finally { if (detailRequest.current === requestId) setDetailLoading(false); }
   }, []);
 
+  const approveReview = useCallback(async (orderNumber: string) => {
+    const reason = window.prompt("سبب اعتماد الدفعة (يُسجل في سجل التدقيق)", "تم التحقق من التحصيل في لوحة Tap");
+    if (!reason || reason.trim().length < 4) return;
+    setActionBusy(true); setActionMessage("");
+    try {
+      const response = await fetch("/api/admin/finance", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resolvePaymentReview", orderNumber, decision: "approve", reason: reason.trim() }) });
+      const payload = await response.json() as { error?: string };
+      if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
+      if (!response.ok) throw new Error(payload.error || "تعذر اعتماد الدفعة");
+      setActionMessage("تم اعتماد الدفعة وتفعيل المواد وإصدار الفاتورة وإشعار الطالب.");
+      await Promise.all([openDetail(orderNumber), load(appliedFilters, undefined, true)]);
+    } catch (approveError) {
+      setActionMessage(approveError instanceof Error ? approveError.message : "تعذر اعتماد الدفعة");
+    } finally { setActionBusy(false); }
+  }, [appliedFilters, load, openDetail]);
+  const startRefund = useCallback((target: OrderDetail) => {
+    setRefundPrefill({ orderNumber: target.orderNumber, amount: Math.max(0, target.total - target.refund.amount), reason: target.reviewable ? `قرار المراجعة المالية للطلب ${target.orderNumber}: ` : "", nonce: Date.now() });
+    closeDetail();
+  }, [closeDetail]);
+  const exportCsv = useCallback(async () => {
+    setExporting(true); setExportError("");
+    try {
+      const params = buildParams(appliedFilters); params.set("format", "csv");
+      const response = await fetch(`/api/admin/finance?${params}`, { cache: "no-store", credentials: "same-origin" });
+      if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
+      if (!response.ok) { const payload = await response.json().catch(() => ({})) as { error?: string }; throw new Error(payload.error || "تعذر تصدير البيانات المالية"); }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = `meras-finance-${new Date().toISOString().slice(0, 10)}.csv`; anchor.click();
+      URL.revokeObjectURL(url);
+    } catch (csvError) {
+      setExportError(csvError instanceof Error ? csvError.message : "تعذر تصدير البيانات المالية");
+    } finally { setExporting(false); }
+  }, [appliedFilters]);
+
   const visibleCourses = useMemo(() => data?.options.courses.filter((course) => !filters.institution || course.institutionSlug === filters.institution) || [], [data, filters.institution]);
-  const exportUrl = `/api/admin/finance?${buildParams(appliedFilters)}${buildParams(appliedFilters).size ? "&" : ""}format=csv`;
   const paymentBreakdown = data?.breakdown.paymentMethods.map((item) => ({ label: item.label, value: item.net, meta: `${item.orders} طلب` })) || [];
   const institutionBreakdown = data?.breakdown.institutions.map((item) => ({ label: item.institution, value: item.net, meta: `${item.orders} طلب` })) || [];
 
   return <main className={styles.page}>
     <div className={styles.shell}>
+      <AdminCenterNav />
       <header className={styles.topbar}>
         <div className={styles.title}><span className={styles.titleIcon}><BadgeDollarSign size={25} /></span><div><h1>المركز المالي</h1><p>صورة مالية متكاملة لجميع الطلبات — مرحبًا {adminName}</p></div></div>
-        <div className={styles.topActions}><Link className={styles.link} href="/admin"><ArrowRight size={17} />العودة للإدارة</Link><a className={styles.primaryButton} href={exportUrl}><Download size={17} />تصدير CSV</a></div>
+        <div className={styles.topActions}><button type="button" className={styles.primaryButton} disabled={exporting} onClick={() => void exportCsv()}><Download size={17} />{exporting ? "جارٍ التصدير…" : "تصدير CSV"}</button></div>
       </header>
+      {exportError && (isAdminStepUpMessage(exportError) ? <AdminMfaNotice /> : <div className={`${styles.alert} ${styles.error}`}><AlertTriangle size={18} /><span>{exportError}</span></div>)}
 
       <form className={styles.filters} onSubmit={(event) => { event.preventDefault(); setAppliedFilters({ ...filters }); }}>
         <label className={styles.field}><span>من تاريخ</span><input type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></label>
@@ -300,9 +364,18 @@ export function FinanceCenter({ adminName }: { adminName: string }) {
           <MetricCard label="الخصومات" value={money(data.metrics.discounts)} hint="خصومات الطلبات المحصلة" tone="violet" icon={<ReceiptText size={18} />} />
           <MetricCard label="الضريبة المضمنة" value={money(data.metrics.tax)} hint="وفق الفواتير الصادرة" tone="amber" icon={<Landmark size={18} />} />
           <MetricCard label="متوسط الطلب" value={money(data.metrics.averageOrderValue)} hint="قبل خصم الاستردادات" icon={<WalletCards size={18} />} />
+          <MetricCard label="اشتراكات مراس AI" value={money(data.metrics.aiNet || 0)} hint={`${(data.metrics.aiPaidOrders || 0).toLocaleString("ar-SA")} اشتراكًا مدفوعًا · غير مشمولة في صافي المواد`} tone="violet" icon={<BadgeDollarSign size={18} />} />
         </section>
         {data.metrics.unresolvedRefundOrders > 0 && <div className={styles.alert}><ShieldAlert size={19} /><span>هناك {data.metrics.unresolvedRefundOrders.toLocaleString("ar-SA")} طلب استرداد جزئي دون مبلغ قابل للتحقق في الحدث المحفوظ. لم نفترض مبلغًا، ويجب مطابقته مع كشف Tap.</span></div>}
-        <FinanceGovernance />
+        <FinanceGovernance prefill={refundPrefill} refreshKey={governanceKey} />
+        {data.breakdown.trend.length > 0 && <section className={styles.panel}>
+          <header className={styles.panelHeader}><div><h2>الاتجاه اليومي</h2><p>المحصل والمسترد والصافي لكل يوم ضمن المرشحات الحالية (توقيت الرياض)</p></div><span className={styles.count}>{data.breakdown.trend.length.toLocaleString("ar-SA")} يوم</span></header>
+          <div className={styles.trend}>{(() => { const max = Math.max(1, ...data.breakdown.trend.map((day) => day.gross)); return data.breakdown.trend.slice(-31).map((day) => <div className={styles.trendDay} key={day.date} title={`${day.date} · ${day.orders.toLocaleString("ar-SA")} طلب`}><div className={styles.trendBars}><i style={{ height: `${Math.max(3, day.gross / max * 100)}%` }} /><b style={{ height: `${Math.max(day.refunds > 0 ? 3 : 0, day.refunds / max * 100)}%` }} /></div><span dir="ltr">{day.date.slice(5)}</span><small>{money(day.net)}</small></div>); })()}</div>
+        </section>}
+        {data.aiSubscriptions && data.aiSubscriptions.rows.length > 0 && <section className={styles.panel}>
+          <header className={styles.panelHeader}><div><h2>اشتراكات مراس AI المدفوعة</h2><p>إيراد الاشتراك الرقمي عبر Tap — {data.aiSubscriptions.paidOrders.toLocaleString("ar-SA")} مدفوع من {data.aiSubscriptions.orders.toLocaleString("ar-SA")} طلب · صافي {money(data.aiSubscriptions.net)}</p></div><Link className={styles.link} href="/admin/ai">مركز مراس AI</Link></header>
+          <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>الطلب والطالب</th><th>الحالة</th><th>المبلغ</th><th>الاستحقاق</th><th>التاريخ</th></tr></thead><tbody>{data.aiSubscriptions.rows.slice(0, 50).map((row) => <tr key={row.orderNumber}><td><strong><bdi className={styles.ltr}>{row.orderNumber}</bdi></strong><small>{row.customerName} · <bdi className={styles.ltr}>{row.customerEmail}</bdi></small></td><td><span className={styles.badge} data-state={row.status}>{row.statusLabel}</span></td><td className={styles.money}>{money(row.gross || row.subtotal, row.currency)}</td><td>{row.entitlementExpiresAt ? dateTime(row.entitlementExpiresAt) : "—"}</td><td>{dateTime(row.date)}</td></tr>)}</tbody></table></div>
+        </section>}
         <div className={styles.grid}>
           <section className={styles.panel}>
             <header className={styles.panelHeader}><div><h2>سجل الطلبات المالي</h2><p>كل العناصر والمبالغ ضمن المرشحات الحالية</p></div><span className={styles.count}>{data.orders.length.toLocaleString("ar-SA")}</span></header>
@@ -329,6 +402,6 @@ export function FinanceCenter({ adminName }: { adminName: string }) {
         </div>
       </> : null}
     </div>
-    {selectedOrder && <DetailDrawer detail={detail} loading={detailLoading} error={detailError} onClose={closeDetail} />}
+    {selectedOrder && <DetailDrawer detail={detail} loading={detailLoading} error={detailError} onClose={closeDetail} onApprove={(orderNumber) => void approveReview(orderNumber)} onRefund={(target) => { startRefund(target); setGovernanceKey((value) => value + 1); }} actionBusy={actionBusy} actionMessage={actionMessage} />}
   </main>;
 }

@@ -28,7 +28,10 @@ test("web and Expo support surfaces open a selected conversation from cards", as
   assert.match(studentDashboard, /support-ticket-card/);
   assert.match(studentDashboard, /\/support\?ticket=\$\{ticket\.id\}/);
   assert.match(supportForm, /URLSearchParams\(window\.location\.search\)/);
-  assert.match(supportForm, /useState<number \| null>\(\(\) =>/);
+  assert.match(supportForm, /useState<number \| null>\(null\)/);
+  assert.match(supportForm, /params\.get\("ticket"\)/);
+  assert.match(supportForm, /useRealtimeSync\(/);
+  assert.match(supportForm, /params\.get\("order"\)/);
   assert.match(webAdmin, /const \[selectedId,setSelectedId\]=useState<number\|null>\(null\)/);
   assert.match(webAdmin, /ticket-back-button/);
   assert.match(expoStudent, /onPress=\{\(\) => setSelectedId\(ticket\.id\)\}/);

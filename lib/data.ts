@@ -27,7 +27,6 @@ export type Lesson = {
   ready?: boolean;
   duration: string;
   free?: boolean;
-  completed?: boolean;
   type?: "video" | "pdf" | "quiz";
 };
 
@@ -170,8 +169,8 @@ for (const institution of institutions) {
 
 const discreteUnits: CourseUnit[] = [
   { title: "الوحدة الأولى: المنطق الرياضي", lessons: [
-    { id: "d-1", title: "كيف تدرس المادة وخريطة المحتوى", duration: "08:21", free: true, completed: true },
-    { id: "d-2", title: "Propositions & Logical Operators", duration: "24:18", completed: true },
+    { id: "d-1", title: "كيف تدرس المادة وخريطة المحتوى", duration: "08:21", free: true },
+    { id: "d-2", title: "Propositions & Logical Operators", duration: "24:18" },
     { id: "d-3", title: "Truth Tables", duration: "31:44" },
     { id: "d-4", title: "Logical Equivalences", duration: "27:09" },
   ]},

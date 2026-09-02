@@ -43,14 +43,23 @@ type ReferralCoupon = {
   expiresAt: string | null;
 };
 
+type ReferralNextTier = {
+  id: number;
+  name: string;
+  requiredReferrals: number;
+  remaining: number;
+  rewardLabel: string;
+  description?: string;
+};
+
 type ReferralsResponse = {
   ok: true;
-  program: { enabled: boolean; title: string; description: string; qualificationLabel: string; terms: string[] };
+  program: { enabled: boolean; title: string; description: string; qualificationLabel: string; terms: string };
   referral: {
     code: string;
     shareUrl: string;
     counts: { total: number; pending: number; qualified: number; rejected: number };
-    nextTier: ReferralTier | null;
+    nextTier: ReferralNextTier | null;
     progressPercent: number;
   };
   tiers: ReferralTier[];
@@ -67,6 +76,16 @@ const statusLabels: Record<string, string> = {
   disabled: "موقوف",
   revoked: "ملغي",
 };
+
+function termLines(terms: unknown) {
+  if (Array.isArray(terms)) return terms.map((term) => String(term ?? "").trim()).filter(Boolean);
+  if (typeof terms !== "string") return [];
+  return terms.split(/\n+/).map((term) => term.replace(/^[-•\d.)\s]+/, "").trim()).filter(Boolean);
+}
+
+function couponValueLabel(coupon: { type: string; value: number }) {
+  return coupon.type === "percent" || coupon.type === "percentage" ? `${coupon.value}%` : `${coupon.value} ر.س`;
+}
 
 function dateLabel(value: string | null) {
   if (!value) return "بلا تاريخ انتهاء";
@@ -97,6 +116,7 @@ export default function ReferralsScreen() {
   if (query.isError || !query.data) return <Screen><AppHeader title="الإحالات والهدايا" back /><EmptyState icon="cloud-offline-outline" title="تعذر تحميل الإحالات" text={query.error instanceof Error ? query.error.message : "حاول مرة أخرى بعد قليل."} action={<AppButton title="إعادة المحاولة" icon="refresh-outline" onPress={() => void query.refetch()} />} /></Screen>;
 
   const data = query.data;
+  const terms = termLines(data.program.terms);
   const share = async () => {
     if (sharing) return;
     setSharing(true);
@@ -143,13 +163,13 @@ export default function ReferralsScreen() {
     {data.coupons.length ? <View style={styles.coupons}>{data.coupons.map((coupon) => {
       const unavailable = coupon.used || ["expired", "disabled", "revoked"].includes(coupon.status);
       return <Card key={coupon.id} style={[styles.coupon, unavailable && styles.muted]}>
-        <View style={[styles.couponSide, { backgroundColor: unavailable ? colors.surfaceAlt : colors.primary }]}><Ionicons name={coupon.used ? "checkmark-done" : "ticket-outline"} size={25} color={unavailable ? colors.textSoft : "#FFF"} /><Text style={{ color: unavailable ? colors.textSoft : "#FFF" }}>{coupon.type === "percentage" ? `${coupon.value}%` : `${coupon.value} ر.س`}</Text></View>
+        <View style={[styles.couponSide, { backgroundColor: unavailable ? colors.surfaceAlt : colors.primary }]}><Ionicons name={coupon.used ? "checkmark-done" : "ticket-outline"} size={25} color={unavailable ? colors.textSoft : "#FFF"} /><Text style={{ color: unavailable ? colors.textSoft : "#FFF" }}>{couponValueLabel(coupon)}</Text></View>
         <View style={styles.couponCopy}><Text style={[styles.couponCode, { color: colors.text }]} selectable>{coupon.code}</Text><Text style={[styles.couponMeta, { color: colors.textSoft }]}>{coupon.courseSlug ? "مخصص لمادة محددة" : "صالح على أي مادة مؤهلة"} · {dateLabel(coupon.expiresAt)}</Text><Text style={[styles.couponStatus, { color: unavailable ? colors.textSoft : colors.success }]}>{coupon.used ? "تم استخدامه" : statusLabels[coupon.status] || coupon.status}</Text></View>
       </Card>;
     })}</View> : <EmptyState icon="ticket-outline" title="لم تصدر لك هدية بعد" text="شارك رابطك. عند اكتمال أول مستوى ستجد الكوبون هنا وسيصلك إشعار مباشر." />}
 
     <SectionTitle title="كيف تُحتسب الإحالة؟" />
-    <Card style={styles.terms}>{data.program.terms.map((term, index) => <View key={`${index}-${term}`} style={styles.term}><View style={[styles.termNumber, { backgroundColor: colors.surfaceAlt }]}><Text style={{ color: colors.primary }}>{index + 1}</Text></View><Text style={[styles.termText, { color: colors.textSoft }]}>{term}</Text></View>)}</Card>
+    {terms.length ? <Card style={styles.terms}>{terms.map((term, index) => <View key={`${index}-${term}`} style={styles.term}><View style={[styles.termNumber, { backgroundColor: colors.surfaceAlt }]}><Text style={{ color: colors.primary }}>{index + 1}</Text></View><Text style={[styles.termText, { color: colors.textSoft }]}>{term}</Text></View>)}</Card> : <Card style={styles.terms}><Text style={[styles.termText, { color: colors.textSoft }]}>{data.program.qualificationLabel}</Text></Card>}
   </Screen>;
 }
 

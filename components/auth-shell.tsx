@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Eye, EyeOff, GraduationCap, LockKeyhole, Mail, Phone, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { SiteHeader } from "./site-header";
@@ -19,6 +19,15 @@ export function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const timer = window.setTimeout(() => {
+      if (params.get("reset") === "success") setNotice("تم تحديث كلمة المرور بنجاح، سجّل الدخول بكلمة المرور الجديدة.");
+      else if (params.get("session") === "expired") setNotice("انتهت جلستك، سجّل الدخول من جديد للمتابعة.");
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
@@ -46,6 +55,7 @@ export function LoginForm() {
   };
   return <form className="auth-form" onSubmit={submit}>
     <div className="auth-heading"><span>مرحبًا بعودتك 👋</span><h1>سجّل دخولك إلى مراس</h1><p>أكمل من آخر درس، وتابع موادك ومشترياتك من مكان واحد.</p></div>
+    {notice && <p className="auth-success" role="status">{notice}</p>}
     <label className="form-label">البريد الإلكتروني أو رقم الجوال<div className="input-with-icon"><Mail size={18} /><input name="identifier" required autoComplete="username" placeholder="name@example.com أو 05xxxxxxxx" dir="ltr" /></div><small className="field-hint">اكتب البريد المرتبط بحسابك، أو رقم الجوال بصيغة 05xxxxxxxx.</small></label>
     <label className="form-label">كلمة المرور<div className="input-with-icon"><LockKeyhole size={18} /><input name="password" required autoComplete="current-password" type={showPassword ? "text" : "password"} placeholder="أدخل كلمة المرور" /><button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div><small className="field-hint">أدخل كلمة المرور التي أنشأتها سابقًا، ويمكنك إظهارها للتأكد من الكتابة.</small></label>
     <div className="auth-options"><label><input name="remember" type="checkbox" defaultChecked /> تذكرني</label><Link href="/forgot-password">نسيت كلمة المرور؟</Link></div>

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, FileUp, LoaderCircle, MessageCircle, RefreshCw, ShieldCheck, X } from "lucide-react";
 import { uploadProgressLabel, uploadWithProgress, type UploadProgress } from "@/lib/upload-client";
 import { SupportChatThread, type SupportChatReply, type SupportChatTicket } from "@/components/support-chat";
+import { useRealtimeSync } from "@/components/realtime-sync";
 
 type SupportTicket = SupportChatTicket & {
   userEmail:string|null; category:string; priority:string; message:string; contactChannel?:string; updatedAt:string; replies?:SupportChatReply[];
@@ -14,7 +15,9 @@ const channelLabel: Record<string, string> = { in_app: "محادثة مراس", 
 
 export function SupportForm() {
   const [tickets,setTickets]=useState<SupportTicket[]>([]);
-  const [selectedId,setSelectedId]=useState<number | null>(() =>{if(typeof window==="undefined")return null;const id=Number(new URLSearchParams(window.location.search).get("ticket"));return Number.isInteger(id)&&id>0?id:null;});
+  const [selectedId,setSelectedId]=useState<number | null>(null);
+  const [prefill,setPrefill]=useState<{category:string;order:string}>({category:"",order:""});
+  useEffect(()=>{const params=new URLSearchParams(window.location.search);const id=Number(params.get("ticket"));const category=params.get("category")||"";const order=params.get("order")||"";const timer=window.setTimeout(()=>{if(Number.isInteger(id)&&id>0)setSelectedId(id);if(category||order)setPrefill({category:["technical","payment","course","account","suggestion"].includes(category)?category:"",order:order.replace(/[^A-Za-z0-9._:-]/g,"").slice(0,100)});},0);return()=>window.clearTimeout(timer);},[]);
   const [status,setStatus]=useState<"idle"|"loading"|"done">("idle"); const [ticketNumber,setTicketNumber]=useState(""); const [error,setError]=useState("");
   const [uploadProgress,setUploadProgress]=useState<UploadProgress|null>(null); const uploadAbortRef=useRef<AbortController|null>(null);
 
@@ -23,6 +26,8 @@ export function SupportForm() {
     catch{/* keep last snapshot */}
   },[]);
   useEffect(()=>{queueMicrotask(()=>{void loadTickets();});},[loadTickets]);
+  const lastLoad=useRef(0);
+  useRealtimeSync((payload)=>{if(payload.changed&&!payload.changed.includes("support"))return;if(Date.now()-lastLoad.current<3000)return;lastLoad.current=Date.now();void loadTickets();});
   const selected=useMemo(()=>tickets.find((ticket)=>ticket.id===selectedId)||null,[tickets,selectedId]);
 
   const submit=async(event:React.FormEvent<HTMLFormElement>)=>{
@@ -53,10 +58,11 @@ export function SupportForm() {
     <section className="support-composer-card">
       <div className="support-card-heading"><span className="support-heading-icon"><MessageCircle size={20}/></span><div><h2>ابدأ محادثة مع فريق مراس</h2><p>أرسل نصًا أو صورًا أو مستندات، وبعد فتح المحادثة يمكنك إرسال رسائل صوتية والرد على أي رسالة.</p></div></div>
       <form className="support-form" onSubmit={submit}>
-        <div className="two-fields"><label>التصنيف<select name="category" required><option value="technical">مشكلة تقنية</option><option value="payment">الدفع والفواتير</option><option value="course">المواد والدروس</option><option value="account">الحساب</option><option value="suggestion">اقتراح</option></select></label><label>الأولوية<select name="priority" required><option value="normal">عادية</option><option value="high">عالية</option><option value="urgent">عاجلة</option></select></label></div>
-        <label>عنوان المحادثة<input name="title" required minLength={3} placeholder="مثال: لا يعمل الفيديو في المادة"/></label>
+        {prefill.order&&<p className="support-prefill-note"><ShieldCheck size={15}/> هذه المحادثة مرتبطة بالطلب <b dir="ltr">{prefill.order}</b>{prefill.category==="payment"?" — سنراجع طلب الاسترداد أو مشكلة الدفع وفق سياسة الاسترداد.":""}</p>}
+        <div className="two-fields"><label>التصنيف<select name="category" required key={prefill.category||"default"} defaultValue={prefill.category||"technical"}><option value="technical">مشكلة تقنية</option><option value="payment">الدفع والفواتير</option><option value="course">المواد والدروس</option><option value="account">الحساب</option><option value="suggestion">اقتراح</option></select></label><label>الأولوية<select name="priority" required><option value="normal">عادية</option><option value="high">عالية</option><option value="urgent">عاجلة</option></select></label></div>
+        <label>عنوان المحادثة<input name="title" required minLength={3} key={prefill.order||"title"} defaultValue={prefill.order?(prefill.category==="payment"?`طلب استرداد للطلب ${prefill.order}`:`بخصوص الطلب ${prefill.order}`):""} placeholder="مثال: لا يعمل الفيديو في المادة"/></label>
         <label>قناة المتابعة<select name="contactChannel" defaultValue="in_app"><option value="in_app">محادثة مراس</option><option value="email">البريد الإلكتروني</option><option value="whatsapp">واتساب</option></select></label>
-        <label>اشرح المشكلة<textarea name="message" minLength={3} placeholder="اكتب التفاصيل..."/></label>
+        <label>اشرح المشكلة<textarea name="message" minLength={3} key={prefill.order?`message-${prefill.order}`:"message"} defaultValue={prefill.order?`رقم الطلب: ${prefill.order}\n`:""} placeholder="اكتب التفاصيل..."/></label>
         <label className="support-file-picker"><FileUp size={20}/><span><strong>إرفاق صور أو مستندات</strong><small>حتى 8 ملفات، و15 ميجابايت للملف الواحد</small></span><input name="files" type="file" multiple accept="image/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.txt"/></label>
         {error&&<p className="form-error" role="alert">{error}</p>}
         {status==="loading"&&uploadProgress&&<div className="upload-progress-card"><div><span style={{width:`${uploadProgress.percent}%`}}/></div><small>{uploadProgressLabel(uploadProgress)}</small><button type="button" onClick={()=>uploadAbortRef.current?.abort()}><X size={14}/> إلغاء</button></div>}

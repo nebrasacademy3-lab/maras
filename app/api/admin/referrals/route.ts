@@ -24,7 +24,7 @@ async function authorize(request: Request, mutation: boolean) {
     try { await requireAdminStepUp(request, user); }
     catch (error) {
       return {
-        response: error instanceof AdminMfaError ? jsonError(error.message, error.status) : jsonError("مطلوب تحقق إداري إضافي", 403),
+        response: error instanceof AdminMfaError ? jsonError(error.message, error.status, error.code) : jsonError("مطلوب تحقق إداري إضافي", 403),
         user: null,
         actor: "",
         machine: false,
@@ -45,7 +45,7 @@ function positiveInteger(value: unknown, label: string, max: number) {
 }
 
 function optionalInteger(value: unknown, label: string, max: number) {
-  if (value === null || value === undefined || value === "") return null;
+  if (value === null || value === undefined || value === "" || value === 0 || value === "0") return null;
   return positiveInteger(value, label, max);
 }
 
@@ -95,9 +95,29 @@ export async function GET(request: Request) {
   const authorization = await authorize(request, false);
   if (authorization.response) return authorization.response;
   const db = getDb();
-  const search = cleanText(new URL(request.url).searchParams.get("search"), 120).toLowerCase();
-  const limit = Math.max(20, Math.min(500, Number(new URL(request.url).searchParams.get("limit")) || 300));
-  const page = Math.max(1, Number(new URL(request.url).searchParams.get("page")) || 1);
+  const url = new URL(request.url);
+  if (url.searchParams.get("scope") === "stats") {
+    const [statsRows, settingRows] = await Promise.all([
+      db.execute(sql`SELECT
+        (SELECT count(*)::int FROM referral_codes rc INNER JOIN users u ON u.id = rc.user_id WHERE u.role = 'student') AS students,
+        (SELECT count(*)::int FROM referral_attributions WHERE status = 'qualified') AS qualified,
+        (SELECT count(*)::int FROM referral_attributions WHERE status = 'pending') AS pending,
+        (SELECT count(*)::int FROM referral_attributions WHERE status = 'rejected') AS rejected,
+        (SELECT count(*)::int FROM user_rewards) AS rewards,
+        (SELECT count(*)::int FROM coupons WHERE owner_user_id IS NOT NULL AND status = 'active' AND used_count = 0 AND (expires_at IS NULL OR expires_at::timestamptz > NOW())) AS active_coupons,
+        (SELECT count(*)::int FROM coupons WHERE owner_user_id IS NOT NULL AND used_count > 0) AS used_coupons`),
+      db.select({ enabled: referralProgramSettings.enabled, qualificationEvent: referralProgramSettings.qualificationEvent }).from(referralProgramSettings).where(eq(referralProgramSettings.programKey, "default")).limit(1),
+    ]);
+    const row = (statsRows.rows[0] || {}) as Record<string, unknown>;
+    return noStore({
+      ok: true,
+      settings: { enabled: settingRows[0]?.enabled ?? true, qualificationEvent: settingRows[0]?.qualificationEvent || "first_paid_order" },
+      stats: { students: Number(row.students || 0), qualified: Number(row.qualified || 0), pending: Number(row.pending || 0), rejected: Number(row.rejected || 0), rewards: Number(row.rewards || 0), activeCoupons: Number(row.active_coupons || 0), usedCoupons: Number(row.used_coupons || 0) },
+    });
+  }
+  const search = cleanText(url.searchParams.get("search"), 120).toLowerCase();
+  const limit = Math.max(20, Math.min(500, Number(url.searchParams.get("limit")) || 300));
+  const page = Math.max(1, Number(url.searchParams.get("page")) || 1);
   const studentFilter = search ? and(eq(users.role, "student"), or(ilike(users.email, `%${search}%`), ilike(users.fullName, `%${search}%`), ilike(referralCodes.code, `%${search}%`))) : eq(users.role, "student");
   const [settingRows, tiers, studentRows, attributionRows, rewardRows, ownedCoupons, uses, totals] = await Promise.all([
     db.select().from(referralProgramSettings).where(eq(referralProgramSettings.programKey, "default")).limit(1),

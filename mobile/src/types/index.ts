@@ -68,11 +68,12 @@ export type ProgressRow = { id: number; courseSlug: string; lessonId: string; wa
 export type OwnedCourse = Course & { progress: number; currentLessonId: string | null; expiresAt: string | null; accessState: "active" | "expired" | "suspended" };
 export type CourseRequest = { id: number; courseName: string; university: string; specialty: string; status: string; attachmentsCount: number; createdAt: string; notes?: string };
 export type Order = { orderNumber: string; courseSlug: string; courseTitle: string; total: number; currency: string; status: string; createdAt: string };
-export type Invoice = { id: number; invoiceNumber: string; orderNumber: string; total: number; taxAmount: number; currency: string; issuedAt: string; pdfObjectKey: string | null };
+export type Invoice = { id: number; invoiceNumber: string; orderNumber: string; total: number; taxAmount: number; currency: string; issuedAt: string; pdfObjectKey: string | null; status?: string; voidedAt?: string | null };
 export type Notice = { id: number; title: string; body: string; actionUrl: string | null; actionLabel?: string | null; presentation?: "inbox" | "banner" | "modal" | "all"; template?: "general" | "discount" | "new-course" | "new-service" | "urgent" | "success" | string; pushEnabled?: boolean; dismissible?: boolean; readAt: string | null; createdAt: string };
-export type SupportFile = { id: number; originalName: string; contentType: string; sizeBytes: number; createdAt: string };
+export type SupportFile = { id: number; originalName: string; contentType: string; sizeBytes: number; createdAt: string; scanStatus?: string | null };
+export type LearningTrack = { id: number; slug: string; title: string; subtitle: string; description: string; category: string; iconKey: string; accent: string; status: "coming_soon" | "enrollment_open" | "available"; ctaLabel: string; destination: string | null; position: number; featured: boolean; showInterestCount: boolean; interestCount: number; launchAt: string | null };
 export type SupportReply = { id: number; body: string; authorEmail?: string; authorRole?: string; internal?: boolean; replyToId?: number | null; createdAt: string; files?: SupportFile[] };
-export type SupportTicket = { id: number; ticketNumber: string; category: string; title: string; message: string; contactChannel?: string; status: string; createdAt: string; updatedAt?: string; replies: SupportReply[] };
+export type SupportTicket = { id: number; ticketNumber: string; category: string; title: string; message: string; contactChannel?: string; status: string; createdAt: string; updatedAt?: string; replies: SupportReply[]; satisfactionRating?: number | null; satisfactionComment?: string | null };
 export type Dashboard = {
   ok: true;
   user: SessionUser;

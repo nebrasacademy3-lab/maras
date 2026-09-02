@@ -133,3 +133,17 @@
   .overlay, .drawer, .spinner { animation: none; }
   .link, .primaryButton, .softButton, .iconButton { transition: none; }
 }
+.decisionPanel { border-color: color-mix(in srgb, #d97706 40%, var(--line)); background: color-mix(in srgb, #fbbf24 10%, var(--surface)); }
+.decisionPanel p { margin: 0 0 12px; color: var(--text-soft); font-size: 12.5px; line-height: 1.8; }
+.decisionActions, .detailActions { display: flex; flex-wrap: wrap; gap: 8px; }
+.detailActions { margin-top: 12px; }
+.spinIcon { animation: financeSpin 1s linear infinite; }
+@keyframes financeSpin { to { transform: rotate(360deg); } }
+.trend { display: flex; gap: 6px; overflow-x: auto; padding: 6px 2px 2px; }
+.trendDay { flex: 0 0 56px; display: grid; gap: 4px; justify-items: center; text-align: center; }
+.trendBars { position: relative; display: flex; align-items: flex-end; gap: 3px; width: 100%; height: 92px; padding: 0 8px; border-bottom: 1px solid var(--line); }
+.trendBars i { flex: 1; border-radius: 6px 6px 0 0; background: linear-gradient(180deg, var(--primary), var(--primary-2)); }
+.trendBars b { flex: 0 0 8px; border-radius: 6px 6px 0 0; background: var(--danger, #d64545); }
+.trendDay span { font-size: 10px; color: var(--text-soft); }
+.trendDay small { font-size: 10px; font-weight: 750; color: var(--text); white-space: nowrap; }
+@media (prefers-reduced-motion: reduce) { .spinIcon { animation: none; } }

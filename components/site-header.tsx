@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, BookOpen, Bot, CircleHelp, Gift, GraduationCap, Heart, House, LayoutDashboard, LifeBuoy, LogOut, Menu, Search, ShoppingBag, UserRound, X } from "lucide-react";
+import { Bell, BookOpen, Bot, CircleHelp, FileUp, Gift, GraduationCap, Heart, House, LayoutDashboard, LifeBuoy, LogOut, Menu, Search, ShoppingBag, UserRound, X } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
 import { ThemeToggle } from "./theme-provider";
 import { SearchDialog } from "./search-dialog";
@@ -70,7 +70,7 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
   const displayName = appMode ? userName : account?.fullName || userName;
   const accountLinks: NavLink[] = [
     { href: "/dashboard", label: "لوحتي", icon: LayoutDashboard },
-    { href: "/dashboard#courses", label: "موادي", icon: BookOpen },
+    { href: "/dashboard?view=courses", label: "موادي", icon: BookOpen },
     { href: "/courses", label: "استكشف المواد", icon: GraduationCap },
     { href: "/cart", label: "السلة", icon: ShoppingBag },
     { href: "/favorites", label: "المفضلة", icon: Heart },
@@ -79,6 +79,7 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
     { href: "/dashboard?view=account", label: "حسابي", icon: UserRound },
     { href: "/meras-ai", label: "مراس AI", icon: Bot, mobileOnly: true },
     { href: "/referrals", label: "الإحالات والهدايا", icon: Gift, mobileOnly: true },
+    { href: "/request-course", label: "طلب مادة", icon: FileUp, mobileOnly: true },
   ];
 
   function signOut() {

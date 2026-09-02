@@ -9,7 +9,7 @@ import { SupportForm } from "@/components/support-form";
 import { getPublicSettings, whatsappHref } from "@/lib/platform-settings";
 import { getSessionUserFromHeaders } from "@/lib/auth";
 
-export const metadata: Metadata = { title: "الدعم الفني" };
+export const metadata: Metadata = { title: "الدعم الفني", robots: { index: false, follow: false } };
 
 export default async function SupportPage() {
   const cookieHeader = (await cookies()).toString();

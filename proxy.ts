@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureRequestId, logEvent, REQUEST_ID_HEADER } from "@/lib/observability";
 
-const mobilePaths = ["/api/mobile/", "/api/public/", "/api/catalog/", "/api/assistant", "/api/support", "/api/course-requests", "/api/favorites", "/api/cart", "/api/waitlist", "/api/profile", "/api/progress", "/api/reviews", "/api/video/", "/api/invoices/", "/api/admin/", "/api/supervisor/"];
+const mobilePaths = ["/api/mobile/", "/api/public/", "/api/catalog/", "/api/assistant", "/api/support", "/api/course-requests", "/api/favorites", "/api/cart", "/api/waitlist", "/api/profile", "/api/progress", "/api/reviews", "/api/video/", "/api/invoices/", "/api/admin/", "/api/supervisor/", "/api/ai/", "/api/auth/", "/api/checkout", "/api/coupons/", "/api/referrals", "/api/sync", "/api/learning-tracks/", "/api/analytics"];
 
 function acceptedOrigins(request: NextRequest) {
   const values = new Set<string>([request.nextUrl.origin]);

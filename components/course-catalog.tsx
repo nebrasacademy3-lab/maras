@@ -12,10 +12,15 @@ type Program = { name: string; degree?: string; aliases?: string[] };
 const ALL = "__all__";
 
 export function CourseCatalog({ courses, institutions }: { courses: Course[]; institutions: Institution[] }) {
-  const initialQuery = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("q") || "" : "";
   const [liveCourses, setLiveCourses] = useState(courses);
   const [liveInstitutions, setLiveInstitutions] = useState(institutions);
-  const [query, setQuery] = useState(initialQuery);
+  const [query, setQuery] = useState("");
+  useEffect(() => {
+    const initialQuery = new URLSearchParams(window.location.search).get("q") || "";
+    if (!initialQuery) return;
+    const timer = window.setTimeout(() => setQuery(initialQuery), 0);
+    return () => window.clearTimeout(timer);
+  }, []);
   const [university, setUniversity] = useState(ALL);
   const [specialty, setSpecialty] = useState(ALL);
   const [sort, setSort] = useState("الأكثر طلبًا");

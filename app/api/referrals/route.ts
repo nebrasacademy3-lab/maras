@@ -3,6 +3,7 @@ import { getDb } from "@/db";
 import { analyticsEvents, couponUses, couponsDb, referralAttributions, referralCodes, referralTiers, userRewards } from "@/db/schema";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
+import { getCoursesCatalog } from "@/lib/catalog-store";
 import { ensureReferralCode, publicRewardLabel, referralProgram } from "@/lib/referrals";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +50,8 @@ export async function GET(request: Request) {
     : 100;
   const useByCoupon = new Map(uses.map((use) => [use.couponId, use]));
   const couponById = new Map(coupons.map((coupon) => [coupon.id, coupon]));
+  const courseTitles = new Map((await getCoursesCatalog()).map((course) => [course.slug, course.title]));
+  const courseTitle = (slug: string | null) => (slug ? courseTitles.get(slug) || null : null);
   const origin = (process.env.APP_URL?.trim() || new URL(request.url).origin).replace(/\/$/, "");
 
   return noStore({
@@ -108,7 +111,7 @@ export async function GET(request: Request) {
         issuedAt: reward.issuedAt,
         expiresAt: reward.expiresAt,
         note: reward.note,
-        coupon: coupon ? { code: coupon.code, courseSlug: coupon.courseSlug, status: effectiveCouponStatus(coupon, use?.status === "redeemed") } : null,
+        coupon: coupon ? { code: coupon.code, courseSlug: coupon.courseSlug, courseTitle: courseTitle(coupon.courseSlug), status: effectiveCouponStatus(coupon, use?.status === "redeemed") } : null,
       };
     }),
     coupons: coupons.map((coupon) => {
@@ -120,6 +123,7 @@ export async function GET(request: Request) {
         type: coupon.type,
         value: coupon.value,
         courseSlug: coupon.courseSlug,
+        courseTitle: courseTitle(coupon.courseSlug),
         status: effectiveCouponStatus(coupon, use?.status === "redeemed"),
         used: use?.status === "redeemed" || coupon.usedCount > 0,
         expiresAt: coupon.expiresAt,

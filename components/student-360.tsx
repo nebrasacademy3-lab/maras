@@ -4,23 +4,49 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import {
   Bell,
+  BellRing,
   BookOpenCheck,
+  Bot,
   ChevronLeft,
   CircleDollarSign,
   Clock3,
   FileClock,
+  Gift,
   GraduationCap,
   Headphones,
+  Heart,
   Laptop,
   Mail,
   MapPin,
   ReceiptText,
   RefreshCw,
+  Route,
   ShieldCheck,
+  ShoppingCart,
   Smartphone,
   UserRound,
 } from "lucide-react";
+import { AdminCenterNav } from "@/components/admin-center-nav";
+import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import styles from "@/components/student-360.module.css";
+
+type RelatedUser = { id: number; email: string; fullName: string };
+type ReferralsBlock = {
+  code: { code: string; shareCount: number; createdAt: string } | null;
+  referredBy: Array<{ id: number; status: string; referrer: RelatedUser; createdAt: string; qualifiedAt: string | null; reviewReason: string | null }>;
+  referred: Array<{ id: number; status: string; referred: RelatedUser; createdAt: string; qualifiedAt: string | null; reviewReason: string | null }>;
+  rewards: Array<{ id: number; rewardType: string; rewardValue: number; rewardLabel: string; sourceType: string; status: string; issuedAt: string; expiresAt: string | null; redeemedAt: string | null; note: string | null; coupon: { id: number; code: string; status: string; usedCount: number; courseSlug: string | null; expiresAt: string | null } | null }>;
+  coupons: Array<{ id: number; code: string; type: string; value: number; status: string; usedCount: number; usageLimit: number | null; courseSlug: string | null; expiresAt: string | null; createdAt: string }>;
+};
+type AiBlock = {
+  entitlements: Array<{ id: number; source: string; status: string; startsAt: string; expiresAt: string | null; createdBy: string | null; externalRef: string | null }>;
+  orders: Array<{ id: number; orderNumber: string; amount: number; currency: string; status: string; paidAt: string | null; entitlementExpiresAt: string | null; createdAt: string }>;
+  usage: Array<{ service: string; status: string; total: number }>;
+};
+type WaitlistRow = { id: number; courseSlug: string; source: string; status: string; notifiedAt: string | null; convertedAt: string | null; createdAt: string };
+type TrackInterest = { id: number; status: string; source: string; lastNotifiedVersion: number; createdAt: string; trackTitle: string; trackSlug: string; trackStatus: string };
+type PushDevice = { id: number; deviceId: string | null; platform: string; deviceLabel: string | null; status: string; lastSeenAt: string; createdAt: string };
+type RefundRow = { id: number; requestNumber: string; orderNumber: string; amountMinor: number; currency: string; status: string; reason: string; createdAt: string; completedAt: string | null };
 
 type Student = {
   id: number;
@@ -195,6 +221,11 @@ type Student360Response = {
     paidValue: number;
     openTickets: number;
     unreadNotifications: number;
+    qualifiedReferrals?: number;
+    activeRewards?: number;
+    aiActive?: boolean;
+    pushDevices?: number;
+    lessonNotes?: number;
   };
   catalog: {
     institution: { slug: string; name: string } | null;
@@ -208,6 +239,14 @@ type Student360Response = {
   support: SupportTicket[];
   notifications: Notification[];
   sessions: Session[];
+  referrals?: ReferralsBlock;
+  ai?: AiBlock;
+  waitlist?: WaitlistRow[];
+  trackInterests?: TrackInterest[];
+  pushDevices?: PushDevice[];
+  refunds?: RefundRow[];
+  favorites?: Array<{ id: number; courseSlug: string; createdAt: string }>;
+  cart?: Array<{ id: number; courseSlug: string; createdAt: string }>;
 };
 
 const labels: Record<string, string> = {
@@ -255,6 +294,32 @@ const labels: Record<string, string> = {
   sent: "تم الإرسال",
   web: "ويب",
   mobile: "تطبيق",
+  qualified: "مؤهلة",
+  rejected: "مرفوضة",
+  redeemed: "مستخدمة",
+  referral_tier: "مستوى إحالة",
+  admin_gift: "هدية إدارية",
+  gift: "هدية",
+  referral: "إحالة",
+  course: "اشتراك مادة",
+  notified: "أُبلغ",
+  converted: "تحوّل للاشتراك",
+  coming_soon: "قريبًا",
+  enrollment_open: "التسجيل مفتوح",
+  archived: "مؤرشف",
+  first_approved: "موافقة أولى",
+  approved_pending_provider: "مكتمل الموافقات",
+  provider_pending: "قيد المعالجة لدى Tap",
+  provider_failed: "تعذر الإرسال",
+  completed: "مكتمل",
+  ios: "iOS",
+  android: "Android",
+  succeeded: "ناجح",
+  billable_failed: "فشل محسوب",
+  chat: "المحادثة",
+  summary: "التلخيص",
+  translation: "الترجمة",
+  quiz: "الاختبارات",
 };
 
 function label(value: string | null | undefined) {
@@ -314,6 +379,8 @@ export function Student360({ email }: { email: string }) {
   const [data, setData] = useState<Student360Response | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [busy, setBusy] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -335,6 +402,20 @@ export function Student360({ email }: { email: string }) {
     return () => window.clearTimeout(timer);
   }, [load]);
 
+  const act = useCallback(async (key: string, payload: Record<string, unknown>, success: string) => {
+    setBusy(key); setActionMessage("");
+    try {
+      const response = await fetch("/api/admin/console", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const result = await response.json() as { error?: string };
+      if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
+      if (!response.ok) throw new Error(result.error || "تعذر تنفيذ الإجراء");
+      setActionMessage(success);
+      await load();
+    } catch (caught) {
+      setActionMessage(caught instanceof Error ? caught.message : "تعذر تنفيذ الإجراء");
+    } finally { setBusy(""); }
+  }, [load]);
+
   if (loading && !data) return <main className={styles.page} dir="rtl"><div className={styles.loading}><span><i className={styles.spinner} /><p>جارٍ جمع ملف الطالب من جميع أجزاء المنصة…</p></span></div></main>;
   if (error && !data) return <main className={styles.page} dir="rtl"><div className={styles.loading}><section className={styles.error}><h1>تعذر فتح ملف الطالب</h1><p>{error}</p><button className={styles.retry} onClick={() => void load()}><RefreshCw size={15} /> إعادة المحاولة</button></section></div></main>;
   if (!data) return null;
@@ -354,9 +435,10 @@ export function Student360({ email }: { email: string }) {
 
   return <main className={styles.page} dir="rtl">
     <div className={styles.shell}>
+      <AdminCenterNav compact />
       <div className={styles.topbar}>
-        <span className={styles.breadcrumb}>الإدارة <ChevronLeft size={12} /> الطلاب <ChevronLeft size={12} /> ملف 360</span>
-        <Link className={styles.back} href="/admin"><ChevronLeft size={15} /> العودة إلى لوحة الإدارة</Link>
+        <span className={styles.breadcrumb}>الإدارة <ChevronLeft size={12} /> <Link href="/admin?view=students">الطلاب</Link> <ChevronLeft size={12} /> ملف 360</span>
+        <Link className={styles.back} href="/admin?view=students"><ChevronLeft size={15} /> العودة إلى قائمة الطلاب</Link>
       </div>
 
       <section className={styles.hero}>
@@ -368,6 +450,23 @@ export function Student360({ email }: { email: string }) {
         <div className={styles.heroMeta}><span>آخر دخول<strong>{safeDate(data.student.lastLoginAt)}</strong></span><span>رقم الطالب<strong>#{data.student.id.toLocaleString("ar-SA")}</strong></span></div>
       </section>
 
+      <section className={styles.actionsBar} aria-label="إجراءات وروابط سريعة">
+        <div className={styles.quickLinks}>
+          <Link href={`/admin?view=subscriptions&q=${encodeURIComponent(data.student.email)}`}><ShieldCheck size={14} /> الاشتراكات في اللوحة</Link>
+          <Link href={`/admin?view=orders&q=${encodeURIComponent(data.student.email)}`}><ReceiptText size={14} /> الطلبات</Link>
+          <Link href={`/admin?view=support&q=${encodeURIComponent(data.student.email)}`}><Headphones size={14} /> الدعم</Link>
+          <Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}><Gift size={14} /> الإحالات والهدايا</Link>
+          <Link href="/admin/ai"><Bot size={14} /> مراس AI</Link>
+          <Link href={`/admin/finance?search=${encodeURIComponent(data.student.email)}`}><CircleDollarSign size={14} /> المركز المالي</Link>
+        </div>
+        <div className={styles.quickActions}>
+          <button type="button" disabled={Boolean(busy)} onClick={() => void act("status", { action: "updateUser", id: data.student.id, role: data.student.role, status: data.student.status === "active" ? "suspended" : "active" }, data.student.status === "active" ? "تم إيقاف الحساب" : "تم تفعيل الحساب")}>{data.student.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب"}</button>
+          <button type="button" disabled={Boolean(busy)} onClick={() => { const courseSlug = window.prompt("معرّف المادة (slug) لمنحها للطالب"); if (!courseSlug?.trim()) return; const complimentary = window.confirm("منحة مجانية؟ (إلغاء = دفعة يدوية مسجلة)"); const price = complimentary ? 0 : Number(window.prompt("السعر المسجل للعملية", "0") || 0); void act("grant", { action: "grantAccess", userEmail: data.student.email, courseSlug: courseSlug.trim(), grantType: complimentary ? "complimentary" : "manual_payment", price: Number.isFinite(price) ? price : 0, expiresAt: "" }, "تم منح صلاحية المادة"); }}>منح مادة</button>
+          <button type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> تحديث</button>
+        </div>
+      </section>
+      {actionMessage && (isAdminStepUpMessage(actionMessage) ? <AdminMfaNotice /> : <div className={styles.actionNotice} role="status">{actionMessage}</div>)}
+
       <section className={styles.metrics} aria-label="ملخص الطالب">
         {[
           { icon: ShieldCheck, label: "اشتراكات نشطة", value: data.summary.activeSubscriptions.toLocaleString("ar-SA") },
@@ -376,11 +475,13 @@ export function Student360({ email }: { email: string }) {
           { icon: ReceiptText, label: "طلبات مدفوعة", value: data.summary.paidOrders.toLocaleString("ar-SA") },
           { icon: CircleDollarSign, label: "قيمة الطلبات المدفوعة", value: money(data.summary.paidValue) },
           { icon: Headphones, label: "دعم مفتوح / إشعارات", value: `${data.summary.openTickets.toLocaleString("ar-SA")} / ${data.summary.unreadNotifications.toLocaleString("ar-SA")}` },
+          { icon: Gift, label: "إحالات مؤهلة / هدايا نشطة", value: `${(data.summary.qualifiedReferrals || 0).toLocaleString("ar-SA")} / ${(data.summary.activeRewards || 0).toLocaleString("ar-SA")}` },
+          { icon: Bot, label: "مراس AI", value: data.summary.aiActive ? "اشتراك نشط" : "خطة مجانية" },
         ].map(({ icon: Icon, label: metricLabel, value }) => <article className={styles.metric} key={metricLabel}><i><Icon size={17} /></i><span>{metricLabel}<strong>{value}</strong></span></article>)}
       </section>
 
       <nav className={styles.nav} aria-label="أقسام ملف الطالب">
-        {[["profile", "الملخص"], ["subscriptions", "الاشتراكات"], ["progress", "التقدم"], ["orders", "الطلبات والفواتير"], ["requests", "طلبات المواد"], ["support", "الدعم"], ["notifications", "الإشعارات"], ["sessions", "الجلسات"]].map(([id, text]) => <a href={`#${id}`} key={id}>{text}</a>)}
+        {[["profile", "الملخص"], ["subscriptions", "الاشتراكات"], ["progress", "التقدم"], ["orders", "الطلبات والفواتير"], ["referrals", "الإحالات والهدايا"], ["ai", "مراس AI"], ["interest", "الاهتمام والانتظار"], ["requests", "طلبات المواد"], ["support", "الدعم"], ["notifications", "الإشعارات"], ["sessions", "الجلسات والأجهزة"]].map(([id, text]) => <a href={`#${id}`} key={id}>{text}</a>)}
       </nav>
 
       <div className={styles.grid}>
@@ -414,6 +515,12 @@ export function Student360({ email }: { email: string }) {
                 <span className={styles.fact}><span>الطلب</span><strong><bdi className={styles.ltr}>{subscription.orderNumber || "—"}</bdi></strong></span>
               </div>
               {(subscription.suspensionReason || subscription.revocationReason) && <p className={styles.reason}>{subscription.revocationReason || subscription.suspensionReason}</p>}
+              {!subscription.revokedAt && <div className={styles.cardActions}>
+                {state === "active" && <button type="button" disabled={Boolean(busy)} onClick={() => { const reason = window.prompt("سبب الإيقاف المؤقت")?.trim(); if (!reason) return; void act(`pause-${subscription.id}`, { action: "updateAccess", id: subscription.id, operation: "pause", reason, operationKey: crypto.randomUUID() }, "تم إيقاف الاشتراك مؤقتًا"); }}>إيقاف مؤقت</button>}
+                {state === "suspended" && <button type="button" disabled={Boolean(busy)} onClick={() => void act(`resume-${subscription.id}`, { action: "updateAccess", id: subscription.id, operation: "resume", reason: "", operationKey: crypto.randomUUID() }, "تم استئناف الاشتراك")}>استئناف</button>}
+                <button type="button" disabled={Boolean(busy)} onClick={() => void act(`extend-${subscription.id}`, { action: "updateAccess", id: subscription.id, operation: "extend", reason: "", days: 30, operationKey: crypto.randomUUID() }, "تم تمديد الاشتراك 30 يومًا")}>+ 30 يومًا</button>
+                <button type="button" className={styles.dangerButton} disabled={Boolean(busy)} onClick={() => { const reason = window.prompt("سبب إلغاء الوصول")?.trim(); if (!reason || !window.confirm("سيُوقف وصول الطالب إلى هذه المادة. هل تريد المتابعة؟")) return; void act(`revoke-${subscription.id}`, { action: "updateAccess", id: subscription.id, operation: "revoke", reason, operationKey: crypto.randomUUID() }, "تم إلغاء الوصول"); }}>إلغاء الوصول</button>
+              </div>}
               <details className={styles.details}><summary>سجل الوصول ({events.length.toLocaleString("ar-SA")})</summary>{events.length ? <div className={styles.timeline}>{events.map((event) => <span className={styles.timelineItem} key={event.id}><strong>{label(event.action)}</strong><small>{safeDate(event.createdAt)} · {event.actorEmail}</small>{event.reason && <small>{event.reason}</small>}</span>)}</div> : <p>لا توجد أحداث إضافية.</p>}</details>
             </article>;
           })}</div> : <Empty>لا توجد اشتراكات أو صلاحيات وصول لهذا الطالب.</Empty>}
@@ -439,9 +546,42 @@ export function Student360({ email }: { email: string }) {
             <td><span className={styles.itemList}>{order.items.length ? order.items.map((item) => <span key={item.id}><strong>{courseName(item.courseSlug)}</strong><small>{money(item.total, order.currency)}{item.accessDurationDays ? ` · ${item.accessDurationDays.toLocaleString("ar-SA")} يوم وصول` : ""}</small></span>) : <span>لا توجد عناصر محفوظة</span>}</span></td>
             <td><span className={styles.money}>{money(order.total, order.currency)}</span><small>خصم {money(order.discount, order.currency)}</small></td>
             <td>{label(order.paymentMethod)}{order.tapChargeId && <small><bdi className={styles.ltr}>{order.tapChargeId}</bdi></small>}</td>
-            <td><span className={styles.badge} data-tone={tone(order.status)}>{label(order.status)}</span></td>
+            <td><span className={styles.badge} data-tone={tone(order.status)}>{label(order.status)}</span>{data.refunds?.filter((refund) => refund.orderNumber === order.orderNumber).map((refund) => <small key={refund.id}>استرداد <bdi className={styles.ltr}>{refund.requestNumber}</bdi>: {label(refund.status)} · {money(refund.amountMinor / 100, refund.currency)}</small>)}</td>
             <td>{safeDate(order.paidAt || order.createdAt)}<details className={`${styles.details} ${styles.orderDetails}`}><summary>{order.invoice ? "تفاصيل الفاتورة" : "لا توجد فاتورة"}</summary>{order.invoice && <div className={styles.invoice}><span>رقم الفاتورة<b><bdi className={styles.ltr}>{order.invoice.invoiceNumber}</bdi></b></span><span>الإجمالي<b>{money(order.invoice.total, order.invoice.currency)}</b></span><span>الضريبة<b>{money(order.invoice.taxAmount, order.invoice.currency)}</b></span><span>تاريخ الإصدار<b>{safeDate(order.invoice.issuedAt, false)}</b></span></div>}</details></td>
           </tr>)}</tbody></table></div> : <Empty>لا توجد طلبات أو فواتير مرتبطة بهذا الطالب.</Empty>}
+        </section>
+
+        <section className={styles.panel} id="referrals">
+          <PanelHead icon={Gift} title="الإحالات والهدايا" copy="رمز الدعوة، من دعاه ومن دعا، والهدايا والكوبونات المملوكة" count={(data.referrals?.rewards.length || 0) + (data.referrals?.referred.length || 0)} />
+          {data.referrals ? <>
+            <div className={styles.facts}>
+              <span className={styles.fact}><span>رمز الإحالة</span><strong><bdi className={styles.ltr}>{data.referrals.code?.code || "لم يُنشأ بعد"}</bdi></strong></span>
+              <span className={styles.fact}><span>مرات المشاركة</span><strong>{(data.referrals.code?.shareCount || 0).toLocaleString("ar-SA")}</strong></span>
+              <span className={styles.fact}><span>دُعي بواسطة</span><strong>{data.referrals.referredBy[0] ? `${data.referrals.referredBy[0].referrer.fullName} · ${label(data.referrals.referredBy[0].status)}` : "دخل مباشرة"}</strong></span>
+              <span className={styles.fact}><span>إدارة الإحالات</span><strong><Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}>فتح في مركز الإحالات</Link></strong></span>
+            </div>
+            {data.referrals.referred.length ? <div className={styles.list}>{data.referrals.referred.map((row) => <article className={styles.listItem} key={row.id}><span><strong>{row.referred.fullName}</strong><small><bdi className={styles.ltr}>{row.referred.email}</bdi> · سُجل {safeDate(row.createdAt)}{row.qualifiedAt ? ` · تأهل ${safeDate(row.qualifiedAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={row.status === "qualified" ? "success" : row.status === "rejected" ? "danger" : "warning"}>{label(row.status)}</span>{row.reviewReason && <p>سبب المراجعة: {row.reviewReason}</p>}</article>)}</div> : <Empty>لم يدعُ الطالب أحدًا بعد.</Empty>}
+            {data.referrals.rewards.length ? <div className={styles.cardGrid}>{data.referrals.rewards.map((reward) => <article className={styles.card} key={reward.id}><div className={styles.cardHead}><span><h3>{reward.rewardLabel}</h3><p>{label(reward.sourceType)} · صدرت {safeDate(reward.issuedAt, false)}</p></span><span className={styles.badge} data-tone={tone(reward.status)}>{label(reward.status)}</span></div><div className={styles.facts}><span className={styles.fact}><span>الكوبون</span><strong><bdi className={styles.ltr}>{reward.coupon?.code || "اشتراك رقمي"}</bdi></strong></span><span className={styles.fact}><span>الاستخدام</span><strong>{reward.coupon ? `${reward.coupon.usedCount.toLocaleString("ar-SA")} مرة` : "—"}</strong></span><span className={styles.fact}><span>الصلاحية</span><strong>{reward.expiresAt ? safeDate(reward.expiresAt, false) : "دون انتهاء"}</strong></span><span className={styles.fact}><span>النطاق</span><strong>{reward.coupon?.courseSlug ? courseName(reward.coupon.courseSlug) : "كل المواد"}</strong></span></div>{reward.note && <p className={styles.reason}>{reward.note}</p>}</article>)}</div> : <Empty>لم تصدر هدايا لهذا الطالب.</Empty>}
+          </> : <Empty>بيانات الإحالات غير متاحة.</Empty>}
+        </section>
+
+        <section className={`${styles.panel} ${styles.half}`} id="ai">
+          <PanelHead icon={Bot} title="مراس AI" copy="الاستحقاقات والاشتراكات المدفوعة واستخدام آخر 30 يومًا" count={data.ai?.entitlements.length || 0} />
+          {data.ai && (data.ai.entitlements.length || data.ai.orders.length || data.ai.usage.length) ? <div className={styles.list}>
+            {data.ai.entitlements.map((row) => <article className={styles.listItem} key={`ent-${row.id}`}><span><strong>{label(row.source)}</strong><small>من {safeDate(row.startsAt, false)} · {row.expiresAt ? `حتى ${safeDate(row.expiresAt, false)}` : "مفتوح"}{row.createdBy ? ` · بواسطة ${row.createdBy}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
+            {data.ai.orders.map((row) => <article className={styles.listItem} key={`ai-order-${row.id}`}><span><strong>اشتراك مدفوع <bdi className={styles.ltr}>{row.orderNumber}</bdi></strong><small>{money(row.amount, row.currency)} · {safeDate(row.paidAt || row.createdAt)}{row.entitlementExpiresAt ? ` · حتى ${safeDate(row.entitlementExpiresAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
+            {data.ai.usage.length > 0 && <p>{data.ai.usage.map((row) => `${label(row.service)}: ${row.total.toLocaleString("ar-SA")} ${label(row.status)}`).join(" · ")}</p>}
+          </div> : <Empty>لا يوجد اشتراك مستقل في مراس AI؛ يحصل الطالب على خطة المشترك تلقائيًا مع أي مادة نشطة.</Empty>}
+        </section>
+
+        <section className={`${styles.panel} ${styles.half}`} id="interest">
+          <PanelHead icon={Route} title="الاهتمام وقوائم الانتظار" copy="المسارات التي سجل اهتمامه بها والمواد التي ينتظر إتاحتها، مع المفضلة والسلة" count={(data.trackInterests?.length || 0) + (data.waitlist?.length || 0)} />
+          {(data.trackInterests?.length || data.waitlist?.length || data.favorites?.length || data.cart?.length) ? <div className={styles.list}>
+            {data.trackInterests?.map((row) => <article className={styles.listItem} key={`track-${row.id}`}><i className={styles.sessionIcon}><Route size={16} /></i><span><strong>{row.trackTitle}</strong><small>مسار {label(row.trackStatus)} · سُجل {safeDate(row.createdAt, false)} · {row.lastNotifiedVersion > 0 ? "أُبلغ بالإطلاق" : "لم يُبلغ بعد"}</small></span><span className={styles.badge} data-tone={row.status === "active" ? "success" : "warning"}>{row.status === "active" ? "مهتم" : "ألغى"}</span></article>)}
+            {data.waitlist?.map((row) => <article className={styles.listItem} key={`wait-${row.id}`}><i className={styles.sessionIcon}><BellRing size={16} /></i><span><strong>{courseName(row.courseSlug)}</strong><small>قائمة انتظار · {safeDate(row.createdAt, false)}{row.notifiedAt ? ` · أُبلغ ${safeDate(row.notifiedAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
+            {data.favorites?.length ? <article className={styles.listItem}><i className={styles.sessionIcon}><Heart size={16} /></i><span><strong>المفضلة ({data.favorites.length.toLocaleString("ar-SA")})</strong><small>{data.favorites.map((row) => courseName(row.courseSlug)).join("، ")}</small></span></article> : null}
+            {data.cart?.length ? <article className={styles.listItem}><i className={styles.sessionIcon}><ShoppingCart size={16} /></i><span><strong>السلة ({data.cart.length.toLocaleString("ar-SA")})</strong><small>{data.cart.map((row) => courseName(row.courseSlug)).join("، ")}</small></span></article> : null}
+          </div> : <Empty>لا توجد اهتمامات أو قوائم انتظار أو عناصر في المفضلة والسلة.</Empty>}
         </section>
 
         <section className={`${styles.panel} ${styles.half}`} id="support">
@@ -459,8 +599,9 @@ export function Student360({ email }: { email: string }) {
           {data.sessions.length ? <div className={styles.list}>{data.sessions.map((session) => {
             const state = sessionState(session);
             const Icon = session.platform === "mobile" ? Smartphone : Laptop;
-            return <article className={styles.listItem} key={session.id}><i className={styles.sessionIcon}><Icon size={16} /></i><span><strong>{session.deviceLabel}</strong><small>{label(session.platform)} · آخر نشاط {safeDate(session.lastSeenAt)}</small></span><span className={styles.badge} data-tone={tone(state)}>{label(state)}</span><p>{session.ipAddress ? <>عنوان الشبكة: <bdi className={styles.ltr}>{session.ipAddress}</bdi> · </> : null}تنتهي الجلسة: {safeDate(session.expiresAt)}{session.revokedAt ? ` · أُلغيت ${safeDate(session.revokedAt)}` : ""}</p></article>;
+            return <article className={styles.listItem} key={session.id}><i className={styles.sessionIcon}><Icon size={16} /></i><span><strong>{session.deviceLabel}</strong><small>{label(session.platform)} · آخر نشاط {safeDate(session.lastSeenAt)}</small></span><span className={styles.badge} data-tone={tone(state)}>{label(state)}</span><p>{session.ipAddress ? <>عنوان الشبكة: <bdi className={styles.ltr}>{session.ipAddress}</bdi> · </> : null}تنتهي الجلسة: {safeDate(session.expiresAt)}{session.revokedAt ? ` · أُلغيت ${safeDate(session.revokedAt)}` : ""}</p>{state === "active" && <div className={styles.cardActions}><button type="button" disabled={Boolean(busy)} onClick={() => void act(`session-${session.id}`, { action: "revokeUserSession", sessionId: session.id }, `تم تسجيل خروج ${session.deviceLabel}`)}>تسجيل خروج الجهاز</button></div>}</article>;
           })}</div> : <Empty>لا توجد جلسات مسجلة.</Empty>}
+          {data.pushDevices?.length ? <div className={styles.list}><p>أجهزة الإشعارات الفورية ({data.pushDevices.filter((row) => row.status === "active").length.toLocaleString("ar-SA")} نشط):</p>{data.pushDevices.map((device) => <article className={styles.listItem} key={`push-${device.id}`}><i className={styles.sessionIcon}><Smartphone size={16} /></i><span><strong>{device.deviceLabel || device.platform}</strong><small>{label(device.platform)} · آخر ظهور {safeDate(device.lastSeenAt)}</small></span><span className={styles.badge} data-tone={tone(device.status)}>{label(device.status)}</span></article>)}</div> : null}
         </section>
       </div>
     </div>

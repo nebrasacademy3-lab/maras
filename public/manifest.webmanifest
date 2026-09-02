@@ -6,9 +6,26 @@
   "dir": "rtl",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#1258e8",
+  "background_color": "#071127",
+  "theme_color": "#155eea",
   "icons": [
-    { "src": "/brand/mark-m.png", "sizes": "1920x1920", "type": "image/png", "purpose": "any maskable" }
+    {
+      "src": "/brand/app-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/brand/app-icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/brand/mark-m.png",
+      "sizes": "1920x1920",
+      "type": "image/png",
+      "purpose": "any"
+    }
   ]
 }
