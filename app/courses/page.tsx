@@ -5,8 +5,11 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { CourseCatalog } from "@/components/course-catalog";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
+import { catalogHasFilters, publicPageMetadata, type SeoSearchParams } from "@/lib/seo";
 
-export const metadata: Metadata = { title: "المواد الجامعية", description: "ابحث في شروحات المواد الجامعية المتوفرة على منصة مراس العلم وشاهد درسًا مجانيًا قبل الاشتراك." };
+export async function generateMetadata({ searchParams }: { searchParams: Promise<SeoSearchParams> }): Promise<Metadata> {
+  return publicPageMetadata("/courses", "شروحات المواد الجامعية", "تصفح المواد الجامعية في مراس العلم حسب الجامعة والتخصص، واستعرض خطة الدروس والأسعار والمعاينات المجانية المتاحة قبل الاشتراك.", { noindex: catalogHasFilters(await searchParams) });
+}
 
 export const revalidate = 60;
 

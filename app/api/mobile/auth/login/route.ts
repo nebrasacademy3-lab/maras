@@ -5,6 +5,8 @@ import { users } from "@/db/schema";
 import { checkRateLimit, clearRateLimit, clientIp, createSession, DeviceLimitError, sessionUserFromRow, verifyPassword } from "@/lib/auth";
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
 import { isMobileRequest, mobileNoStoreHeaders } from "@/lib/mobile-api";
+import { accountNext } from "@/lib/account-readiness";
+import { ensureVerificationEmail } from "@/lib/email-verification";
 
 function phoneCandidate(value: string) {
   const digits = normalizePhone(value).replace(/\D/g, "");
@@ -34,6 +36,7 @@ export async function POST(request: Request) {
   try { session = await createSession(row.id, request, payload.remember !== false); }
   catch (error) { if (error instanceof DeviceLimitError) return jsonError(`وصل حسابك إلى الحد المسموح (${error.limit}) من الأجهزة. سجّل الخروج من جهاز سابق أو تواصل مع الإدارة.`, 409); throw error; }
   const user = sessionUserFromRow(row);
-  const next = user.profileCompleted ? (user.onboardingCompleted ? "/home" : "/onboarding") : "/complete-profile";
+  if (!user.emailVerified) await ensureVerificationEmail(user.id, request);
+  const next = accountNext(user, true);
   return Response.json({ ok: true, token: session.token, expiresAt: session.expiresAt, user, next }, { headers: mobileNoStoreHeaders });
 }

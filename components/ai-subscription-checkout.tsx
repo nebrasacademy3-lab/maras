@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BadgeCheck, BrainCircuit, Check, CreditCard, Crown, FileText, Languages, LoaderCircle, LockKeyhole, ShieldCheck, Sparkles } from "lucide-react";
 import type { AiEntitlementStatus } from "@/lib/ai-contracts";
 import styles from "./ai-subscription-checkout.module.css";
+import { continueRequiredAccountStep } from "./purchase-access";
 
 export function AiSubscriptionCheckout({ price, entitlement, returnOrder }: { price: number; entitlement: AiEntitlementStatus; returnOrder: string }) {
   const [loading, setLoading] = useState(false);
@@ -54,8 +55,9 @@ export function AiSubscriptionCheckout({ price, entitlement, returnOrder }: { pr
         headers: { "content-type": "application/json", "idempotency-key": attemptKey.current },
         body: JSON.stringify({ product: "meras-ai" }),
       });
-      const body = await response.json() as { checkoutUrl?: string; pending?: boolean; orderNumber?: string; error?: string };
+      const body = await response.json() as { checkoutUrl?: string; pending?: boolean; orderNumber?: string; error?: string; code?: string };
       if (!response.ok) {
+        if (continueRequiredAccountStep(body)) return;
         if (!body.pending) attemptKey.current = crypto.randomUUID();
         throw new Error(body.error || "تعذر بدء الدفع");
       }

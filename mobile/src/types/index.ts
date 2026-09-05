@@ -3,6 +3,7 @@ export type UserRole = "student" | "supervisor" | "admin";
 export type SessionUser = {
   id: number;
   email: string;
+  emailVerified: boolean;
   phone: string | null;
   fullName: string;
   universitySlug: string | null;

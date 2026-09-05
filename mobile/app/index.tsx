@@ -1,18 +1,19 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import React, { useEffect } from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ActivityIndicator, StyleSheet, View } from "react-native";
 import { BrandMark } from "@/src/components/Brand";
 import { Screen } from "@/src/components/ui";
 import { useAuth } from "@/src/providers/AuthProvider";
+import { authDestination } from "@/src/lib/account-access";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 
 export default function Index() {
   const { user, loading } = useAuth();
   const { direction, rowDirection } = useLanguage();
-  useEffect(() => { if (!loading) router.replace(user ? (user.profileCompleted ? (user.onboardingCompleted ? "/(tabs)" : "/onboarding") : "/complete-profile") : "/(auth)/welcome"); }, [loading, user]);
+  useEffect(() => { if (!loading) router.replace((user ? authDestination(user) : "/(auth)/welcome") as Href); }, [loading, user]);
   return <Screen scroll={false} padded={false} showFooter={false}>
     <LinearGradient colors={["#03102F", "#0A4FC7", "#713EE8"]} start={{ x: .05, y: 0 }} end={{ x: .95, y: 1 }} style={[styles.launch, { direction }]}>
       <View style={styles.orbTop} />

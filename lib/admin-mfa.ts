@@ -12,7 +12,7 @@ import { adminMfaFactors } from "@/db/schema";
 import { SESSION_COOKIE, type SessionUser } from "@/lib/auth";
 
 export const ADMIN_STEP_UP_COOKIE = "meras_admin_stepup";
-const STEP_UP_SECONDS = 10 * 60;
+const STEP_UP_SECONDS = 60 * 60;
 const TOTP_PERIOD_SECONDS = 30;
 const TOTP_DIGITS = 6;
 

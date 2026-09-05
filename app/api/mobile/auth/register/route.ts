@@ -6,6 +6,7 @@ import { checkRateLimit, clientIp, createSession, DeviceLimitError, hashPassword
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
 import { isMobileRequest, mobileNoStoreHeaders } from "@/lib/mobile-api";
+import { ensureVerificationEmail } from "@/lib/email-verification";
 import { validAcademicLevel } from "@/lib/academic-levels";
 import { provisionReferralCodeTx, recordReferralRegistrationTx, referralCodeFromRegistration } from "@/lib/referrals";
 
@@ -58,5 +59,6 @@ export async function POST(request: Request) {
   let session;
   try { session = await createSession(created.id, request, true); }
   catch (error) { if (error instanceof DeviceLimitError) return jsonError(`وصل حسابك إلى الحد المسموح (${error.limit}) من الأجهزة.`, 409); throw error; }
-  return Response.json({ ok: true, token: session.token, expiresAt: session.expiresAt, user: sessionUserFromRow(created), next: "/onboarding" }, { status: 201, headers: mobileNoStoreHeaders });
+  await ensureVerificationEmail(created.id, request);
+  return Response.json({ ok: true, token: session.token, expiresAt: session.expiresAt, user: sessionUserFromRow(created), next: "/verify-email" }, { status: 201, headers: mobileNoStoreHeaders });
 }

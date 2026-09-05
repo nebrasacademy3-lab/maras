@@ -1,6 +1,11 @@
 import type { MetadataRoute } from "next";
+import { searchIndexingEnabled, seoUrl } from "@/lib/seo";
 
-const baseUrl = (process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000").replace(/\/$/, "");
+export const dynamic = "force-dynamic";
+
 export default function robots(): MetadataRoute.Robots {
-  return { rules: { userAgent: "*", allow: "/", disallow: ["/admin", "/supervisor", "/dashboard", "/learn/", "/checkout/", "/api/", "/referrals", "/favorites", "/cart", "/support", "/request-course", "/study-tools", "/onboarding", "/complete-profile", "/invoices/", "/notifications", "/r/"] }, sitemap: `${baseUrl}/sitemap.xml` };
+  if (!searchIndexingEnabled()) return { rules: { userAgent: "*", disallow: "/" } };
+  // Private HTML uses noindex plus server authorization. Crawling must be allowed
+  // to read noindex; robots.txt is never an access-control mechanism.
+  return { rules: { userAgent: "*", allow: ["/", "/api/covers/", "/api/logos/"], disallow: ["/api/", "/r/"] }, sitemap: seoUrl("/sitemap.xml") };
 }

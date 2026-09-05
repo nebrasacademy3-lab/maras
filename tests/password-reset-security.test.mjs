@@ -11,6 +11,7 @@ async function resetScenario() {
   const users = table("users");
   const authSessions = table("sessions");
   const pushDevices = table("pushDevices");
+  const emailVerificationCodes = table("emailCodes");
   const state = {
     tokens: [
       { userId: 1, tokenHash: "a".repeat(43), usedAt: null, expiresAt: "2099-01-01T00:00:00.000Z" },
@@ -20,6 +21,7 @@ async function resetScenario() {
     users: [{ id: 1, passwordHash: "old-password" }, { id: 2, passwordHash: "other-password" }],
     sessions: [{ userId: 1, revokedAt: null }, { userId: 2, revokedAt: null }],
     pushDevices: [{ userId: 1, status: "active" }, { userId: 2, status: "active" }],
+    emailCodes: [{ userId: 1, usedAt: null }, { userId: 2, usedAt: null }],
   };
   let accountLocked = false;
   const project = (row, fields) => Object.fromEntries(Object.entries(fields).map(([key, column]) => [key, row[column]]));
@@ -52,7 +54,7 @@ async function resetScenario() {
     },
   };
   const deps = {
-    getDb: () => db, passwordResetTokens, users, authSessions, pushDevices,
+    getDb: () => db, passwordResetTokens, users, authSessions, pushDevices, emailVerificationCodes,
     and: (...predicates) => row => predicates.every(predicate => predicate(row)),
     eq: (key, value) => row => row[key] === value,
     gt: (key, value) => row => row[key] > value,
@@ -90,6 +92,8 @@ test("a successful password reset revokes every older link and session for only 
   assert.equal(state.sessions[1].revokedAt, null);
   assert.equal(state.pushDevices[0].status, "revoked", "signed-out devices must stop receiving account notifications");
   assert.equal(state.pushDevices[1].status, "active");
+  assert.ok(state.emailCodes[0].usedAt, "password reset revokes older email codes too");
+  assert.equal(state.emailCodes[1].usedAt, null);
   assert.equal((await post("b".repeat(43), "Attacker-password!42")).status, 400);
   assert.equal(state.users[0].passwordHash, "hashed:New-password!42");
 });

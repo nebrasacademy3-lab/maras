@@ -4,6 +4,8 @@ import { spawnSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import * as nodeCrypto from "node:crypto";
+import ts from "typescript";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, "..");
@@ -66,7 +68,7 @@ test("TOTP storage is encrypted, replay protected, and step-up is bound to the l
   assert.match(mfa, /HttpOnly/);
   assert.match(mfa, /SameSite=Strict/);
   assert.match(mfa, /Max-Age=\$\{maxAge\}/);
-  assert.match(mfa, /STEP_UP_SECONDS = 10 \* 60/);
+  assert.match(mfa, /STEP_UP_SECONDS = 60 \* 60/);
 });
 
 test("MFA API supports setup, activation, short step-up, and disable without returning stored secrets", () => {
@@ -114,4 +116,57 @@ test("TOTP follows the RFC vector and AES-GCM rejects tampering", () => {
     encoding: "utf8",
   });
   assert.equal(result.status, 0, result.stderr || result.stdout);
+});
+
+test("admin step-up remains valid for one hour, expires at its boundary, and binds web/native sessions", async () => {
+  let clock = 1_800_000_000_000;
+  const initialClock = clock;
+  class TestDate extends Date { static now() { return clock; } }
+  const factor = { id: 4, counter: -1, secretEncrypted: "", verifiedAt: "verified", disabledAt: null };
+  const db = {
+    execute: async () => {},
+    transaction: async callback => callback(db),
+    select: () => ({ from() {
+      const query = { where: () => query, orderBy: () => query, limit: async () => factor.disabledAt ? [] : [factor] };
+      return query;
+    } }),
+    update: () => ({ set(value) { return { where: async () => { Object.assign(factor, value); } }; } }),
+  };
+  const key = "__adminHourTest" + crypto.randomUUID().replaceAll("-", "");
+  globalThis[key] = {
+    createCipheriv: nodeCrypto.createCipheriv, createDecipheriv: nodeCrypto.createDecipheriv,
+    createHash: nodeCrypto.createHash, createHmac: nodeCrypto.createHmac,
+    randomBytes: nodeCrypto.randomBytes, timingSafeEqual: nodeCrypto.timingSafeEqual,
+    and: () => ({}), desc: () => ({}), eq: () => ({}), isNull: () => ({}), sql: () => ({}),
+    getDb: () => db, adminMfaFactors: {}, SESSION_COOKIE: "meras_session",
+    process: { env: { ADMIN_MFA_ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef" } }, Date: TestDate,
+  };
+  let admin;
+  try {
+    const dependencies = Object.keys(globalThis[key]).join(",");
+    const isolatedSource = "const {" + dependencies + "} = globalThis[" + JSON.stringify(key) + "];\n" + mfa.replace(/^import\s[\s\S]*?;\r?\n/gm, "");
+    const javascript = ts.transpileModule(isolatedSource, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
+    admin = await import("data:text/javascript;base64," + Buffer.from(javascript).toString("base64"));
+  } finally { delete globalThis[key]; }
+  const user = { id: 7, role: "admin" };
+  const session = "original-session-token-123456789012345678";
+  const secret = "GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ";
+  factor.secretEncrypted = admin.encryptAdminMfaSecret(secret);
+  const browserRequest = token => new Request("https://meras.example/api/admin/security/mfa", { headers: { cookie: "meras_session=" + session + (token ? "; meras_admin_stepup=" + token : "") } });
+  const totp = admin.totpCodeForCounter(secret, Math.floor(clock / 1000 / 30));
+  const issued = await admin.createAdminStepUp(user, browserRequest(), totp);
+  assert.match(issued.cookie, /Max-Age=3600(?:;|$)/);
+  assert.equal(Date.parse(issued.expiresAt) - initialClock, 3_600_000);
+  clock = initialClock + 11 * 60_000;
+  assert.ok(await admin.validAdminStepUp(browserRequest(issued.token), user), "must remain valid after old ten-minute duration");
+  clock = initialClock + 3_599_000;
+  assert.ok(await admin.validAdminStepUp(browserRequest(issued.token), user));
+  const native = new Request("https://meras.example/api/admin/console", { headers: { authorization: "Bearer " + session, "x-meras-client": "mobile-v1", "x-meras-admin-stepup": issued.token } });
+  assert.ok(await admin.validAdminStepUp(native, user), "native bearer uses the same session binding");
+  const different = new Request("https://meras.example/api/admin/console", { headers: { cookie: "meras_session=different-session; meras_admin_stepup=" + issued.token } });
+  assert.equal(await admin.validAdminStepUp(different, user), null);
+  assert.equal(await admin.validAdminStepUp(browserRequest(issued.token), { ...user, id: 8 }), null);
+  clock = initialClock + 3_600_000;
+  assert.equal(await admin.validAdminStepUp(browserRequest(issued.token), user), null);
+  assert.equal(await admin.validAdminStepUp(native, user), null);
 });

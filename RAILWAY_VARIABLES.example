@@ -81,3 +81,17 @@ EMAIL_FROM=
 OPENAI_API_KEY=
 OPENAI_API_URL=https://api.openai.com/v1
 ASSISTANT_MODEL=gpt-5-mini
+
+# Google / Apple sign-in — fill only real server credentials (docs/oauth-setup.md).
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+APPLE_CLIENT_ID=
+APPLE_TEAM_ID=
+APPLE_KEY_ID=
+APPLE_PRIVATE_KEY=
+OAUTH_MOBILE_REDIRECT_URI=merasalelm://oauth/callback
+
+# Optional public Google Search Console HTML verification token (not a secret).
+GOOGLE_SITE_VERIFICATION=
+# Set false on staging. APP_URL / NEXT_PUBLIC_SITE_URL must be the real HTTPS origin.
+SEO_INDEXING_ENABLED=true

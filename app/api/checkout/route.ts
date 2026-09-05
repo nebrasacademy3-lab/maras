@@ -8,6 +8,8 @@ import { allocateBundleDiscountMinor, getActiveCourseBundleQuote } from "@/lib/c
 import { quoteCoupon, quoteCouponForCart, releaseCouponReservation, reserveCouponForCheckoutTx } from "@/lib/coupons";
 import { normalizeAccessDurationDays } from "@/lib/course-access";
 import { fromMinorUnits, toMinorUnits } from "@/lib/finance";
+import { purchaseRequirementResponse } from "@/lib/account-readiness";
+import { readBoundedJsonObject } from "@/lib/request-body";
 
 type TapChargeResponse = { id?: string; status?: string; transaction?: { url?: string }; errors?: Array<{ description?: string }> };
 type PaymentMethod = "tap" | "tabby" | "tamara";
@@ -91,10 +93,11 @@ export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول قبل الشراء", 401);
-  if (!user.profileCompleted || !user.phone || !user.universitySlug || !user.specialty) return jsonError("أكمل رقم الجوال والجامعة والتخصص قبل الشراء", 409);
+  const blocked = purchaseRequirementResponse(user);
+  if (blocked) return blocked;
   if (!await checkRateLimit("checkout", `user:${user.id}:${clientIp(request)}`, 12, 15 * 60)) return jsonError("محاولات دفع كثيرة. حاول بعد 15 دقيقة.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الدفع غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request); } catch { return jsonError("بيانات الدفع غير صالحة"); }
   const requestedPaymentMethod = cleanText(payload.paymentMethod, 20) || "tap";
   if (!["tap", "tabby", "tamara"].includes(requestedPaymentMethod)) return jsonError("طريقة الدفع غير مدعومة");
   const paymentMethod = requestedPaymentMethod as PaymentMethod;
@@ -233,7 +236,7 @@ export async function POST(request: Request) {
 
   const siteOrigin = (process.env.APP_URL || requestOrigin(request)).replace(/\/$/, "");
   const nameParts = customerName.split(/\s+/);
-  const localPhone = customerPhone.replace(/^\+?966/, "").replace(/^0/, "");
+  const localPhone = customerPhone!.replace(/^\+?966/, "").replace(/^0/, "");
   let chargeResponse: Response;
   try {
     chargeResponse = await fetch("https://api.tap.company/v2/charges/", {

@@ -2,7 +2,8 @@ import { readBoundedJsonObject } from "@/lib/request-body";
 import { eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
-import { checkRateLimit, clientIp, createSession, DeviceLimitError, hashPassword, sameOriginRequest, validEmail, validPassword, validSaudiPhone } from "@/lib/auth";
+import { checkRateLimit, clientIp, createSession, DeviceLimitError, hashPassword, sameOriginRequest, sessionUserFromRow, validEmail, validPassword, validSaudiPhone } from "@/lib/auth";
+import { ensureVerificationEmail } from "@/lib/email-verification";
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
 import { validAcademicLevel } from "@/lib/academic-levels";
@@ -61,7 +62,7 @@ export async function POST(request: Request) {
       status: "active",
       createdAt: now,
       updatedAt: now,
-    }).onConflictDoNothing().returning({ id: users.id, email: users.email, fullName: users.fullName });
+    }).onConflictDoNothing().returning();
     if (!user) return null;
     await provisionReferralCodeTx(tx, user.id, now);
     await recordReferralRegistrationTx(tx, { referralCode, referredUserId: user.id, request, now });
@@ -71,5 +72,6 @@ export async function POST(request: Request) {
   let session;
   try { session = await createSession(created.id, request, true); }
   catch (error) { if (error instanceof DeviceLimitError) return jsonError(`وصل حسابك إلى الحد المسموح (${error.limit}) من الأجهزة.`, 409); throw error; }
-  return Response.json({ ok: true, user: created, next: "/onboarding" }, { status: 201, headers: { "set-cookie": session.cookie, "cache-control": "no-store" } });
+  await ensureVerificationEmail(created.id, request);
+  return Response.json({ ok: true, user: sessionUserFromRow(created), next: "/verify-email" }, { status: 201, headers: { "set-cookie": session.cookie, "cache-control": "no-store" } });
 }

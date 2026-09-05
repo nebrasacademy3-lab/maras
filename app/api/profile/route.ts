@@ -5,6 +5,8 @@ import { checkRateLimit, getSessionUser, sameOriginRequest, validSaudiPhone } fr
 import { cleanText, isUniqueConstraintError, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
 import { validAcademicLevel } from "@/lib/academic-levels";
+import { readBoundedJsonObject } from "@/lib/request-body";
+import { accountNext } from "@/lib/account-readiness";
 
 function canonicalPhone(value: string) {
   const digits = normalizePhone(value).replace(/\D/g, "");
@@ -25,7 +27,8 @@ export async function PATCH(request: Request) {
   if (!current) return jsonError("سجّل الدخول", 401);
   if (!await checkRateLimit("profile-update", `user:${current.id}`, 30, 60 * 60)) return jsonError("تحديثات كثيرة للملف. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الملف غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request); } catch { return jsonError("بيانات الملف غير صالحة"); }
+  if (!current.profileCompleted && payload.termsAccepted !== true) return jsonError("يلزم الموافقة على الشروط وسياسة الخصوصية لإكمال الحساب");
   const fullName = cleanText(payload.fullName, 120).replace(/\s+/g, " ");
   const rawPhone = normalizePhone(payload.phone);
   const phone = canonicalPhone(rawPhone);
@@ -43,10 +46,10 @@ export async function PATCH(request: Request) {
   if (duplicatePhone) return jsonError("رقم الجوال مستخدم في حساب آخر", 409);
   const now = new Date().toISOString();
   try {
-    await db.update(users).set({ fullName, phone, universitySlug, specialty, academicLevel: academicLevel || null, profileCompletedAt: now, updatedAt: now }).where(eq(users.id, current.id));
+    await db.update(users).set({ fullName, phone, universitySlug, specialty, academicLevel: academicLevel || null, profileCompletedAt: now, updatedAt: now, ...(phone !== current.phone ? { phoneVerifiedAt: null } : {}) }).where(eq(users.id, current.id));
   } catch (error) {
     if (isUniqueConstraintError(error)) return jsonError("رقم الجوال مستخدم في حساب آخر", 409);
     return jsonError("تعذر تحديث الملف حاليًا", 503);
   }
-  return Response.json({ ok: true, next: current.onboardingCompleted ? "/dashboard" : "/onboarding" });
+  return Response.json({ ok: true, next: accountNext({ ...current, profileCompleted: true }) }, { headers: { "cache-control": "no-store" } });
 }

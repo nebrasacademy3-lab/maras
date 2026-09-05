@@ -2,9 +2,10 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Bot, LoaderCircle, Send, Sparkles, X } from "lucide-react";
+import { ArrowLeft, Bot, LoaderCircle, Move, Send, Sparkles, X } from "lucide-react";
 import { BrandMark } from "@/components/brand-mark";
 import type { AssistantAction } from "@/lib/assistant-knowledge";
+import { useDraggableAssistant } from "@/components/use-draggable-assistant";
 
 type Message = { id: number; role: "assistant" | "user"; text: string; actions?: AssistantAction[]; suggestions?: string[] };
 const starter: Message = {
@@ -20,8 +21,9 @@ export function MerasAssistant() {
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<Message[]>([starter]);
   const listRef = useRef<HTMLDivElement>(null);
+  const floating = useDraggableAssistant();
 
-  useEffect(() => { if (open) listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" }); }, [messages, open, loading]);
+  useEffect(() => { if (open) listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" }); }, [messages, open, loading]);
   useEffect(() => {
     const reveal = () => setOpen(true);
     window.addEventListener("meras:assistant", reveal);
@@ -48,18 +50,19 @@ export function MerasAssistant() {
 
   const submit = (event: FormEvent) => { event.preventDefault(); void ask(question); };
 
-  return <div className={`meras-assistant${open ? " is-open" : ""}`}>
-    {open && <section className="assistant-panel" aria-label="مساعد مراس" dir="rtl">
+  return <div className={`meras-assistant${open ? " is-open" : ""}${floating.dragging ? " is-dragging" : ""}`} style={floating.wrapperStyle}>
+    {open && <section className="assistant-panel" style={floating.panelStyle} aria-label="مساعد مراس" dir="rtl">
       <header><div className="assistant-avatar"><BrandMark /></div><span><small><i /> متصل الآن</small><strong>مساعد مراس</strong><em>دليلك داخل المنصة</em></span><button type="button" onClick={() => setOpen(false)} aria-label="إغلاق المساعد"><X size={19} /></button></header>
       <div className="assistant-trust"><Sparkles size={14} /> اسأل بطريقتك — وسأعطيك الخطوة والرابط</div>
       <div className="assistant-messages" ref={listRef} aria-live="polite">{messages.map((message) => <article className={`assistant-message ${message.role}`} key={message.id}>
         {message.role === "assistant" && <i><Bot size={15} /></i>}<div dir="auto"><p>{message.text}</p>{message.actions?.length ? <nav>{message.actions.map((item) => <Link key={`${item.label}-${item.href}`} href={item.href} onClick={() => setOpen(false)}>{item.label}<ArrowLeft size={13} /></Link>)}</nav> : null}{message.suggestions?.length ? <div className="assistant-suggestions">{message.suggestions.map((item) => <button type="button" key={item} onClick={() => void ask(item)}>{item}</button>)}</div> : null}</div>
       </article>)}{loading && <article className="assistant-message assistant"><i><Bot size={15} /></i><div className="assistant-thinking" role="status"><b>يراجع الكتالوج وسياق حسابك</b><span /><span /><span /></div></article>}</div>
       <form className="assistant-input" onSubmit={submit}><input dir="auto" value={question} onChange={(event) => setQuestion(event.target.value)} maxLength={500} placeholder="اكتب سؤالك هنا..." aria-label="سؤالك للمساعد" /><button type="submit" disabled={loading || question.trim().length < 2} aria-label="إرسال"><Send size={18} /></button></form>
-      <footer>لن يطلب منك المساعد كلمة المرور أو بيانات البطاقة</footer>
+      <footer>لن يطلب منك المساعد كلمة المرور أو بيانات البطاقة<button type="button" className="assistant-reset-position" onClick={floating.reset}><Move size={12} />إعادة موضع الزر</button></footer>
     </section>}
-    <button className="assistant-fab" type="button" onClick={() => setOpen((value) => !value)} aria-label={open ? "إغلاق مساعد مراس" : "فتح مساعد مراس"} aria-expanded={open}>
+    <button ref={floating.button} className="assistant-fab" type="button" onPointerDown={floating.onPointerDown} onPointerMove={floating.onPointerMove} onPointerUp={floating.onPointerUp} onPointerCancel={floating.onPointerCancel} onKeyDown={floating.onKeyDown} onContextMenu={event => event.preventDefault()} onClick={event => { if (!floating.consumeDragClick(event)) setOpen(value => !value); }} aria-label={open ? "إغلاق مساعد مراس" : "فتح مساعد مراس"} title="اضغط مطولًا ثم اسحب لتغيير المكان. بالكيبورد: الأسهم للتحريك وHome لإعادة الموضع." aria-describedby="assistant-move-help" aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Home" aria-expanded={open}>
       <span className="assistant-fab-rings" /><BrandMark /><i>{open ? <X size={17} /> : <span />}</i>{loading && <LoaderCircle size={15} className="spin" />}
     </button>
+    <span id="assistant-move-help" className="assistant-move-help">اضغط مطولًا ثم اسحب لنقل الزر. أو استخدم الأسهم عند تحديده، وزر Home لإعادة مكانه.</span>
   </div>;
 }

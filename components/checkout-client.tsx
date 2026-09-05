@@ -5,6 +5,7 @@ import Link from "next/link";
 import { BadgeCheck, Check, CreditCard, Gift, LockKeyhole, ShieldCheck } from "lucide-react";
 import type { Course } from "@/lib/data";
 import { CourseCoverImage } from "./course-cover-image";
+import { continueRequiredAccountStep } from "./purchase-access";
 
 type PaymentMethod = "tap" | "tabby" | "tamara";
 
@@ -53,8 +54,9 @@ export function CheckoutClient({ course, user, paymentMethods }: { course: Cours
         headers: { "content-type": "application/json", "idempotency-key": checkoutAttemptRef.current.key },
         body: JSON.stringify({ courseSlug: course.slug, coupon: appliedCoupon || undefined, paymentMethod }),
       });
-      const data = await response.json() as { checkoutUrl?: string; mode?: string; error?: string; pending?: boolean };
+      const data = await response.json() as { checkoutUrl?: string; mode?: string; error?: string; pending?: boolean; code?: string };
       if (!response.ok) {
+        if (continueRequiredAccountStep(data)) return;
         if (!data.pending) checkoutAttemptRef.current = null;
         throw new Error(data.error || "تعذر بدء الدفع");
       }

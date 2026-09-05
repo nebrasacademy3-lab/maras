@@ -19,7 +19,7 @@
 .backdrop > i:nth-child(2) { left: auto; right: -240px; top: 40%; width: 510px; height: 510px; }
 .backdrop > span { position: absolute; top: 160px; right: 10%; color: var(--primary-2); font-size: 42px; animation: starIn 1s .15s both; }
 .backdrop > span:last-child { top: 285px; right: auto; left: 11%; font-size: 32px; color: var(--primary); animation-delay: .3s; }
-.layout { position: relative; display: flex; flex-direction: column; align-items: center; }
+.layout { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; }
 .copy { position: relative; z-index: 5; width: 100%; max-width: 900px; text-align: center; animation: enterCopy .7s cubic-bezier(.16,1,.3,1) both; }
 .eyebrow { display: inline-flex; justify-content: center; align-items: center; gap: 9px; max-width: 100%; padding: 9px 17px; border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line)); border-radius: 999px; color: var(--primary); background: var(--surface); box-shadow: 0 4px 18px color-mix(in srgb, var(--primary) 5%, transparent); font-size: 14px; font-weight: 850; line-height: 1.7; }
 .eyebrow svg { flex: none; color: var(--primary-2); }
@@ -29,7 +29,7 @@
 .copy h1 em path { fill: none; stroke: var(--primary-2); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 570; stroke-dashoffset: 570; opacity: .5; animation: underlineIn .8s .35s ease forwards; }
 .copy > p { max-width: 720px; margin: 27px auto 0; color: var(--text-soft); font-size: clamp(15px, 1.3vw, 18px); line-height: 1.95; text-wrap: pretty; }
 .intentShell { position: relative; z-index: 8; max-width: 770px; margin: 30px auto 0; padding: 7px; border: 1px solid color-mix(in srgb, var(--primary) 14%, var(--line)); border-radius: 22px; background: var(--surface); box-shadow: 0 14px 50px color-mix(in srgb, var(--primary) 9%, transparent), 0 2px 5px color-mix(in srgb, var(--primary) 3%, transparent); text-align: start; }
-.intentTabs { display: flex; align-items: center; justify-content: center; gap: 5px; padding: 2px 2px 8px; overflow-x: auto; scrollbar-width: none; }
+.intentTabs { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 5px; padding: 2px 2px 8px; }
 .intentTabs::-webkit-scrollbar { display: none; }
 .intentTabs button { position: relative; flex: 0 0 auto; min-height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 0 16px; border: 0; border-radius: 12px; color: var(--text-soft); background: transparent; font: inherit; font-size: 13px; font-weight: 750; cursor: pointer; transition: background .2s, color .2s, box-shadow .2s; }
 .intentTabs button:hover { background: var(--surface-2); color: var(--primary); }
@@ -49,7 +49,7 @@
 .assurances { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px 23px; margin-top: 19px; color: var(--text-soft); font-size: 12px; line-height: 1.8; }
 .assurances span, .assurances a { display: inline-flex; align-items: center; gap: 6px; }
 .assurances svg { color: var(--primary); }
-.stage { position: relative; isolation: isolate; width: 100%; padding: 53px 0 60px; }
+.stage { position: relative; isolation: isolate; width: 100%; min-width: 0; padding: 53px 0 60px; }
 .orbit { position: absolute; z-index: -1; inset: 0; overflow: hidden; pointer-events: none; }
 .orbit::before { content: ""; position: absolute; width: 750px; height: 420px; left: calc(50% - 375px); top: 45px; border-radius: 50%; background: radial-gradient(ellipse, color-mix(in srgb, var(--primary-2) 15%, transparent), transparent 69%); }
 .orbit > i { position: absolute; left: calc(50% - 500px); top: 90px; width: 1000px; height: 360px; border: 1px solid color-mix(in srgb, var(--primary) 13%, transparent); border-radius: 50%; transform: rotate(-13deg); }
@@ -86,7 +86,7 @@
 .courseFacts > span { display: grid; gap: 5px; padding: 11px 13px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
 .courseFacts small { font-size: 10px; color: var(--text-soft); }
 .courseFacts strong { font-size: 12px; color: var(--text); overflow-wrap: anywhere; }
-.courseCanvasActions { display: flex; align-items: center; justify-content: space-between; gap: 13px; margin-top: 18px; }
+.courseCanvasActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 13px; margin-top: 18px; }
 .courseCanvasActions a, .resumeCanvas > a { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 14px; border-radius: 11px; color: var(--primary); font-size: 12px; font-weight: 800; }
 .courseCanvasActions a:first-child, .resumeCanvas > a { background: color-mix(in srgb,var(--primary) 8%,var(--surface)); }
 .noteCard { position: absolute; z-index: 3; top: 90px; inset-inline-start: 4px; width: 210px; display: grid; gap: 10px; padding: 22px; border: 1px solid var(--line); border-radius: 17px; color: var(--text); background: var(--surface); box-shadow: var(--shadow-md); transform: rotate(7deg); animation: noteIn .8s .3s both; }
@@ -97,7 +97,7 @@
 .noteCard > i:last-child { width: 57%; background: color-mix(in srgb,var(--primary-2) 19%,var(--surface)); }
 .toolsCard { position: absolute; z-index: 3; inset-inline-end: -6px; top: 285px; width: 243px; display: flex; align-items: center; gap: 10px; padding: 17px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: var(--shadow-md); transform: rotate(-6deg); animation: toolsIn .8s .4s both; }
 .toolsCard > span { display: grid; place-items: center; flex: none; width: 39px; height: 43px; color: #fff; background: linear-gradient(130deg,var(--primary),var(--primary-2)); border-radius: 12px; }
-.toolsCard > div { display: grid; gap: 5px; }
+.toolsCard > div { display: grid; gap: 5px; min-width: 0; }
 .toolsCard strong { font-size: 13px; }
 .toolsCard small { color: var(--text-soft); font-size: 10px; }
 .toolsCard > svg { flex: none; color: var(--primary); }
@@ -144,8 +144,20 @@
 @keyframes starIn { from { opacity: 0; transform: scale(.6) rotate(-50deg); } to { opacity: 1; transform: scale(1) rotate(0deg); } }
 @keyframes noteIn { from { opacity: 0; transform: rotate(0deg) translateY(25px); } to { opacity: 1; transform: rotate(7deg); } }
 @keyframes toolsIn { from { opacity: 0; transform: rotate(0deg) translateY(25px); } to { opacity: 1; transform: rotate(-6deg); } }
-@media(max-width:1100px) { .noteCard { width: 176px; inset-inline-start: -6px; padding: 16px; } .toolsCard { width: 200px; inset-inline-end: -6px; padding: 13px; } .toolsCard > svg { display: none; } .noteCard strong { font-size: 17px; } .canvas { max-width: 590px; } }
-@media(max-width:980px) { .noteCard,.toolsCard,.stageWord { display: none; } .backdrop > span { right: 4%; top: 90px; font-size: 24px; } .backdrop > span:last-child { left: 3%; top: 290px; } .copy { max-width: 800px; } .stage { padding-top: 37px; } .canvas { max-width: 630px; } }
+@media(max-width:1100px) {
+  .stage { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: stretch; gap: 15px; max-width: 700px; padding-top: 37px; }
+  .canvas { grid-column: 1/-1; grid-row: 1; max-width: 100%; margin-bottom: 15px; }
+  .noteCard, .toolsCard { position: relative; inset: auto; width: auto; min-width: 0; padding: 18px; transform: none; animation: enterCopy .6s .2s both; box-shadow: var(--shadow-sm); }
+  .noteCard { grid-column: 1; grid-row: 2; grid-template-columns: auto minmax(0,1fr); gap: 7px 12px; align-content: center; }
+  .noteCard > span { grid-row: 1/3; margin: 0; align-self: center; }
+  .noteCard strong { font-size: 16px; }
+  .noteCard strong br { display: none; }
+  .noteCard > i { display: none; }
+  .toolsCard { grid-column: 2; grid-row: 2; }
+  .toolsCard > div { flex: 1; }
+  .stageWord { position: static; grid-column: 1/-1; margin-top: 4px; text-align: center; font-size: 18px; transform: none; }
+}
+@media(max-width:980px) { .backdrop > span { right: 4%; top: 90px; font-size: 24px; } .backdrop > span:last-child { left: 3%; top: 290px; } .copy { max-width: 800px; } }
 @media(max-width:640px) {
   .gateway { padding-top: 35px; }
   .eyebrow { padding: 7px 12px; font-size: 14px; }
@@ -155,24 +167,24 @@
   .copy h1 em svg { height: 10px; bottom: -3px; }
   .backdrop > span { display: none; }
   .intentShell { margin-top: 23px; padding: 5px; border-radius: 18px; }
-  .intentTabs { justify-content: flex-start; gap: 2px; }
-  .intentTabs button { min-height: 43px; padding-inline: 10px; font-size: 12px; }
+  .intentTabs { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 3px; }
+  .intentTabs button { min-width: 0; min-height: 44px; padding: 7px; font-size: 12px; line-height: 1.7; }
   .composer :global(.hero-search) { grid-template-columns: auto minmax(0,1fr); gap: 9px; padding: 10px; }
   .composer :global(.hero-search .button) { grid-column: 1/-1; width: 100%; }
   .composer :global(.hero-search input) { font-size: 16px; }
   .assurances { gap: 8px 13px; font-size: 10px; margin-top: 14px; }
   .stage { padding: 28px 0 40px; }
   .canvas { padding: 14px; border-radius: 19px; min-height: 0; }
-  .canvasLabel { margin-bottom: 13px; font-size: 11px; }
+  .canvasLabel { flex-wrap: wrap; margin-bottom: 13px; font-size: 11px; }
   .canvasLabel small { font-size: 10px; }
-  .lessonVisual { min-height: 163px; gap: 13px; padding: 19px; align-items: center; }
+  .lessonVisual { display: grid; grid-template-columns: auto minmax(0,1fr); min-height: 163px; gap: 13px; padding: 19px; align-items: center; }
   .lessonArtwork { width: 66px; height: 91px; }
   .lessonArtwork > svg { width: 35px; }
   .lessonCaption > strong { font-size: 25px; }
   .lessonCaption > small { font-size: 10px; }
-  .playPreview { position: absolute; inset-inline-end: 12px; bottom: 10px; }
+  .playPreview { grid-column: 1/-1; display: flex; justify-content: flex-end; align-items: center; gap: 8px; }
   .playPreview > svg { padding: 8px; width: 16px; height: 16px; }
-  .playPreview > small { display: none; }
+  .playPreview > small { font-size: 11px; }
   .courseIdentity { margin-top: 16px; gap: 10px; }
   .courseIdentity h2 { font-size: 20px; }
   .courseIdentity > span { width: 40px; height: 43px; border-radius: 11px; }
@@ -186,4 +198,14 @@
   .aiComposer strong { font-size: 13px; }
   .outputSample,.quizSample { padding: 17px; }
 }
+@media(max-width:480px) {
+  .stage { grid-template-columns: minmax(0,1fr); }
+  .noteCard, .toolsCard { grid-column: 1; grid-row: auto; }
+  .noteCard { padding: 16px; }
+  .toolsCard { padding: 16px; }
+}
+.gateway :is(h1,h2,h3,p,strong,small,em) { overflow-wrap: anywhere; }
+.gateway :is(a,button) { max-width: 100%; }
+.sampleFile > div { min-width: 0; }
+.sampleFile > span, .sampleFile > svg, .outputSample li i, .quizSample > span i { flex: none; }
 @media(prefers-reduced-motion:reduce) { .gateway *, .gateway *::before, .gateway *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } .copy h1 em path { stroke-dashoffset: 0; } }

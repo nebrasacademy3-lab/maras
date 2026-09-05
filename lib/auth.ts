@@ -56,6 +56,7 @@ export type SessionUser = {
   specialty: string | null;
   academicLevel: string | null;
   role: UserRole;
+  emailVerified: boolean;
   profileCompleted: boolean;
   onboardingCompleted: boolean;
 };
@@ -144,7 +145,8 @@ export function sessionUserFromRow(row: typeof users.$inferSelect): SessionUser 
     specialty: row.specialty,
     academicLevel: row.academicLevel,
     role,
-    profileCompleted: role !== "student" || Boolean(row.profileCompletedAt && row.phone && row.universitySlug && row.specialty && row.academicLevel),
+    emailVerified: Boolean(row.emailVerifiedAt),
+    profileCompleted: role !== "student" || Boolean(row.profileCompletedAt && row.fullName.trim().length >= 5 && row.phone && row.universitySlug && row.specialty && row.academicLevel),
     onboardingCompleted: Boolean(row.onboardingCompletedAt),
   };
 }
@@ -194,7 +196,7 @@ export async function createSession(userId: number, request: Request, remember =
   // Lock per account while counting/inserting sessions so concurrent logins cannot exceed the device limit.
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${userId})`);
-    const [account] = await tx.select({ role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
+    const [account] = await tx.select({ role: users.role }).from(users).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!account) throw new Error("account_not_found");
 
     // A fresh login from the same physical browser/app replaces the old session instead of consuming another slot.

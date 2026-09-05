@@ -3,9 +3,10 @@ import { createRequire } from "node:module";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
+import { homepageContentSignature, assertHomepageContentParity, assertHomepageCardsReadable, assertHomepageRailsReachable } from "./home-responsive-checks.mjs";
 const { chromium } = createRequire(import.meta.url)("playwright");
 
-const widths = [360, 768, 1440];
+const widths = [320, 360, 390, 768, 1024, 1440];
 const themes = ["light", "dark"];
 const intents = [
   { id: "course", label: "أبحث عن مادة" },
@@ -197,6 +198,7 @@ async function checkUniversityFilters(page, baseURL, theme, screenshotPath) {
   const folder = path.resolve("outputs/responsive-review", new Date().toISOString().replace(/[:.]/g, "-"));
   fs.mkdirSync(folder, { recursive: true });
   const results = [];
+  let homepageSignature;
   try {
     for (const width of widths) {
       for (const theme of themes) {
@@ -217,6 +219,11 @@ async function checkUniversityFilters(page, baseURL, theme, screenshotPath) {
           await assertNoOverflow(page, "Homepage " + stem);
           const palette = await assertOfficialPalette(page, theme);
           const claim = await assertProminentClaim(page);
+          homepageSignature ||= await homepageContentSignature(page);
+          await assertHomepageContentParity(page, homepageSignature);
+          await assertHomepageCardsReadable(page);
+          await assertHomepageRailsReachable(page);
+          await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
           assert.ok(await page.getByText("السجل التجاري", { exact: true }).count() > 0);
           await assertReducedMotion(page);
           await checkTabs(page);
@@ -224,7 +231,7 @@ async function checkUniversityFilters(page, baseURL, theme, screenshotPath) {
           await checkHeroSearch(page, baseURL, theme, path.join(folder, "search-" + stem + ".png"));
           await checkUniversityFilters(page, baseURL, theme, path.join(folder, "universities-" + stem + ".png"));
           assert.deepEqual(errors, [], "Browser runtime errors");
-          results.push({ width, theme, status: "passed", rtl: true, searchNavigation: true, tabs: true, searchableSelect: true, reducedMotion: true, palette, claim, runtimeErrors: errors.length });
+          results.push({ width, theme, status: "passed", rtl: true, searchNavigation: true, tabs: true, searchableSelect: true, contentParity: true, readableCards: true, lastRailCardsReachable: true, reducedMotion: true, palette, claim, runtimeErrors: errors.length });
         } catch (error) {
           await page.screenshot({ path: path.join(folder, "failure-" + stem + ".png"), fullPage: true }).catch(() => undefined);
           results.push({ width, theme, status: "failed", error: error instanceof Error ? error.message : String(error), runtimeErrors: errors });

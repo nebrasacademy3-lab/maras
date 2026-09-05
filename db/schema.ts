@@ -21,6 +21,55 @@ export const users = pgTable("users", {
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [uniqueIndex("users_email_unique").on(table.email), uniqueIndex("users_phone_unique").on(table.phone)]);
 
+export const emailVerificationCodes = pgTable("email_verification_codes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  purpose: text("purpose").notNull(),
+  codeHash: text("code_hash").notNull(),
+  attempts: integer("attempts").notNull().default(0),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  sentAt: text("sent_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [index("email_verification_user_purpose_created_idx").on(table.userId, table.purpose, table.createdAt)]);
+
+export const oauthIdentities = pgTable("oauth_identities", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  provider: text("provider").notNull(),
+  subject: text("subject").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [uniqueIndex("oauth_identity_provider_subject_unique").on(table.provider, table.subject), index("oauth_identity_user_idx").on(table.userId)]);
+
+export const oauthStates = pgTable("oauth_states", {
+  id: serial("id").primaryKey(),
+  stateHash: text("state_hash").notNull(),
+  provider: text("provider").notNull(),
+  referralCode: text("referral_code"),
+  bindingHash: text("binding_hash"),
+  nonce: text("nonce").notNull(),
+  verifier: text("verifier").notNull(),
+  returnTo: text("return_to").notNull().default("/dashboard"),
+  mobileChallenge: text("mobile_challenge"),
+  mobileRedirectUri: text("mobile_redirect_uri"),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [uniqueIndex("oauth_state_hash_unique").on(table.stateHash), index("oauth_state_expiry_idx").on(table.expiresAt)]);
+
+export const oauthExchanges = pgTable("oauth_exchanges", {
+  id: serial("id").primaryKey(),
+  codeHash: text("code_hash").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  challenge: text("challenge").notNull(),
+  returnTo: text("return_to").notNull(),
+  redirectUri: text("redirect_uri").notNull(),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [uniqueIndex("oauth_exchange_hash_unique").on(table.codeHash), index("oauth_exchange_expiry_idx").on(table.expiresAt)]);
+
 export const courseRequests = pgTable("course_requests", {
   id: serial("id").primaryKey(),
   userId: integer("user_id"),

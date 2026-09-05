@@ -5,11 +5,11 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { UniversityCatalog } from "@/components/university-catalog";
 import { getInstitutionsCatalog } from "@/lib/catalog-store";
+import { catalogHasFilters, publicPageMetadata, type SeoSearchParams } from "@/lib/seo";
 
-export const metadata: Metadata = {
-  title: "الجامعات والكليات السعودية",
-  description: "تصفّح الجامعات والكليات السعودية وابحث عن الشروحات المتوفرة حسب الجهة والتخصص.",
-};
+export async function generateMetadata({ searchParams }: { searchParams: Promise<SeoSearchParams> }): Promise<Metadata> {
+  return publicPageMetadata("/universities", "دليل الجامعات والكليات السعودية وشروحات المواد", "تصفح الجامعات والكليات السعودية والتخصصات، ثم اكتشف شروحات المقررات المتوفرة لطلاب كل جامعة على مراس العلم.", { noindex: catalogHasFilters(await searchParams) });
+}
 
 export const revalidate = 60;
 

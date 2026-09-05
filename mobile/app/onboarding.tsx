@@ -1,12 +1,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, useLocalSearchParams, type Href } from "expo-router";
 import React, { useEffect, useState } from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { Animated, Easing, Pressable, StyleSheet, View } from "react-native";
 import { BrandMark } from "@/src/components/Brand";
-import { AppButton, Screen } from "@/src/components/ui";
+import { AppButton, Screen, useReduceMotion } from "@/src/components/ui";
 import { api } from "@/src/lib/api";
+import { authDestination } from "@/src/lib/account-access";
+import { safeInternalPath } from "@/src/lib/notification-routing";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
@@ -22,6 +24,10 @@ export default function Onboarding() {
   const { colors } = useTheme();
   const { isRTL } = useLanguage();
   const { refresh } = useAuth();
+  const params = useLocalSearchParams<{ return_to?: string }>();
+  const returnTo = safeInternalPath(params.return_to);
+  const reduceMotion = useReduceMotion();
+  const [error, setError] = useState("");
   const [index, setIndex] = useState(0);
   const [busy, setBusy] = useState(false);
   const [opacity] = useState(() => new Animated.Value(1));
@@ -29,21 +35,24 @@ export default function Onboarding() {
   const step = steps[index]!;
 
   useEffect(() => {
+    if (reduceMotion) { opacity.setValue(1); translate.setValue(0); return; }
     opacity.setValue(0); translate.setValue(18);
     Animated.parallel([
       Animated.timing(opacity, { toValue: 1, duration: 270, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
       Animated.timing(translate, { toValue: 0, duration: 300, easing: Easing.out(Easing.cubic), useNativeDriver: true }),
     ]).start();
-  }, [index, opacity, translate]);
+    return () => { opacity.stopAnimation(); translate.stopAnimation(); };
+  }, [index, opacity, translate, reduceMotion]);
 
   async function complete() {
     setBusy(true);
-    try { await api("/api/profile/onboarding", { method: "POST" }); await refresh(); router.replace("/(tabs)"); }
+    try { await api("/api/profile/onboarding", { method: "POST" }); const updated = await refresh(); if (updated) router.replace(authDestination(updated, undefined, returnTo) as Href); else setError("تعذر تحديث الحساب. حاول مرة أخرى."); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "تعذر إكمال التهيئة."); }
     finally { setBusy(false); }
   }
   function next() { if (index < steps.length - 1) setIndex((value) => value + 1); else void complete(); }
 
-  return <Screen scroll={false} showFooter={false} style={styles.page}>
+  return <Screen showFooter={false} style={styles.page}>
     <View style={styles.topbar}><BrandMark size={70} whiteTile /><Pressable accessibilityRole="button" onPress={() => void complete()} disabled={busy} style={[styles.skip, { backgroundColor: colors.surfaceAlt }]}><Text style={[styles.skipText, { color: colors.textSoft }]}>تخطي</Text></Pressable></View>
     <View style={styles.progressHeader}><View style={styles.progressCopy}><Text style={[styles.progressKicker, { color: colors.primary }]}>تهيئة حسابك</Text><Text style={[styles.progressTitle, { color: colors.text }]}>خطوات بسيطة قبل أن تبدأ</Text></View><Text style={[styles.counter, { color: colors.textSoft }]}>{index + 1} / {steps.length}</Text></View>
     <View style={styles.progressRow}>{steps.map((_, item) => <View key={item} style={[styles.progressTrack, { backgroundColor: colors.border }, item <= index && { backgroundColor: colors.primary }, item === index && styles.progressActive]} />)}</View>
@@ -62,6 +71,7 @@ export default function Onboarding() {
       </View>
     </Animated.View>
     <View style={styles.footer}>
+      {error ? <Text style={{ color: colors.danger, textAlign: "center" }}>{error}</Text> : null}
       <AppButton title={index === steps.length - 1 ? "ابدأ استخدام مراس" : "التالي"} icon={index === steps.length - 1 ? "rocket-outline" : (isRTL ? "arrow-back" : "arrow-forward")} loading={busy} onPress={next} />
       {index > 0 ? <Pressable onPress={() => setIndex((value) => Math.max(0, value - 1))} disabled={busy} style={styles.back}><Ionicons name={isRTL ? "arrow-forward" : "arrow-back"} size={16} color={colors.textSoft} /><Text style={[styles.backText, { color: colors.textSoft }]}>الخطوة السابقة</Text></Pressable> : <Text style={[styles.secure, { color: colors.textSoft }]}><Ionicons name="shield-checkmark-outline" size={14} color={colors.success} /> بياناتك محفوظة بأمان</Text>}
     </View>

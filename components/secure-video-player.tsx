@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Check, Gauge, LoaderCircle, Maximize, Minimize, Pause, Play, RefreshCw, RotateCcw, RotateCw, Settings, ShieldCheck, Volume1, Volume2, VolumeX } from "lucide-react";
 import { BrandLockup } from "./brand-logo";
+import { usePlayerFullscreen } from "./use-player-fullscreen";
+import "./secure-video-player.css";
 
 export type VideoSeekRequest = { seconds: number; nonce: number };
 type SessionQuality = { label: string; width: number; height: number; bitrateKbps: number };
@@ -51,9 +53,8 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   const [sessionAttempt, setSessionAttempt] = useState(0);
   const [processing, setProcessing] = useState<SessionProcessing | null>(null);
   const [sessionExpiresAt, setSessionExpiresAt] = useState("");
-  const [fallbackFullscreen, setFallbackFullscreen] = useState(false);
-  const [nativeFullscreen, setNativeFullscreen] = useState(false);
-  const [rotated, setRotated] = useState(false);
+  const { fullscreen, fallbackFullscreen, rotated, toggleRotation, toggle: fullScreen, close: closeFullscreen, message: fullscreenMessage } = usePlayerFullscreen(shellRef);
+  const [playbackMessage, setPlaybackMessage] = useState("");
   const [privacyCovered, setPrivacyCovered] = useState(false);
   const lastSavedRef = useRef(0);
   const pendingPlaybackRef = useRef<{ seconds: number; playing: boolean } | null>(null);
@@ -62,25 +63,6 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
     const timer = window.setInterval(() => setWatermark((value) => (value + 1) % 4), 9000);
     return () => window.clearInterval(timer);
   }, []);
-
-  useEffect(() => {
-    const fullscreenChanged = () => {
-      const active = document.fullscreenElement === shellRef.current;
-      setNativeFullscreen(active);
-      if (!active) setRotated(false);
-    };
-    document.addEventListener("fullscreenchange", fullscreenChanged);
-    return () => document.removeEventListener("fullscreenchange", fullscreenChanged);
-  }, []);
-
-  useEffect(() => {
-    if (!fallbackFullscreen) return;
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const close = (event: KeyboardEvent) => { if (event.key === "Escape") setFallbackFullscreen(false); };
-    window.addEventListener("keydown", close);
-    return () => { document.body.style.overflow = previous; window.removeEventListener("keydown", close); };
-  }, [fallbackFullscreen]);
 
   useEffect(() => {
     if (preview) return;
@@ -155,6 +137,7 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
     let disposed = false;
     const fallback = () => {
       if (disposed || !originalSource) return;
+      if (!pendingPlaybackRef.current) pendingPlaybackRef.current = { seconds: video.currentTime || 0, playing: !video.paused };
       setManagedHls(false);
       setQuality("الأصلية");
       setStreamSource(originalSource);
@@ -188,7 +171,9 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   const togglePlay = async () => {
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) await video.play(); else video.pause();
+    setPlaybackMessage("");
+    try { if (video.paused) await video.play(); else video.pause(); }
+    catch { setPlaybackMessage("لم يبدأ التشغيل. اضغط تشغيل مجددًا، وتحقق من اتصالك إذا استمرت المشكلة."); }
   };
   const jump = (seconds: number) => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + seconds)); };
   const changeRate = (value: number) => { setRate(value); if (videoRef.current) videoRef.current.playbackRate = value; };
@@ -205,31 +190,33 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   };
   const changeVolume = (value: number) => { setVolume(value); setMuted(value === 0); if (videoRef.current) { videoRef.current.volume = value; videoRef.current.muted = value === 0; } };
   const toggleMute = () => { const next = !muted; setMuted(next); if (videoRef.current) videoRef.current.muted = next; };
-  const fullScreen = useCallback(async () => {
-    if (fallbackFullscreen) { setRotated(false); setFallbackFullscreen(false); return; }
-    if (document.fullscreenElement) { setRotated(false); await document.exitFullscreen().catch(() => undefined); return; }
-    const shell = shellRef.current;
-    if (shell?.requestFullscreen) {
-      try { await shell.requestFullscreen({ navigationUI: "hide" }); return; } catch { /* iOS and embedded browsers use the in-app fallback below. */ }
-    }
-    setFallbackFullscreen(true);
-  }, [fallbackFullscreen]);
   const saveProgress = (watchedSeconds: number, completed = false) => {
     if (!courseSlug || !lessonId) return;
     void fetch("/api/progress", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ courseSlug, lessonId, watchedSeconds, completed }), keepalive: true }).catch(() => undefined);
   };
   const retry = () => {
+    const video = videoRef.current;
+    if (video && Number.isFinite(video.currentTime)) pendingPlaybackRef.current = { seconds: video.currentTime, playing: !video.paused };
     setHasError(false);
     setSessionError("");
     setStreamSource(source || "");
     if (source) videoRef.current?.load(); else setSessionAttempt((value) => value + 1);
   };
-  const fullscreen = fallbackFullscreen || nativeFullscreen;
 
   return (
-    <div ref={shellRef} className={`secure-player ${fallbackFullscreen ? "browser-fullscreen" : ""} ${rotated ? "video-rotated" : ""}`} onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => { if (event.key === " ") { event.preventDefault(); void togglePlay(); } if (event.key === "ArrowRight") jump(-10); if (event.key === "ArrowLeft") jump(10); if (event.key.toLowerCase() === "m") toggleMute(); if (event.key.toLowerCase() === "f") void fullScreen(); if (event.key.toLowerCase() === "r" && fullscreen) setRotated((value) => !value); }} tabIndex={0} aria-label={`مشغل فيديو: ${title}`}>
+    <div ref={shellRef} className={`secure-player ${fullscreen ? "is-fullscreen" : ""} ${fallbackFullscreen ? "browser-fullscreen" : ""} ${rotated ? "video-rotated" : ""}`} onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => {
+      if (event.altKey || event.ctrlKey || event.metaKey || (event.target instanceof Element && event.target.closest("button,input,select,textarea,a,[contenteditable]"))) return;
+      if (event.key === " ") { event.preventDefault(); void togglePlay(); }
+      if (event.key === "ArrowRight") { event.preventDefault(); jump(-10); }
+      if (event.key === "ArrowLeft") { event.preventDefault(); jump(10); }
+      if (event.key.toLowerCase() === "m") toggleMute();
+      if (event.key.toLowerCase() === "f") { event.preventDefault(); void fullScreen(); }
+      if (event.key.toLowerCase() === "r" && fullscreen) toggleRotation();
+    }} tabIndex={0} aria-label={`مشغل فيديو: ${title}`}>
+      {fullscreen && <button type="button" className="video-exit-fullscreen" onClick={() => void closeFullscreen()} aria-label="تصغير الفيديو"><Minimize size={18} /><span>تصغير</span></button>}
+      {(fullscreenMessage || playbackMessage) && <p className="video-action-message" role="status">{fullscreenMessage || playbackMessage}</p>}
       <div className="secure-player-stage">
-      <video ref={videoRef} src={managedHls ? undefined : streamSource || undefined} poster={posterSource || undefined} playsInline preload="auto" disablePictureInPicture disableRemotePlayback controlsList="nodownload noremoteplayback nofullscreen" onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; setTime(current); onTimeChange?.(current); if (current - lastSavedRef.current >= 15) { lastSavedRef.current = current; saveProgress(Math.floor(current)); } }} onLoadedMetadata={(event) => { const pending = pendingPlaybackRef.current; if (pending) { event.currentTarget.currentTime = Math.min(event.currentTarget.duration || pending.seconds, pending.seconds); pendingPlaybackRef.current = null; if (pending.playing) void event.currentTarget.play().catch(() => undefined); } setDuration(event.currentTarget.duration); setHasError(false); }} onCanPlay={() => setHasError(false)} onEnded={(event) => { setPlaying(false); saveProgress(Math.floor(event.currentTarget.duration), true); }} onError={() => { if (streamSource && !managedHls) setHasError(true); }} />
+      <video ref={videoRef} src={managedHls ? undefined : streamSource || undefined} poster={posterSource || undefined} playsInline preload="auto" disablePictureInPicture disableRemotePlayback controlsList="nodownload noremoteplayback nofullscreen" onPlay={() => { setPlaying(true); setPlaybackMessage(""); }} onPause={() => setPlaying(false)} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; setTime(current); onTimeChange?.(current); if (current - lastSavedRef.current >= 15) { lastSavedRef.current = current; saveProgress(Math.floor(current)); } }} onLoadedMetadata={(event) => { const pending = pendingPlaybackRef.current; if (pending) { event.currentTarget.currentTime = Math.min(event.currentTarget.duration || pending.seconds, pending.seconds); pendingPlaybackRef.current = null; if (pending.playing) void event.currentTarget.play().catch(() => undefined); } event.currentTarget.playbackRate = rate; setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0); setHasError(false); }} onCanPlay={() => setHasError(false)} onEnded={(event) => { setPlaying(false); saveProgress(Math.floor(event.currentTarget.duration), true); }} onError={() => { if (streamSource && !managedHls) setHasError(true); }} />
       <div className="secure-player-bg" />
       <div className={`video-watermark watermark-${watermark}`}>{preview ? "درس تجريبي مجاني" : studentLabel}</div>
       <div className="video-brand"><BrandLockup compact /></div>
@@ -255,12 +242,12 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
             <button className="control-label" onClick={() => setSettings(!settings)}><Gauge size={17} /><span>{rate}×</span></button>
             <button className="control-label" onClick={() => setSettings(!settings)}><span>{quality}</span></button>
             <button onClick={() => setSettings(!settings)} aria-label="الإعدادات"><Settings size={19} /></button>
-            {fullscreen && <button className={rotated ? "active" : ""} onClick={() => setRotated((value) => !value)} aria-label="تدوير المشغل"><RotateCw size={19} /></button>}
+            {fullscreen && <button className={rotated ? "active" : ""} onClick={toggleRotation} aria-label="تدوير المشغل"><RotateCw size={19} /></button>}
             <button onClick={() => void fullScreen()} aria-label={fullscreen ? "إنهاء ملء الشاشة" : "ملء الشاشة"}>{fullscreen ? <Minimize size={19} /> : <Maximize size={19} />}</button>
           </div>
         </div>
       </div>
-      {settings && <div className="player-settings"><div><Settings size={16} /><strong>إعدادات المشاهدة</strong><button onClick={() => setSettings(false)}>×</button></div><label>السرعة<span>{[.5,.75,1,1.25,1.5,2].map((value) => <button key={value} className={rate === value ? "active" : ""} onClick={() => changeRate(value)}>{rate === value && <Check size={11} />}{value}×</button>)}</span></label><label>الجودة<span>{Object.keys(qualitySources).map((value) => <button key={value} className={quality === value ? "active" : ""} onClick={() => changeQuality(value)}>{quality === value && <Check size={11} />}{value}</button>)}</span></label><p><ShieldCheck size={14} /> عند توفر البث المتكيف يختار المشغل أفضل جودة للاتصال تلقائيًا، مع بقاء الفيديو الأصلي خيارًا احتياطيًا.</p></div>}
+      {settings && <div className="player-settings" role="region" aria-label="إعدادات المشاهدة"><div><Settings size={16} /><strong>إعدادات المشاهدة</strong><button type="button" aria-label="إغلاق إعدادات المشاهدة" onClick={() => setSettings(false)}>×</button></div><label>السرعة<span>{[.5,.75,1,1.25,1.5,2].map((value) => <button key={value} className={rate === value ? "active" : ""} onClick={() => changeRate(value)}>{rate === value && <Check size={11} />}{value}×</button>)}</span></label><label>الجودة<span>{Object.keys(qualitySources).map((value) => <button key={value} className={quality === value ? "active" : ""} onClick={() => changeQuality(value)}>{quality === value && <Check size={11} />}{value}</button>)}</span></label><p><ShieldCheck size={14} /> عند توفر البث المتكيف يختار المشغل أفضل جودة للاتصال تلقائيًا، مع بقاء الفيديو الأصلي خيارًا احتياطيًا.</p></div>}
       </div>
     </div>
   );

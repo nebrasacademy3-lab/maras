@@ -6,6 +6,8 @@ import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/l
 import { getAiMonthlyPrice } from "@/lib/ai-platform";
 import { fromMinorUnits, toMinorUnits } from "@/lib/finance";
 import { observeRequest } from "@/lib/observability";
+import { purchaseRequirementResponse } from "@/lib/account-readiness";
+import { readBoundedJsonObject } from "@/lib/request-body";
 
 type TapChargeResponse = { id?: string; transaction?: { url?: string }; errors?: Array<{ description?: string }> };
 const OPEN_STATUSES = ["pending", "initiated", "in_progress", "verification_pending"];
@@ -40,10 +42,11 @@ export async function POST(request: Request) {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
     if (!user) return jsonError("سجّل الدخول قبل الاشتراك", 401);
-    if (!user.profileCompleted || !user.phone) return jsonError("أكمل رقم الجوال وبيانات الحساب قبل الدفع", 409);
+    const blocked = purchaseRequirementResponse(user);
+    if (blocked) return blocked;
     if (!await checkRateLimit("ai-subscription-checkout", `user:${user.id}:${clientIp(request)}`, 8, 15 * 60)) return jsonError("محاولات دفع كثيرة. حاول بعد 15 دقيقة.", 429);
-    let body: Record<string, unknown> = {};
-    try { body = await request.json() as Record<string, unknown>; } catch { /* The only client field is optional idempotency. */ }
+    let body: Record<string, unknown>;
+    try { body = await readBoundedJsonObject(request); } catch { return jsonError("بيانات الدفع غير صالحة"); }
     const supplied = cleanText(request.headers.get("idempotency-key") || body.checkoutKey, 100);
     const checkoutKey = `u${user.id}:meras-ai:${/^[A-Za-z0-9_-]{12,90}$/.test(supplied) ? supplied : crypto.randomUUID()}`;
     const price = await getAiMonthlyPrice();
@@ -69,7 +72,7 @@ export async function POST(request: Request) {
     const row = created.row;
     const siteOrigin = (process.env.APP_URL || requestOrigin(request)).replace(/\/$/, "");
     const nameParts = user.fullName.split(/\s+/);
-    const localPhone = user.phone.replace(/^\+?966/, "").replace(/^0/, "");
+    const localPhone = user.phone!.replace(/^\+?966/, "").replace(/^0/, "");
     let response: Response;
     try {
       response = await fetch("https://api.tap.company/v2/charges/", {

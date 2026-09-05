@@ -99,10 +99,10 @@ export function HomePartners() {
                 />
                 <Text style={[styles.kindText, { color: colors.primary }]}>{kindLabels[partner.kind]}</Text>
               </View>
-              <Text numberOfLines={2} style={[styles.name, { color: colors.text }]}>{partner.name}</Text>
+              <Text style={[styles.name, { color: colors.text }]}>{partner.name}</Text>
             </View>
           </View>
-          {partner.description ? <Text numberOfLines={3} style={[styles.description, { color: colors.textSoft }]}>{partner.description}</Text> : null}
+          {partner.description ? <Text style={[styles.description, { color: colors.textSoft }]}>{partner.description}</Text> : null}
           {partner.credentialNumber ? <View style={[styles.credential, { borderColor: colors.border }]}>
             <Text style={[styles.credentialLabel, { color: colors.textSoft }]}>رقم الاعتماد أو الترخيص</Text>
             <Text selectable style={[styles.credentialValue, { color: colors.text }]}>{partner.credentialNumber}</Text>
@@ -125,10 +125,10 @@ const styles = StyleSheet.create({
   logoTile: { width: 64, height: 64, flexShrink: 0, borderWidth: 1, borderRadius: 18, padding: 7, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", overflow: "hidden" },
   logo: { width: "100%", height: "100%" },
   headCopy: { flex: 1, alignItems: "flex-start" },
-  kind: { minHeight: 27, borderRadius: 999, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", gap: 4 },
-  kindText: { fontSize: 8, fontWeight: "900" },
+  kind: { maxWidth: "100%", minHeight: 27, borderRadius: 999, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", gap: 4 },
+  kindText: { flexShrink: 1, fontSize: 10, fontWeight: "900" },
   name: { fontSize: 13, lineHeight: 20, fontWeight: "900", textAlign: "right", writingDirection: "rtl", marginTop: 6 },
-  description: { fontSize: 9, lineHeight: 16, textAlign: "right", writingDirection: "rtl", marginTop: 10 },
+  description: { fontSize: 11, lineHeight: 20, textAlign: "right", writingDirection: "rtl", marginTop: 10 },
   credential: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 10, paddingTop: 8, alignItems: "flex-start" },
   credentialLabel: { fontSize: 7, fontWeight: "800", textAlign: "right" },
   credentialValue: { fontSize: 9, fontWeight: "900", textAlign: "left", writingDirection: "ltr", marginTop: 3 },

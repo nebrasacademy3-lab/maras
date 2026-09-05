@@ -22,22 +22,38 @@ async function waitForServer(url, child) {
 test("production server serves public web/mobile contracts and reports database health", async (t) => {
   const child = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", String(port)], {
     cwd: new URL("..", import.meta.url),
-    env: { ...process.env, NODE_ENV: "production", NEXT_PUBLIC_SITE_URL: base, DATABASE_URL: "", ADMIN_API_TOKEN: "management-test-secret", ADMIN_UPLOAD_TOKEN: "upload-test-secret" },
+    env: { ...process.env, NODE_ENV: "production", NEXT_PUBLIC_SITE_URL: base, DATABASE_URL: "", ADMIN_API_TOKEN: "management-test-secret", ADMIN_UPLOAD_TOKEN: "upload-test-secret", GOOGLE_CLIENT_ID: "", GOOGLE_CLIENT_SECRET: "", APPLE_CLIENT_ID: "", APPLE_PRIVATE_KEY: "" },
     stdio: "ignore",
   });
   t.after(() => child.kill("SIGTERM"));
   await waitForServer(`${base}/login`, child);
 
-  for (const path of ["/", "/login", "/register", "/courses", "/universities", "/api/catalog/search", "/api/mobile/catalog", "/api/catalog/programs?institution=ksu", "/api/public/settings"]) {
+  for (const path of ["/", "/login", "/register", "/forgot-password", "/courses", "/universities", "/api/catalog/search", "/api/mobile/catalog", "/api/catalog/programs?institution=ksu", "/api/public/settings", "/api/auth/oauth/providers"]) {
     const response = await fetch(`${base}${path}`);
     assert.equal(response.status, 200, `${path} should be public and healthy`);
   }
 
   const page = await fetch(`${base}/login`);
+  assert.equal(page.headers.get("referrer-policy"), "no-referrer");
+  assert.match(page.headers.get("cache-control"), /no-store/);
+  assert.match(page.headers.get("x-robots-tag"), /noindex/);
+  assert.match(page.headers.get("content-security-policy"), /script-src-attr 'none'/);
+  assert.match(page.headers.get("permissions-policy"), /fullscreen=\(self\)/);
   assert.match(await page.text(), /تسجيل الدخول/);
   const catalog = await (await fetch(`${base}/api/mobile/catalog`)).json();
   assert.ok(Array.isArray(catalog.courses));
   assert.ok(Array.isArray(catalog.institutions));
+
+  const providers = await (await fetch(`${base}/api/auth/oauth/providers`)).json();
+  assert.equal(providers.google, false);
+  assert.equal(providers.apple, false);
+  assert.ok(Object.keys(providers).every(key => ["google", "apple", "mobileRedirectUri"].includes(key)), "provider capabilities never expose credentials");
+  const verification = await fetch(`${base}/api/auth/email-verification`);
+  assert.equal(verification.status, 401, "email verification must require an authenticated account");
+  assert.match(verification.headers.get("cache-control"), /no-store/);
+  const verificationPage = await fetch(`${base}/verify-email`, { redirect: "manual" });
+  assert.equal(verificationPage.status, 307);
+  assert.match(verificationPage.headers.get("location"), /^\/login(?:\?|$)/);
 
   const health = await fetch(`${base}/api/health`);
   assert.equal(health.status, 503);

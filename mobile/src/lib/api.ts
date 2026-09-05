@@ -29,7 +29,10 @@ export function setApiDeviceIdentity(value: { id: string; label: string; platfor
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) { super(message); this.status = status; }
+  code?: string;
+  next?: string;
+  retryAfterSeconds?: number;
+  constructor(message: string, status: number, details?: { code?: string; next?: string; retryAfterSeconds?: number }) { super(message); this.status = status; this.code = details?.code; this.next = details?.next; this.retryAfterSeconds = details?.retryAfterSeconds; }
 }
 
 export const ADMIN_STEP_UP_STATUS = 428;
@@ -78,7 +81,8 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
       const error = payload && typeof payload === "object" && "error" in payload
         ? String((payload as { error: unknown }).error)
         : `تعذر إكمال الطلب من خدمة مراس (HTTP ${response.status}).`;
-      throw new ApiError(error, response.status);
+      const details = payload && typeof payload === "object" ? payload as { code?: unknown; next?: unknown; retryAfterSeconds?: unknown } : {};
+      throw new ApiError(error, response.status, { code: typeof details.code === "string" ? details.code : undefined, next: typeof details.next === "string" ? details.next : undefined, retryAfterSeconds: typeof details.retryAfterSeconds === "number" ? details.retryAfterSeconds : undefined });
     }
     return payload as T;
   } catch (reason) {

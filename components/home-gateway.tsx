@@ -251,9 +251,6 @@ export function HomeGateway({
 
         <div className={styles.stage}>
           <div className={styles.orbit} aria-hidden="true"><i /><i /></div>
-          <div className={styles.noteCard}><span><NotebookPen size={20} /></span><small>لحظة فهم تستحق الحفظ</small><strong>فكرة. ملاحظة.<br />ورجعة في وقتها.</strong><i /><i /><i /></div>
-          <Link href="/study-tools" className={styles.toolsCard}><span><Sparkles size={19} /></span><div><strong>مذاكرتك، بطريقتك.</strong><small>تلخيص · ترجمة · تدريب</small></div><ArrowLeft size={17} /></Link>
-          <span className={styles.stageWord} aria-hidden="true">مساحةٌ لطموحك</span>
           <div
           id="home-intent-panel"
           className={styles.canvas}
@@ -266,6 +263,9 @@ export function HomeGateway({
           {intent === "resume" && resume ? <ResumeCanvas resume={resume} /> : null}
           {intent !== "course" && intent !== "resume" ? <AiCanvas intent={intent} /> : null}
         </div>
+          <div className={styles.noteCard}><span><NotebookPen size={20} /></span><small>لحظة فهم تستحق الحفظ</small><strong>فكرة. ملاحظة.<br />ورجعة في وقتها.</strong><i /><i /><i /></div>
+          <Link href="/study-tools" className={styles.toolsCard}><span><Sparkles size={19} /></span><div><strong>مذاكرتك، بطريقتك.</strong><small>تلخيص · ترجمة · تدريب</small></div><ArrowLeft size={17} /></Link>
+          <span className={styles.stageWord} aria-hidden="true">مساحةٌ لطموحك</span>
         </div>
         <a href="#explore" className={styles.exploreLink}>اكتشف عالم مراس <span><ArrowLeft size={17} /></span></a>
       </div>

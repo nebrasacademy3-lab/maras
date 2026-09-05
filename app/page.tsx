@@ -17,16 +17,10 @@ import { getPublicReviews } from "@/lib/public-reviews";
 import { getPublicSettings, PUBLIC_SETTING_DEFAULTS } from "@/lib/platform-settings";
 import type { Course } from "@/lib/data";
 import styles from "./home.module.css";
+import { publicPageMetadata } from "@/lib/seo";
 
 export const revalidate = 60;
-export const metadata: Metadata = {
-  title: "شروحات المقررات الجامعية في السعودية | مراس العلم",
-  description: "استكشف شروحات المقررات حسب الجامعة والتخصص، شاهد الدرس التجريبي، وواصل تعلمك وملفاتك من حساب واحد.",
-  alternates: { canonical: "/" },
-  keywords: ["شروحات جامعية", "شرح مقررات الجامعة", "دروس جامعية السعودية", "مواد جامعية", "تقوية الإنجليزية", "دورات تدريبية للطلاب"],
-  openGraph: { title: "مراس العلم | شروحات جامعتك في مكان واحد", description: "مواد مرتبة حسب الجامعة والتخصص، ودروس تجريبية قبل الاشتراك.", url: "/", images: [{ url: "/og.png", width: 1728, height: 910, alt: "منصة مراس العلم" }] },
-  twitter: { card: "summary_large_image", title: "مراس العلم", description: "شروحات المقررات الجامعية حسب الجامعة والتخصص.", images: ["/og.png"] },
-};
+export const metadata: Metadata = publicPageMetadata("/", "شروحات المقررات الجامعية في السعودية", "استكشف شروحات المقررات حسب الجامعة والتخصص، وشاهد المعاينات المجانية المتاحة، وواصل تعلمك وملفاتك من حساب واحد في مراس العلم.");
 const priceFormatter = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 });
 function hasReadyPreview(course: Course) { return course.units.some((unit) => unit.lessons.some((lesson) => lesson.free && lesson.ready)); }
 function uniqueCourses(courses: Course[]) { const seen = new Set<string>(); return courses.filter((course) => { if (seen.has(course.slug)) return false; seen.add(course.slug); return true; }); }
@@ -68,7 +62,7 @@ export default async function Home() {
     {settings.payment_methods_marketing_enabled !== "false" ? <section className={styles.paymentSection} id="payment" aria-labelledby="payment-title" data-home-reveal>
       <div className={`container ${styles.paymentShell}`}>
         <div><span><WalletCards size={17} /> راحة في التعلّم. مرونة في الدفع.</span><h2 id="payment-title">خطوتك القادمة،<br />على راحتك.</h2><p>تابي وتمارا ضمن خيارات التقسيط عبر Tap. اختر مادتك، واطّلع على الوسائل المتاحة لطلبك قبل إتمام الدفع.</p><div><i><LockKeyhole size={16} /> بيانات بطاقتك لا تُحفظ لدينا</i><i><MonitorSmartphone size={16} /> اشتراكك مرتبط بحسابك</i></div></div>
-        <aside><small>تعلّم الآن، وخطّط لدفعك</small><div className={styles.paymentBrands}><span className={styles.tabbyBrand}>tabby<span>تابي</span></span><span className={styles.tamaraBrand}>tamara<span>تمارا</span></span></div><p>تخضع خيارات التقسيط للتفعيل وأهلية الطلب وشروط مقدم الخدمة.</p><Link href="/courses">اكتشف مادتك <ArrowLeft size={16} /></Link><small className={styles.poweredBy}>بوابة الدفع <b dir="ltr">Tap</b></small></aside>
+        <aside><small>خيارات تناسبك، من الدفع إلى التقسيط</small><div className={styles.paymentBrands}><span className={styles.tabbyBrand}>tabby<span>تابي</span></span><span className={styles.tamaraBrand}>tamara<span>تمارا</span></span><span className={styles.cardPayment}>مدى<span lang="en">mada</span></span><span className={styles.cardPayment} dir="ltr">VISA<span>فيزا</span></span><span className={styles.cardPayment} dir="ltr">Mastercard<span>ماستركارد</span></span><span className={styles.cardPayment} dir="ltr">Apple Pay<span>آبل باي</span></span></div><p>تظهر الوسائل المفعّلة والمتاحة لطلبك عند الدفع. يخضع التقسيط للأهلية وشروط مقدم الخدمة.</p><Link href="/courses">اكتشف مادتك <ArrowLeft size={16} /></Link><small className={styles.poweredBy}>بوابة الدفع <b dir="ltr">Tap</b></small></aside>
       </div>
     </section> : null}
     <section className={styles.finalSection} data-home-reveal><div className={`container ${styles.finalCard}`}><span aria-hidden="true">✦</span><div><small>لم تجد ما تبحث عنه؟</small><h2>اطلب المادة، واترك لنا تفاصيلها.</h2><p>أرسل الجامعة والتخصص واسم المادة، وسيتابع الطلب فريق المنصة من حسابك.</p></div><div><Link href="/request-course">أرسل طلب مادة <ArrowLeft size={16} /></Link><Link href="/courses">استكشف الكتالوج</Link></div></div></section>

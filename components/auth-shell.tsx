@@ -9,11 +9,13 @@ import type { Institution } from "@/lib/data";
 import { useAcademicPrograms } from "@/components/use-academic-programs";
 import { ACADEMIC_LEVELS } from "@/lib/academic-levels";
 import { webDeviceHeaders } from "@/lib/client-device";
+import { safeAccountReturnTo } from "@/lib/account-readiness";
+import { SocialAuthButtons } from "@/components/social-auth-buttons";
 
 function safeReturnTo() {
   if (typeof window === "undefined") return "";
   const value = new URLSearchParams(window.location.search).get("return_to") || "";
-  return value.startsWith("/") && !value.startsWith("//") ? value : "";
+  return safeAccountReturnTo(value, "");
 }
 
 export function LoginForm() {
@@ -44,10 +46,11 @@ export function LoginForm() {
       const data = await readAuthResponse(response);
       if (!response.ok) throw new Error(data.error || "تعذر تسجيل الدخول");
       const returnTo = safeReturnTo();
-      if (returnTo && data.next !== "/onboarding" && data.next !== "/complete-profile") window.location.assign(returnTo);
+      if (returnTo && !["/onboarding", "/complete-profile", "/verify-email"].includes((data.next || "").split("?")[0])) window.location.assign(returnTo);
       else {
-        if (returnTo) sessionStorage.setItem("meras_return_to", returnTo);
-        window.location.assign(data.next || "/dashboard");
+        if (returnTo) { try { sessionStorage.setItem("meras_return_to", returnTo); } catch { /* Also retained in the next URL below. */ } }
+        const next = safeAccountReturnTo(data.next || "/dashboard");
+        window.location.assign(returnTo && ["/verify-email", "/complete-profile", "/onboarding"].includes(next.split("?")[0]) ? `${next.split("?")[0]}?return_to=${encodeURIComponent(returnTo)}` : next);
       }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر تسجيل الدخول");
@@ -57,6 +60,7 @@ export function LoginForm() {
   return <form className="auth-form" onSubmit={submit}>
     <div className="auth-heading"><span>مرحبًا بعودتك 👋</span><h1>سجّل دخولك إلى مراس</h1><p>أكمل من آخر درس، وتابع موادك ومشترياتك من مكان واحد.</p></div>
     {notice && <p className="auth-success" role="status">{notice}</p>}
+    <SocialAuthButtons />
     <label className="form-label">البريد الإلكتروني أو رقم الجوال<div className="input-with-icon"><Mail size={18} /><input name="identifier" required autoComplete="username" placeholder="name@example.com أو 05xxxxxxxx" dir="ltr" /></div><small className="field-hint">اكتب البريد المرتبط بحسابك، أو رقم الجوال بصيغة 05xxxxxxxx.</small></label>
     <label className="form-label">كلمة المرور<div className="input-with-icon"><LockKeyhole size={18} /><input name="password" required autoComplete="current-password" type={showPassword ? "text" : "password"} placeholder="أدخل كلمة المرور" /><button type="button" onClick={() => setShowPassword(!showPassword)} aria-label={showPassword ? "إخفاء كلمة المرور" : "إظهار كلمة المرور"}>{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div><small className="field-hint">أدخل كلمة المرور التي أنشأتها سابقًا، ويمكنك إظهارها للتأكد من الكتابة.</small></label>
     <div className="auth-options"><label><input name="remember" type="checkbox" defaultChecked /> تذكرني</label><Link href="/forgot-password">نسيت كلمة المرور؟</Link></div>
@@ -94,8 +98,9 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
       const result = await readAuthResponse(response);
       if (!response.ok) throw new Error(result.error || "تعذر إنشاء الحساب");
       const returnTo = safeReturnTo();
-      if (returnTo) sessionStorage.setItem("meras_return_to", returnTo);
-      window.location.assign(result.next || "/onboarding");
+      if (returnTo) { try { sessionStorage.setItem("meras_return_to", returnTo); } catch { /* Also retained in next URL. */ } }
+      const next = safeAccountReturnTo(result.next || "/verify-email");
+      window.location.assign(returnTo ? `${next.split("?")[0]}?return_to=${encodeURIComponent(returnTo)}` : next);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر إنشاء الحساب");
       setLoading(false);
@@ -106,6 +111,7 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
     <div className="auth-steps">{[1,2,3].map((item) => <span key={item} className={step >= item ? "active" : ""}><i>{step > item ? <CheckCircle2 size={13} /> : item}</i><small>{["بياناتك","دراستك","تأكيد"][item - 1]}</small></span>)}</div>
     {step === 1 && <>
       <div className="auth-heading"><span>انضم إلى مراس</span><h1>أنشئ حسابك الآمن</h1><p>كل الحقول مطلوبة حتى تُربط مشترياتك وموادك وطلباتك بحساب واحد.</p></div>
+      <SocialAuthButtons />
       <label className="form-label">الاسم الكامل<div className="input-with-icon"><UserRound size={18} /><input required minLength={5} autoComplete="name" value={data.fullName} onChange={(event) => update("fullName", event.target.value)} placeholder="الاسم الثلاثي" /></div><small className="field-hint">اكتب اسمك كما تفضّل ظهوره في ملفك وشهاداتك.</small></label>
       <div className="two-fields"><label className="form-label">رقم الجوال السعودي<div className="input-with-icon"><Phone size={18} /><input required pattern="(?:\\+?966|0)?5[0-9]{8}" autoComplete="tel" value={data.phone} onChange={(event) => update("phone", event.target.value)} placeholder="05xxxxxxxx" dir="ltr" /></div><small className="field-hint">مثال صحيح: 05xxxxxxxx، ويُستخدم لاستعادة الحساب والتواصل.</small></label><label className="form-label">البريد الإلكتروني<div className="input-with-icon"><Mail size={18} /><input required type="email" autoComplete="email" value={data.email} onChange={(event) => update("email", event.target.value)} placeholder="name@example.com" dir="ltr" /></div><small className="field-hint">استخدم بريدًا تستطيع الوصول إليه لاستقبال التنبيهات المهمة.</small></label></div>
       <label className="form-label">كلمة المرور<div className="input-with-icon"><LockKeyhole size={18} /><input required minLength={10} maxLength={128} autoComplete="new-password" value={data.password} onChange={(event) => update("password", event.target.value)} type={showPassword ? "text" : "password"} placeholder="10 أحرف مع رقم ورمز خاص" /><button type="button" onClick={() => setShowPassword(!showPassword)} aria-label="إظهار كلمة المرور">{showPassword ? <EyeOff size={18} /> : <Eye size={18} />}</button></div><small className="password-hint"><i className={data.password.length >= 10 ? "active" : ""} /> 10 أحرف <i className={/\d/.test(data.password) ? "active" : ""} /> رقم واحد <i className={/[^\p{L}\p{N}\s]/u.test(data.password) ? "active" : ""} /> رمز خاص</small></label>
@@ -119,12 +125,12 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
       <div className="privacy-note"><ShieldCheck size={18} /><span><strong>البيانات لا تظهر للعامة</strong><small>تُستخدم لتخصيص المحتوى والفواتير وطلبات المواد فقط.</small></span></div>
     </>}
     {step === 3 && <div className="register-review">
-      <div className="welcome-check"><ShieldCheck size={35} /></div><span>راجع بياناتك</span><h1>خطوة أخيرة</h1><p>بعد الإنشاء سنعرض لك جولة قصيرة تشرح المنصة وطلب مادة غير متوفرة مع رفع السلايدات.</p>
+      <div className="welcome-check"><ShieldCheck size={35} /></div><span>راجع بياناتك</span><h1>خطوة أخيرة</h1><p>سنرسل رمزًا إلى بريدك لتأكيده مرة واحدة، ثم تبدأ جولتك التعريفية. بعد تأكيد البريد واكتمال ملفك تستطيع شراء المواد.</p>
       <dl><div><dt>الاسم</dt><dd>{data.fullName}</dd></div><div><dt>الجوال</dt><dd dir="ltr">{data.phone}</dd></div><div><dt>الجامعة</dt><dd>{university?.name}</dd></div><div><dt>التخصص</dt><dd>{data.specialty}</dd></div><div><dt>المستوى</dt><dd>{data.academicLevel}</dd></div></dl>
       <label className="terms-check"><input required type="checkbox" checked={data.termsAccepted} onChange={(event) => update("termsAccepted", event.target.checked)} /> <span>أوافق على <Link href="/terms">الشروط والأحكام</Link> و<Link href="/privacy">سياسة الخصوصية</Link>.</span></label>
     </div>}
     {(error || catalog.error) && <p className="form-error" role="alert">{error || catalog.error}</p>}
-    <button className="button button-primary auth-submit" disabled={loading}>{loading ? <span className="button-loader" /> : <>{step === 3 ? "إنشاء الحساب وبدء الجولة" : "التالي"} <ArrowLeft size={17} /></>}</button>
+    <button className="button button-primary auth-submit" disabled={loading}>{loading ? <span className="button-loader" /> : <>{step === 3 ? "إنشاء الحساب وتأكيد البريد" : "التالي"} <ArrowLeft size={17} /></>}</button>
     {step > 1 && <button type="button" className="back-step" onClick={() => { setError(""); setStep(step - 1); }}>العودة للخطوة السابقة</button>}
     {step === 1 && <p className="auth-switch">عندك حساب؟ <PreserveAuthLink path="/login">سجّل الدخول</PreserveAuthLink></p>}
   </form>;

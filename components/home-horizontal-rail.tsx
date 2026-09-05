@@ -23,7 +23,8 @@ export function HomeHorizontalRail({ children, label, className = "" }: { childr
       if (distance < closestDistance) { closestDistance = distance; currentIndex = index; }
     });
     const targetIndex = Math.max(0, Math.min(items.length - 1, currentIndex + offset));
-    items[targetIndex]?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "start" });
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth";
+    items[targetIndex]?.scrollIntoView({ behavior, block: "nearest", inline: "start" });
   };
   return (
     <div className={`${styles.shell} ${className}`}>

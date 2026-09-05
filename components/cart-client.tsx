@@ -7,6 +7,7 @@ import type { Course } from "@/lib/data";
 import type { PublicCourseBundle } from "@/lib/course-bundles";
 import { syncCommerce } from "./commerce-state";
 import { CourseCoverImage } from "./course-cover-image";
+import { continueRequiredAccountStep } from "./purchase-access";
 
 type CartPayload = { items: Course[]; subtotal: number; count: number; courseSlugs?: string[] };
 type PaymentMethod = "tap" | "tabby" | "tamara";
@@ -74,8 +75,9 @@ export function CartClient({ paymentMethods }: { paymentMethods: PaymentMethod[]
         checkoutAttemptRef.current = { fingerprint, key: crypto.randomUUID() };
       }
       const response = await fetch("/api/checkout", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json", "idempotency-key": checkoutAttemptRef.current.key }, body: JSON.stringify({ courseSlugs, coupon: appliedCoupon || undefined, bundleSlug: selectedBundleSlug || undefined, paymentMethod }) });
-      const data = await response.json() as { checkoutUrl?: string; mode?: string; error?: string; pending?: boolean };
+      const data = await response.json() as { checkoutUrl?: string; mode?: string; error?: string; pending?: boolean; code?: string };
       if (!response.ok) {
+        if (continueRequiredAccountStep(data)) return;
         if (!data.pending) checkoutAttemptRef.current = null;
         throw new Error(data.error || "تعذر بدء الدفع");
       }

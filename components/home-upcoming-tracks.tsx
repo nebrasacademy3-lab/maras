@@ -124,11 +124,13 @@ export function HomeUpcomingTracks({ tracks }: { tracks: PublicLearningTrack[] }
                 key={track.slug}
                 className={styles.card}
                 data-accent={track.accent}
+                data-track-slug={track.slug}
                 style={{ "--track-index": index } as CSSProperties}
               >
                 <div className={styles.cardTop}>
-                  <span className={styles.icon}><Icon size={22} /></span>
                   <span className={styles.status} data-status={track.status}><i /> {statusLabels[track.status]}</span>
+                  <span className={styles.trackNumber} aria-hidden="true">{String(index + 1).padStart(2, "0")}</span>
+                  <div className={styles.trackArtwork} aria-hidden="true"><i /><i /><span className={styles.icon}><Icon size={34} strokeWidth={1.55} /></span><b /><b /></div>
                 </div>
                 <div className={styles.cardCopy}>
                   <small>{track.subtitle}</small>
@@ -149,6 +151,7 @@ export function HomeUpcomingTracks({ tracks }: { tracks: PublicLearningTrack[] }
                       onClick={() => void toggle(track)}
                       disabled={busySlug === track.slug}
                       aria-pressed={active}
+                      aria-label={(active ? "إلغاء تنبيه " : "سجّل اهتمامك في ") + track.title}
                     >
                       {busySlug === track.slug ? <LoaderCircle className={styles.spin} size={16} /> : active ? <Check size={16} /> : <Bell size={16} />}
                       {active ? "سيصلك التنبيه" : track.ctaLabel}

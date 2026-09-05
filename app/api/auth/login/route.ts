@@ -2,7 +2,9 @@ import { readBoundedJsonObject } from "@/lib/request-body";
 import { eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
-import { checkRateLimit, clearRateLimit, clientIp, createSession, DeviceLimitError, sameOriginRequest, verifyPassword } from "@/lib/auth";
+import { checkRateLimit, clearRateLimit, clientIp, createSession, DeviceLimitError, sameOriginRequest, sessionUserFromRow, verifyPassword } from "@/lib/auth";
+import { accountNext } from "@/lib/account-readiness";
+import { ensureVerificationEmail } from "@/lib/email-verification";
 import { cleanText, jsonError, normalizePhone } from "@/lib/api";
 
 function phoneCandidate(value: string) {
@@ -32,6 +34,7 @@ export async function POST(request: Request) {
   let session;
   try { session = await createSession(user.id, request, payload.remember !== false); }
   catch (error) { if (error instanceof DeviceLimitError) return jsonError(`وصل حسابك إلى الحد المسموح (${error.limit}) من الأجهزة. سجّل الخروج من جهاز سابق من «حسابي ← الأمان والأجهزة»، أو استخدم «نسيت كلمة المرور» لإنهاء جميع الجلسات، أو تواصل مع الدعم.`, 409, "DEVICE_LIMIT_REACHED"); throw error; }
-  const next = user.profileCompletedAt ? (user.onboardingCompletedAt ? "/dashboard" : "/onboarding") : "/complete-profile";
-  return Response.json({ ok: true, next }, { headers: { "set-cookie": session.cookie, "cache-control": "no-store" } });
+  const account = sessionUserFromRow(user);
+  if (!account.emailVerified) await ensureVerificationEmail(user.id, request);
+  return Response.json({ ok: true, user: account, next: accountNext(account) }, { headers: { "set-cookie": session.cookie, "cache-control": "no-store" } });
 }

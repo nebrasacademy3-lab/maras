@@ -2,7 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { router } from "expo-router";
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton, Card, EmptyState, SectionTitle } from "@/src/components/ui";
 import { api, ApiError, jsonBody } from "@/src/lib/api";
@@ -35,8 +35,8 @@ export function LearningTrackCard({ track, active, compact = false }: { track: L
   };
   const message = toggle.error instanceof ApiError ? toggle.error.message : "";
   return <Card style={[styles.card, compact && styles.compactCard]}>
-    <View style={styles.head}><View style={[styles.icon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name={iconNames[track.iconKey] || "sparkles-outline"} size={20} color={colors.primary} /></View><View style={styles.copy}><Text style={[styles.title, { color: colors.text }]}>{track.title}</Text><Text style={[styles.subtitle, { color: colors.textSoft }]}>{track.subtitle}</Text></View><Text style={[styles.status, { color: track.status === "coming_soon" ? colors.warning : colors.success }]}>{statusLabels[track.status]}</Text></View>
-    {!compact && track.description ? <Text style={[styles.description, { color: colors.textSoft }]}>{track.description}</Text> : null}
+    <View style={styles.head}><View style={[styles.icon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name={iconNames[track.iconKey] || "sparkles-outline"} size={20} color={colors.primary} /></View><Text style={[styles.status, { color: track.status === "coming_soon" ? colors.warning : colors.success }]}>{statusLabels[track.status]}</Text></View><View style={styles.copy}><Text style={[styles.title, { color: colors.text }]}>{track.title}</Text><Text style={[styles.subtitle, { color: colors.textSoft }]}>{track.subtitle}</Text></View>
+    {track.description ? <Text style={[styles.description, { color: colors.textSoft }]}>{track.description}</Text> : null}
     <View style={styles.meta}>{track.showInterestCount ? <Text style={[styles.metaText, { color: colors.textSoft }]}>{track.interestCount} مهتم</Text> : null}{track.launchAt ? <Text style={[styles.metaText, { color: colors.textSoft }]}>الموعد المتوقع: {new Date(track.launchAt).toLocaleDateString("ar-SA")}</Text> : null}</View>
     <AppButton title={track.status !== "coming_soon" && track.destination ? track.ctaLabel || "افتح المسار" : active ? "تم تفعيل التنبيه · إلغاء" : track.ctaLabel || "أبلغني عند الإطلاق"} icon={track.status !== "coming_soon" && track.destination ? "arrow-back-outline" : active ? "notifications-off-outline" : "notifications-outline"} variant={active ? "soft" : "primary"} loading={toggle.isPending} onPress={press} />
     {message ? <Text style={[styles.error, { color: colors.danger }]}>{message}</Text> : null}
@@ -44,12 +44,15 @@ export function LearningTrackCard({ track, active, compact = false }: { track: L
 }
 
 export function HomeLearningTracks() {
+  const { width } = useWindowDimensions();
+  const { colors } = useTheme();
   const { tracks, activeSlugs } = useLearningTracks();
-  const visible = (tracks.data?.tracks || []).slice(0, 3);
+  const visible = tracks.data?.tracks || [];
+  if (tracks.isError) return <EmptyState title="تعذر تحميل المسارات القادمة" text="أعد المحاولة لعرض كل المسارات المتاحة." action={<AppButton title="إعادة المحاولة" onPress={() => void tracks.refetch()} />} />;
   if (!visible.length) return null;
   return <>
-    <SectionTitle title="المسارات القادمة" subtitle="سجّل اهتمامك ليصلك إشعار عند الإطلاق" action={<Pressable onPress={() => router.push("/tracks")}><Text style={styles.link}>الكل</Text></Pressable>} />
-    <View style={styles.list}>{visible.map((track) => <LearningTrackCard key={track.slug} track={track} active={activeSlugs.has(track.slug)} compact />)}</View>
+    <SectionTitle title="المسارات القادمة" subtitle="سجّل اهتمامك ليصلك إشعار عند الإطلاق" action={<Pressable onPress={() => router.push("/tracks")}><Text style={[styles.link, { color: colors.primary }]}>الكل</Text></Pressable>} />
+    <View style={styles.homeGrid}>{visible.map((track) => <View key={track.slug} style={{ width: width >= 900 ? "49%" : "100%" }}><LearningTrackCard track={track} active={activeSlugs.has(track.slug)} /></View>)}</View>
   </>;
 }
 
@@ -62,17 +65,18 @@ export function LearningTracksList() {
 }
 
 const styles = StyleSheet.create({
-  list: { gap: 10 },
+  list: { gap: 14 },
+  homeGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 14 },
   card: { gap: 10 },
   compactCard: { paddingVertical: 12 },
-  head: { flexDirection: "row", alignItems: "center", gap: 10 },
+  head: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 },
   icon: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center" },
-  copy: { flex: 1, gap: 2 },
-  title: { fontSize: 13, fontWeight: "900", textAlign: "right", writingDirection: "rtl" },
-  subtitle: { fontSize: 10, lineHeight: 16, textAlign: "right", writingDirection: "rtl" },
+  copy: { width: "100%", gap: 6 },
+  title: { fontSize: 17, lineHeight: 27, fontWeight: "900", textAlign: "right", writingDirection: "rtl" },
+  subtitle: { fontSize: 12, lineHeight: 22, textAlign: "right", writingDirection: "rtl" },
   status: { fontSize: 9, fontWeight: "900" },
-  description: { fontSize: 10, lineHeight: 18, textAlign: "right", writingDirection: "rtl" },
-  meta: { flexDirection: "row", gap: 12 },
+  description: { fontSize: 12, lineHeight: 22, textAlign: "right", writingDirection: "rtl" },
+  meta: { flexDirection: "row", flexWrap: "wrap", gap: 12 },
   metaText: { fontSize: 9, fontWeight: "700" },
   error: { fontSize: 10, textAlign: "right" },
   link: { fontSize: 11, fontWeight: "900", color: "#2563eb" },

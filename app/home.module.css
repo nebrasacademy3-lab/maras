@@ -146,6 +146,7 @@
 .paymentBrands > span > span { color: #696d80; font-family: inherit; font-size: .78rem; font-weight: 500; letter-spacing: 0; }
 .tabbyBrand { box-shadow: inset 0 -4px 0 #1f5fff; }
 .tamaraBrand { box-shadow: inset 0 -4px 0 #7456ff; }
+.paymentBrands > .cardPayment { min-height: 4.5rem; font-size: clamp(.95rem,1.7vw,1.25rem); letter-spacing: -.025em; overflow-wrap: anywhere; padding: .65rem .35rem; color: #1258e8; }
 .poweredBy { display: flex; align-items: center; justify-content: center; gap: .55rem; }
 .poweredBy b { color: var(--text); font-size: 1.35rem; }
 .finalSection { padding-block: 0 clamp(4rem,7vw,7rem); background: var(--bg); }
@@ -158,6 +159,10 @@
 .finalCard a { min-height: 48px; display: flex; align-items: center; justify-content: center; gap: .5rem; padding-inline: 1.2rem; border: 1px solid color-mix(in srgb,var(--home-blue) 22%,var(--line)); border-radius: .85rem; color: var(--home-blue); background: var(--surface); font-size: .83rem; font-weight: 850; white-space: nowrap; }
 .finalCard a:first-child { color: #fff; border-color: transparent; background: linear-gradient(115deg,var(--home-blue),var(--home-violet)); }
 .page :is(a,button):focus-visible { outline: 3px solid var(--home-violet); outline-offset: 4px; }
+.page :is(h2,h3,p,strong,bdi) { overflow-wrap: anywhere; }
+.learningShell > *, .paymentShell > *, .finalCard > *, .featureGrid > * { min-width: 0; }
+.universityCard footer, .courseBody footer { flex-wrap: wrap; gap: .7rem; }
+.courseBody footer em, .universityCard footer em { min-width: 0; overflow-wrap: anywhere; }
 
 @media (max-width: 980px) {
   .sectionHeading, .learningShell, .paymentShell { grid-template-columns: minmax(0,1fr); }

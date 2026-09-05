@@ -604,7 +604,7 @@ function MobileAdminSecurity({ colors }:{ colors:Colors }) {
       } else if (action === "verify") {
         setSetup(null); setCode(""); setFeedback("تم تفعيل المصادقة الإضافية بنجاح."); await mfa.refetch();
       } else if (action === "stepUp") {
-        setAdminStepUpToken(result.stepUpToken || null); setCode(""); setFeedback("تم تأكيد هويتك للعمليات الحساسة لمدة 10 دقائق."); await mfa.refetch();
+        setAdminStepUpToken(result.stepUpToken || null); setCode(""); setFeedback("تم تأكيد هويتك للعمليات الحساسة لمدة ساعة."); await mfa.refetch();
       } else {
         setAdminStepUpToken(null); setCode(""); setSetup(null); setFeedback("تم تعطيل المصادقة الإضافية لهذا الحساب."); await mfa.refetch();
       }

@@ -5,6 +5,7 @@ import { Platform } from "react-native";
 import { api, ApiError, jsonBody, setApiToken } from "@/src/lib/api";
 import type { SessionUser } from "@/src/types";
 import { ensureDeviceIdentity } from "@/src/lib/device";
+import { socialAuthCode, type SocialProvider } from "@/src/lib/social-auth";
 
 const TOKEN_KEY = "meras_session_token";
 type Credentials = { identifier: string; password: string; remember?: boolean };
@@ -16,6 +17,7 @@ type AuthContextValue = {
   token: string | null;
   login: (value: Credentials) => Promise<AuthResponse>;
   register: (value: Registration) => Promise<AuthResponse>;
+  socialLogin: (provider: SocialProvider, referralCode?: string) => Promise<AuthResponse | null>;
   logout: () => Promise<void>;
   refresh: () => Promise<SessionUser | null>;
   setUser: React.Dispatch<React.SetStateAction<SessionUser | null>>;
@@ -62,8 +64,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(response.user);
       return response.user;
     } catch (reason) {
-      setUser(null);
       if (reason instanceof ApiError && reason.status === 401) {
+        setUser(null);
         await clearPersistedToken();
         setToken(null);
       }
@@ -84,6 +86,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
   const login = useCallback(async (value: Credentials) => accept(await api<AuthResponse>("/api/mobile/auth/login", { method: "POST", body: jsonBody(value) })), [accept]);
   const register = useCallback(async (value: Registration) => accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) })), [accept]);
+  const socialLogin = useCallback(async (provider: SocialProvider, referralCode?: string) => {
+    await ensureDeviceIdentity();
+    const exchange = await socialAuthCode(provider, referralCode);
+    if (!exchange) return null;
+    return accept(await api<AuthResponse>("/api/auth/oauth/exchange", { method: "POST", body: jsonBody(exchange) }));
+  }, [accept]);
   const logout = useCallback(async () => {
     // Start revocation while the bearer token is still attached, then clear local state immediately.
     const remote = api("/api/mobile/auth/logout", { method: "POST", timeoutMs: 2_000 }).then(() => true).catch(() => false);
@@ -94,7 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!revoked) console.warn("[auth] Remote session revocation was not confirmed before local logout.");
     if (!cleared) console.warn("[auth] Persisted session storage could not be cleared completely.");
   }, [queryClient]);
-  const value = useMemo(() => ({ user, loading, token, login, register, logout, refresh, setUser }), [user, loading, token, login, register, logout, refresh]);
+  const value = useMemo(() => ({ user, loading, token, login, register, socialLogin, logout, refresh, setUser }), [user, loading, token, login, register, socialLogin, logout, refresh]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

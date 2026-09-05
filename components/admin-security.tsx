@@ -98,7 +98,7 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
       } else if (action === "stepUp") {
         setCode("");
         setStatus((current) => ({ ...current, stepUpValid: true, stepUpExpiresAt: result.stepUpExpiresAt || null }));
-        setNotice({ kind: "success", text: "تم تأكيد هويتك. العمليات الحساسة متاحة لمدة 10 دقائق." });
+        setNotice({ kind: "success", text: "تم تأكيد هويتك. العمليات الحساسة متاحة لمدة ساعة واحدة." });
       } else {
         setSetup(null);
         setCode("");
@@ -204,7 +204,7 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
               <li>رمز المصادقة لا يُخزن بصورته الأصلية.</li>
               <li>التأكيد مرتبط بجلسة الإدارة الحالية فقط.</li>
               <li>لا يمكن استخدام الرمز نفسه أكثر من مرة.</li>
-              <li>يُلغى التأكيد تلقائيًا بعد 10 دقائق.</li>
+              <li>يُلغى التأكيد تلقائيًا بعد ساعة واحدة أو عند انتهاء جلسة الدخول.</li>
             </ul>
           </aside>
         </section>

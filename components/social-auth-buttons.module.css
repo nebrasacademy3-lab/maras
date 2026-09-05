@@ -1,0 +1,14 @@
+.root{display:grid;gap:12px;min-width:0}
+.buttons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.buttons button{display:flex;align-items:center;justify-content:center;gap:10px;min-height:48px;min-width:0;padding:12px;border:1px solid var(--border);border-radius:14px;background:var(--surface);color:var(--text);font:inherit;font-size:12px;font-weight:700;cursor:pointer;transition:box-shadow .2s,border-color .2s}
+.buttons button:hover{border-color:var(--primary);box-shadow:0 4px 18px color-mix(in srgb,var(--primary) 12%,transparent)}
+.buttons button:focus-visible{outline:3px solid var(--primary);outline-offset:3px}
+.buttons button:disabled{opacity:.6;cursor:wait}
+.buttons svg{flex-shrink:0}
+.buttons .apple{background:var(--text);color:var(--surface);border-color:var(--text)}
+.hint{font-size:11px;line-height:1.9;color:var(--muted);text-align:center;margin:0}
+.hint a{color:var(--primary)}
+.divider{display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);white-space:nowrap;margin:4px 0}
+.divider::before,.divider::after{content:"";height:1px;background:var(--border);flex:1}
+@media(max-width:600px){.buttons{grid-template-columns:minmax(0,1fr)}.buttons button{font-size:13px}}
+@media(prefers-reduced-motion:reduce){.buttons button{transition:none}}

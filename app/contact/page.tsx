@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
+import { publicPageMetadata } from "@/lib/seo";
 import Link from "next/link";
 import { ArrowLeft, Clock3, ExternalLink, Facebook, Headphones, Instagram, Linkedin, Mail, MessageCircle, Music2, Send, ShieldCheck, Youtube } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getPublicSettings, whatsappHref } from "@/lib/platform-settings";
 
-export const metadata: Metadata = { title: "تواصل معنا" };
+export const metadata: Metadata = publicPageMetadata("/contact", "تواصل معنا", "تواصل مع فريق مراس العلم للاستفسارات والمساعدة بشأن حسابك والمواد الجامعية والاشتراكات.");
 
 const socialChannels = [
   { key: "social_x", label: "X", icon: Send },
