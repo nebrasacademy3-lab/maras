@@ -32,9 +32,10 @@ test("web and Expo footers consume the same live public settings", async () => {
     read("public/manifest.webmanifest"),
   ]);
   assert.match(footer, /<BrandLogo markOnly \/>/);
-  assert.match(footer, /settings\.social_/);
+  assert.match(footer, /<SocialLinks settings=\{settings\}/);
   assert.match(mobileFooter, /\/api\/public\/settings/);
-  assert.match(mobileFooter, /settings\.whatsapp_url/);
+  assert.match(mobileFooter, /mobileSocialLinks\(settings\)/);
+  assert.match(settingsRoute, /social_links: normalizedSocialLinks\(settings\)/);
   assert.match(screen, /<MobileFooter \/>/);
   assert.match(settingsRoute, /cache-control.*no-store/);
   assert.match(brand, /brand-logo-mark-only/);

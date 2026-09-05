@@ -3,31 +3,23 @@ import { useQuery } from "@tanstack/react-query";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton, Card, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
 import { api } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { PublicSettings } from "@/src/types";
-
-const socialChannels = [
-  { key: "social_x", label: "X", icon: "at-outline" },
-  { key: "social_instagram", label: "Instagram", icon: "logo-instagram" },
-  { key: "social_tiktok", label: "TikTok", icon: "musical-notes-outline" },
-  { key: "social_youtube", label: "YouTube", icon: "logo-youtube" },
-  { key: "social_telegram", label: "Telegram", icon: "paper-plane-outline" },
-  { key: "social_linkedin", label: "LinkedIn", icon: "logo-linkedin" },
-  { key: "social_facebook", label: "Facebook", icon: "logo-facebook" },
-  { key: "social_snapchat", label: "Snapchat", icon: "logo-snapchat" },
-  { key: "social_threads", label: "Threads", icon: "at-outline" },
-] as const;
+import { mobileSocialLinks } from "@/src/lib/public-social-links";
+import { useLanguage } from "@/src/providers/LanguageProvider";
 
 export default function Contact() {
   const { colors } = useTheme();
+  const { isRTL, rowDirection } = useLanguage();
   const settings = useQuery({
     queryKey: ["settings"],
     queryFn: () => api<{ settings: PublicSettings }>("/api/public/settings"),
+    staleTime: 5_000,
   });
   const publicSettings = settings.data?.settings;
   if (settings.isLoading) return <Screen><LoadingState /></Screen>;
@@ -35,8 +27,9 @@ export default function Contact() {
     return <Screen><AppHeader title="تواصل معنا" back /><Text style={[styles.empty, { color: colors.textSoft }]}>تعذر تحميل قنوات التواصل حاليًا.</Text></Screen>;
   }
 
-  const socials = socialChannels.filter((item) => publicSettings[item.key].startsWith("https://"));
-  const whatsapp = publicSettings.whatsapp_url;
+  const links = mobileSocialLinks(publicSettings);
+  const socials = links.filter((link) => link.id !== "whatsapp");
+  const whatsapp = links.find((link) => link.id === "whatsapp")?.url;
   const supportEmail = publicSettings.support_email;
 
   return <Screen>
@@ -57,12 +50,14 @@ export default function Contact() {
     {socials.length ? <>
       <SectionTitle title="تابعنا" subtitle="آخر المواد والإعلانات التعليمية" />
       <View style={styles.socialGrid}>{socials.map((item) => <Pressable
-        key={item.key}
-        onPress={() => void Linking.openURL(publicSettings[item.key])}
-        style={[styles.social, { backgroundColor: colors.surface, borderColor: colors.border }]}
+        key={item.id}
+        accessibilityRole="link"
+        accessibilityLabel={isRTL ? item.labelAr : item.label}
+        onPress={() => void Linking.openURL(item.url).catch(() => Alert.alert(isRTL ? "تعذر فتح الرابط" : "Could not open link", isRTL ? "تحقق من اتصالك ثم حاول مرة أخرى." : "Check your connection and try again."))}
+        style={[styles.social, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: rowDirection }]}
       >
         <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={20} color={colors.primary} />
-        <Text style={[styles.socialText, { color: colors.text }]}>{item.label}</Text>
+        <Text style={[styles.socialText, { color: colors.text }]}>{isRTL ? item.labelAr : item.label}</Text>
         <Ionicons name="open-outline" size={14} color={colors.textSoft} />
       </Pressable>)}</View>
     </> : null}

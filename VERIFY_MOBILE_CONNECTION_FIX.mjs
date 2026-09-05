@@ -10,9 +10,9 @@ const checks = [
   ["backend decodes device label", auth.includes('decodeURIComponent(decoded)')],
   ["native Android bypasses browser-only same-origin check", mobileApi.includes('platform === "android"')],
   ["native iOS bypasses browser-only same-origin check", mobileApi.includes('platform === "ios"')],
-  ["API URL is Railway HTTPS", api.includes('https://marase.up.railway.app') && config.includes('https://marase.up.railway.app')],
+  ["API URL uses the official HTTPS domain", api.includes('https://marasalelm.com') && config.includes('https://marasalelm.com')],
   ["preview APK auto increments", eas.build.preview.autoIncrement === true],
-  ["preview API URL is Railway", eas.build.preview.env.EXPO_PUBLIC_API_URL === 'https://marase.up.railway.app'],
+  ["all EAS profiles use the official API domain", Object.values(eas.build).every(profile => profile.env.EXPO_PUBLIC_API_URL === 'https://marasalelm.com')],
 ];
 let passed=0;
 for (const [name, ok] of checks) { console.log(`${ok ? "✓" : "✗"} ${name}`); if(ok) passed++; }

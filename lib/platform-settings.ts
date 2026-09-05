@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { platformSettings } from "@/db/schema";
+import { publicWhatsappUrl } from "@/lib/social-links";
 
 export const PUBLIC_SETTING_DEFAULTS = {
   support_email: "",
@@ -102,10 +103,7 @@ export const SETTING_META: Record<SettingKey, { label: string; category: string;
 };
 
 export function whatsappHref(settings: Pick<PublicSettings, "whatsapp_number" | "whatsapp_message">) {
-  const digits = settings.whatsapp_number.replace(/\D/g, "").replace(/^00/, "");
-  if (!digits) return "";
-  const international = digits.startsWith("966") ? digits : digits.startsWith("0") ? `966${digits.slice(1)}` : digits;
-  return `https://wa.me/${international}?text=${encodeURIComponent(settings.whatsapp_message)}`;
+  return publicWhatsappUrl(settings);
 }
 
 export async function getStudentDeviceLimit() {

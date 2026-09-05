@@ -63,6 +63,22 @@ test("same-origin fullscreen stays allowed while document capture and picture-in
   }
 });
 
+test("only public email artwork and the explicit email logo permit cross-origin embedding", async () => {
+  const headersFor = await configuration();
+  for (const path of ["/email-assets/x.png", "/email-assets/whatsapp.png", "/brand/logo-light-hq.png"]) {
+    const headers = headersFor(path);
+    assert.equal(headers.get("cross-origin-resource-policy"), "cross-origin", path);
+    assert.equal(headers.get("access-control-allow-origin"), "*", path);
+    assert.match(headers.get("cache-control"), /^public,/, path);
+    assert.equal(headers.has("x-robots-tag"), false, path);
+  }
+  for (const path of ["/brand/logo-dark-hq.png", "/brand/logo.svg", "/brand/logo-light-hq.png/private", "/api/admin/email-assets/private.png", "/api/profile", "/api/course-resources/1", "/learn/chemistry", "/reset-password", "/email-assets-private/x.png"]) {
+    const headers = headersFor(path);
+    assert.equal(headers.get("cross-origin-resource-policy"), "same-origin", path);
+    assert.equal(headers.has("access-control-allow-origin"), false, path);
+  }
+});
+
 test("public caching has one unambiguous rule and no rule repeats a header key", async () => {
   const evaluate = await configuration();
   for (const rule of evaluate.rules) {

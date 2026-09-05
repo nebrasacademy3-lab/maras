@@ -5,7 +5,7 @@
 ## متطلبات النشر
 
 1. شغّل مهاجرة `0027_oauth_email_verification` قبل تشغيل النسخة الجديدة.
-2. اضبط `APP_URL` على العنوان العام الصحيح بـ HTTPS، مثل `https://marase.up.railway.app`.
+2. اضبط `APP_URL` على العنوان العام الصحيح بـ HTTPS: `https://marasalelm.com`.
 3. اضبط Resend و`EMAIL_FROM` على نطاق إرسال موثّق. يحتاج الحساب الجديد رمز تأكيد بريد مراس مرة واحدة، حتى عندما يكون البريد موثّقًا عند Google أو Apple. لا يُطلب الرمز مجددًا عند الدخول أو الشراء بعد نجاحه.
 4. يحتاج التطبيق نسخة جديدة تتضمن مسار `merasalelm://oauth/callback`. Expo Go ليس بديلًا عن اختبار نسخة development/production ذات المخطط المخصص.
 
@@ -21,7 +21,7 @@ GOOGLE_CLIENT_SECRET=
 أضف Authorized redirect URI المطابق حرفيًا:
 
 ```text
-https://marase.up.railway.app/api/auth/oauth/google/callback
+https://marasalelm.com/api/auth/oauth/google/callback
 ```
 
 لا تُستخدم مفاتيح Android/iOS بدل Web client في هذا التدفق؛ التطبيق يفتح متصفح النظام ويستكمل الدخول عبر الخادم. غيّر العنوان السابق إذا كان لديك نطاق مخصص.
@@ -43,7 +43,7 @@ OAUTH_MOBILE_REDIRECT_URI=merasalelm://oauth/callback
 في إعداد Services ID أضف النطاق العام وReturn URL:
 
 ```text
-https://marase.up.railway.app/api/auth/oauth/apple/callback
+https://marasalelm.com/api/auth/oauth/apple/callback
 ```
 
 تحتاج Apple عنوان HTTPS حقيقيًا؛ أزرارها لا تُفعّل على HTTP المحلي. اسم المستخدم قد لا يعود في تسجيلات Apple اللاحقة؛ نعتمد البريد والهوية الموقّعة ثم يكتب الطالب اسمه الكامل في إكمال الملف.

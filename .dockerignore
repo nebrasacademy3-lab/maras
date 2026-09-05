@@ -1,5 +1,8 @@
 .next
 dist
+outputs
+output
+tmp
 node_modules
 .env*
 !.env.example

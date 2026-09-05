@@ -1,6 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import React, { useEffect, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { useFocusEffect } from "expo-router";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { AccessibilityInfo, ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, type StyleProp, type TextInputProps, View, type ViewStyle } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
@@ -9,12 +10,56 @@ import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import { metrics } from "@/src/theme/colors";
 import { MobileFooter } from "@/src/components/MobileFooter";
+import { intersectsMotionViewport } from "@/src/lib/motion-visibility";
+
+type RevealRegistration = { current: View | null };
+type RevealController = { check: () => void; register: (ref: RevealRegistration, reveal: () => void) => () => void };
+const ScrollRevealContext = createContext<RevealController | null>(null);
+
+function useScrollReveals(viewport: React.RefObject<View | null>) {
+  const entries = useRef(new Map<RevealRegistration, () => void>());
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const active = useRef(true);
+  const controller = useMemo<RevealController>(() => {
+    const check = () => {
+      if (!active.current || timer.current) return;
+      // Only unrevealed sections are measured; scrolling does not rerender the page.
+      timer.current = setTimeout(() => {
+        timer.current = null;
+        if (!active.current || !entries.current.size) return;
+        const host = viewport.current;
+        if (!host?.measureInWindow) {
+          for (const reveal of entries.current.values()) reveal();
+          entries.current.clear();
+          return;
+        }
+        host.measureInWindow((_x, top, _width, height) => {
+          if (!active.current) return;
+          for (const [ref, reveal] of entries.current) ref.current?.measureInWindow((_itemX, itemTop, _itemWidth, itemHeight) => {
+            if (active.current && entries.current.has(ref) && intersectsMotionViewport(itemTop, itemHeight, top, height)) {
+              entries.current.delete(ref);
+              reveal();
+            }
+          });
+        });
+      }, 64);
+    };
+    return { check, register: (ref, reveal) => { entries.current.set(ref, reveal); check(); return () => { entries.current.delete(ref); }; } };
+  }, [viewport]);
+  useEffect(() => {
+    active.current = true;
+    controller.check();
+    const registered = entries.current;
+    return () => { active.current = false; if (timer.current) clearTimeout(timer.current); timer.current = null; registered.clear(); };
+  }, [controller]);
+  return controller;
+}
 
 export function useReduceMotion() {
   const [reduceMotion, setReduceMotion] = useState(false);
   useEffect(() => {
     let active = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => { if (active) setReduceMotion(value); });
+    void AccessibilityInfo.isReduceMotionEnabled().then((value) => { if (active) setReduceMotion(value); }).catch(() => { if (active) setReduceMotion(true); });
     const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
     return () => { active = false; subscription.remove(); };
   }, []);
@@ -26,22 +71,34 @@ export function Screen({ children, scroll = true, padded = true, keyboard = fals
   const { direction } = useLanguage();
   const [entrance] = useState(() => new Animated.Value(0));
   const reduceMotion = useReduceMotion();
-  useEffect(() => {
+  const viewport = useRef<View>(null);
+  const reveals = useScrollReveals(viewport);
+  useFocusEffect(useCallback(() => {
     if (reduceMotion) entrance.setValue(1);
-    else Animated.timing(entrance, { toValue: 1, duration: 240, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    else { entrance.setValue(0); Animated.timing(entrance, { toValue: 1, duration: 480, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); }
+    reveals.check();
     return () => entrance.stopAnimation();
-  }, [entrance, reduceMotion]);
+  }, [entrance, reduceMotion, reveals]));
   const footer = showFooter ? <MobileFooter /> : null;
-  const animatedContent = <Animated.View style={[styles.screenContent, { direction, opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>{children}{footer}</Animated.View>;
-  const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} style={{ direction }} contentContainerStyle={[styles.scroll, padded && styles.padded, { direction }, style]}>{animatedContent}</ScrollView> : <View style={[styles.flex, padded && styles.padded, { direction }, style]}>{animatedContent}</View>;
-  return <SafeAreaView edges={["top", "left", "right"]} style={[styles.flex, { backgroundColor: colors.background, direction }]}>{keyboard ? <KeyboardAvoidingView style={[styles.flex, { direction }]} behavior={Platform.OS === "ios" ? "padding" : "height"}>{content}</KeyboardAvoidingView> : content}</SafeAreaView>;
+  const animatedContent = <Animated.View style={[styles.screenContent, { direction, opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }]}>{children}{footer}</Animated.View>;
+  const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} onScroll={reveals.check} scrollEventThrottle={64} onContentSizeChange={reveals.check} style={{ direction }} contentContainerStyle={[styles.scroll, padded && styles.padded, { direction }, style]}>{animatedContent}</ScrollView> : <View style={[styles.flex, padded && styles.padded, { direction }, style]}>{animatedContent}</View>;
+  const measuredContent = <View ref={viewport} collapsable={false} onLayout={reveals.check} style={styles.flex}>{content}</View>;
+  return <ScrollRevealContext.Provider value={scroll ? reveals : null}><SafeAreaView edges={["top", "left", "right"]} style={[styles.flex, { backgroundColor: colors.background, direction }]}>{keyboard ? <KeyboardAvoidingView style={[styles.flex, { direction }]} behavior={Platform.OS === "ios" ? "padding" : "height"}>{measuredContent}</KeyboardAvoidingView> : measuredContent}</SafeAreaView></ScrollRevealContext.Provider>;
 }
 
 export function FadeIn({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
   const [value] = useState(() => new Animated.Value(0));
   const reduceMotion = useReduceMotion();
-  useEffect(() => { if (reduceMotion) value.setValue(1); else Animated.timing(value, { toValue: 1, delay, duration: 340, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); return () => value.stopAnimation(); }, [delay, reduceMotion, value]);
-  return <Animated.View style={[style, { opacity: value, transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }, { scale: value.interpolate({ inputRange: [0, 1], outputRange: [.985, 1] }) }] }]}>{children}</Animated.View>;
+  const reveals = useContext(ScrollRevealContext);
+  const view = useRef<View>(null);
+  useEffect(() => {
+    if (reduceMotion) { value.setValue(1); return; }
+    const reveal = () => Animated.timing(value, { toValue: 1, delay: Math.min(240, Math.max(0, delay)), duration: 560, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    const unregister = reveals?.register(view, reveal);
+    if (!reveals) reveal();
+    return () => { unregister?.(); value.stopAnimation(); };
+  }, [delay, reduceMotion, value, reveals]);
+  return <Animated.View ref={view} collapsable={false} onLayout={reveals?.check} style={[style, { opacity: value, transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) }, { scale: value.interpolate({ inputRange: [0, 1], outputRange: [.985, 1] }) }] }]}>{children}</Animated.View>;
 }
 
 export function AppButton({ title, onPress, icon, variant = "primary", disabled = false, loading = false, full = true }: { title: string; onPress?: () => void; icon?: React.ComponentProps<typeof Ionicons>["name"]; variant?: "primary" | "soft" | "ghost" | "danger"; disabled?: boolean; loading?: boolean; full?: boolean }) {

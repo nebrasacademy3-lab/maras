@@ -5,8 +5,8 @@ DATABASE_SSL=false
 DATABASE_SSL_REJECT_UNAUTHORIZED=true
 DATABASE_POOL_MAX=10
 
-NEXT_PUBLIC_SITE_URL=https://marase.up.railway.app
-APP_URL=https://marase.up.railway.app
+NEXT_PUBLIC_SITE_URL=https://marasalelm.com
+APP_URL=https://marasalelm.com
 MOBILE_APP_URL=
 EXPO_WEB_ORIGIN=
 
@@ -75,6 +75,9 @@ AI_GEMINI_OVERALL_TIMEOUT_MS=85000
 
 # البريد — اختياري.
 RESEND_API_KEY=
+RESEND_TEMPLATE_VERIFY_EMAIL=
+RESEND_TEMPLATE_CHANGE_PASSWORD=
+RESEND_TEMPLATE_RESET_PASSWORD=
 EMAIL_FROM=
 
 # المساعد الخارجي — اختياري؛ المحرك المحلي يبقى فعالًا بدونه.

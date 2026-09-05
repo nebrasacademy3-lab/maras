@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createHash, randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import test from "node:test";
 import ts from "typescript";
 
@@ -15,11 +17,18 @@ async function isolated(path, dependencies) {
 }
 const user = { id: 7, email: "student@example.com", fullName: "طالب مراس", status: "active" };
 const request = value => new Request("https://meras.example/api/auth/forgot-password", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ email: value }) });
+const social = await isolated("../lib/social-links.ts", {});
+const branding = await isolated("../lib/email-branding.ts", social);
 async function setup({ configured = true, account = user, delivery = async () => Response.json({ id: "sent-message" }), sameOrigin = true, rateAllowed = true } = {}) {
   const calls = { lookups: 0, inserts: 0, updates: 0, provider: [], rate: [] };
   const tokens = [];
   const env = configured ? { APP_URL: "https://meras.example", RESEND_API_KEY: "test-provider-key-not-real", EMAIL_FROM: "Meras <no-reply@example.com>" } : { APP_URL: "https://meras.example" };
+  const renderer = await isolated("../lib/email-renderer.ts", {
+    ...branding, readFile, join, getPublicSettings: async () => ({ social_x: "https://x.com/real_test_account" }),
+    process: { env, cwd: () => fileURLToPath(new URL("..", import.meta.url)) },
+  });
   const mail = await isolated("../lib/transactional-email.ts", {
+    ...branding, ...renderer,
     process: { env },
     fetch: async (url, options) => { calls.provider.push({ url, options }); return delivery(); },
   });
@@ -39,7 +48,7 @@ async function setup({ configured = true, account = user, delivery = async () =>
     clientIp: () => "test-ip", validEmail: value => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(value),
     cleanText: (value, max = 500) => typeof value === "string" ? value.trim().slice(0, max) : "",
     jsonError: (error, status = 400, code) => Response.json({ error, code }, { status }),
-    requestOrigin: () => "https://meras.example", process: { env },
+    configuredEmailOrigin: branding.configuredEmailOrigin, process: { env },
     createOpaqueToken: () => randomBytes(32).toString("base64url"),
     hashOpaqueToken: async value => createHash("sha256").update(value).digest("hex"),
   });
@@ -88,6 +97,11 @@ test("successful reset email carries the opaque one-time link while database sto
   const link = email.text.match(/https:\/\/meras\.example\/reset-password\?token=([A-Za-z0-9_-]+)/);
   assert.ok(link);
   const opaque = link[1]; assert.match(opaque, /^[A-Za-z0-9_-]{43}$/);
+  assert.ok(email.html.includes(`https://meras.example/reset-password?token=${opaque}`));
+  assert.ok(email.html.includes("https://meras.example/brand/logo-light-hq.png"));
+  assert.ok(email.html.includes("https://x.com/real_test_account"));
+  assert.doesNotMatch(email.html, /\{\{\{|marase\.up\.railway\.app/);
+  assert.equal(email.template, undefined);
   const stored = s.tokens[0];
   assert.equal(stored.tokenHash, createHash("sha256").update(opaque).digest("hex"));
   assert.equal(stored.userId, user.id); assert.equal(stored.usedAt, null);
@@ -110,6 +124,7 @@ test("Resend network, error response and malformed success each invalidate token
     const s = await setup({ delivery });
     const result = await publicResult(await s.route.POST(request(user.email)));
     assert.deepEqual(result, generic);
+    assert.equal(s.calls.provider.length, 1, "the provider failure path was actually reached");
     assert.equal(s.tokens.length, 1);
     assert.ok(s.tokens[0].usedAt, "an unsent token is invalidated");
     assert.equal(s.calls.updates, 1);

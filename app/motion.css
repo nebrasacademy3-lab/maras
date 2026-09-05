@@ -1,4 +1,56 @@
 /* Shared micro-interactions: only composited movement, no layout-size animation. */
+/* First-paint choreography does not wait for hydration or the idle enhancement bundle.
+   Backwards fill applies only during the brief stagger; nothing keeps a transform later. */
+@media (prefers-reduced-motion: no-preference) {
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child {
+    animation: none;
+  }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :not(br) {
+    animation: merasHeroArrival 900ms cubic-bezier(.16,1,.3,1) backwards;
+  }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(2) { animation-delay: 90ms; }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(3) { animation-delay: 180ms; }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(4) { animation-delay: 270ms; }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(5) { animation-delay: 360ms; }
+  #home-intent-panel {
+    animation: merasCanvasArrival 950ms cubic-bezier(.16,1,.3,1) 150ms backwards;
+  }
+  #home-intent-panel ~ :not([aria-hidden="true"]) {
+    animation: merasHeroArrival 950ms cubic-bezier(.16,1,.3,1) 300ms backwards;
+  }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :focus-within,
+  #home-intent-panel:focus-within,
+  #home-intent-panel ~ :focus-within {
+    animation: none;
+  }
+  [aria-labelledby="home-gateway-title"] > .container > a[href="#explore"] > span {
+    animation: merasExploreNudge 2.2s ease-in-out 1.2s 2;
+  }
+  [aria-labelledby="home-gateway-title"] > [aria-hidden="true"] > span {
+    animation: merasStarGreeting 1.4s cubic-bezier(.16,1,.3,1) backwards;
+  }
+  :where(.page-hero,.catalog-hero,.request-page-hero,.how-page-hero) h1 {
+    animation: merasHeroArrival 740ms cubic-bezier(.16,1,.3,1) backwards;
+  }
+  @media (hover: hover) {
+    [data-home-reveal] :is(article,a):hover > :is(i,span) > svg {
+      animation: merasIconGreeting 450ms cubic-bezier(.16,1,.3,1);
+    }
+  }
+}
+@keyframes merasHeroArrival {
+  from { opacity: .04; translate: 0 30px; }
+  65% { opacity: .94; }
+  to { opacity: 1; translate: none; }
+}
+@keyframes merasCanvasArrival {
+  from { opacity: .08; translate: 0 38px; scale: .985; }
+  to { opacity: 1; translate: none; scale: none; }
+}
+@keyframes merasExploreNudge { 0%, 100% { translate: none; } 50% { translate: 0 5px; } }
+@keyframes merasStarGreeting { from { opacity: .1; rotate: -35deg; scale: .7; } to { opacity: 1; rotate: none; scale: none; } }
+@keyframes merasIconGreeting { 40% { translate: 0 -3px; rotate: -7deg; } }
+
 @media(prefers-reduced-motion:no-preference){
   :where(.button,.auth-submit,.security-form button,.admin-content button,.back-step,.assistant-suggestions button){transition:scale .18s ease,background-color .2s ease,border-color .2s ease,box-shadow .24s ease,color .2s ease}
   :where(.button,.auth-submit,.security-form button,.back-step):active:not(:disabled){scale:.975}

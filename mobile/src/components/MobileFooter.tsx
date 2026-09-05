@@ -2,32 +2,21 @@ import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useQuery } from "@tanstack/react-query";
 import React from "react";
-import { Pressable, StyleSheet, View } from "react-native";
+import { Alert, Pressable, StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { api } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import { BrandLogo } from "@/src/components/Brand";
 import type { PublicSettings } from "@/src/types";
-
-const socialChannels = [
-  { key: "social_x", label: "X", icon: "at-outline" },
-  { key: "social_instagram", label: "Instagram", icon: "logo-instagram" },
-  { key: "social_tiktok", label: "TikTok", icon: "musical-notes-outline" },
-  { key: "social_youtube", label: "YouTube", icon: "logo-youtube" },
-  { key: "social_telegram", label: "Telegram", icon: "paper-plane-outline" },
-  { key: "social_linkedin", label: "LinkedIn", icon: "logo-linkedin" },
-  { key: "social_facebook", label: "Facebook", icon: "logo-facebook" },
-  { key: "social_snapchat", label: "Snapchat", icon: "logo-snapchat" },
-  { key: "social_threads", label: "Threads", icon: "at-outline" },
-] as const;
+import { mobileSocialLinks } from "@/src/lib/public-social-links";
 
 export function MobileFooter() {
   const { colors } = useTheme();
-  const { direction, rowDirection } = useLanguage();
+  const { direction, rowDirection, isRTL } = useLanguage();
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: () => api<{ settings: PublicSettings }>("/api/public/settings"), staleTime: 5_000 });
   const settings = settingsQuery.data?.settings;
-  const socials = settings ? socialChannels.filter((item) => settings[item.key].startsWith("https://")) : [];
+  const socials = mobileSocialLinks(settings);
   const legalRecords = [
     settings?.legal_name ? { key: "legal-name", label: "الاسم النظامي", value: settings.legal_name, verifyUrl: "" } : null,
     { key: "commercial-registration", label: "السجل التجاري", value: settings?.commercial_registration_number || "", verifyUrl: settings?.commercial_registration_verify_url || "" },
@@ -47,8 +36,7 @@ export function MobileFooter() {
     {settings && (settings.ios_app_url || settings.android_app_url) ? <View style={styles.storeSection}><Text style={[styles.storeTitle, { color: colors.text }]}>{settings.app_download_title}</Text><Text style={[styles.storeCopy, { color: colors.textSoft }]}>{settings.app_download_description}</Text><View style={[styles.stores, { flexDirection: rowDirection }]}>{settings.ios_app_url ? <Pressable onPress={() => Linking.openURL(settings.ios_app_url)} style={({ pressed }) => [styles.store, { flexDirection: rowDirection, opacity: pressed ? .72 : 1 }]}><Ionicons name="logo-apple" size={20} color="#FFF" /><View><Text style={styles.storeSmall}>حمّل التطبيق من</Text><Text style={styles.storeName}>App Store</Text></View></Pressable> : null}{settings.android_app_url ? <Pressable onPress={() => Linking.openURL(settings.android_app_url)} style={({ pressed }) => [styles.store, { flexDirection: rowDirection, opacity: pressed ? .72 : 1 }]}><Ionicons name="logo-google-playstore" size={20} color="#FFF" /><View><Text style={styles.storeSmall}>حمّل التطبيق من</Text><Text style={styles.storeName}>Google Play</Text></View></Pressable> : null}</View></View> : null}
     {settings && <View style={[styles.actions, { flexDirection: rowDirection }]}>
       {settings.support_email ? <Pressable onPress={() => Linking.openURL(`mailto:${settings.support_email}`)} style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="button" accessibilityLabel="البريد الإلكتروني"><Ionicons name="mail-outline" size={17} color={colors.primary} /></Pressable> : null}
-      {settings.whatsapp_url ? <Pressable onPress={() => Linking.openURL(settings.whatsapp_url)} style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="button" accessibilityLabel="واتساب"><Ionicons name="logo-whatsapp" size={17} color="#20A96B" /></Pressable> : null}
-      {socials.map((item) => <Pressable key={item.key} onPress={() => Linking.openURL(settings[item.key])} style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="button" accessibilityLabel={item.label}><Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={17} color={colors.primary} /></Pressable>)}
+      {socials.map((item) => <Pressable key={item.id} onPress={() => void Linking.openURL(item.url).catch(() => Alert.alert(isRTL ? "تعذر فتح الرابط" : "Could not open link", isRTL ? "تحقق من اتصالك ثم حاول مرة أخرى." : "Check your connection and try again."))} style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="link" accessibilityLabel={isRTL ? item.labelAr : item.label}><Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={20} color={colors.primary} /></Pressable>)}
     </View>}
     <View style={[styles.legalBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={[styles.legalHead, { flexDirection: rowDirection }]}>
@@ -81,7 +69,7 @@ const styles = StyleSheet.create({
   storeSmall: { color: "#AEBEE3", fontSize: 7, textAlign: "right" },
   storeName: { color: "#FFF", fontSize: 10, fontWeight: "900", textAlign: "right", marginTop: 2 },
   actions: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 7, maxWidth: 340, marginTop: 8 },
-  action: { width: 37, height: 37, borderWidth: 1, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  action: { width: 44, height: 44, borderWidth: 1, borderRadius: 14, alignItems: "center", justifyContent: "center" },
   legalBox: { width: "100%", maxWidth: 380, borderWidth: 1, borderRadius: 18, padding: 13, marginTop: 11 },
   legalHead: { flexDirection: "row", alignItems: "center", gap: 9, paddingBottom: 8 },
   legalIcon: { width: 39, height: 39, borderRadius: 13, alignItems: "center", justifyContent: "center" },

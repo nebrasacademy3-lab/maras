@@ -109,10 +109,20 @@ test("email OTP is six zero-padded digits; only salted HMAC is stored and output
   const response = await s.codes.requestEmailCode(1, "verify_email", request());
   const row = s.rows.emailVerificationCodes[0];
   assert.match(s.emails[0].text, /\n000042\n/);
+  assert.deepEqual(s.emails[0].security, { kind: "verify-email", code: "000042" });
   assert.match(row.codeHash, /^[a-f0-9]{32}\.[a-f0-9]{64}$/);
   assert.equal("code" in row, false);
   assert.equal(JSON.stringify(response).includes("000042"), false);
   assert.equal(s.codes.matchesEmailCode({ userId: 1, email: baseUser.email, purpose: "verify_email" }, "000042", row.codeHash), true);
+});
+test("changing a password selects its own branded email kind with the generated zero-padded code", async () => {
+  const s = await setup();
+  await s.codes.requestEmailCode(1, "change_password", request());
+  assert.equal(s.emails.length, 1);
+  assert.deepEqual(s.emails[0].security, { kind: "change-password", code: "000042" });
+  assert.match(s.emails[0].text, /\n000042\n/);
+  assert.match(s.emails[0].subject, /تغيير كلمة المرور/);
+  assert.ok(s.rows.emailVerificationCodes[0].sentAt);
 });
 test("OTP salt and HMAC bind user, email and purpose, reject malformed hashes and weak secrets", async () => {
   const s = await setup(); const identity = { userId: 1, email: baseUser.email, purpose: "verify_email" };

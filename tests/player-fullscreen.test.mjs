@@ -9,6 +9,13 @@ const compiledModule = { exports: {} };
 vm.runInNewContext(ts.transpileModule(readFileSync(new URL("../lib/player-fullscreen.ts", import.meta.url), "utf8"), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { module: compiledModule, exports: compiledModule.exports });
 const helpers = compiledModule.exports;
 
+test("player geometry cannot inherit transitions from global motion preferences", () => {
+  const css = readFileSync(new URL("../components/secure-video-player.css", import.meta.url), "utf8");
+  const rule = css.match(/\.secure-player\.secure-player \.secure-player-stage\s*\{([^}]+)\}/)?.[1] || "";
+  assert.match(rule, /animation:\s*none\s*!important/);
+  assert.match(rule, /transition:\s*none\s*!important/);
+});
+
 class Style {
   values = new Map();
   setProperty(name, value, priority = "") { this.values.set(name, { value, priority }); }

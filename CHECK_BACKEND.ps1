@@ -1,5 +1,5 @@
 $ErrorActionPreference = "Continue"
-$base = "https://marase.up.railway.app"
+$base = "https://marasalelm.com"
 Write-Host "Checking $base" -ForegroundColor Cyan
 foreach ($path in @('/api/ping','/api/health')) {
   $url = "$base$path"

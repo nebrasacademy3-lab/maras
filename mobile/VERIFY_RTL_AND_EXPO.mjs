@@ -20,7 +20,7 @@ check('Register layout is direction-aware', /flexDirection: rowDirection/.test(r
 check('Tabs scene is direction-aware and translated', /sceneStyle: \{ direction \}/.test(read('app/(tabs)/_layout.tsx')) && /title: t\("الرئيسية"\)/.test(read('app/(tabs)/_layout.tsx')));
 check('No TextInput is hard-forced to textAlign="right"', !scan(/textAlign="right"/));
 check('No view is hard-forced to direction: "ltr"', !scan(/direction:\s*"ltr"/));
-check('Preview build points to Railway backend', read('eas.json').includes('https://marase.up.railway.app'));
+check('Preview build points to the official backend domain', JSON.parse(read('eas.json')).build.preview.env.EXPO_PUBLIC_API_URL === 'https://marasalelm.com');
 
 function scan(regex) {
   for (const base of ['app', 'src']) {

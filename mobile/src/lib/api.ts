@@ -1,7 +1,7 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 
-const defaultApiUrl = "https://marase.up.railway.app";
+const defaultApiUrl = "https://marasalelm.com";
 const configured = String(Constants.expoConfig?.extra?.apiUrl || defaultApiUrl).replace(/\/$/, "");
 if (!/^https:\/\//i.test(configured)) {
   throw new Error("EXPO_PUBLIC_API_URL must be an HTTPS URL");

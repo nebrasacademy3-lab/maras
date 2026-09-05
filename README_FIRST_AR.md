@@ -12,7 +12,7 @@ npx @railway/cli@latest status
 npx @railway/cli@latest up
 ```
 
-اربط الخدمة الحالية الخاصة بـ `https://marase.up.railway.app`، وتأكد أن PostgreSQL مرتبط وأن `DATABASE_URL` يشير لخدمة Postgres.
+اربط خدمة Railway الحالية بالنطاق `https://marasalelm.com`، وتأكد أن PostgreSQL مرتبط وأن `DATABASE_URL` يشير لخدمة Postgres.
 
 اختبر بعد النشر:
 
@@ -34,7 +34,7 @@ npx expo config --type public
 npx eas-cli@latest build --platform android --profile preview
 ```
 
-يجب أن يظهر `apiUrl: 'https://marase.up.railway.app'`.
+يجب أن يظهر `apiUrl: 'https://marasalelm.com'`.
 
 ## متغيرات Railway الأساسية
 انسخ `RAILWAY_VARIABLES.example` إلى Variables مع الاحتفاظ بقيم أسرارك الحقيقية. إذا كان اسم خدمة قاعدة البيانات ليس `Postgres`، غيّر مرجع `${{Postgres.DATABASE_URL}}` ليطابق اسم الخدمة.

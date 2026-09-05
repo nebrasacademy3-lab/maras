@@ -3,7 +3,7 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { test } from "node:test";
 
-const origin = "https://marase.up.railway.app";
+const origin = "https://marasalelm.com";
 async function availablePort() {
   const socket = createServer();
   await new Promise((resolve, reject) => { socket.once("error", reject); socket.listen(0, "127.0.0.1", resolve); });

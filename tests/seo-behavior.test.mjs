@@ -38,6 +38,17 @@ test("development, unconfigured, disabled and malformed deployment origins fail 
   }
 });
 
+test("production domain defaults and explicit origins remain consistent after domain migration", async () => {
+  const unset = await isolated("../lib/seo.ts", { process: { env: {} } });
+  assert.equal(unset.seoSiteOrigin(), "https://marasalelm.com");
+  assert.equal(unset.seoUrl("/contact"), "https://marasalelm.com/contact");
+  assert.equal(unset.searchIndexingEnabled(), false);
+  const active = await isolated("../lib/seo.ts", { process: { env: { NODE_ENV: "production", APP_URL: "https://marasalelm.com", NEXT_PUBLIC_SITE_URL: "https://marasalelm.com" } } });
+  assert.equal(active.publicPageMetadata("/", "مراس العلم", "المنصة").alternates.canonical, "https://marasalelm.com/");
+  assert.equal(active.searchIndexingEnabled(), true);
+  assert.equal(active.siteStructuredData()["@graph"][0].url, "https://marasalelm.com/");
+});
+
 test("filtered and sorted catalog URLs noindex while tracking-only canonical copies remain eligible", () => {
   for (const query of [{ q: "رياضيات" }, { university: "u" }, { sort: "price" }, { page: "2" }, { q: ["", "science"] }]) assert.equal(seo.catalogHasFilters(query), true);
   for (const query of [{}, { q: "" }, { utm_source: "campaign", utm_campaign: "fall", gclid: "123" }, { fbclid: "123" }]) assert.equal(seo.catalogHasFilters(query), false);

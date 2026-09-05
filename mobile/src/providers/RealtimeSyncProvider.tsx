@@ -46,6 +46,7 @@ export function RealtimeSyncProvider({ children }: { children: React.ReactNode }
       inFlight = true;
       try {
         const payload = await api<SyncPayload>("/api/sync");
+        if (stopped) return;
         const next = payload.channels || { account: payload.version || "0" };
         if (previous.current) {
           const changed = Object.keys(next).filter((channel) => next[channel] !== previous.current?.[channel]);
@@ -69,6 +70,8 @@ export function RealtimeSyncProvider({ children }: { children: React.ReactNode }
       if (next === "active") {
         if (timer) clearTimeout(timer);
         delay = 5_000;
+        // Refresh public channels even when the previous version snapshot was lost.
+        void queryClient.invalidateQueries({ queryKey: ["settings"], refetchType: "active" });
         void poll();
       } else if (timer) clearTimeout(timer);
     };

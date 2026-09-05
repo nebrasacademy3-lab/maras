@@ -5,7 +5,7 @@
 - الحساب: `@os1m1/meras-alelm`
 - EAS Project ID: `684cf9e9-bf33-40bf-89a7-afba498cf90e`
 - Android package: `sa.merasalelm.app`
-- API: `https://marase.up.railway.app`
+- API: `https://marasalelm.com`
 - `preview` ينتج APK للتثبيت المباشر.
 - `production` ينتج نسخة المتجر.
 - لا تحتاج إلى `eas init`، ولا تستخدم هذه النسخة قنوات `expo-updates`؛ لذلك لن يعود خطأ channel/expo-updates السابق.

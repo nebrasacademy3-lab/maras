@@ -119,7 +119,17 @@ export type Dashboard = {
   institutions: Institution[];
 };
 
+export type PublicSocialLink = {
+  id: "whatsapp" | "x" | "instagram" | "tiktok" | "youtube" | "telegram" | "linkedin" | "facebook" | "snapchat" | "threads";
+  key: string;
+  label: string;
+  labelAr: string;
+  icon: string;
+  url: string;
+};
+
 export type PublicSettings = {
+  social_links?: PublicSocialLink[];
   whatsapp_number: string;
   whatsapp_message: string;
   whatsapp_url: string;

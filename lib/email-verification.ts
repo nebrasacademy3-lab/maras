@@ -85,6 +85,7 @@ export async function requestEmailCode(userId: number, purpose: EmailCodePurpose
   try {
     await sendTransactionalEmail({
       to: issued.user.email,
+      security: { kind: purpose === "verify_email" ? "verify-email" : "change-password", code },
       subject: purpose === "verify_email" ? "رمز تأكيد بريدك — مراس العلم" : "رمز تغيير كلمة المرور — مراس العلم",
       text: `مرحبًا ${issued.user.fullName}،\n\nرمز ${purpose === "verify_email" ? "تأكيد بريدك الإلكتروني" : "تغيير كلمة مرورك"} في مراس العلم:\n\n${code}\n\nصالح لمدة 10 دقائق ولمرة واحدة فقط. لا تشارك هذا الرمز مع أي شخص.\n${purpose === "verify_email" ? "تأكيد البريد مرة واحدة للحساب، وليس قبل كل عملية شراء." : "إذا لم تطلب تغيير كلمة المرور، تجاهل الرسالة وراجع أمان حسابك."}`,
       idempotencyKey: `email-code-${issued.id}`,

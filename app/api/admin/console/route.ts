@@ -20,6 +20,7 @@ import { courseSlug, institutionSlug as makeInstitutionSlug, lessonId, specialty
 import { deleteAdminEntity, DeletionPolicyError, type AdminDeletionType } from "@/lib/admin-deletion";
 import { accessExpiryIso, normalizeAccessDurationDays } from "@/lib/course-access";
 import { ADMIN_PERMISSIONS, hasPermission, type AdminPermission } from "@/lib/permissions";
+import { isSocialSettingKey, normalizeSocialUrl, normalizeWhatsappNumber } from "@/lib/social-links";
 
 async function authorize(request: Request, delegatedPermission?: AdminPermission) {
   const user = await getSessionUser(request);
@@ -702,9 +703,10 @@ export async function POST(request: Request) {
     if (Object.hasOwn(submittedSettings, "first_platform_claim_enabled") && !["true", "false"].includes(submittedSettings.first_platform_claim_enabled)) return jsonError("حالة عبارة الأولوية غير صالحة");
     if (Object.hasOwn(submittedSettings, "payment_methods_marketing_enabled") && !["true", "false"].includes(submittedSettings.payment_methods_marketing_enabled)) return jsonError("حالة إظهار خيارات الدفع غير صالحة");
     for (const [key, value] of entries) {
+      if (isSocialSettingKey(key) && key !== "whatsapp_number" && value && !normalizeSocialUrl(key, value)) return jsonError(`${SETTING_META[key].label}: أدخل رابط HTTPS صحيحًا من موقع الشبكة نفسها، دون بيانات دخول.`);
       if ((key.startsWith("social_") || key === "ios_app_url" || key === "android_app_url" || key.endsWith("_verify_url") || key === "first_platform_claim_evidence_url") && value && !safeUrl(value)) return jsonError(`رابط ${SETTING_META[key].label} يجب أن يبدأ بـ https`);
       if (key === "support_email" && value && !validEmail(value)) return jsonError("بريد الدعم غير صالح");
-      if (key === "whatsapp_number" && value && !/^\+?[0-9\s-]{9,20}$/.test(value)) return jsonError("رقم واتساب غير صالح");
+      if (key === "whatsapp_number" && value && !normalizeWhatsappNumber(value)) return jsonError("رقم واتساب غير صالح. أدخل رقم الجوال السعودي أو الرقم الدولي مع رمز الدولة.");
       if (["commercial_registration_number", "ecommerce_authentication_number", "vat_number"].includes(key) && value && !/^[0-9 -]{5,30}$/.test(value)) return jsonError(`${SETTING_META[key].label} غير صالح`);
       if (key === "max_student_devices" && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 10)) return jsonError("حد أجهزة الطالب يجب أن يكون بين 1 و10");
       if (key === "content_view_mode" && !["both", "app_only", "web_only"].includes(value)) return jsonError("اختر طريقة مشاهدة محتوى صالحة");

@@ -1,4 +1,11 @@
 /* The fullscreen surface is the SAME video and controls, above ancestor clipping. */
+/* Geometry must switch atomically. Global reduced-motion rules can otherwise turn
+   the default transition-property:all into a tiny transition that briefly keeps
+   WebKit's previous rotated bounds during an orientation/viewport resize. */
+.secure-player.secure-player .secure-player-stage {
+  animation: none !important;
+  transition: none !important;
+}
 .secure-player.secure-player.is-fullscreen {
   position: fixed !important;
   inset: auto !important;

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { Course } from "@/lib/data";
 
-const DEFAULT_PUBLIC_ORIGIN = "https://marase.up.railway.app";
+const DEFAULT_PUBLIC_ORIGIN = "https://marasalelm.com";
 export type SeoSearchParams = Record<string, string | string[] | undefined>;
 function configuredOrigin() {
   const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim() || process.env.APP_URL?.trim();

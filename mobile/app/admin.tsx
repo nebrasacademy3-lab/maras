@@ -145,7 +145,13 @@ export default function Admin() {
   };
   const mutate: Mutate = async (payload, success = "تم حفظ التغيير") => {
     setMessage("");
-    try { await api("/api/admin/console", { method: "POST", body: jsonBody(payload) }); setMessage(success); await refresh(); return true; }
+    try {
+      await api("/api/admin/console", { method: "POST", body: jsonBody(payload) });
+      setMessage(success);
+      if (payload.action === "saveSettings") await client.invalidateQueries({ queryKey: ["settings"], refetchType: "active" });
+      await refresh();
+      return true;
+    }
     catch (reason) {
       if (isAdminStepUpError(reason)) { stepUpRequired(reason.message); return false; }
       setMessage(reason instanceof ApiError ? reason.message : "تعذر تنفيذ الإجراء");
