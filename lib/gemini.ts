@@ -103,7 +103,7 @@ export async function generateGeminiContent(input: {
   const candidatePool = await keyCandidates();
   const maxAttempts = boundedRuntimeMs(process.env.AI_GEMINI_MAX_KEY_ATTEMPTS, DEFAULT_MAX_KEY_ATTEMPTS, 1, 5);
   const candidates = candidatePool.slice(0, maxAttempts);
-  if (!candidates.length) throw new AiPlatformError("AI_PROVIDER_UNAVAILABLE", "لا يوجد مزود AI متاح الآن. حاول بعد قليل.", 503);
+  if (!candidates.length) throw new AiPlatformError("AI_PROVIDER_UNAVAILABLE", "لا يوجد مزود الخدمة متاح الآن. حاول بعد قليل.", 503);
   const overallTimeoutMs = boundedRuntimeMs(process.env.AI_GEMINI_OVERALL_TIMEOUT_MS, 85_000, 15_000, 120_000);
   const attemptTimeoutMs = boundedRuntimeMs(process.env.AI_GEMINI_ATTEMPT_TIMEOUT_MS, 35_000, 5_000, 60_000);
   const deadline = Date.now() + overallTimeoutMs;
@@ -157,5 +157,5 @@ export async function generateGeminiContent(input: {
       finishReason: output.finishReason,
     };
   }
-  throw new AiPlatformError(lastStatus === 429 ? "AI_RATE_LIMITED" : "AI_PROVIDER_UNAVAILABLE", lastStatus === 429 ? "وصل مزود AI إلى حد الاستخدام مؤقتًا. انتظر قليلًا ثم أعد المحاولة." : "خدمة AI غير متاحة مؤقتًا. حاول بعد قليل.", lastStatus === 429 ? 429 : 503);
+  throw new AiPlatformError(lastStatus === 429 ? "AI_RATE_LIMITED" : "AI_PROVIDER_UNAVAILABLE", lastStatus === 429 ? "وصل مزود الخدمة إلى حد الاستخدام مؤقتًا. انتظر قليلًا ثم أعد المحاولة." : "الخدمة غير متاحة مؤقتًا. حاول بعد قليل.", lastStatus === 429 ? 429 : 503);
 }

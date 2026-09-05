@@ -17,7 +17,7 @@ test("the homepage uses the focused premium experience without the blocking intr
 
   assert.match(page, /from "\.\/home\.module\.css"/);
   assert.match(page, /كل ما تحتاجه/);
-  assert.match(page, /مراس AI/);
+  assert.match(page, /أدوات المذاكرة/);
   assert.match(page, /تابي/);
   assert.match(page, /تمارا/);
   assert.match(page, /data-home-reveal/);
@@ -41,16 +41,16 @@ test("the hero search is lightweight, semantic, and keyboard accessible", async 
 });
 
 test("the homepage animation system is responsive and respects reduced motion", async () => {
-  const [styles, motion] = await Promise.all([
+  const [styles, gatewayStyles, motion] = await Promise.all([
     source("app/home.module.css"),
+    source("components/home-gateway.module.css"),
     source("components/motion-orchestrator.tsx"),
   ]);
 
-  assert.match(styles, /@media \(max-width: 960px\)/);
-  assert.match(styles, /@media \(max-width: 720px\)/);
-  assert.match(styles, /@media \(max-width: 520px\)/);
-  assert.match(styles, /@media \(prefers-reduced-motion: reduce\)/);
-  assert.match(styles, /@keyframes heroCopyIn/);
-  assert.match(styles, /@keyframes workspaceFloat/);
+  assert.match(styles, /@media\(max-width:980px\)/);
+  assert.match(styles, /@media\(max-width:640px\)/);
+  assert.match(`${styles}\n${gatewayStyles}`, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
+  assert.match(gatewayStyles, /@keyframes enterCopy/);
+  assert.match(gatewayStyles, /@keyframes enterCanvas/);
   assert.match(motion, /\[data-home-reveal\]/);
 });

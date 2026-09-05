@@ -15,7 +15,7 @@ async function pageData(params: Props["params"]) {
   const { slug, specialtySlug } = await params;
   const [institution, courses] = await Promise.all([getInstitutionCatalog(slug), getCoursesCatalog()]);
   if (!institution) return null;
-  const rows = courses.filter((course) => course.universitySlug === slug && course.specialtySlug === specialtySlug);
+  const rows = courses.filter((course) => course.universitySlug === slug && (course.audienceScope === "institution" || course.specialtySlug === specialtySlug));
   const specialtyName = rows[0]?.specialty || specialtySlug;
   return { institution, rows, specialtySlug, specialtyName };
 }

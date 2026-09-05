@@ -55,9 +55,11 @@ MALWARE_SCAN_TOKEN=
 SESSION_SECRET=REPLACE_WITH_YOUR_EXISTING_OR_NEW_32_PLUS_CHAR_SECRET
 SESSION_COOKIE_SECURE=true
 
-# Tap — اتركها فارغة حتى تفعيل الدفع الحقيقي.
+# Tap — أضف المفاتيح ثم فعّل خيارات التقسيط المعتمدة داخل حسابك.
 TAP_SECRET_KEY=
 TAP_WEBHOOK_SECRET=
+TAP_TABBY_ENABLED=false
+TAP_TAMARA_ENABLED=false
 
 # مراس AI — أدخل مفاتيح Gemini الحقيقية في Railway ولا تضعها في المستودع.
 GEMINI_API_KEY=

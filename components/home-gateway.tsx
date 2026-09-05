@@ -47,19 +47,19 @@ const aiActions: Record<Exclude<Intent, "course" | "resume">, { title: string; c
   slides: {
     title: "افتح ملفك داخل مساحة تعلّم",
     copy: "أضف ملفك، ثم اختر التلخيص أو الترجمة أو إنشاء اختبار تفاعلي.",
-    href: "/meras-ai",
-    action: "أضف ملفك في مراس AI",
+    href: "/study-tools",
+    action: "أضف ملفك إلى أدوات مراس",
   },
   summary: {
     title: "استخرج الفكرة قبل التفاصيل",
     copy: "حوّل الصفحات الطويلة إلى نقاط مرتبة تساعدك على المراجعة.",
-    href: "/meras-ai?service=summary",
+    href: "/study-tools?service=summary",
     action: "أنشئ ملخصًا",
   },
   quiz: {
     title: "حوّل السلايدات إلى تدريب",
     copy: "أنشئ أسئلة تفاعلية مع شرح الإجابة من الملف الذي تدرسه.",
-    href: "/meras-ai?service=quiz",
+    href: "/study-tools?service=quiz",
     action: "أنشئ اختبارًا",
   },
 };
@@ -129,7 +129,7 @@ function AiCanvas({ intent }: { intent: Exclude<Intent, "course" | "resume"> }) 
       ) : (
         <div className={styles.outputSample}>
           <header><Sparkles size={16} /><strong>{isSlides ? "مساحة العمل" : "ملخص مركز"}</strong></header>
-          <p>يرتب مراس AI الأفكار الرئيسية، ويحافظ على المصطلحات العلمية داخل سياقها.</p>
+          <p>ترتب أدوات مراس الأفكار الرئيسية، وتحافظ على المصطلحات العلمية داخل سياقها.</p>
           <ul>
             <li><i /> الفكرة الأساسية في هذا الجزء</li>
             <li><i /> المصطلحات والعلاقات المهمة</li>
@@ -229,7 +229,7 @@ export function HomeGateway({
           <div className={styles.assurances}>
             <span><Check size={14} /> درس تجريبي قبل الاشتراك</span>
             <span><Check size={14} /> تقدّم محفوظ على أجهزتك</span>
-            <span><Check size={14} /> Tap · تابي وتمارا عند الأهلية</span>
+            <span><Check size={14} /> تفاصيل الدفع واضحة قبل التأكيد</span>
           </div>
         </div>
 

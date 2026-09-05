@@ -148,7 +148,7 @@ export async function POST(request: Request) {
   if (!course?.units.some((unit) => unit.lessons.some((lesson) => lesson.id === lessonId))) { await discardRawUpload(); return jsonError("تعذر مطابقة المادة أو الدرس"); }
   if (!tokenAuthorized && user?.role === "supervisor") {
     const assignments = await getDb().select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId, user.id), eq(supervisorAssignments.active, true)));
-    const mayEdit = assignments.some((assignment) => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (!assignment.specialty || assignment.specialty === course.specialty));
+    const mayEdit = assignments.some((assignment) => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !assignment.specialty : !assignment.specialty || assignment.specialty === course.specialty));
     if (!mayEdit) { await discardRawUpload(); return jsonError("هذه المادة غير مسندة لهذا المشرف", 403); }
   }
 

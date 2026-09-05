@@ -309,6 +309,7 @@ export const catalogCourses = pgTable("catalog_courses", {
   slug: text("slug").primaryKey(),
   institutionSlug: text("institution_slug").notNull(),
   specialtySlug: text("specialty_slug").notNull(),
+  audienceScope: text("audience_scope").notNull().default("specialty"),
   title: text("title").notNull(),
   titleEn: text("title_en").notNull().default(""),
   code: text("code"),
@@ -332,6 +333,32 @@ export const catalogCourses = pgTable("catalog_courses", {
   foreignKey({ name: "catalog_courses_institution_fk", columns: [table.institutionSlug], foreignColumns: [catalogInstitutions.slug] }),
   foreignKey({ name: "catalog_courses_specialty_fk", columns: [table.specialtySlug], foreignColumns: [catalogSpecialties.slug] }),
   foreignKey({ name: "catalog_courses_institution_specialty_fk", columns: [table.institutionSlug, table.specialtySlug], foreignColumns: [institutionSpecialties.institutionSlug, institutionSpecialties.specialtySlug] }),
+]);
+
+export const courseResources = pgTable("course_resources", {
+  id: serial("id").primaryKey(),
+  courseSlug: text("course_slug").notNull().references(() => catalogCourses.slug, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  objectKey: text("object_key").notNull(),
+  originalName: text("original_name").notNull(),
+  contentType: text("content_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  studentVisible: boolean("student_visible").notNull().default(false),
+  status: text("status").notNull().default("active"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  scanStatus: text("scan_status").notNull().default("pending"),
+  scanProvider: text("scan_provider"),
+  scannedAt: text("scanned_at"),
+  scanError: text("scan_error"),
+  quarantineReason: text("quarantine_reason"),
+  createdBy: text("created_by"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [
+  uniqueIndex("course_resources_object_unique").on(table.objectKey),
+  index("course_resources_course_idx").on(table.courseSlug, table.status, table.studentVisible, table.sortOrder),
+  index("course_resources_scan_idx").on(table.scanStatus, table.status),
 ]);
 
 export const courseUnitsDb = pgTable("course_units", {
@@ -684,6 +711,28 @@ export const platformSettings = pgTable("platform_settings", {
   updatedBy: text("updated_by"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [index("platform_settings_category_idx").on(table.category, table.isPublic)]);
+
+export const platformPartners = pgTable("platform_partners", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  kind: text("kind").notNull().default("partner"),
+  description: text("description").notNull().default(""),
+  logoObjectKey: text("logo_object_key"),
+  logoUrl: text("logo_url"),
+  logoContentType: text("logo_content_type"),
+  destinationUrl: text("destination_url"),
+  credentialNumber: text("credential_number"),
+  verificationUrl: text("verification_url"),
+  rightsConfirmed: boolean("rights_confirmed").notNull().default(false),
+  rightsReference: text("rights_reference"),
+  status: text("status").notNull().default("draft"),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdBy: text("created_by"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [
+  index("platform_partners_status_order_idx").on(table.status, table.sortOrder),
+]);
 
 export const supportReplies = pgTable("support_replies", {
   id: serial("id").primaryKey(),

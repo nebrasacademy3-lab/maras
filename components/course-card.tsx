@@ -15,7 +15,7 @@ export function CourseCard({ course, compact = false }: { course: Course; compac
         {course.oldPrice && <span className="sale-pill">وفر {course.oldPrice - course.price} ر.س</span>}
       </Link>
       <div className="course-card-body">
-        <div className="course-context"><span>{course.university}</span><i /> <span>{course.specialty}</span></div>
+        <div className="course-context"><span>{course.university}</span><i /> <span>{course.audienceScope === "institution" ? "جميع تخصصات الجامعة" : course.specialty}</span></div>
         <Link href={`/courses/${course.slug}`}><h3>{course.title}</h3></Link>
         <p className="course-title-en">{course.titleEn} {course.code && `· ${course.code}`}</p>
         <div className="course-facts">

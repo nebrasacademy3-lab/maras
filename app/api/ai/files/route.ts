@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   return observeRequest(request, "ai.files.upload", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-file-upload", `user:${user.id}`, 12, 60 * 60)) return jsonError("تم رفع ملفات كثيرة. حاول لاحقًا.", 429);
     const { statuses } = await getAiUsageStatuses(user);
     const fileServices = [statuses.summary, statuses.translation, statuses.quiz].filter((status) => status.enabled);
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
     const maxStoredFiles = boundedStorageLimit(process.env.AI_MAX_STORED_FILES_PER_USER, 30, 1, 200);
     const maxStoredBytes = boundedStorageLimit(process.env.AI_MAX_STORED_BYTES_PER_USER, Math.max(200 * 1024 * 1024, maxFileBytes), maxFileBytes, 2_000_000_000);
     const beforeUpload = await storedUsage(user.id);
-    if (beforeUpload.fileCount >= maxStoredFiles || beforeUpload.totalBytes >= maxStoredBytes) return jsonError("وصلت إلى حصة ملفات مراس AI. احذف المحادثات والملفات القديمة أو تواصل مع الدعم.", 409);
+    if (beforeUpload.fileCount >= maxStoredFiles || beforeUpload.totalBytes >= maxStoredBytes) return jsonError("وصلت إلى حصة ملفات أدوات مراس. احذف المحادثات والملفات القديمة أو تواصل مع الدعم.", 409);
     let parsed: Awaited<ReturnType<typeof parseStoredMultipart>>;
     try {
       parsed = await parseStoredMultipart(request, {

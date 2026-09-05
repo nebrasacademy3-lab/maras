@@ -456,7 +456,7 @@ export function Student360({ email }: { email: string }) {
           <Link href={`/admin?view=orders&q=${encodeURIComponent(data.student.email)}`}><ReceiptText size={14} /> الطلبات</Link>
           <Link href={`/admin?view=support&q=${encodeURIComponent(data.student.email)}`}><Headphones size={14} /> الدعم</Link>
           <Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}><Gift size={14} /> الإحالات والهدايا</Link>
-          <Link href="/admin/ai"><Bot size={14} /> مراس AI</Link>
+          <Link href="/admin/ai"><Bot size={14} /> أدوات مراس</Link>
           <Link href={`/admin/finance?search=${encodeURIComponent(data.student.email)}`}><CircleDollarSign size={14} /> المركز المالي</Link>
         </div>
         <div className={styles.quickActions}>
@@ -476,12 +476,12 @@ export function Student360({ email }: { email: string }) {
           { icon: CircleDollarSign, label: "قيمة الطلبات المدفوعة", value: money(data.summary.paidValue) },
           { icon: Headphones, label: "دعم مفتوح / إشعارات", value: `${data.summary.openTickets.toLocaleString("ar-SA")} / ${data.summary.unreadNotifications.toLocaleString("ar-SA")}` },
           { icon: Gift, label: "إحالات مؤهلة / هدايا نشطة", value: `${(data.summary.qualifiedReferrals || 0).toLocaleString("ar-SA")} / ${(data.summary.activeRewards || 0).toLocaleString("ar-SA")}` },
-          { icon: Bot, label: "مراس AI", value: data.summary.aiActive ? "اشتراك نشط" : "خطة مجانية" },
+          { icon: Bot, label: "أدوات مراس", value: data.summary.aiActive ? "اشتراك نشط" : "خطة مجانية" },
         ].map(({ icon: Icon, label: metricLabel, value }) => <article className={styles.metric} key={metricLabel}><i><Icon size={17} /></i><span>{metricLabel}<strong>{value}</strong></span></article>)}
       </section>
 
       <nav className={styles.nav} aria-label="أقسام ملف الطالب">
-        {[["profile", "الملخص"], ["subscriptions", "الاشتراكات"], ["progress", "التقدم"], ["orders", "الطلبات والفواتير"], ["referrals", "الإحالات والهدايا"], ["ai", "مراس AI"], ["interest", "الاهتمام والانتظار"], ["requests", "طلبات المواد"], ["support", "الدعم"], ["notifications", "الإشعارات"], ["sessions", "الجلسات والأجهزة"]].map(([id, text]) => <a href={`#${id}`} key={id}>{text}</a>)}
+        {[["profile", "الملخص"], ["subscriptions", "الاشتراكات"], ["progress", "التقدم"], ["orders", "الطلبات والفواتير"], ["referrals", "الإحالات والهدايا"], ["ai", "أدوات مراس"], ["interest", "الاهتمام والانتظار"], ["requests", "طلبات المواد"], ["support", "الدعم"], ["notifications", "الإشعارات"], ["sessions", "الجلسات والأجهزة"]].map(([id, text]) => <a href={`#${id}`} key={id}>{text}</a>)}
       </nav>
 
       <div className={styles.grid}>
@@ -566,12 +566,12 @@ export function Student360({ email }: { email: string }) {
         </section>
 
         <section className={`${styles.panel} ${styles.half}`} id="ai">
-          <PanelHead icon={Bot} title="مراس AI" copy="الاستحقاقات والاشتراكات المدفوعة واستخدام آخر 30 يومًا" count={data.ai?.entitlements.length || 0} />
+          <PanelHead icon={Bot} title="أدوات مراس" copy="الاستحقاقات والاشتراكات المدفوعة واستخدام آخر 30 يومًا" count={data.ai?.entitlements.length || 0} />
           {data.ai && (data.ai.entitlements.length || data.ai.orders.length || data.ai.usage.length) ? <div className={styles.list}>
             {data.ai.entitlements.map((row) => <article className={styles.listItem} key={`ent-${row.id}`}><span><strong>{label(row.source)}</strong><small>من {safeDate(row.startsAt, false)} · {row.expiresAt ? `حتى ${safeDate(row.expiresAt, false)}` : "مفتوح"}{row.createdBy ? ` · بواسطة ${row.createdBy}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
             {data.ai.orders.map((row) => <article className={styles.listItem} key={`ai-order-${row.id}`}><span><strong>اشتراك مدفوع <bdi className={styles.ltr}>{row.orderNumber}</bdi></strong><small>{money(row.amount, row.currency)} · {safeDate(row.paidAt || row.createdAt)}{row.entitlementExpiresAt ? ` · حتى ${safeDate(row.entitlementExpiresAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
             {data.ai.usage.length > 0 && <p>{data.ai.usage.map((row) => `${label(row.service)}: ${row.total.toLocaleString("ar-SA")} ${label(row.status)}`).join(" · ")}</p>}
-          </div> : <Empty>لا يوجد اشتراك مستقل في مراس AI؛ يحصل الطالب على خطة المشترك تلقائيًا مع أي مادة نشطة.</Empty>}
+          </div> : <Empty>لا يوجد اشتراك مستقل في أدوات مراس؛ يحصل الطالب على خطة المشترك تلقائيًا مع أي مادة نشطة.</Empty>}
         </section>
 
         <section className={`${styles.panel} ${styles.half}`} id="interest">

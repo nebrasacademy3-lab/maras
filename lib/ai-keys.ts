@@ -14,7 +14,7 @@ function encryptionMaterial() {
     } catch { material = null; }
   }
   if (!placeholder && !material && Buffer.byteLength(raw, "utf8") >= 32) material = Buffer.from(raw, "utf8");
-  if (!material) throw new AiPlatformError("AI_KEY_ENCRYPTION_NOT_CONFIGURED", "تخزين مفاتيح AI غير مهيأ بأمان على الخادم.", 503);
+  if (!material) throw new AiPlatformError("AI_KEY_ENCRYPTION_NOT_CONFIGURED", "تخزين مفاتيح مزود الخدمة غير مهيأ بأمان على الخادم.", 503);
   return createHmac("sha256", material).update("meras-ai-keys:v1:encryption").digest();
 }
 
@@ -33,7 +33,7 @@ export function maskAiKey(apiKey: string) {
 
 export function encryptAiApiKey(apiKey: string) {
   const valid = validGeminiApiKey(apiKey);
-  if (!valid) throw new AiPlatformError("AI_KEY_INVALID", "صيغة مفتاح Gemini غير صحيحة.");
+  if (!valid) throw new AiPlatformError("AI_KEY_INVALID", "صيغة مفتاح مزود الخدمة غير صحيحة.");
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionMaterial(), iv);
   const ciphertext = Buffer.concat([cipher.update(valid, "utf8"), cipher.final()]);
@@ -42,7 +42,7 @@ export function encryptAiApiKey(apiKey: string) {
 
 export function decryptAiApiKey(value: string) {
   const [version, encodedIv, encodedCiphertext, encodedTag] = value.split(".");
-  if (version !== "v1" || !encodedIv || !encodedCiphertext || !encodedTag) throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر قراءة مفتاح AI المحفوظ.", 500);
+  if (version !== "v1" || !encodedIv || !encodedCiphertext || !encodedTag) throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر قراءة مفتاح مزود الخدمة المحفوظ.", 500);
   try {
     const decipher = createDecipheriv("aes-256-gcm", encryptionMaterial(), Buffer.from(encodedIv, "base64url"));
     decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
@@ -50,6 +50,6 @@ export function decryptAiApiKey(value: string) {
     if (!validGeminiApiKey(apiKey)) throw new Error("invalid key");
     return apiKey;
   } catch {
-    throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر قراءة مفتاح AI المحفوظ.", 500);
+    throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر قراءة مفتاح مزود الخدمة المحفوظ.", 500);
   }
 }

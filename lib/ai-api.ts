@@ -14,7 +14,7 @@ export function aiJson(value: unknown, init: ResponseInit = {}) {
 
 export function aiError(error: unknown) {
   if (error instanceof AiPlatformError) return jsonError(error.message, error.status);
-  return jsonError("تعذر إكمال طلب مراس AI. حاول مرة أخرى.", 500);
+  return jsonError("تعذر إكمال طلب أدوات مراس. حاول مرة أخرى.", 500);
 }
 
 export function clientAiRequestId(userId: number, requestId: string, supplied: unknown) {

@@ -11,7 +11,7 @@
     "start": "NODE_ENV=production next start",
     "start:railway": "bash scripts/start-railway.sh",
     "test": "npm run build && node --test tests/*.test.mjs",
-    "lint": "eslint . --ignore-pattern .next --ignore-pattern node_modules --ignore-pattern mobile",
+    "lint": "eslint . --ignore-pattern .next --ignore-pattern node_modules --ignore-pattern mobile --ignore-pattern output --ignore-pattern tmp",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",

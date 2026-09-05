@@ -42,6 +42,7 @@ export type Course = {
   description: string;
   coverImage?: string;
   specialtySlug?: string;
+  audienceScope?: "specialty" | "institution";
   coverTheme?: string;
   price: number;
   oldPrice?: number;
@@ -64,6 +65,34 @@ export type Course = {
 };
 
 export type Catalog = { ok: true; institutions: Institution[]; courses: Course[] };
+export type PublicPartner = {
+  id: number;
+  name: string;
+  kind: "partner" | "accreditation" | "payment";
+  description: string;
+  logo: string;
+  destinationUrl: string | null;
+  credentialNumber: string | null;
+  verificationUrl: string | null;
+  sortOrder: number;
+};
+export type PublicPartnersResponse = { ok: true; partners: PublicPartner[] };
+export type CourseResource = {
+  id: number;
+  title: string;
+  description: string | null;
+  originalName: string;
+  contentType: string;
+  sizeBytes: number;
+  sortOrder: number;
+  updatedAt: string;
+  downloadUrl: string;
+};
+export type CourseResourcesResponse = {
+  ok: true;
+  courseSlug: string;
+  resources: CourseResource[];
+};
 export type ProgressRow = { id: number; courseSlug: string; lessonId: string; watchedSeconds: number; completed: boolean; updatedAt: string };
 export type OwnedCourse = Course & { progress: number; currentLessonId: string | null; expiresAt: string | null; accessState: "active" | "expired" | "suspended" };
 export type CourseRequest = { id: number; courseName: string; university: string; specialty: string; status: string; attachmentsCount: number; createdAt: string; notes?: string };
@@ -110,6 +139,21 @@ export type PublicSettings = {
   social_snapchat: string;
   social_threads: string;
   announcement: string;
+  legal_name: string;
+  commercial_registration_number: string;
+  commercial_registration_verify_url: string;
+  ecommerce_authentication_number: string;
+  ecommerce_authentication_verify_url: string;
+  nelc_program_name: string;
+  nelc_program_license_number: string;
+  nelc_program_license_verify_url: string;
+  legal_address: string;
+  vat_number: string;
+  positioning_claim: string;
+  first_platform_claim_enabled: string;
+  first_platform_claim_text: string;
+  first_platform_claim_evidence_url: string;
+  payment_methods_marketing_enabled: string;
 };
 
 export type Review = { id: number; courseSlug: string; rating: number; body: string; createdAt: string; author: string; specialty: string; verifiedPurchase: true };

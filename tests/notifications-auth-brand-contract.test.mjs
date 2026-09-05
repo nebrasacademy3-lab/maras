@@ -96,21 +96,20 @@ test("brand lockup and public campaign stay visually stable in both themes", asy
   assert.match(mobileCampaign, /presentation==="all"&&seenModal/);
 });
 
-test("notification deep links and account navigation cover referrals and Meras AI artifacts", async () => {
+test("notification deep links and account navigation cover referrals and Meras tools artifacts", async () => {
   const [routing, account, webHeader] = await Promise.all([
     read("mobile/src/lib/notification-routing.ts"),
     read("mobile/app/(tabs)/account.tsx"),
     read("components/site-header.tsx"),
   ]);
 
-  assert.match(routing, /path === "\/meras-ai"/);
+  assert.match(routing, /path === "\/study-tools"/);
   assert.match(routing, /\/ai\/conversation\/\[id\]/);
   assert.match(routing, /\/ai\/quiz\/\[id\]/);
   assert.match(routing, /path === "\/referrals"/);
-  assert.match(account, /title: "مراس AI"/);
+  assert.match(account, /title: "أدوات مراس"/);
   assert.match(account, /title: "الإحالات والهدايا"/);
-  assert.match(webHeader, /href: "\/meras-ai".+mobileOnly: true/);
+  assert.match(webHeader, /href: "\/study-tools".+mobileOnly: true/);
   assert.match(webHeader, /href: "\/referrals".+mobileOnly: true/);
   assert.match(webHeader, /className="account-utilities-menu desktop-only"/);
 });
-

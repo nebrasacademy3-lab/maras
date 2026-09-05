@@ -13,7 +13,7 @@ function idFrom(params: Promise<{ id: string }>) {
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return observeRequest(request, "ai.conversations.read", async () => {
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-read", `user:${user.id}`, 120, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     const id = await idFrom(params);
     if (!Number.isInteger(id) || id <= 0) return jsonError("المحادثة غير صالحة", 400);
@@ -32,7 +32,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return observeRequest(request, "ai.conversations.update", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-update", `user:${user.id}`, 40, 60)) return jsonError("تعديلات كثيرة. حاول بعد دقيقة.", 429);
     const id = await idFrom(params);
     let payload: Record<string, unknown>;
@@ -49,7 +49,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   return observeRequest(request, "ai.conversations.archive", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-archive", `user:${user.id}`, 30, 60)) return jsonError("طلبات أرشفة كثيرة. حاول بعد دقيقة.", 429);
     const id = await idFrom(params);
     const [row] = await getDb().update(aiConversations).set({ status: "archived", updatedAt: new Date().toISOString() }).where(and(eq(aiConversations.id, id), eq(aiConversations.userId, user.id))).returning({ id: aiConversations.id });

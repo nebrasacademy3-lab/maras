@@ -267,7 +267,7 @@ export async function GET(request: Request) {
     const refundMinor = order.status === "refunded" ? grossMinor : 0;
     return {
       type: "ai_subscription" as const,
-      typeLabel: "اشتراك مراس AI",
+      typeLabel: "اشتراك أدوات مراس",
       orderNumber: order.orderNumber,
       date: order.paidAt || order.createdAt,
       createdAt: order.createdAt,
@@ -286,7 +286,7 @@ export async function GET(request: Request) {
       tax: captured ? Math.round((order.amount * 15 / 115) * 100) / 100 : 0,
       currency: order.currency,
       invoiceNumber: "",
-      institutions: "مراس AI",
+      institutions: "أدوات مراس",
       courses: `اشتراك شهري${order.entitlementExpiresAt ? ` حتى ${sarDay(order.entitlementExpiresAt)}` : ""}`,
       itemCount: 1,
       entitlementExpiresAt: order.entitlementExpiresAt,

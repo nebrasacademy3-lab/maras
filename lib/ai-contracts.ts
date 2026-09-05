@@ -91,17 +91,17 @@ export type AiQuizAttemptResult = {
 };
 
 export type AiDeepLinks = {
-  home: "/meras-ai";
+  home: "/study-tools";
   conversation: string;
   quiz: string;
-  subscribe: "/meras-ai/subscribe";
+  subscribe: "/study-tools/subscribe";
 };
 
 export const aiDeepLinks = (input: { conversationId?: number | null; quizId?: number | null } = {}): AiDeepLinks => ({
-  home: "/meras-ai",
-  conversation: input.conversationId ? `/meras-ai?conversation=${input.conversationId}` : "/meras-ai",
-  quiz: input.quizId ? `/meras-ai?quiz=${input.quizId}` : "/meras-ai",
-  subscribe: "/meras-ai/subscribe",
+  home: "/study-tools",
+  conversation: input.conversationId ? `/study-tools?conversation=${input.conversationId}` : "/study-tools",
+  quiz: input.quizId ? `/study-tools?quiz=${input.quizId}` : "/study-tools",
+  subscribe: "/study-tools/subscribe",
 });
 
 export function isAiService(value: unknown): value is AiService {

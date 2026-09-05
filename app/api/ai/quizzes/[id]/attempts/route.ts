@@ -10,7 +10,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   return observeRequest(request, "ai.quiz.attempt", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-quiz-attempt", `user:${user.id}`, 60, 60)) return jsonError("محاولات كثيرة. انتظر قليلًا.", 429);
     const { id: rawId } = await params;
     const id = Math.floor(Number(rawId));

@@ -44,9 +44,17 @@ export default function Courses() {
   const specialtyItems = useMemo(() => [{ key: ALL_SPECIALTIES, label: ALL_SPECIALTIES, detail: "من جميع المسارات" }, ...specialties.map((label) => ({ key: label, label }))], [specialties]);
 
   const rows = useMemo(() => (catalog.data?.courses || []).filter((course) => {
-    const matchesScope = activeScope === "الكل" || activeScope === "موادي" && course.universitySlug === user?.universitySlug && course.specialty === user?.specialty || activeScope === "جامعتي" && course.universitySlug === user?.universitySlug || activeScope === "تخصصي" && course.specialty === user?.specialty;
+    const institutionWide = course.audienceScope === "institution";
+    const sameUserUniversity = Boolean(user?.universitySlug && course.universitySlug === user.universitySlug);
+    const belongsToUserStudyPlan = sameUserUniversity && (institutionWide || course.specialty === user?.specialty);
+    const matchesScope = activeScope === "الكل"
+      || activeScope === "موادي" && belongsToUserStudyPlan
+      || activeScope === "جامعتي" && sameUserUniversity
+      || activeScope === "تخصصي" && belongsToUserStudyPlan;
     const matchesUniversity = activeUniversity === ALL_UNIVERSITIES || course.universitySlug === activeUniversity;
-    const matchesSpecialty = activeSpecialty === ALL_SPECIALTIES || course.specialty === activeSpecialty;
+    const matchesSpecialty = activeSpecialty === ALL_SPECIALTIES
+      || course.specialty === activeSpecialty
+      || institutionWide && activeUniversity !== ALL_UNIVERSITIES && course.universitySlug === activeUniversity;
     const needle = query.trim().toLocaleLowerCase("ar");
     return matchesScope && matchesUniversity && matchesSpecialty && (!needle || `${course.title} ${course.titleEn} ${course.code || ""} ${course.university} ${course.specialty}`.toLocaleLowerCase("ar").includes(needle));
   }), [activeScope, activeSpecialty, activeUniversity, catalog.data, query, user]);
@@ -57,7 +65,7 @@ export default function Courses() {
     if (!user || value === "الكل") { setUniversityOverride(ALL_UNIVERSITIES); setSpecialtyOverride(ALL_SPECIALTIES); return; }
     if (value === "موادي") { setUniversityOverride(user.universitySlug || ALL_UNIVERSITIES); setSpecialtyOverride(user.specialty || ALL_SPECIALTIES); }
     if (value === "جامعتي") { setUniversityOverride(user.universitySlug || ALL_UNIVERSITIES); setSpecialtyOverride(ALL_SPECIALTIES); }
-    if (value === "تخصصي") { setUniversityOverride(ALL_UNIVERSITIES); setSpecialtyOverride(user.specialty || ALL_SPECIALTIES); }
+    if (value === "تخصصي") { setUniversityOverride(user.universitySlug || ALL_UNIVERSITIES); setSpecialtyOverride(user.specialty || ALL_SPECIALTIES); }
   }
   function chooseUniversity(value: string) { setScopeOverride("الكل"); setUniversityOverride(value); setSpecialtyOverride(ALL_SPECIALTIES); }
   function chooseSpecialty(value: string) { setScopeOverride("الكل"); setSpecialtyOverride(value); }
@@ -79,7 +87,7 @@ export default function Courses() {
     </View>
     <View style={styles.resultsHead}><Text style={[styles.resultsTitle, { color: colors.text }]}>النتائج</Text><Text style={[styles.resultsCount, { color: colors.textSoft }]}>{rows.length} مادة</Text></View>
     <View style={styles.list}>{rows.map((course) => <CourseCard compact key={course.slug} course={course} />)}</View>
-    {!rows.length ? <View style={[styles.empty, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="search-outline" size={28} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.text }]}>لا توجد نتائج</Text><Text style={[styles.emptyText, { color: colors.textSoft }]}>لم تجد المادة؟ أرسل طلبًا وارفع السلايدات أو رابط المادة. نستهدف توفير المادة خلال 24 ساعة.</Text><View style={styles.emptyButtons}><Pressable onPress={()=>router.push("/requests")} style={[styles.emptyAction, { backgroundColor: colors.primary }]}><Ionicons name="cloud-upload-outline" size={16} color="#FFF"/><Text style={styles.emptyActionText}>طلب مادة · التوفير خلال 24 ساعة</Text></Pressable><Pressable onPress={showAll} style={[styles.emptyReset,{borderColor:colors.border}]}><Text style={[styles.emptyResetText,{color:colors.primary}]}>عرض كل المواد</Text></Pressable></View></View> : null}
+    {!rows.length ? <View style={[styles.empty, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="search-outline" size={28} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.text }]}>لا توجد نتائج</Text><Text style={[styles.emptyText, { color: colors.textSoft }]}>لم تجد المادة؟ أرسل طلبًا وارفع السلايدات أو رابط المادة. نتابع طلب المادة ونحدّث حالته من حسابك.</Text><View style={styles.emptyButtons}><Pressable onPress={()=>router.push("/requests")} style={[styles.emptyAction, { backgroundColor: colors.primary }]}><Ionicons name="cloud-upload-outline" size={16} color="#FFF"/><Text style={styles.emptyActionText}>طلب مادة · متابعة الطلب من حسابك</Text></Pressable><Pressable onPress={showAll} style={[styles.emptyReset,{borderColor:colors.border}]}><Text style={[styles.emptyResetText,{color:colors.primary}]}>عرض كل المواد</Text></Pressable></View></View> : null}
   </Screen>;
 }
 

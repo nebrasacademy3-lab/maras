@@ -19,7 +19,7 @@ type AdminData = {
 };
 
 type Tab = "overview" | "tiers" | "students" | "rewards" | "review";
-const rewardTypes = [{ value: "coupon_percent", label: "كوبون نسبة خصم" }, { value: "coupon_fixed", label: "كوبون مبلغ ثابت" }, { value: "ai_subscription", label: "اشتراك مراس AI" }];
+const rewardTypes = [{ value: "coupon_percent", label: "كوبون نسبة خصم" }, { value: "coupon_fixed", label: "كوبون مبلغ ثابت" }, { value: "ai_subscription", label: "اشتراك أدوات مراس" }];
 const statusLabel: Record<string, string> = { active: "مفعلة", disabled: "موقوفة", redeemed: "مستخدمة", qualified: "مؤهلة", pending: "قيد المراجعة", rejected: "مرفوضة" };
 
 function date(value: string | null) { return value ? new Intl.DateTimeFormat("ar-SA", { dateStyle: "medium" }).format(new Date(value)) : "—"; }

@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 async function adminGuard(request: Request, mutation: boolean) {
   const user = await getSessionUser(request);
-  if (!user || !await hasPermission(user, ADMIN_PERMISSIONS.AI_MANAGE)) return { user: null, response: jsonError("غير مصرح بإدارة مراس AI", 403) };
+  if (!user || !await hasPermission(user, ADMIN_PERMISSIONS.AI_MANAGE)) return { user: null, response: jsonError("غير مصرح بإدارة أدوات مراس", 403) };
   if (mutation && !sameOriginRequest(request)) return { user: null, response: jsonError("تعذر التحقق من مصدر الطلب", 403) };
   if (!await checkRateLimit(mutation ? "admin-ai-write" : "admin-ai-read", `user:${user.id}`, mutation ? 50 : 120, 60)) return { user: null, response: jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429) };
   if (mutation) {
@@ -83,7 +83,7 @@ export async function POST(request: Request) {
         if (!isAiService(payload.service)) return jsonError("الخدمة غير صالحة");
         const fallback = DEFAULT_AI_SETTINGS[payload.service];
         const model = cleanText(payload.model, 100);
-        if (!/^[a-zA-Z0-9._-]{2,100}$/.test(model)) return jsonError("اسم نموذج Gemini غير صالح");
+        if (!/^[a-zA-Z0-9._-]{2,100}$/.test(model)) return jsonError("اسم نموذج الخدمة غير صالح");
         const values = {
           service: payload.service,
           enabled: payload.enabled === true,
@@ -105,7 +105,7 @@ export async function POST(request: Request) {
       if (action === "addKey") {
         const apiKey = validGeminiApiKey(payload.apiKey);
         const label = cleanText(payload.label, 100);
-        if (!apiKey || label.length < 2) return jsonError("أدخل اسمًا ومفتاح Gemini صالحًا");
+        if (!apiKey || label.length < 2) return jsonError("أدخل اسمًا ومفتاح مزود الخدمة صالحًا");
         const [row] = await db.insert(aiApiKeys).values({ label, projectLabel: cleanText(payload.projectLabel, 120) || null, encryptedKey: encryptAiApiKey(apiKey), fingerprint: aiKeyFingerprint(apiKey), priority: Math.max(1, Math.min(10_000, Math.floor(Number(payload.priority)) || 100)), status: "active", createdBy: guarded.user.email, createdAt: now, updatedAt: now }).returning();
         await audit(request, guarded.user.email, "create", "ai_api_key", String(row.id), null, { ...keyPayload(row), encryptedKey: undefined });
         return Response.json({ ok: true, key: keyPayload(row) }, { status: 201, headers: { "cache-control": "no-store" } });
@@ -139,7 +139,7 @@ export async function POST(request: Request) {
         const expiresAt = new Date(Date.now() + months * 30 * 24 * 60 * 60_000).toISOString();
         const [row] = await db.insert(aiEntitlements).values({ userId: student.id, source, externalRef: crypto.randomUUID(), status: "active", startsAt: now, expiresAt, createdBy: guarded.user.email, createdAt: now, updatedAt: now }).returning();
         await audit(request, guarded.user.email, "create", "ai_entitlement", String(row.id), null, row);
-        await createAndSendNotification({ values: { userEmail: student.email, audience: "student", title: "تم تفعيل مراس AI", body: `أصبح اشتراك مراس AI متاحًا لك لمدة ${months} ${months === 1 ? "شهر" : "أشهر"}.`, actionUrl: "/meras-ai", actionLabel: "فتح مراس AI", template: "ai_entitlement" }, target: { userEmail: student.email }, data: { route: "/meras-ai" } });
+        await createAndSendNotification({ values: { userEmail: student.email, audience: "student", title: "تم تفعيل أدوات مراس", body: `أصبح اشتراك أدوات مراس متاحًا لك لمدة ${months} ${months === 1 ? "شهر" : "أشهر"}.`, actionUrl: "/study-tools", actionLabel: "فتح أدوات مراس", template: "ai_entitlement" }, target: { userEmail: student.email }, data: { route: "/study-tools" } });
         return Response.json({ ok: true, entitlement: row }, { status: 201, headers: { "cache-control": "no-store" } });
       }
       if (action === "updateEntitlement") {
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
       return jsonError("الإجراء الإداري غير معروف");
     } catch (error) {
       if (isUniqueConstraintError(error)) return jsonError("هذا السجل موجود مسبقًا", 409);
-      return jsonError("تعذر حفظ إعدادات مراس AI", 500);
+      return jsonError("تعذر حفظ إعدادات أدوات مراس", 500);
     }
   });
 }

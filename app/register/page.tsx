@@ -2,6 +2,6 @@ import type { Metadata } from "next";
 import { AuthShell, RegisterForm } from "@/components/auth-shell";
 import { getInstitutionsCatalog } from "@/lib/catalog-store";
 import { SiteFooter } from "@/components/site-footer";
-export const metadata: Metadata = { title: "إنشاء حساب" };
+export const metadata: Metadata = { title: "إنشاء حساب", robots: { index: false, follow: false } };
 export const dynamic = "force-dynamic";
 export default async function RegisterPage(){const institutions=await getInstitutionsCatalog();return <><AuthShell mode="register"><RegisterForm institutions={institutions} /></AuthShell><SiteFooter /></>}

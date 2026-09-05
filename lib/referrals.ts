@@ -114,7 +114,7 @@ export async function ensureReferralCode(userId: number) {
 function rewardTitle(type: ReferralRewardType, value: number) {
   if (type === "coupon_percent") return `كوبون خصم ${value}%`;
   if (type === "coupon_fixed") return `كوبون خصم ${value} ر.س`;
-  return `اشتراك مراس AI لمدة ${Math.max(1, Math.round(value))} شهر`;
+  return `اشتراك أدوات مراس لمدة ${Math.max(1, Math.round(value))} شهر`;
 }
 
 async function issueTierRewardsTx(tx: ReferralTransaction, userId: number, now: string) {

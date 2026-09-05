@@ -18,7 +18,7 @@ async function authorizedAsset(request: Request, assetId: number) {
       getCourseCatalog(asset.courseSlug, true),
       getDb().select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId, user!.id), eq(supervisorAssignments.active, true))),
     ]);
-    const allowed = course && assignments.some((assignment) => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (!assignment.specialty || assignment.specialty === course.specialty));
+    const allowed = course && assignments.some((assignment) => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !assignment.specialty : !assignment.specialty || assignment.specialty === course.specialty));
     if (!allowed) return { response: jsonError("هذه المادة غير مسندة لهذا المشرف", 403) };
   }
   return { user: user!, asset };

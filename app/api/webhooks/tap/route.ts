@@ -125,7 +125,7 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
       status: eventStatus,
       payload: JSON.stringify(verified).slice(0, 60_000),
     }).onConflictDoNothing({ target: paymentEvents.providerEventId });
-    if (matchFailed) return jsonError("فشلت مطابقة مبلغ أو عملة استرداد اشتراك مراس AI", 409);
+    if (matchFailed) return jsonError("فشلت مطابقة مبلغ أو عملة استرداد اشتراك أدوات مراس", 409);
     if (status !== "REFUNDED") {
       return Response.json({ ok: true, received: true, matched: true, kind: "ai_subscription_refund", refundStatus: status, status: aiOrder.status });
     }
@@ -150,15 +150,15 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
         values: {
           userEmail: aiOrder.customerEmail,
           audience: "student",
-          title: refundedStatus === "refunded" ? "اكتمل استرداد اشتراك مراس AI" : "تم تسجيل استرداد جزئي لاشتراك مراس AI",
-          body: "تم إيقاف مدة الاشتراك المرتبطة بهذه الدفعة. يمكنك مراجعة حالة الطلب من صفحة مراس AI.",
-          actionUrl: "/meras-ai/subscribe",
+          title: refundedStatus === "refunded" ? "اكتمل استرداد اشتراك أدوات مراس" : "تم تسجيل استرداد جزئي لاشتراك أدوات مراس",
+          body: "تم إيقاف مدة الاشتراك المرتبطة بهذه الدفعة. يمكنك مراجعة حالة الطلب من صفحة أدوات مراس.",
+          actionUrl: "/study-tools/subscribe",
           actionLabel: "عرض الاشتراك",
           template: "ai_entitlement",
           dedupeKey: `ai-order:${aiOrder.orderNumber}:refund:${refundId}`,
         },
         target: { userEmail: aiOrder.customerEmail },
-        data: { route: "/meras-ai/subscribe" },
+        data: { route: "/study-tools/subscribe" },
       });
     }
     return Response.json({ ok: true, received: true, matched: true, kind: "ai_subscription_refund", refundStatus: status, status: refundedStatus });
@@ -264,7 +264,7 @@ async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string,
   const db = getDb();
   const [byCharge] = await db.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.tapChargeId, chargeId)).limit(1);
   const [byNumber] = orderNumber ? await db.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.orderNumber, orderNumber)).limit(1) : [];
-  if (byCharge && byNumber && byCharge.id !== byNumber.id) return jsonError("تعارض معرّف اشتراك AI مع عملية Tap", 409);
+  if (byCharge && byNumber && byCharge.id !== byNumber.id) return jsonError("تعارض معرّف اشتراك الأدوات مع عملية Tap", 409);
   const order = byCharge || byNumber;
   if (!order) return Response.json({ ok: true, received: true, matched: false, kind: "ai_subscription" });
   if (order.tapChargeId && order.tapChargeId !== chargeId) return jsonError("طلب AI مرتبط بعملية Tap مختلفة", 409);
@@ -276,7 +276,7 @@ async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string,
     const currencyMatches = cleanText(verified.currency, 10).toUpperCase() === "SAR" && order.currency.toUpperCase() === "SAR";
     const emailMatches = !verified.customer?.email || verified.customer.email.toLowerCase() === order.customerEmail.toLowerCase();
     const productMatches = cleanText(verified.metadata?.product, 40) === "meras-ai";
-    if (!amountMatches || !currencyMatches || !emailMatches || !productMatches) return jsonError("فشلت مطابقة تفاصيل اشتراك مراس AI", 409);
+    if (!amountMatches || !currencyMatches || !emailMatches || !productMatches) return jsonError("فشلت مطابقة تفاصيل اشتراك أدوات مراس", 409);
   }
   const now = new Date().toISOString();
   let newlyPaid = false;
@@ -311,7 +311,7 @@ async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string,
     }
     if (current.status !== "paid" && current.status !== "refunded") await tx.update(aiSubscriptionOrders).set({ status: nextStatus, tapChargeId: chargeId, updatedAt: now }).where(eq(aiSubscriptionOrders.id, current.id));
   });
-  if (newlyPaid) await createAndSendNotification({ values: { userEmail: order.customerEmail, audience: "student", title: "تم تفعيل اشتراك مراس AI", body: "أصبح اشتراك مراس AI بلس متاحًا في حسابك لمدة شهر.", actionUrl: "/meras-ai", actionLabel: "ابدأ الآن", template: "ai_entitlement", dedupeKey: `ai-order:${order.orderNumber}:paid` }, target: { userEmail: order.customerEmail }, data: { route: "/meras-ai" } });
+  if (newlyPaid) await createAndSendNotification({ values: { userEmail: order.customerEmail, audience: "student", title: "تم تفعيل اشتراك أدوات مراس", body: "أصبح اشتراك أدوات مراس بلس متاحًا في حسابك لمدة شهر.", actionUrl: "/study-tools", actionLabel: "ابدأ الآن", template: "ai_entitlement", dedupeKey: `ai-order:${order.orderNumber}:paid` }, target: { userEmail: order.customerEmail }, data: { route: "/study-tools" } });
   return Response.json({ ok: true, received: true, matched: true, kind: "ai_subscription", status: effectiveStatus, entitlementExpiresAt });
 }
 

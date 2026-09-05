@@ -36,13 +36,13 @@ const serviceCards: { service: AiServiceName; icon: React.ComponentProps<typeof 
   { service: "summary", icon: "sparkles-outline", title: "تلخيص السلايدات", text: "أهم الأفكار والقوانين في ملخص منظم", colors: ["#155EEF", "#6E3DE5"] },
   { service: "translation", icon: "language-outline", title: "ترجمة أكاديمية", text: "ترجمة تراعي المصطلحات والسياق العلمي", colors: ["#0E7490", "#14B8A6"] },
   { service: "quiz", icon: "options-outline", title: "اختبار من الملف", text: "بطاقات تفاعلية مع شرح الإجابة", colors: ["#B45309", "#F59E0B"] },
-  { service: "chat", icon: "chatbubble-ellipses-outline", title: "محادثة ذكية", text: "اسأل بطريقتك واحتفظ بالسجل كاملًا", colors: ["#7C3AED", "#DB2777"] },
+  { service: "chat", icon: "chatbubble-ellipses-outline", title: "محادثة تفاعلية", text: "اسأل بطريقتك واحتفظ بالسجل كاملًا", colors: ["#7C3AED", "#DB2777"] },
 ];
 
 const sourceLabel: Record<AiStatusResponse["entitlement"]["source"], string> = {
   free: "الخطة المجانية",
   course: "مجانًا مع اشتراك مادة",
-  paid: "اشتراك مراس AI",
+  paid: "اشتراك أدوات مراس",
   admin: "منحة من الإدارة",
   gift: "اشتراك هدية",
   referral: "مكافأة إحالة",
@@ -64,9 +64,9 @@ export default function MerasAiScreen() {
   const conversations = useQuery({ queryKey: ["ai-conversations", user?.id], queryFn: () => api<ConversationsResponse>("/api/ai/conversations"), enabled: Boolean(user) });
   const enabledPickerTypes = useMemo(() => status.data?.supportedFiles.map((item) => item.mimeType).filter(Boolean) || ["application/pdf", "image/png", "image/jpeg", "text/plain"], [status.data]);
 
-  if (!user) return <Screen><AppHeader title="مراس AI" subtitle="مساعد مذاكرتك الذكي" /><EmptyState icon="sparkles-outline" title="سجّل الدخول إلى مراس AI" text="احفظ الملخصات والترجمات والاختبارات والمحادثات في حساب واحد." action={<AppButton title="تسجيل الدخول" icon="log-in-outline" onPress={() => router.push("/(auth)/login")} />} /></Screen>;
-  if (status.isLoading) return <Screen><AppHeader title="مراس AI" /><LoadingState label="نجهّز أدوات مراس AI…" /></Screen>;
-  if (status.isError || !status.data) return <Screen><AppHeader title="مراس AI" /><EmptyState icon="cloud-offline-outline" title="مراس AI غير متاح الآن" text={status.error instanceof Error ? status.error.message : "حاول مرة أخرى بعد قليل."} action={<AppButton title="إعادة المحاولة" icon="refresh-outline" onPress={() => void status.refetch()} />} /></Screen>;
+  if (!user) return <Screen><AppHeader title="أدوات مراس" subtitle="مساعد مذاكرتك الذكي" /><EmptyState icon="sparkles-outline" title="سجّل الدخول إلى أدوات مراس" text="احفظ الملخصات والترجمات والاختبارات والمحادثات في حساب واحد." action={<AppButton title="تسجيل الدخول" icon="log-in-outline" onPress={() => router.push("/(auth)/login")} />} /></Screen>;
+  if (status.isLoading) return <Screen><AppHeader title="أدوات مراس" /><LoadingState label="نجهّز أدوات أدوات مراس…" /></Screen>;
+  if (status.isError || !status.data) return <Screen><AppHeader title="أدوات مراس" /><EmptyState icon="cloud-offline-outline" title="أدوات مراس غير متاح الآن" text={status.error instanceof Error ? status.error.message : "حاول مرة أخرى بعد قليل."} action={<AppButton title="إعادة المحاولة" icon="refresh-outline" onPress={() => void status.refetch()} />} /></Screen>;
 
   const ai = status.data;
   const createChat = async () => {
@@ -95,7 +95,7 @@ export default function MerasAiScreen() {
       form.append("file", { uri: picked.uri, name: picked.name, type: assetMimeType(picked, "application/octet-stream") } as unknown as Blob);
       const response = await apiUpload<UploadResponse>("/api/ai/files", form, { timeoutMs: 15 * 60_000, signal: controller.signal, onProgress: setProgress });
       setUpload(response);
-      setMessage("اكتمل رفع الملف. اختر ما تريد أن يصنعه مراس AI.");
+      setMessage("اكتمل رفع الملف. اختر ما تريد أن يصنعه أدوات مراس.");
       await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] });
     } catch (reason) { setMessage(reason instanceof ApiError ? reason.message : "تعذر رفع الملف"); }
     finally { abortRef.current = null; setProgress(null); setBusyAction(null); }
@@ -125,7 +125,7 @@ export default function MerasAiScreen() {
   };
 
   return <Screen>
-    <AppHeader title="مراس AI" subtitle="من الملف إلى الفهم والاختبار" />
+    <AppHeader title="أدوات مراس" subtitle="من الملف إلى الفهم والاختبار" />
 
     <LinearGradient colors={["#041536", "#155EEF", "#713EE7"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>
       <View style={styles.heroHead}><View style={styles.spark}><Ionicons name="sparkles" size={24} color="#FFF" /></View><View style={styles.heroHeadCopy}><Text style={styles.heroKicker}>{sourceLabel[ai.entitlement.source]}</Text><Text style={styles.heroTitle}>ذاكر أذكى، لا أطول.</Text></View><View style={styles.plan}><Text style={styles.planTitle}>{ai.entitlement.tier === "subscriber" ? "مفعّل" : "مجاني"}</Text><Text style={styles.planSub}>{ai.entitlement.tier === "subscriber" ? "كامل" : "بحدود شهرية"}</Text></View></View>
@@ -162,10 +162,10 @@ export default function MerasAiScreen() {
 
     {artifact ? <Card style={styles.artifact}><View style={styles.artifactHead}><View><Text style={[styles.artifactEyebrow, { color: colors.primary }]}>{artifact.kind === "summary" ? "الملخص" : "الترجمة"}</Text><Text style={[styles.artifactTitle, { color: colors.text }]}>{artifact.title}</Text></View><Ionicons name="bookmark" size={20} color={colors.primary} /></View><Text selectable style={[styles.artifactContent, { color: colors.text }]}>{artifact.content}</Text>{artifact.conversationId ? <AppButton title="فتح السجل الكامل" variant="ghost" icon="time-outline" onPress={() => router.push({ pathname: "/ai/conversation/[id]", params: { id: String(artifact.conversationId) } })} /> : null}</Card> : null}
 
-    <SectionTitle title="سجل مراس AI" subtitle="ارجع إلى محادثاتك وملفاتك من أي جهاز" action={<Pressable onPress={() => void conversations.refetch()}><Ionicons name="refresh-outline" size={19} color={colors.primary} /></Pressable>} />
+    <SectionTitle title="سجل أدوات مراس" subtitle="ارجع إلى محادثاتك وملفاتك من أي جهاز" action={<Pressable onPress={() => void conversations.refetch()}><Ionicons name="refresh-outline" size={19} color={colors.primary} /></Pressable>} />
     {conversations.isLoading ? <LoadingState label="تحميل السجل…" /> : conversations.data?.conversations.length ? <View style={styles.history}>{conversations.data.conversations.slice(0, 8).map((row) => <Pressable key={row.id} onPress={() => router.push({ pathname: "/ai/conversation/[id]", params: { id: String(row.id) } })} style={({ pressed }) => [styles.historyRow, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .8 : 1 }]}><View style={[styles.historyIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name={row.kind === "chat" ? "chatbubble-ellipses-outline" : "document-text-outline"} size={20} color={colors.primary} /></View><View style={styles.historyCopy}><Text numberOfLines={1} style={[styles.historyTitle, { color: colors.text }]}>{row.title}</Text><Text numberOfLines={2} style={[styles.historyPreview, { color: colors.textSoft }]}>{row.preview || "افتح لمشاهدة المحتوى المحفوظ"}</Text></View><Ionicons name="chevron-back" size={17} color={colors.textSoft} /></Pressable>)}</View> : <EmptyState icon="chatbubbles-outline" title="سجلك يبدأ من هنا" text="أنشئ محادثة أو ارفع أول ملف، وسيُحفظ كل شيء تلقائيًا." />}
 
-    {ai.entitlement.tier === "free" ? <Card style={styles.subscribe}><View style={[styles.subscribeIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="diamond-outline" size={25} color={colors.primary} /></View><View style={styles.subscribeCopy}><Text style={[styles.subscribeTitle, { color: colors.text }]}>مراس AI الكامل · {ai.entitlement.monthlyPrice} ر.س شهريًا</Text><Text style={[styles.subscribeText, { color: colors.textSoft }]}>ويأتي مجانًا تلقائيًا مع أي اشتراك مادة فعّال.</Text></View>{STORE_COMMERCE_ENABLED ? <Pressable onPress={() => void Linking.openURL(absoluteUrl(ai.deepLinks.subscribe))} style={[styles.subscribeButton, { backgroundColor: colors.primary }]}><Text style={{ color: "#FFF", fontSize: 10, fontWeight: "900" }}>اشترك</Text></Pressable> : null}</Card> : null}
+    {ai.entitlement.tier === "free" ? <Card style={styles.subscribe}><View style={[styles.subscribeIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="diamond-outline" size={25} color={colors.primary} /></View><View style={styles.subscribeCopy}><Text style={[styles.subscribeTitle, { color: colors.text }]}>أدوات مراس الكامل · {ai.entitlement.monthlyPrice} ر.س شهريًا</Text><Text style={[styles.subscribeText, { color: colors.textSoft }]}>ويأتي مجانًا تلقائيًا مع أي اشتراك مادة فعّال.</Text></View>{STORE_COMMERCE_ENABLED ? <Pressable onPress={() => void Linking.openURL(absoluteUrl(ai.deepLinks.subscribe))} style={[styles.subscribeButton, { backgroundColor: colors.primary }]}><Text style={{ color: "#FFF", fontSize: 10, fontWeight: "900" }}>اشترك</Text></Pressable> : null}</Card> : null}
   </Screen>;
 }
 

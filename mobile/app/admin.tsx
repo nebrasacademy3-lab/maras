@@ -121,7 +121,7 @@ const tabs: { key: Tab; label: string; icon: React.ComponentProps<typeof Ionicon
   { key: "bundles", label: "الباقات", icon: "albums-outline" },
   { key: "tracks", label: "المسارات", icon: "map-outline" },
   { key: "referrals", label: "الإحالات", icon: "gift-outline" },
-  { key: "ai", label: "مراس AI", icon: "sparkles-outline" },
+  { key: "ai", label: "أدوات مراس", icon: "sparkles-outline" },
   { key: "reviews", label: "التقييمات", icon: "star-outline" },
   { key: "communication", label: "التواصل", icon: "megaphone-outline" },
   { key: "security", label: "الأمان", icon: "shield-checkmark-outline" },
@@ -204,7 +204,7 @@ function Overview({ data, colors }: { data: AdminData; colors: Colors }) {
     <SectionTitle title="طابور العمل" />
     <Card><Queue label="طلبات مواد مفتوحة" value={data.metrics.openRequests} colors={colors} /><Queue label="تذاكر دعم مفتوحة" value={data.metrics.openTickets} colors={colors} /><Queue label="تقييمات تنتظر المراجعة" value={data.metrics.pendingReviews} colors={colors} /></Card>
     <SectionTitle title="جاهزية الخدمات" />
-    <Card>{Object.entries(data.services).map(([key, ready]) => <View key={key} style={styles.service}><Ionicons name={ready ? "checkmark-circle" : "alert-circle"} size={21} color={ready ? colors.success : colors.warning} /><Text style={[styles.serviceText, { color: colors.text }]}>{({ assistant: "المساعد الذكي", payments: "بوابة Tap للدفع", email: "استعادة الحساب", videoSigning: "الفيديو الخاص" } as Record<string, string>)[key] || "خدمة إضافية"}</Text><Text style={{ color: ready ? colors.success : colors.warning, fontSize: 9, fontWeight: "900" }}>{ready ? "جاهز" : "يحتاج إعداد"}</Text></View>)}</Card>
+    <Card>{Object.entries(data.services).map(([key, ready]) => <View key={key} style={styles.service}><Ionicons name={ready ? "checkmark-circle" : "alert-circle"} size={21} color={ready ? colors.success : colors.warning} /><Text style={[styles.serviceText, { color: colors.text }]}>{({ assistant: "المساعد المعرفي", payments: "بوابة Tap للدفع", email: "استعادة الحساب", videoSigning: "الفيديو الخاص" } as Record<string, string>)[key] || "خدمة إضافية"}</Text><Text style={{ color: ready ? colors.success : colors.warning, fontSize: 9, fontWeight: "900" }}>{ready ? "جاهز" : "يحتاج إعداد"}</Text></View>)}</Card>
   </>;
 }
 
@@ -486,6 +486,20 @@ function Commerce({ data, colors, mutate, onDelete }: { data: AdminData; colors:
   const [coupon, setCoupon] = useState({ code: "", type: "percent", value: "", courseSlug: "", usageLimit: "" });
   const selectedCourse = data.courses.find((row) => row.slug === access.courseSlug);
   return <>
+    <SectionTitle title="عرض وسائل الدفع في الواجهات" subtitle="تحكم بظهور Tap وتابي وتمارا في المحتوى التسويقي" />
+    <Card>
+      <ChoiceRow
+        values={["false", "true"]}
+        selected={data.settings.payment_methods_marketing_enabled || "false"}
+        onSelect={(value) => void mutate(
+          { action: "saveSettings", values: { payment_methods_marketing_enabled: value } },
+          "تم تحديث سياسة عرض وسائل الدفع",
+        )}
+        colors={colors}
+        labels={{ false: "إخفاء الأسماء", true: "السماح بالعرض" }}
+      />
+      <Text style={[styles.dataMeta, { color: colors.textSoft }]}>يظهر المحتوى التسويقي فقط عندما تكون بوابة الدفع المطلوبة مهيأة فعليًا على الخادم.</Text>
+    </Card>
     <SectionTitle title="منح صلاحية مادة" subtitle="اختر هل الوصول ناتج عن دفعة يدوية مسجلة أو منحة مجانية" />
     <Card>
       <SearchPicker label="الطالب" value={access.userEmail} placeholder="اختر حساب الطالب" items={students.map((row) => ({ key: row.email, label: row.fullName, detail: `${row.email} · ${row.phone || "بدون جوال"}` }))} onSelect={(item) => setAccess({ ...access, userEmail: item.key })} />
@@ -616,13 +630,55 @@ function MobileAdminSecurity({ colors }:{ colors:Colors }) {
 }
 
 function Communication({ data, colors, mutate, onDelete }: { data: AdminData; colors: Colors; mutate: Mutate; onDelete: DeleteEntity }) {
-  const [settings, setSettings] = useState({ whatsapp_number: data.settings.whatsapp_number || "", whatsapp_message: data.settings.whatsapp_message || "", support_email: data.settings.support_email || "", support_hours: data.settings.support_hours || "", social_x: data.settings.social_x || "", social_instagram: data.settings.social_instagram || "", social_tiktok: data.settings.social_tiktok || "", social_youtube: data.settings.social_youtube || "", social_telegram: data.settings.social_telegram || "", social_linkedin: data.settings.social_linkedin || "", social_facebook: data.settings.social_facebook || "", social_snapchat: data.settings.social_snapchat || "", social_threads: data.settings.social_threads || "" });
+  const [settings, setSettings] = useState({
+    legal_name: data.settings.legal_name || "",
+    commercial_registration_number: data.settings.commercial_registration_number || "",
+    commercial_registration_verify_url: data.settings.commercial_registration_verify_url || "",
+    ecommerce_authentication_number: data.settings.ecommerce_authentication_number || "",
+    ecommerce_authentication_verify_url: data.settings.ecommerce_authentication_verify_url || "",
+    nelc_program_name: data.settings.nelc_program_name || "",
+    nelc_program_license_number: data.settings.nelc_program_license_number || "",
+    nelc_program_license_verify_url: data.settings.nelc_program_license_verify_url || "",
+    vat_number: data.settings.vat_number || "",
+    legal_address: data.settings.legal_address || "",
+    whatsapp_number: data.settings.whatsapp_number || "",
+    whatsapp_message: data.settings.whatsapp_message || "",
+    support_email: data.settings.support_email || "",
+    support_hours: data.settings.support_hours || "",
+    social_x: data.settings.social_x || "",
+    social_instagram: data.settings.social_instagram || "",
+    social_tiktok: data.settings.social_tiktok || "",
+    social_youtube: data.settings.social_youtube || "",
+    social_telegram: data.settings.social_telegram || "",
+    social_linkedin: data.settings.social_linkedin || "",
+    social_facebook: data.settings.social_facebook || "",
+    social_snapchat: data.settings.social_snapchat || "",
+    social_threads: data.settings.social_threads || "",
+  });
   const [notice, setNotice] = useState({ title: "", body: "", audience: "student", userEmail: "", actionUrl: "/notifications", actionLabel: "فتح التفاصيل", presentation: "inbox", template: "general", pushEnabled: true, startsAt: "", expiresAt: "", dismissible: true, segmentUniversity: "", segmentSpecialty: "", segmentCourse: "", segmentAccessState: "", segmentInactiveDays: "" });
   const update = (key: keyof typeof settings, value: string) => setSettings((current) => ({ ...current, [key]: value }));
   const students = data.users.filter((row) => row.role === "student");
   const templateLabels: Record<string, string> = { general: "إعلان عام", discount: "تخفيض", "new-course": "مادة جديدة", "new-service": "خدمة جديدة", urgent: "تنبيه مهم", success: "خبر سار" };
   const templateIcons: Record<string, React.ComponentProps<typeof Ionicons>["name"]> = { general: "megaphone-outline", discount: "pricetag-outline", "new-course": "book-outline", "new-service": "sparkles-outline", urgent: "alert-circle-outline", success: "checkmark-circle-outline" };
   return <>
+    <SectionTitle title="بيانات المنشأة والتراخيص" subtitle="أضف الأرقام وروابط التحقق الرسمية بعد صدورها؛ الحقول الفارغة لا تظهر للطلاب" />
+    <Card>
+      <View style={[styles.securitySetup, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+        <Ionicons name="information-circle-outline" size={20} color={colors.primary} />
+        <Text style={[styles.dataMeta, { color: colors.textSoft }]}>اكتب البيانات كما تظهر في المستند الرسمي. لا تعرض هذه الشاشة شعارات الجهات الحكومية أو علامات اعتماد غير مصرح باستخدامها.</Text>
+      </View>
+      <Field label="الاسم النظامي للمنشأة" value={settings.legal_name} onChangeText={(value) => update("legal_name", value)} />
+      <Field label="رقم السجل التجاري" value={settings.commercial_registration_number} onChangeText={(value) => update("commercial_registration_number", value)} inputDirection="ltr" />
+      <Field label="رابط التحقق الرسمي من السجل" value={settings.commercial_registration_verify_url} onChangeText={(value) => update("commercial_registration_verify_url", value)} autoCapitalize="none" autoCorrect={false} keyboardType="url" inputDirection="ltr" />
+      <Field label="رقم توثيق التجارة الإلكترونية" value={settings.ecommerce_authentication_number} onChangeText={(value) => update("ecommerce_authentication_number", value)} inputDirection="ltr" />
+      <Field label="رابط التحقق من توثيق المتجر" value={settings.ecommerce_authentication_verify_url} onChangeText={(value) => update("ecommerce_authentication_verify_url", value)} autoCapitalize="none" autoCorrect={false} keyboardType="url" inputDirection="ltr" />
+      <Field label="اسم البرنامج المشمول بالترخيص" value={settings.nelc_program_name} onChangeText={(value) => update("nelc_program_name", value)} />
+      <Field label="رقم ترخيص برنامج التعليم الإلكتروني" value={settings.nelc_program_license_number} onChangeText={(value) => update("nelc_program_license_number", value)} inputDirection="ltr" />
+      <Field label="رابط التحقق من ترخيص البرنامج" value={settings.nelc_program_license_verify_url} onChangeText={(value) => update("nelc_program_license_verify_url", value)} autoCapitalize="none" autoCorrect={false} keyboardType="url" inputDirection="ltr" />
+      <Field label="الرقم الضريبي — عند الانطباق" value={settings.vat_number} onChangeText={(value) => update("vat_number", value)} inputDirection="ltr" />
+      <Field label="العنوان النظامي" value={settings.legal_address} onChangeText={(value) => update("legal_address", value)} />
+      <AppButton title="حفظ بيانات المنشأة" icon="shield-checkmark-outline" onPress={() => mutate({ action: "saveSettings", values: settings }, "تم تحديث بيانات المنشأة في الويب والتطبيق")} />
+    </Card>
     <SectionTitle title="قنوات التواصل" subtitle="تظهر القيم تلقائيًا في الويب والتطبيق والتذييل وصفحة الدعم" />
     <Card><Field label="رقم واتساب" value={settings.whatsapp_number} onChangeText={(value) => update("whatsapp_number", value)} keyboardType="phone-pad" /><Field label="رسالة واتساب الافتراضية" value={settings.whatsapp_message} onChangeText={(value) => update("whatsapp_message", value)} /><Field label="بريد الدعم" value={settings.support_email} onChangeText={(value) => update("support_email", value)} keyboardType="email-address" autoCapitalize="none" /><Field label="ساعات العمل" value={settings.support_hours} onChangeText={(value) => update("support_hours", value)} /><Text style={[styles.dataMeta, { color: colors.textSoft }]}>الشبكات الاجتماعية</Text>{[["social_x", "X"], ["social_instagram", "Instagram"], ["social_tiktok", "TikTok"], ["social_youtube", "YouTube"], ["social_telegram", "Telegram"], ["social_linkedin", "LinkedIn"], ["social_facebook", "Facebook"], ["social_snapchat", "Snapchat"], ["social_threads", "Threads"]].map(([key, label]) => <Field key={key} label={`رابط ${label}`} value={settings[key as keyof typeof settings]} onChangeText={(value) => update(key as keyof typeof settings, value)} autoCapitalize="none" />)}<AppButton title="حفظ قنوات التواصل" icon="save-outline" onPress={() => mutate({ action: "saveSettings", values: settings }, "تم تحديث القنوات في الويب والتطبيق")} /></Card>
     <SectionTitle title="الإعلانات والإشعارات" subtitle="قوالب جاهزة، نافذة منبثقة أو شريط إعلاني أو مركز إشعارات، ورابط داخلي أو خارجي" />

@@ -19,7 +19,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const institution = await getInstitutionCatalog((await params).slug);
   if (!institution) return {};
   const description = `الشروحات والمواد المتوفرة لطلاب ${institution.name} على منصة مراس العلم.`;
-  return { title: institution.name, description, openGraph: { title: institution.name, description, images: [] }, twitter: { title: institution.name, description, images: [] } };
+  const canonical = `/universities/${institution.slug}`;
+  return { title: institution.name, description, alternates: { canonical }, openGraph: { title: institution.name, description, url: canonical, images: [{ url: "/og.png", width: 1728, height: 910, alt: `مواد ${institution.name} في مراس العلم` }] }, twitter: { card: "summary_large_image", title: institution.name, description, images: ["/og.png"] } };
 }
 
 export default async function UniversityPage({ params }: Props) {

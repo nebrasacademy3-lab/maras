@@ -109,7 +109,7 @@ test("AI checkout uses server price and idempotency", () => {
   assert.match(checkout, /pg_advisory_xact_lock/);
   assert.match(checkout, /product\s*:\s*["']meras-ai["']/);
   assert.match(checkout, /ai_order_number/);
-  assert.match(checkout, /\/meras-ai\/subscribe/);
+  assert.match(checkout, /\/study-tools\/subscribe/);
 });
 
 test("Tap state machine cannot resurrect refunded AI access", () => {

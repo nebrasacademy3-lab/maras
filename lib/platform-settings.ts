@@ -4,7 +4,7 @@ import { getDb } from "@/db";
 import { platformSettings } from "@/db/schema";
 
 export const PUBLIC_SETTING_DEFAULTS = {
-  support_email: "hello@meras.sa",
+  support_email: "",
   support_hours: "الأحد–الخميس · 9 ص–10 م",
   footer_description: "منصة سعودية تجمع شروحات المواد الجامعية في مكان واحد. ابحث، جرّب مجانًا، ثم تعلّم بثقة.",
   app_download_title: "مراس معك على كل جهاز",
@@ -23,6 +23,21 @@ export const PUBLIC_SETTING_DEFAULTS = {
   social_snapchat: "",
   social_threads: "",
   announcement: "",
+  legal_name: "",
+  commercial_registration_number: "",
+  commercial_registration_verify_url: "",
+  ecommerce_authentication_number: "",
+  ecommerce_authentication_verify_url: "",
+  nelc_program_name: "",
+  nelc_program_license_number: "",
+  nelc_program_license_verify_url: "",
+  legal_address: "",
+  vat_number: "",
+  positioning_claim: "منصة سعودية متخصصة في شروحات المقررات الجامعية ومواد التعلّم المساندة.",
+  first_platform_claim_enabled: "false",
+  first_platform_claim_text: "أول منصة سعودية متخصصة في تقديم شروحات المقررات الجامعية.",
+  first_platform_claim_evidence_url: "",
+  payment_methods_marketing_enabled: "false",
 } as const;
 
 export const ADMIN_SETTING_DEFAULTS = {
@@ -57,6 +72,21 @@ export const SETTING_META: Record<SettingKey, { label: string; category: string;
   social_snapchat: { label: "رابط Snapchat", category: "social", isPublic: true },
   social_threads: { label: "رابط Threads", category: "social", isPublic: true },
   announcement: { label: "تنبيه عام", category: "general", isPublic: true },
+  legal_name: { label: "الاسم النظامي للمنشأة", category: "legal", isPublic: true },
+  commercial_registration_number: { label: "رقم السجل التجاري", category: "legal", isPublic: true },
+  commercial_registration_verify_url: { label: "رابط التحقق من السجل التجاري", category: "legal", isPublic: true },
+  ecommerce_authentication_number: { label: "رقم توثيق التجارة الإلكترونية", category: "legal", isPublic: true },
+  ecommerce_authentication_verify_url: { label: "رابط التحقق من توثيق المتجر", category: "legal", isPublic: true },
+  nelc_program_name: { label: "اسم البرنامج المشمول بترخيص التعليم الإلكتروني", category: "legal", isPublic: true },
+  nelc_program_license_number: { label: "رقم ترخيص برنامج التعليم الإلكتروني", category: "legal", isPublic: true },
+  nelc_program_license_verify_url: { label: "رابط التحقق من ترخيص البرنامج", category: "legal", isPublic: true },
+  legal_address: { label: "العنوان النظامي", category: "legal", isPublic: true },
+  vat_number: { label: "الرقم الضريبي", category: "legal", isPublic: true },
+  positioning_claim: { label: "وصف مكانة المنصة", category: "brand", isPublic: true },
+  first_platform_claim_enabled: { label: "تفعيل ادعاء الأولوية", category: "brand", isPublic: true },
+  first_platform_claim_text: { label: "نص ادعاء الأولوية", category: "brand", isPublic: true },
+  first_platform_claim_evidence_url: { label: "رابط إثبات ادعاء الأولوية", category: "brand", isPublic: true },
+  payment_methods_marketing_enabled: { label: "إظهار Tap وتابي وتمارا في الرئيسية", category: "commerce", isPublic: true },
   max_student_devices: { label: "الحد الأقصى لأجهزة الطالب", category: "security", isPublic: false },
   content_view_mode: { label: "الأجهزة المسموح لها بمشاهدة المحتوى", category: "security", isPublic: false },
 };

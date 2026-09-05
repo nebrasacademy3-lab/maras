@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   return observeRequest(request, "ai.conversations.list", async () => {
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-read", `user:${user.id}`, 120, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     const rows = await getDb().select().from(aiConversations).where(and(eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"))).orderBy(desc(aiConversations.updatedAt)).limit(100);
     const ids = rows.map((row) => row.id);
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   return observeRequest(request, "ai.conversations.create", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-write", `user:${user.id}`, 30, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     let payload: Record<string, unknown> = {};
     try { payload = await request.json() as Record<string, unknown>; } catch { /* An empty body creates a default conversation. */ }

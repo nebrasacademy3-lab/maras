@@ -64,7 +64,7 @@ function tierInput(payload: Record<string, unknown>) {
   const rewardValue = Number(payload.rewardValue);
   if (!Number.isFinite(rewardValue) || rewardValue <= 0 || rewardValue > 100_000) throw new ReferralInputError("قيمة المكافأة غير صالحة");
   if (type === "coupon_percent" && rewardValue > 95) throw new ReferralInputError("نسبة الخصم لا يمكن أن تتجاوز 95٪");
-  if (type === "ai_subscription" && (!Number.isInteger(rewardValue) || rewardValue > 24)) throw new ReferralInputError("مدة اشتراك AI يجب أن تكون من شهر إلى 24 شهرًا");
+  if (type === "ai_subscription" && (!Number.isInteger(rewardValue) || rewardValue > 24)) throw new ReferralInputError("مدة اشتراك الأدوات يجب أن تكون من شهر إلى 24 شهرًا");
   const rewardDurationDays = optionalInteger(payload.rewardDurationDays, "مدة المكافأة", 730);
   const couponValidityDays = optionalInteger(payload.couponValidityDays, "صلاحية الكوبون", 730);
   const courseSlug = cleanText(payload.courseSlug, 120).toLowerCase() || null;

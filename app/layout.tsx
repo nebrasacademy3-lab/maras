@@ -46,7 +46,7 @@ const themeScript = `(function(){try{var t=localStorage.getItem('meras-theme');v
 const structuredData = {
   "@context": "https://schema.org",
   "@graph": [
-    { "@type": "Organization", name: "مراس العلم", url: siteUrl, logo: `${siteUrl}/brand/mark-official.png`, email: "hello@meras.sa" },
+    { "@type": "Organization", name: "مراس العلم", url: siteUrl, logo: `${siteUrl}/brand/mark-official.png`, areaServed: "SA", address: { "@type": "PostalAddress", addressCountry: "SA" } },
     { "@type": "WebSite", name: "مراس العلم", url: siteUrl, inLanguage: "ar-SA", potentialAction: { "@type": "SearchAction", target: `${siteUrl}/courses?q={search_term_string}`, "query-input": "required name=search_term_string" } },
   ],
 };

@@ -16,7 +16,7 @@ export default function Account() {
   if (!user) return <Screen><AppHeader title="حسابي" subtitle="الدخول إلى مراس" /><EmptyState icon="person-circle-outline" title="أهلًا بك في مراس" text="أنشئ حسابًا لإظهار مواد تخصصك وحفظ التقدم والطلبات والإشعارات." action={<View style={{ width: "100%", gap: 9 }}><AppButton title="تسجيل الدخول" onPress={() => router.push("/(auth)/login")} /><AppButton title="إنشاء حساب" variant="soft" onPress={() => router.push("/(auth)/register")} /></View>} /></Screen>;
   const items: { icon: React.ComponentProps<typeof Ionicons>["name"]; title: string; text: string; route: string }[] = [
     { icon: "person-outline", title: "بيانات الحساب", text: "الاسم والجوال والجامعة والتخصص والمستوى", route: "/profile" },
-    { icon: "sparkles-outline", title: "مراس AI", text: "المحادثات والملخصات والترجمة والاختبارات", route: "/(tabs)/ai" },
+    { icon: "sparkles-outline", title: "أدوات مراس", text: "المحادثات والملخصات والترجمة والاختبارات", route: "/(tabs)/ai" },
     { icon: "gift-outline", title: "الإحالات والهدايا", text: "رابطك وتقدمك والكوبونات الخاصة بك", route: "/referrals" },
     { icon: "notifications-outline", title: "الإشعارات", text: "تحديثات المواد والطلبات", route: "/notifications" },
     { icon: "heart-outline", title: "المفضلة", text: "المواد التي حفظتها للرجوع", route: "/favorites" },

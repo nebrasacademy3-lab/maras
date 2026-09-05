@@ -93,7 +93,7 @@ export function SearchDialog({ open, onClose }: { open: boolean; onClose: () => 
             <div className="search-empty">
               <div><Search size={26} /></div>
               <h3>لم نجد نتيجة مطابقة</h3>
-              <p>جرّب اسمًا آخر، أو اطلب منا توفير المادة التي تحتاجها. نستهدف توفيرها خلال 24 ساعة.</p>
+              <p>جرّب اسمًا آخر، أو اطلب منا توفير المادة التي تحتاجها. سنحدّث حالة الطلب من حسابك.</p>
               <Link href="/request-course" onClick={close} className="button button-primary">اطلب توفير المادة</Link>
             </div>
           )}

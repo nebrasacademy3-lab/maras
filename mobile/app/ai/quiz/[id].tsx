@@ -33,10 +33,10 @@ export default function AiQuizScreen() {
   const query = useQuery({ queryKey: ["ai-quiz", id, user?.id], queryFn: () => api<QuizResponse>(`/api/ai/quizzes/${id}`), enabled: Boolean(user && Number.isInteger(id) && id > 0) });
   const resultMap = useMemo(() => new Map(attempt?.results.map((item) => [item.questionId, item]) || []), [attempt]);
 
-  if (!user) return <Screen><AppHeader title="اختبار مراس AI" back /><EmptyState title="سجّل الدخول أولًا" text="الاختبار مرتبط بصاحب الملف ولا يمكن فتحه من حساب آخر." /></Screen>;
-  if (!Number.isInteger(id) || id <= 0) return <Screen><AppHeader title="اختبار مراس AI" back /><EmptyState title="رابط الاختبار غير صالح" text="افتح الاختبار من سجل مراس AI." /></Screen>;
-  if (query.isLoading) return <Screen><AppHeader title="اختبار مراس AI" back /><LoadingState label="نجهّز بطاقات الاختبار…" /></Screen>;
-  if (query.isError || !query.data) return <Screen><AppHeader title="اختبار مراس AI" back /><EmptyState icon="cloud-offline-outline" title="تعذر فتح الاختبار" text={query.error instanceof Error ? query.error.message : "حاول مرة أخرى."} action={<AppButton title="إعادة المحاولة" onPress={() => void query.refetch()} />} /></Screen>;
+  if (!user) return <Screen><AppHeader title="اختبار أدوات مراس" back /><EmptyState title="سجّل الدخول أولًا" text="الاختبار مرتبط بصاحب الملف ولا يمكن فتحه من حساب آخر." /></Screen>;
+  if (!Number.isInteger(id) || id <= 0) return <Screen><AppHeader title="اختبار أدوات مراس" back /><EmptyState title="رابط الاختبار غير صالح" text="افتح الاختبار من سجل أدوات مراس." /></Screen>;
+  if (query.isLoading) return <Screen><AppHeader title="اختبار أدوات مراس" back /><LoadingState label="نجهّز بطاقات الاختبار…" /></Screen>;
+  if (query.isError || !query.data) return <Screen><AppHeader title="اختبار أدوات مراس" back /><EmptyState icon="cloud-offline-outline" title="تعذر فتح الاختبار" text={query.error instanceof Error ? query.error.message : "حاول مرة أخرى."} action={<AppButton title="إعادة المحاولة" onPress={() => void query.refetch()} />} /></Screen>;
 
   const quiz = query.data.quiz;
   const question = quiz.questions[index];
@@ -62,7 +62,7 @@ export default function AiQuizScreen() {
       <Text style={styles.resultPercent}>{attempt.attempt.percent}%</Text>
       <Text style={styles.resultText}>{attempt.attempt.score} إجابات صحيحة من {attempt.attempt.total}</Text>
     </LinearGradient>
-    <View style={styles.resultActions}><AppButton title="إعادة الاختبار" icon="refresh-outline" variant="soft" onPress={restart} /><AppButton title="العودة إلى مراس AI" icon="sparkles-outline" onPress={() => router.replace("/(tabs)/ai")} /></View>
+    <View style={styles.resultActions}><AppButton title="إعادة الاختبار" icon="refresh-outline" variant="soft" onPress={restart} /><AppButton title="العودة إلى أدوات مراس" icon="sparkles-outline" onPress={() => router.replace("/(tabs)/ai")} /></View>
     <SectionTitle title="مراجعة الإجابات" subtitle="اقرأ الشرح والمصطلحات بعد كل سؤال" />
     <View style={styles.reviewList}>{quiz.questions.map((item, questionIndex) => {
       const result = resultMap.get(item.id);
@@ -78,10 +78,10 @@ export default function AiQuizScreen() {
     })}</View>
   </Screen>;
 
-  if (!question) return <Screen><AppHeader title="اختبار مراس AI" back /><EmptyState title="الاختبار بلا أسئلة" text="أنشئ اختبارًا جديدًا من الملف." /></Screen>;
+  if (!question) return <Screen><AppHeader title="اختبار أدوات مراس" back /><EmptyState title="الاختبار بلا أسئلة" text="أنشئ اختبارًا جديدًا من الملف." /></Screen>;
 
   return <Screen>
-    <AppHeader title="اختبار مراس AI" subtitle={quiz.title} back />
+    <AppHeader title="اختبار أدوات مراس" subtitle={quiz.title} back />
     <View style={styles.progressHead}><Text style={[styles.progressLabel, { color: colors.text }]}>السؤال {index + 1} من {quiz.questions.length}</Text><Text style={[styles.progressCount, { color: colors.primary }]}>{answered}/{quiz.questions.length} مجاب</Text></View>
     <View style={[styles.progressTrack, { backgroundColor: colors.surfaceAlt }]}><LinearGradient colors={[colors.primary, "#7C3AED"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.progressFill, { width: `${((index + 1) / quiz.questions.length) * 100}%` }]} /></View>
 

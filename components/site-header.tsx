@@ -77,7 +77,7 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
     { href: "/notifications", label: "الإشعارات", icon: Bell },
     { href: "/support", label: "الدعم", icon: LifeBuoy },
     { href: "/dashboard?view=account", label: "حسابي", icon: UserRound },
-    { href: "/meras-ai", label: "مراس AI", icon: Bot, mobileOnly: true },
+    { href: "/study-tools", label: "أدوات مراس", icon: Bot, mobileOnly: true },
     { href: "/referrals", label: "الإحالات والهدايا", icon: Gift, mobileOnly: true },
     { href: "/request-course", label: "طلب مادة", icon: FileUp, mobileOnly: true },
   ];
@@ -97,7 +97,7 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
           <button className="icon-button" onClick={() => setSearchOpen(true)} aria-label="البحث"><Search size={19} /></button>
           <ThemeToggle compact />
           {signedIn && <><Link href="/cart" className="icon-button commerce-icon-button" aria-label={`السلة${cartSlugs.length ? `، ${cartSlugs.length} مواد` : ""}`}><ShoppingBag size={19} />{cartSlugs.length > 0 && <i>{cartSlugs.length > 99 ? "99+" : cartSlugs.length}</i>}</Link><Link href="/favorites" className="icon-button commerce-icon-button" aria-label={`المفضلة${favoriteSlugs.length ? `، ${favoriteSlugs.length} مواد` : ""}`}><Heart size={19} fill={favoriteSlugs.length ? "currentColor" : "none"} />{favoriteSlugs.length > 0 && <i>{favoriteSlugs.length > 99 ? "99+" : favoriteSlugs.length}</i>}</Link><Link href="/notifications" className="icon-button notification-button" aria-label="الإشعارات"><Bell size={19} />{unreadNotifications > 0 && <i>{unreadNotifications > 99 ? "99+" : unreadNotifications}</i>}</Link></>}
-          {!signedIn ? <><Link href="/login" className="button button-ghost desktop-only">تسجيل الدخول</Link><Link href="/register" className="button button-primary desktop-only">إنشاء حساب</Link></> : <details className="account-utilities-menu desktop-only"><summary className="user-chip" aria-label={`قائمة حساب ${displayName}`}><span>{displayName.split(" ")[0]}</span><i>{displayName[0] || <UserRound size={16} />}</i></summary><div role="menu"><Link href="/dashboard?view=account" role="menuitem"><UserRound size={16} />حسابي</Link><Link href="/meras-ai" role="menuitem"><Bot size={16} />مراس AI</Link><Link href="/referrals" role="menuitem"><Gift size={16} />الإحالات والهدايا</Link><button type="button" role="menuitem" onClick={signOut}><LogOut size={16} />تسجيل الخروج</button></div></details>}
+          {!signedIn ? <><Link href="/login" className="button button-ghost desktop-only">تسجيل الدخول</Link><Link href="/register" className="button button-primary desktop-only">إنشاء حساب</Link></> : <details className="account-utilities-menu desktop-only"><summary className="user-chip" aria-label={`قائمة حساب ${displayName}`}><span>{displayName.split(" ")[0]}</span><i>{displayName[0] || <UserRound size={16} />}</i></summary><div role="menu"><Link href="/dashboard?view=account" role="menuitem"><UserRound size={16} />حسابي</Link><Link href="/study-tools" role="menuitem"><Bot size={16} />أدوات مراس</Link><Link href="/referrals" role="menuitem"><Gift size={16} />الإحالات والهدايا</Link><button type="button" role="menuitem" onClick={signOut}><LogOut size={16} />تسجيل الخروج</button></div></details>}
           <button className="icon-button mobile-menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label="القائمة" aria-expanded={menuOpen}>{menuOpen ? <X size={21} /> : <Menu size={21} />}</button>
         </div>
       </div>

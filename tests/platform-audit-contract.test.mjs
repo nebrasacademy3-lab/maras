@@ -59,7 +59,7 @@ test("self-account deletion is student-only, transactional, and cleans support o
 });
 
 test("health endpoint does not expose database exception details", () => {
-  assert.match(health, /catch \{\n/);
+  assert.match(health, /catch \{\r?\n/);
   assert.doesNotMatch(health, /error:\s*error/);
   assert.match(health, /no-store/);
 });

@@ -1,235 +1,77 @@
+import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
-import {
-  ArrowLeft,
-  BookMarked,
-  Bot,
-  Check,
-  CirclePlay,
-  FileText,
-  GraduationCap,
-  Languages,
-  ListChecks,
-  LockKeyhole,
-  MessageSquareText,
-  MonitorSmartphone,
-  NotebookPen,
-  Play,
-  ShieldCheck,
-  Sparkles,
-  TimerReset,
-  WalletCards,
-} from "lucide-react";
+import { ArrowLeft, BadgeCheck, BookMarked, Building2, CirclePlay, ExternalLink, FileText, GraduationCap, Languages, LockKeyhole, MessageSquareText, MonitorSmartphone, NotebookPen, ShieldCheck, Sparkles, TimerReset, WalletCards } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { HomeGateway } from "@/components/home-gateway";
+import { HomeHorizontalRail } from "@/components/home-horizontal-rail";
 import { HomeUpcomingTracks } from "@/components/home-upcoming-tracks";
 import { HomeFaq } from "@/components/home-faq";
 import { UniversityLogo } from "@/components/university-logo";
 import { CourseCoverImage } from "@/components/course-cover-image";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 import { getPublicLearningTracks } from "@/lib/learning-tracks";
+import { getPublicPartners } from "@/lib/platform-partners";
+import { getPublicReviews } from "@/lib/public-reviews";
+import { getPublicSettings } from "@/lib/platform-settings";
 import type { Course } from "@/lib/data";
 import styles from "./home.module.css";
 
 export const revalidate = 60;
-
+export const metadata: Metadata = {
+  title: "شروحات المقررات الجامعية في السعودية | مراس العلم",
+  description: "استكشف شروحات المقررات حسب الجامعة والتخصص، شاهد الدرس التجريبي، وواصل تعلمك وملفاتك من حساب واحد.",
+  alternates: { canonical: "/" },
+  keywords: ["شروحات جامعية", "شرح مقررات الجامعة", "دروس جامعية السعودية", "مواد جامعية", "تقوية الإنجليزية", "دورات تدريبية للطلاب"],
+  openGraph: { title: "مراس العلم | شروحات جامعتك في مكان واحد", description: "مواد مرتبة حسب الجامعة والتخصص، ودروس تجريبية قبل الاشتراك.", url: "/", images: [{ url: "/og.png", width: 1728, height: 910, alt: "منصة مراس العلم" }] },
+  twitter: { card: "summary_large_image", title: "مراس العلم", description: "شروحات المقررات الجامعية حسب الجامعة والتخصص.", images: ["/og.png"] },
+};
 const priceFormatter = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 });
-
-function hasReadyPreview(course: Course) {
-  return course.units.some((unit) => unit.lessons.some((lesson) => lesson.free && lesson.ready));
-}
-
-function uniqueCourses(courses: Course[]) {
-  const seen = new Set<string>();
-  return courses.filter((course) => {
-    if (seen.has(course.slug)) return false;
-    seen.add(course.slug);
-    return true;
-  });
-}
+function hasReadyPreview(course: Course) { return course.units.some((unit) => unit.lessons.some((lesson) => lesson.free && lesson.ready)); }
+function uniqueCourses(courses: Course[]) { const seen = new Set<string>(); return courses.filter((course) => { if (seen.has(course.slug)) return false; seen.add(course.slug); return true; }); }
+function isHttps(value: string) { try { return new URL(value).protocol === "https:"; } catch { return false; } }
 
 export default async function Home() {
-  const [institutions, courses, learningTracks] = await Promise.all([
-    getInstitutionsCatalog(),
-    getCoursesCatalog(),
-    getPublicLearningTracks(),
-  ]);
-  const universityPreview = [...institutions]
-    .sort((left, right) => Number(Boolean(right.featured)) - Number(Boolean(left.featured)) || right.courses - left.courses)
-    .slice(0, 4);
+  const [institutions, courses, learningTracks, settings, partners, reviews] = await Promise.all([getInstitutionsCatalog(), getCoursesCatalog(), getPublicLearningTracks(), getPublicSettings(), getPublicPartners(), getPublicReviews()]);
+  const universityPreview = [...institutions].sort((left, right) => Number(Boolean(right.featured)) - Number(Boolean(left.featured)) || right.courses - left.courses).slice(0, 12);
   const availableCourses = courses.filter((course) => course.availableForPurchase || hasReadyPreview(course));
-  const featuredCourses = availableCourses.filter((course) => course.featured);
-  const coursePreview = uniqueCourses([...featuredCourses, ...availableCourses, ...courses]).slice(0, 3);
-  const searchCourses = courses.map(({ slug, title, titleEn, university, specialty }) => ({ slug, title, titleEn, university, specialty }));
+  const coursePreview = uniqueCourses([...availableCourses.filter((course) => course.featured), ...availableCourses, ...courses]).slice(0, 12);
+  const searchCourses = courses.map(({ slug, title, titleEn, university, specialty, audienceScope }) => ({ slug, title, titleEn, university, specialty: audienceScope === "institution" ? "جميع تخصصات الجامعة" : specialty }));
   const searchInstitutions = institutions.map(({ slug, name, nameEn, region, type }) => ({ slug, name, nameEn, region, type }));
   const featured = coursePreview[0];
-  const gatewayCourse = featured ? {
-    slug: featured.slug,
-    title: featured.title,
-    university: featured.university,
-    specialty: featured.specialty,
-    lessons: featured.lessons,
-    price: featured.price,
-    access: featured.access,
-    previewReady: hasReadyPreview(featured),
-  } : undefined;
+  const gatewayCourse = featured ? { slug: featured.slug, title: featured.title, university: featured.university, specialty: featured.audienceScope === "institution" ? "متاحة لتخصصات الجامعة" : featured.specialty, lessons: featured.lessons, price: featured.price, access: featured.access, previewReady: hasReadyPreview(featured) } : undefined;
+  const firstClaimReady = settings.first_platform_claim_enabled === "true" && isHttps(settings.first_platform_claim_evidence_url) && settings.first_platform_claim_text.trim().length > 4;
+  const paymentMethodsReady = settings.payment_methods_marketing_enabled === "true" && Boolean(process.env.TAP_SECRET_KEY?.trim() && process.env.TAP_WEBHOOK_SECRET?.trim());
+  const tabbyReady = paymentMethodsReady && process.env.TAP_TABBY_ENABLED === "true";
+  const tamaraReady = paymentMethodsReady && process.env.TAP_TAMARA_ENABLED === "true";
+  const credentials = [
+    settings.commercial_registration_number ? { label: "السجل التجاري", value: settings.commercial_registration_number, href: settings.commercial_registration_verify_url, icon: Building2 } : null,
+    settings.ecommerce_authentication_number ? { label: "توثيق التجارة الإلكترونية", value: settings.ecommerce_authentication_number, href: settings.ecommerce_authentication_verify_url, icon: BadgeCheck } : null,
+    settings.nelc_program_license_number ? { label: settings.nelc_program_name || "ترخيص برنامج التعليم الإلكتروني", value: settings.nelc_program_license_number, href: settings.nelc_program_license_verify_url, icon: ShieldCheck } : null,
+  ].filter(Boolean) as Array<{ label: string; value: string; href: string; icon: typeof BadgeCheck }>;
 
-  return (
-    <main className={styles.page}>
-      <SiteHeader />
+  return <main className={styles.page}>
+    <SiteHeader />
+    <HomeGateway courses={searchCourses} institutions={searchInstitutions} featuredCourse={gatewayCourse} />
 
-      <HomeGateway courses={searchCourses} institutions={searchInstitutions} featuredCourse={gatewayCourse} />
+    <section className={styles.identity} aria-label="تعريف المنصة"><div className={`container ${styles.identityInner}`}><div><span><i /> منصة سعودية</span><strong>{firstClaimReady ? settings.first_platform_claim_text : settings.positioning_claim}</strong></div>{firstClaimReady ? <a href={settings.first_platform_claim_evidence_url} target="_blank" rel="noreferrer">عرض إثبات العبارة <ArrowLeft size={15} /></a> : <Link href="/about">تعرّف إلى مراس <ArrowLeft size={15} /></Link>}</div></section>
 
-      <section className={styles.signalBar} aria-label="مراس في لمحة">
-        <div className={"container " + styles.signalGrid}>
-          <article><strong>{institutions.length.toLocaleString("ar-SA")}</strong><span>جامعة في الكتالوج</span></article>
-          <i aria-hidden="true" />
-          <article><strong>{availableCourses.length.toLocaleString("ar-SA")}</strong><span>مادة متاحة أو لها تجربة</span></article>
-          <i aria-hidden="true" />
-          <article><MonitorSmartphone size={20} /><span>تقدّم واحد على الويب والتطبيق</span></article>
-        </div>
-      </section>
+    {credentials.length ? <section className={styles.credentials} aria-labelledby="credentials-title"><div className="container"><header className={styles.compactHeading}><span>بيانات المنشأة</span><h2 id="credentials-title">معلومات نظامية قابلة للتحقق.</h2><p>بيانات المنشأة الرسمية وروابط التحقق المتاحة.</p></header><div className={styles.credentialGrid}>{credentials.map(({ label, value, href, icon: Icon }) => { const content = <><i><Icon size={21} /></i><span><small>{label}</small><strong dir="ltr">{value}</strong></span>{isHttps(href) ? <em>تحقق <ArrowLeft size={14} /></em> : null}</>; return isHttps(href) ? <a key={label} href={href} target="_blank" rel="noreferrer">{content}</a> : <article key={label}>{content}</article>; })}</div></div></section> : null}
 
-      <section className={styles.discovery} id="explore" aria-labelledby="discovery-title" data-home-reveal>
-        <div className="container">
-          <header className={styles.sectionHeader}>
-            <div>
-              <span className={styles.kicker}>استكشف المحتوى</span>
-              <h2 id="discovery-title">اختر جامعتك، ثم ابدأ من المادة.</h2>
-            </div>
-            <div>
-              <p>كل بطاقة تقود إلى معلومات فعلية: حالة التوفر، الدرس التجريبي إن وجد، السعر والتخصص قبل الاشتراك.</p>
-              <Link href="/courses">جميع المواد <ArrowLeft size={16} /></Link>
-            </div>
-          </header>
+    <section className={styles.catalogSection} id="explore" aria-labelledby="universities-title" data-home-reveal><div className="container"><header className={styles.sectionHeading}><div><span><GraduationCap size={16} /> ابدأ من جامعتك</span><h2 id="universities-title">كل جامعة هي بداية لمسار أوضح.</h2></div><div><p>حرّك البطاقات، اختر جامعتك، ثم انتقل إلى تخصصك والمواد المرتبطة به.</p><Link href="/universities">جميع الجامعات <ArrowLeft size={16} /></Link></div></header><HomeHorizontalRail label="الجامعات">{universityPreview.map((institution) => <Link key={institution.slug} href={`/universities/${institution.slug}`} className={styles.universityCard}><span className={styles.universityMark}><UniversityLogo institution={institution} /></span><span><small>{institution.region} · {institution.type}</small><strong>{institution.name}</strong><bdi dir="ltr">{institution.nameEn}</bdi></span><footer><em>{institution.courses.toLocaleString("ar-SA")} مواد</em><ArrowLeft size={17} /></footer></Link>)}</HomeHorizontalRail></div></section>
 
-          <div className={styles.discoveryLayout}>
-            <aside className={styles.universityPanel} aria-label="جامعات مميزة">
-              <header><span><GraduationCap size={17} /> ابدأ من الجامعة</span><Link href="/universities">عرض الكل</Link></header>
-              <div>
-                {universityPreview.map((institution, index) => (
-                  <Link key={institution.slug} href={"/universities/" + institution.slug} className={styles.universityRow}>
-                    <em>{String(index + 1).padStart(2, "0")}</em>
-                    <span className={styles.universityLogo}><UniversityLogo institution={institution} /></span>
-                    <span><strong>{institution.name}</strong><small><bdi dir="ltr">{institution.nameEn}</bdi></small></span>
-                    <ArrowLeft size={16} />
-                  </Link>
-                ))}
-              </div>
-              <Link className={styles.panelAction} href="/universities">اختر جامعتك وتخصصك <ArrowLeft size={16} /></Link>
-            </aside>
+    {coursePreview.length ? <section className={styles.courseSection} aria-labelledby="courses-title" data-home-reveal><div className="container"><header className={styles.sectionHeading}><div><span><BookMarked size={16} /> مواد مختارة</span><h2 id="courses-title">المادة أمامك قبل قرار الاشتراك.</h2></div><div><p>السعر، التخصص، عدد الدروس وحالة الدرس التجريبي ظاهرة من البداية.</p><Link href="/courses">كل المواد <ArrowLeft size={16} /></Link></div></header><HomeHorizontalRail label="المواد">{coursePreview.map((course) => { const previewReady = hasReadyPreview(course); return <Link key={course.slug} href={`/courses/${course.slug}`} className={styles.courseCard}><span className={styles.courseMedia}>{course.coverImage ? <CourseCoverImage className={styles.courseImage} src={course.coverImage} alt="" sizes="(max-width: 700px) 82vw, 390px" /> : <b>{course.icon}</b>}<em>{previewReady ? <><CirclePlay size={13} /> درس تجريبي</> : course.availableForPurchase ? "متاحة الآن" : "قريبًا"}</em></span><span className={styles.courseBody}><small>{course.university}</small><strong>{course.title}</strong><bdi dir="ltr">{course.titleEn}{course.code ? ` · ${course.code}` : ""}</bdi><span className={styles.courseMeta}><i>{course.lessons.toLocaleString("ar-SA")} درسًا</i><i>{course.duration}</i></span><footer><span>{course.price > 0 ? <><b>{priceFormatter.format(course.price)}</b> ر.س</> : <b>مجاني</b>}</span><em>{course.availableForPurchase || previewReady ? "التفاصيل" : "احجز تنبيهك"} <ArrowLeft size={15} /></em></footer></span></Link>; })}</HomeHorizontalRail></div></section> : null}
 
-            <div className={styles.coursePanel}>
-              <div className={styles.panelTitle}><span><BookMarked size={17} /> مواد للبدء الآن</span><small>بيانات حقيقية من الكتالوج</small></div>
-              <div className={styles.courseGrid}>
-                {coursePreview.map((course) => {
-                  const previewReady = hasReadyPreview(course);
-                  return (
-                    <Link key={course.slug} href={"/courses/" + course.slug} className={styles.courseCard}>
-                      <span className={styles.courseMedia}>
-                        {course.coverImage ? <CourseCoverImage className={styles.courseImage} src={course.coverImage} alt="" sizes="(max-width: 700px) 86vw, (max-width: 1100px) 42vw, 24vw" /> : <b>{course.icon}</b>}
-                        <em>{previewReady ? <><CirclePlay size={13} /> درس تجريبي</> : course.availableForPurchase ? "متاحة الآن" : "قيد الإعداد"}</em>
-                      </span>
-                      <span className={styles.courseBody}>
-                        <small>{course.university} · {course.specialty}</small>
-                        <strong>{course.title}</strong>
-                        <bdi dir="ltr">{course.titleEn}{course.code ? " · " + course.code : ""}</bdi>
-                        <span className={styles.courseMeta}><i>{course.lessons.toLocaleString("ar-SA")} درسًا</i><i>{course.duration}</i></span>
-                        <span className={styles.courseFooter}>
-                          <span>{course.price > 0 ? <><b>{priceFormatter.format(course.price)}</b> ر.س</> : <b>مجاني</b>}{course.oldPrice ? <del>{priceFormatter.format(course.oldPrice)}</del> : null}</span>
-                          <em>عرض المادة <ArrowLeft size={15} /></em>
-                        </span>
-                      </span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+    <section className={styles.learningSection} aria-labelledby="learning-title" data-home-reveal><div className={`container ${styles.learningShell}`}><header><span><Sparkles size={16} /> تجربة متصلة</span><h2 id="learning-title">من المشاهدة إلى المراجعة، دون تشتيت.</h2><p>أدوات عملية تحفظ وقت الطالب وتبقي كل ما يحتاجه مرتبطًا بالمادة والحساب.</p><Link href="/study-tools">افتح أدوات المذاكرة <ArrowLeft size={16} /></Link></header><div className={styles.featureGrid}><article><i><NotebookPen size={20} /></i><b>ملاحظات عند نفس اللحظة</b><p>احفظ الملاحظة على دقيقة وثانية محددتين، ثم ارجع إليها بضغطة.</p></article><article><i><TimerReset size={20} /></i><b>تقدّم يتابعك</b><p>أكمل من آخر موضع شاهدته عبر أجهزتك المصرح بها.</p></article><article><i><FileText size={20} /></i><b>ملفات مرتبطة بالمادة</b><p>نزّل الملفات التي ينشرها فريق المادة من مساحة تعلم واحدة.</p></article><article><i><Languages size={20} /></i><b>تلخيص وترجمة وتدريب</b><p>حوّل ملفك إلى ملخص أو ترجمة أو بطاقات أسئلة منظمة داخل حسابك.</p></article></div></div></section>
 
-      <section className={styles.journey} id="journey" aria-labelledby="journey-title" data-home-reveal>
-        <div className={"container " + styles.journeyShell}>
-          <header>
-            <span className={styles.kicker}>رحلة تعلّم واحدة</span>
-            <h2 id="journey-title">من أول معاينة<br />إلى آخر ثانية شاهدتها.</h2>
-            <p>صممنا الرحلة لتبقى واضحة، ويظل تقدمك وملاحظاتك في مكانهما كلما رجعت.</p>
-          </header>
-          <div className={styles.journeySteps}>
-            <span className={styles.journeyThread} aria-hidden="true"><i /></span>
-            <article><b>01</b><i><Play size={18} /></i><div><h3>جرّب قبل الاشتراك</h3><p>افتح الدرس التجريبي إن كان متاحًا وتعرّف إلى أسلوب الشرح.</p></div></article>
-            <article><b>02</b><i><BookMarked size={18} /></i><div><h3>ابدأ من خطتك</h3><p>اختر المادة والوحدة، ثم تابع بترتيب يناسب وقتك.</p></div></article>
-            <article><b>03</b><i><NotebookPen size={18} /></i><div><h3>ثبّت الفكرة في لحظتها</h3><p>أضف ملاحظة مرتبطة بوقت الفيديو وارجع إليها مباشرة.</p></div></article>
-            <article><b>04</b><i><TimerReset size={18} /></i><div><h3>ارجع دون أن تبدأ من جديد</h3><p>يحفظ الحساب تقدمك لتكمل من موضعك على أجهزتك.</p></div></article>
-          </div>
-        </div>
-      </section>
+    {reviews.length ? <section className={styles.reviewsSection} aria-labelledby="reviews-title" data-home-reveal><div className="container"><header className={styles.sectionHeading}><div><span><MessageSquareText size={16} /> تجارب الطلاب</span><h2 id="reviews-title">آراء طلاب لديهم وصول فعلي للمادة.</h2></div><div><p>لا نعرض تقييمات تجريبية أو مصطنعة؛ كل رأي منشور يمر بالمراجعة.</p></div></header><HomeHorizontalRail label="آراء الطلاب">{reviews.map((review) => <article className={styles.reviewCard} key={review.id}><header><span>{review.author.slice(0, 1)}</span><div><strong>{review.author}</strong><small>{review.specialty}</small></div><em>{"★".repeat(review.rating)}</em></header><p>{review.body}</p><footer><BadgeCheck size={14} /> وصول موثّق للمادة · {new Date(review.createdAt).toLocaleDateString("ar-SA")}</footer></article>)}</HomeHorizontalRail></div></section> : null}
 
-      <section className={styles.aiSection} id="ai" aria-labelledby="ai-title" data-home-reveal>
-        <div className={"container " + styles.aiShell}>
-          <div className={styles.aiCopy}>
-            <span className={styles.aiKicker}><Sparkles size={15} /> مراس AI</span>
-            <h2 id="ai-title">ملف مزدحم.<br /><em>جلسة مذاكرة واضحة.</em></h2>
-            <p>ارفع ملفًا مدعومًا، ثم اختر تلخيصه، أو ترجمته عربيًا وإنجليزيًا، أو تحويله إلى أسئلة تفاعلية مع شرح الإجابات.</p>
-            <div className={styles.aiFeatures}>
-              <span><FileText size={16} /> تلخيص منظم</span>
-              <span><Languages size={16} /> ترجمة للمحتوى</span>
-              <span><ListChecks size={16} /> أسئلة مع شرح</span>
-              <span><MessageSquareText size={16} /> سجل محفوظ</span>
-            </div>
-            <Link href="/meras-ai">افتح مراس AI <ArrowLeft size={17} /></Link>
-            <small>تختلف الخدمات وحدود الاستخدام حسب حالة الحساب وإعدادات الإدارة.</small>
-          </div>
+    {partners.length ? <section className={styles.partnersSection} aria-labelledby="partners-title" data-home-reveal><div className="container"><header className={styles.centerHeading}><span>شركاء واعتمادات المنصة</span><h2 id="partners-title">شركاء مراس في واجهة واحدة.</h2><p>تعرّف على شركاء المنصة والاعتمادات المسجلة.</p></header><HomeHorizontalRail label="شركاء واعتمادات المنصة">{partners.map((partner) => <article className={styles.partnerCard} key={partner.id}><span><Image src={partner.logo} alt={`شعار ${partner.name}`} width={220} height={100} sizes="220px" unoptimized={partner.logo.startsWith("https://")} /></span><strong>{partner.name}</strong>{partner.description ? <p>{partner.description}</p> : null}<small>{partner.kind === "accreditation" ? "اعتماد أو ترخيص" : partner.kind === "payment" ? "حلول دفع" : "شريك المنصة"}</small>{partner.credentialNumber ? <div className={styles.partnerCredential}><span>رقم الاعتماد أو الترخيص</span><bdi dir="ltr">{partner.credentialNumber}</bdi></div> : null}{partner.verificationUrl || partner.destinationUrl ? <div className={styles.partnerActions}>{partner.verificationUrl ? <a href={partner.verificationUrl} target="_blank" rel="noopener noreferrer"><BadgeCheck size={14} /> {partner.kind === "accreditation" ? "تحقق من الاعتماد" : "فتح رابط التحقق"}</a> : null}{partner.destinationUrl && partner.destinationUrl !== partner.verificationUrl ? <a href={partner.destinationUrl} target="_blank" rel="noopener noreferrer">موقع الجهة <ExternalLink size={13} /></a> : null}</div> : null}</article>)}</HomeHorizontalRail></div></section> : null}
 
-          <div className={styles.aiDemo} aria-label="مثال توضيحي لمساحة مراس AI">
-            <header><span><Bot size={17} /> مساحة العمل</span><small><i /> مثال توضيحي</small></header>
-            <div className={styles.aiInput}>
-              <span><FileText size={19} /></span>
-              <div><strong>ملف المحاضرة.pdf</strong><small>جاهز لاختيار طريقة المذاكرة</small></div>
-              <Check size={16} />
-            </div>
-            <div className={styles.aiOutput}>
-              <small>اختر ناتجًا</small>
-              <article><i>أ</i><div><strong>ملخص مركّز</strong><span>الأفكار والعلاقات الرئيسية</span></div><ArrowLeft size={15} /></article>
-              <article><i>EN</i><div><strong>ترجمة ثنائية</strong><span>النص والمصطلحات في سياقها</span></div><ArrowLeft size={15} /></article>
-              <article><i>?</i><div><strong>اختبار تفاعلي</strong><span>بطاقات وأسئلة وشرح للإجابة</span></div><ArrowLeft size={15} /></article>
-            </div>
-            <div className={styles.aiPrompt}><span>اسأل عن الملف أو اطلب شرحًا أبسط…</span><ArrowLeft size={15} /></div>
-          </div>
-        </div>
-      </section>
-
-      <HomeUpcomingTracks tracks={learningTracks} />
-
-      <section className={styles.payment} id="payment" aria-labelledby="payment-title" data-home-reveal>
-        <div className={"container " + styles.paymentShell}>
-          <div><span className={styles.kicker}>الدفع</span><h2 id="payment-title">طريقة واضحة، وخيارات تظهر حسب أهليتك.</h2></div>
-          <p>يتم الدفع عبر صفحة Tap الآمنة، وقد تظهر تابي وتمارا بحسب قيمة الطلب وأهلية الخدمة وإعدادات مزود الدفع.</p>
-          <div className={styles.providers}>
-            <span><b dir="ltr">tap</b><small>بوابة الدفع</small></span>
-            <span><b>تابي</b><small>عند الأهلية</small></span>
-            <span><b>تمارا</b><small>عند الأهلية</small></span>
-          </div>
-          <footer>
-            <span><ShieldCheck size={16} /> تحقق من الخادم</span>
-            <span><LockKeyhole size={16} /> لا نخزن بيانات البطاقة</span>
-            <span><WalletCards size={16} /> خيارات المزود تظهر قبل التأكيد</span>
-          </footer>
-        </div>
-      </section>
-
-      <section className={styles.request} id="request" data-home-reveal>
-        <div className={"container " + styles.requestShell}>
-          <span className={styles.requestMark} aria-hidden="true">✦</span>
-          <div><small>مراس تنمو مع احتياجك</small><h2>مادتك أو فكرتك غير موجودة؟</h2><p>أرسل الجامعة والتخصص واسم المادة أو المسار الذي تحتاجه، وأرفق الملفات المتاحة إن وجدت.</p></div>
-          <div><Link href="/request-course">أرسل طلبك <ArrowLeft size={17} /></Link><Link href="/courses">تصفح جميع المواد</Link></div>
-        </div>
-      </section>
-
-      <HomeFaq title="كل ما تحتاجه قبل الاشتراك" />
-
-      <SiteFooter />
-    </main>
-  );
+    <HomeUpcomingTracks tracks={learningTracks} />
+    {paymentMethodsReady ? <section className={styles.paymentSection} id="payment" aria-labelledby="payment-title" data-home-reveal><div className={`container ${styles.paymentShell}`}><div><span><WalletCards size={17} /> دفع واضح</span><h2 id="payment-title">اختر المادة، واعرف المبلغ قبل التأكيد.</h2><p>أكمل الدفع عبر بوابة Tap الآمنة، وستظهر لك الوسائل المفعلة قبل التأكيد.</p><div><i><ShieldCheck size={16} /> تحقق من الخادم</i><i><LockKeyhole size={16} /> لا نخزن بيانات البطاقة</i><i><MonitorSmartphone size={16} /> وصول مرتبط بالحساب</i></div></div><aside><small>خيارات الدفع</small><strong dir="ltr">Tap</strong>{tabbyReady ? <span><b>تابي</b><em>متاح</em></span> : null}{tamaraReady ? <span><b>تمارا</b><em>متاح</em></span> : null}<Link href="/courses">اختر مادتك <ArrowLeft size={16} /></Link></aside></div></section> : null}
+    <section className={styles.finalSection} data-home-reveal><div className={`container ${styles.finalCard}`}><span aria-hidden="true">✦</span><div><small>لم تجد ما تبحث عنه؟</small><h2>اطلب المادة، واترك لنا تفاصيلها.</h2><p>أرسل الجامعة والتخصص واسم المادة، وسيتابع الطلب فريق المنصة من حسابك.</p></div><div><Link href="/request-course">أرسل طلب مادة <ArrowLeft size={16} /></Link><Link href="/courses">استكشف الكتالوج</Link></div></div></section>
+    <HomeFaq title="كل ما تحتاجه قبل الاشتراك" /><SiteFooter />
+  </main>;
 }

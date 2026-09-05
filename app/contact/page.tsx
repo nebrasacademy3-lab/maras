@@ -26,5 +26,28 @@ export default async function ContactPage() {
     const url = settings[channel.key];
     return url.startsWith("https://") ? [{ ...channel, url }] : [];
   });
-  return <main><SiteHeader /><section className="page-hero contact-hero"><div className="container"><div className="breadcrumbs"><Link href="/">الرئيسية</Link><ArrowLeft size={13} /><span>تواصل معنا</span></div><div className="contact-hero-copy"><span className="eyebrow"><MessageCircle size={15} /> قنوات مراس الرسمية</span><h1>نحن قريبون منك</h1><p>للاستفسارات العامة، الشراكات التعليمية، الاقتراحات أو أي سؤال عن المنصة، اختر القناة الأنسب لك وسنكون سعداء بسماعك.</p></div></div></section><section className="content-page contact-page"><div className="container"><div className="contact-channel-grid"><article className="contact-channel-card contact-channel-primary"><div className="contact-channel-icon"><MessageCircle size={25} /></div><div><span>الأسرع عادةً</span><h2>واتساب مراس</h2><p>محادثة مباشرة للاستفسارات العامة والتوجيه السريع.</p></div>{whatsapp ? <a className="button button-primary" href={whatsapp} target="_blank" rel="noreferrer">ابدأ المحادثة <ExternalLink size={15} /></a> : <small className="contact-muted">سيُضاف الرابط قريبًا</small>}</article><article className="contact-channel-card"><div className="contact-channel-icon email"><Mail size={25} /></div><div><span>للاستفسارات المفصلة</span><h2>البريد الإلكتروني</h2><p>{settings.support_email}</p></div><a className="button button-soft" href={`mailto:${settings.support_email}`}>أرسل رسالة <ArrowLeft size={15} /></a></article></div><div className="contact-content-grid"><section className="contact-social-panel"><div className="section-heading"><div><span className="eyebrow">تابع جديد مراس</span><h2>كن على اتصال دائم</h2></div><ShieldCheck size={22} /></div><p>تابعنا لمعرفة المواد الجديدة، الإعلانات، النصائح الجامعية، والفرص التعليمية القادمة.</p>{social.length ? <div className="social-channel-grid">{social.map(({ key, label, icon: Icon, url }) => <a key={key} href={url} target="_blank" rel="noreferrer"><Icon size={19} /><span>{label}</span><ExternalLink size={13} /></a>)}</div> : <div className="contact-empty-social">تُضاف حساباتنا الاجتماعية من لوحة الإدارة قريبًا.</div>}</section><aside className="contact-support-panel"><Headphones size={25} /><span className="eyebrow">مشكلة تحتاج متابعة؟</span><h2>الدعم الفني</h2><p>تذاكر الدعم مرتبطة بحسابك حتى تحفظ خصوصية بياناتك وتستطيع متابعة الردود والطلبات من مكان واحد.</p><div className="contact-hours"><Clock3 size={15} /> {settings.support_hours}</div><Link className="button button-primary" href="/support">الدخول إلى الدعم الفني <ArrowLeft size={15} /></Link><small>يتطلب تسجيل الدخول أو إنشاء حساب جديد.</small></aside></div></div></section><SiteFooter /></main>;
+  return (
+    <main>
+      <SiteHeader />
+      <section className="page-hero contact-hero">
+        <div className="container">
+          <div className="breadcrumbs"><Link href="/">الرئيسية</Link><ArrowLeft size={13} /><span>تواصل معنا</span></div>
+          <div className="contact-hero-copy"><span className="eyebrow"><MessageCircle size={15} /> قنوات مراس الرسمية</span><h1>نحن قريبون منك</h1><p>للاستفسارات العامة، الشراكات التعليمية، الاقتراحات أو أي سؤال عن المنصة، اختر القناة الأنسب لك وسنكون سعداء بسماعك.</p></div>
+        </div>
+      </section>
+      <section className="content-page contact-page">
+        <div className="container">
+          <div className="contact-channel-grid">
+            {whatsapp ? <article className="contact-channel-card contact-channel-primary"><div className="contact-channel-icon"><MessageCircle size={25} /></div><div><span>الأسرع عادةً</span><h2>واتساب مراس</h2><p>محادثة مباشرة للاستفسارات العامة والتوجيه السريع.</p></div><a className="button button-primary" href={whatsapp} target="_blank" rel="noreferrer">ابدأ المحادثة <ExternalLink size={15} /></a></article> : null}
+            {settings.support_email ? <article className="contact-channel-card"><div className="contact-channel-icon email"><Mail size={25} /></div><div><span>للاستفسارات المفصلة</span><h2>البريد الإلكتروني</h2><p>{settings.support_email}</p></div><a className="button button-soft" href={`mailto:${settings.support_email}`}>أرسل رسالة <ArrowLeft size={15} /></a></article> : <article className="contact-channel-card"><div className="contact-channel-icon email"><Mail size={25} /></div><div><span>متابعة محفوظة</span><h2>تذكرة الدعم</h2><p>قدّم طلبك وتابع الرد من حسابك.</p></div><Link className="button button-soft" href="/support">فتح الدعم <ArrowLeft size={15} /></Link></article>}
+          </div>
+          <div className="contact-content-grid">
+            {social.length ? <section className="contact-social-panel"><div className="section-heading"><div><span className="eyebrow">تابع جديد مراس</span><h2>كن على اتصال دائم</h2></div><ShieldCheck size={22} /></div><p>تابعنا لمعرفة المواد الجديدة، الإعلانات، النصائح الجامعية، والفرص التعليمية القادمة.</p><div className="social-channel-grid">{social.map(({ key, label, icon: Icon, url }) => <a key={key} href={url} target="_blank" rel="noreferrer"><Icon size={19} /><span>{label}</span><ExternalLink size={13} /></a>)}</div></section> : null}
+            <aside className="contact-support-panel"><Headphones size={25} /><span className="eyebrow">مشكلة تحتاج متابعة؟</span><h2>الدعم الفني</h2><p>تذاكر الدعم مرتبطة بحسابك حتى تحفظ خصوصية بياناتك وتستطيع متابعة الردود والطلبات من مكان واحد.</p><div className="contact-hours"><Clock3 size={15} /> {settings.support_hours}</div><Link className="button button-primary" href="/support">الدخول إلى الدعم الفني <ArrowLeft size={15} /></Link><small>يتطلب تسجيل الدخول أو إنشاء حساب جديد.</small></aside>
+          </div>
+        </div>
+      </section>
+      <SiteFooter />
+    </main>
+  );
 }

@@ -45,6 +45,7 @@ export type Course = {
   universitySlug: string;
   specialty: string;
   specialtySlug?: string;
+  audienceScope?: "specialty" | "institution";
   description: string;
   coverImage?: string;
   price: number;

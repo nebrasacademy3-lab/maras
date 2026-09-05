@@ -28,7 +28,7 @@ export function UniversityCatalog({ institutions }: { institutions: Institution[
         <span className="filter-icon"><SlidersHorizontal size={18} /></span>
       </div>
       <p className="results-count">نعرض {filtered.length} جهة تعليمية من أصل {institutions.length}</p>
-      {filtered.length ? <div className="universities-grid university-catalog-grid">{filtered.map((institution) => <UniversityCard key={institution.slug} institution={institution} />)}</div> : <div className="catalog-empty"><Search size={30} /><h3>لا توجد نتائج مطابقة</h3><p>جرّب تغيير عبارة البحث أو عوامل التصفية. وإذا كنت تبحث عن مادة غير موجودة اطلبها ونستهدف توفيرها خلال 24 ساعة.</p><Link className="button button-primary" href="/request-course">طلب مادة · خلال 24 ساعة <ArrowLeft size={15}/></Link></div>}
+      {filtered.length ? <div className="universities-grid university-catalog-grid">{filtered.map((institution) => <UniversityCard key={institution.slug} institution={institution} />)}</div> : <div className="catalog-empty"><Search size={30} /><h3>لا توجد نتائج مطابقة</h3><p>جرّب تغيير عبارة البحث أو عوامل التصفية. وإذا كنت تبحث عن مادة غير موجودة اطلبها وتابع حالة الطلب من حسابك.</p><Link className="button button-primary" href="/request-course">طلب مادة · متابعة واضحة <ArrowLeft size={15}/></Link></div>}
     </>
   );
 }

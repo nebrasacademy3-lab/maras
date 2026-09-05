@@ -68,20 +68,20 @@ export function AiSubscriptionCheckout({ price, entitlement, returnOrder }: { pr
 
   return <div className={styles.page} dir="rtl"><div className={styles.shell}>
     <section className={styles.pitch}>
-      <span className={styles.logo}><Sparkles size={30}/></span><small>خطة مراس AI بلس</small><h1>حوّل ملفاتك إلى وقت مذاكرة أذكى</h1><p>حدود موسعة للمحادثة والتلخيص والترجمة والاختبارات، مع حفظ كل أعمالك داخل حسابك.</p>
+      <span className={styles.logo}><Sparkles size={30}/></span><small>خطة أدوات مراس بلس</small><h1>حوّل ملفاتك إلى وقت مذاكرة أذكى</h1><p>حدود موسعة للمحادثة والتلخيص والترجمة والاختبارات، مع حفظ كل أعمالك داخل حسابك.</p>
       <div className={styles.features}><article><BrainCircuit size={19}/><div><b>محادثات تعليمية موسعة</b><span>شرح عربي واضح وسجل منظم.</span></div></article><article><FileText size={19}/><div><b>تلخيص ملفات أكثر</b><span>ملخصات مرتبة من محتوى المحاضرة.</span></div></article><article><Languages size={19}/><div><b>ترجمة علمية دقيقة</b><span>حفظ المصطلحات والمعادلات والوحدات.</span></div></article><article><BadgeCheck size={19}/><div><b>اختبارات تفاعلية</b><span>أسئلة وبطاقات مع شرح الإجابة.</span></div></article></div>
-      <p className={styles.included}><Crown size={16}/> إذا كنت مشتركًا في أي مادة نشطة، تحصل على AI بلس تلقائيًا دون شراء مستقل.</p>
+      <p className={styles.included}><Crown size={16}/> إذا كنت مشتركًا في أي مادة نشطة، تحصل على خطة الأدوات تلقائيًا دون شراء مستقل.</p>
     </section>
     <aside className={styles.checkout}>
       <div className={styles.secure}><LockKeyhole size={17}/> دفع آمن عبر Tap</div><h2>الاشتراك الشهري</h2><p>يتجدد الوصول بشراء شهر جديد. السعر يحدده الخادم ولا يُقبل أي سعر من المتصفح.</p>
       <div className={styles.price}><strong>{price}</strong><span>ريال سعودي<small>لمدة شهر</small></span></div>
       <div className={styles.payment}><CreditCard size={21}/><div><b>بطاقة، مدى أو Apple Pay</b><span>تدخل بياناتك في صفحة Tap المستضافة</span></div><Check size={16}/></div>
-      {entitlement.tier === "subscriber" ? <div className={styles.active}><BadgeCheck size={19}/><span><b>خطة المشترك مفعلة لديك الآن</b><small>المصدر: {entitlement.source === "course" ? "اشتراك مادة" : "اشتراك أو هدية AI"}</small></span></div> : null}
+      {entitlement.tier === "subscriber" ? <div className={styles.active}><BadgeCheck size={19}/><span><b>خطة المشترك مفعلة لديك الآن</b><small>المصدر: {entitlement.source === "course" ? "اشتراك مادة" : "اشتراك أو هدية أدوات"}</small></span></div> : null}
       {status ? <div className={`${styles.message} ${paid ? styles.success : ""}`} role="status" aria-live="polite">{paid ? <BadgeCheck size={18}/> : <LoaderCircle className={styles.spin} size={18}/>}<span>{status}</span></div> : null}
       {error ? <div className={`${styles.message} ${styles.failure}`} role="alert">{error}</div> : null}
-      {paid ? <Link className={styles.pay} href="/meras-ai"><Sparkles size={18}/> ابدأ استخدام مراس AI</Link> : <button className={styles.pay} onClick={()=>void pay()} disabled={loading}>{loading?<LoaderCircle className={styles.spin} size={18}/>:<CreditCard size={18}/>} المتابعة للدفع · {price} ر.س</button>}
+      {paid ? <Link className={styles.pay} href="/study-tools"><Sparkles size={18}/> ابدأ استخدام أدوات مراس</Link> : <button className={styles.pay} onClick={()=>void pay()} disabled={loading}>{loading?<LoaderCircle className={styles.spin} size={18}/>:<CreditCard size={18}/>} المتابعة للدفع · {price} ر.س</button>}
       <p className={styles.note}><ShieldCheck size={14}/> لا تمر معلومات بطاقتك عبر خوادم مراس. التفعيل لا يحدث إلا بعد تأكيد CAPTURED من Tap.</p>
-      <Link className={styles.back} href="/meras-ai">العودة إلى مراس AI</Link>
+      <Link className={styles.back} href="/study-tools">العودة إلى أدوات مراس</Link>
     </aside>
   </div></div>;
 }

@@ -18,7 +18,7 @@ export function openNotificationRoute(actionUrl: unknown) {
   }
   if (!actionUrl.startsWith("/") || actionUrl.startsWith("//")) return;
   const [path = "", query = ""] = actionUrl.split("?", 2);
-  if (path === "/meras-ai" || path.startsWith("/meras-ai")) {
+  if (path === "/study-tools" || path.startsWith("/study-tools")) {
     const params = new URLSearchParams(query);
     const conversationId = params.get("conversation")?.trim();
     const quizId = params.get("quiz")?.trim();

@@ -63,7 +63,7 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
   }, [university]);
 
   const universityOptions = useMemo(() => liveInstitutions.map((item) => ({ value: item.slug, label: item.name, detail: `${item.region} · ${item.type}` })).sort((a, b) => a.label.localeCompare(b.label, "ar")), [liveInstitutions]);
-  const courseSpecialties = useMemo(() => [...new Set(liveCourses.map((course) => course.specialty).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")), [liveCourses]);
+  const courseSpecialties = useMemo(() => [...new Set(liveCourses.filter((course) => course.audienceScope !== "institution").map((course) => course.specialty).filter(Boolean))].sort((a, b) => a.localeCompare(b, "ar")), [liveCourses]);
   const specialtyOptions = useMemo(() => {
     if (university !== ALL) return [...new Set(programs.flatMap((program) => [program.name, ...(program.aliases || [])]))].sort((a, b) => a.localeCompare(b, "ar"));
     return courseSpecialties;
@@ -73,7 +73,7 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
     const rows = liveCourses.filter((course) =>
       (!needle || `${course.title} ${course.titleEn} ${course.code || ""} ${course.university} ${course.specialty}`.toLocaleLowerCase("ar").includes(needle)) &&
       (university === ALL || course.universitySlug === university) &&
-      (specialty === ALL || course.specialty === specialty),
+      (specialty === ALL || course.audienceScope === "institution" || course.specialty === specialty),
     );
     return [...rows].sort((a, b) => sort === "الأعلى تقييمًا" ? b.rating - a.rating : sort === "السعر الأقل" ? a.price - b.price : b.students - a.students);
   }, [liveCourses, query, university, specialty, sort]);
@@ -100,7 +100,7 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
     </div>
     {university !== ALL && <div className="catalog-filter-selection"><Check size={15} /><span>{selectedUniversity?.name || "الجامعة المختارة"}</span><b>{programsLoading ? "جارٍ جلب التخصصات..." : `${specialtyOptions.length} تخصصًا في الدليل`}</b></div>}
     <p className="results-count">تم العثور على {filtered.length} مادة {personalFilterActive ? "مطابقة لملفك الدراسي" : "من المواد المنشورة فعليًا"}</p>
-    {filtered.length ? <div className="courses-grid course-catalog-grid">{filtered.map((course) => <CourseCard key={course.slug} course={course} />)}</div> : <div className="catalog-empty"><Search size={30} /><h3>لم نجد مادة بهذه الفلاتر</h3><p>يمكنك البحث دون فلاتر، أو تغيير الجامعة والتخصص، أو إرسال طلب توفير مادة للجهة المختارة. نستهدف التوفير خلال 24 ساعة.</p><div className="catalog-empty-actions"><button type="button" className="button button-ghost" onClick={clearFilters}>مسح الفلاتر</button><Link href="/request-course" className="button button-primary"><Sparkles size={16} /> اطلب توفير المادة</Link></div></div>}
+    {filtered.length ? <div className="courses-grid course-catalog-grid">{filtered.map((course) => <CourseCard key={course.slug} course={course} />)}</div> : <div className="catalog-empty"><Search size={30} /><h3>لم نجد مادة بهذه الفلاتر</h3><p>يمكنك البحث دون فلاتر، أو تغيير الجامعة والتخصص، أو إرسال طلب توفير مادة للجهة المختارة. نستهدف متابعة الطلب من حسابك.</p><div className="catalog-empty-actions"><button type="button" className="button button-ghost" onClick={clearFilters}>مسح الفلاتر</button><Link href="/request-course" className="button button-primary"><Sparkles size={16} /> اطلب توفير المادة</Link></div></div>}
   </>;
 }
 
@@ -119,7 +119,7 @@ function SearchSelect({ label, value, options, onChange, disabled = false }: { l
       <div className="catalog-picker-head"><span><small>اختر من القائمة</small><strong>{label}</strong></span><button type="button" onClick={() => setOpen(false)} aria-label="إغلاق"><X size={17} /></button></div>
       <label className="catalog-picker-search"><Search size={17} /><input autoFocus value={search} onChange={(event) => setSearch(event.target.value)} placeholder={`ابحث في ${label}`} /></label>
       <div className="catalog-picker-list">{rows.map((item) => <button type="button" key={item.value} className={item.value === value ? "selected" : ""} onClick={() => { onChange(item.value); setOpen(false); setSearch(""); }}><span><strong>{item.label}</strong>{item.detail && <small>{item.detail}</small>}</span>{item.value === value && <Check size={16} />}</button>)}</div>
-      {!rows.length && <div className="catalog-picker-empty"><p>لا توجد نتيجة مطابقة. جرّب كلمة أخرى، أو اطلب المادة ونستهدف توفيرها خلال 24 ساعة.</p><Link href="/request-course" className="button button-primary">طلب مادة · خلال 24 ساعة</Link></div>}
+      {!rows.length && <div className="catalog-picker-empty"><p>لا توجد نتيجة مطابقة. جرّب كلمة أخرى، أو اطلب المادة وتابع حالتها من حسابك.</p><Link href="/request-course" className="button button-primary">طلب مادة · متابعة واضحة</Link></div>}
     </div></>}
   </div>;
 }

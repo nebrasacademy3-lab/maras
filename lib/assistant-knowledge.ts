@@ -47,6 +47,7 @@ export function detectAssistantIntent(rawQuestion: string): AssistantIntent {
 
 function englishIntentFallback(intent: AssistantIntent, user: SessionUser | null, settings: PublicSettings, institutions: Institution[], courses: Course[]): AssistantReply | null {
   const whatsApp = whatsappHref(settings);
+  const supportChannel = settings.support_email ? `Current support email: ${settings.support_email}; hours: ${settings.support_hours}.` : `The support email has not been published yet; use the support ticket. Hours: ${settings.support_hours}.`;
   const reply = (answer: string, actions: AssistantAction[], suggestions: string[] = []) => ({ answer, actions, suggestions });
   switch (intent) {
     case "registration": return reply("To create an account: open Registration, enter your name, email, Saudi mobile number, and a strong password, then choose an institution and one of its linked majors. Complete your academic level and accept the terms. Never share your password.", [action("Create account", "/register"), action("Sign in", "/login")], ["Why was registration rejected?", "What password should I use?"]);
@@ -71,7 +72,7 @@ function englishIntentFallback(intent: AssistantIntent, user: SessionUser | null
     case "files": return reply("Course requests accept PDF, PPT/PPTX, DOC/DOCX, PNG, and JPG files, up to 100 files and 100 MB total. Upload only material you are allowed to share. Lesson videos can only be uploaded by authorized staff.", [action("Request a course", "/request-course"), action("Support", "/support")]);
     case "staff": return reply("Admin and supervisor areas are available only when the server-assigned role permits them. Students cannot elevate their own role.", user?.role === "admin" ? [action("Admin area", "/admin")] : user?.role === "supervisor" ? [action("Supervisor area", "/supervisor")] : [action("Student dashboard", "/dashboard")]);
     case "assistant": return reply("Ask naturally in Arabic or English, including common spelling mistakes. I use the current catalog and your own account context when available; I will not guess prices, availability, payment status, or private data.", [action("Browse courses", "/courses"), action("Support", "/support")]);
-    case "support": return reply(`Describe the failed step, the exact message, and your device or browser. Include an order number only if relevant, and never send a password or card details. Current support email: ${settings.support_email}; hours: ${settings.support_hours}.`, [action("Open support ticket", "/support"), ...(whatsApp ? [action("WhatsApp support", whatsApp)] : []), action("Contact", "/contact")]);
+    case "support": return reply(`Describe the failed step, the exact message, and your device or browser. Include an order number only if relevant, and never send a password or card details. ${supportChannel}`, [action("Open support ticket", "/support"), ...(whatsApp ? [action("WhatsApp support", whatsApp)] : []), action("Contact", "/contact")]);
     case "thanks": return reply("You’re welcome. Tell me the service, institution, course, or exact error and I’ll point you to the next verified step.", [action("Browse courses", "/courses"), action("Support", "/support")]);
     default: return null;
   }
@@ -286,7 +287,7 @@ export function answerAssistant(rawQuestion: string, user: SessionUser | null, p
   if (has(text, ["الدعم", "مشكله", "مشكلة", "شكوى", "تواصل", "ساعدني", "ساعد", "احتاج مساعدة", "خطا", "خطأ", "ما يشتغل", "ما يفتح", "خربان"])) {
     const whatsApp = whatsappHref(publicSettings);
     return {
-      answer: `افتح تذكرة دعم واكتب وصف المشكلة واسم المادة ورقم الطلب إن وجد. لا تشارك كلمة المرور أو بيانات البطاقة. بريد الدعم: ${publicSettings.support_email}، وساعات العمل: ${publicSettings.support_hours}.${whatsApp ? " ويمكنك أيضًا بدء محادثة واتساب من الزر أدناه." : " لم تنشر الإدارة رقم واتساب بعد."}`,
+      answer: `افتح تذكرة دعم واكتب وصف المشكلة واسم المادة ورقم الطلب إن وجد. لا تشارك كلمة المرور أو بيانات البطاقة.${publicSettings.support_email ? ` بريد الدعم: ${publicSettings.support_email}،` : " لم يُنشر بريد الدعم بعد؛ استخدم التذكرة،"} وساعات العمل: ${publicSettings.support_hours}.${whatsApp ? " ويمكنك أيضًا بدء محادثة واتساب من الزر أدناه." : " لم تنشر الإدارة رقم واتساب بعد."}`,
       actions: [action("فتح تذكرة دعم", "/support"), ...(whatsApp ? [action("واتساب الدعم", whatsApp)] : []), action("صفحة التواصل", "/contact")],
     };
   }

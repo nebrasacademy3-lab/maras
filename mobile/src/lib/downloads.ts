@@ -30,7 +30,11 @@ function safeFileName(value: string) {
 
 function authHeaders(): Record<string, string> {
   const token = getApiToken();
-  return token ? { authorization: `Bearer ${token}` } : {};
+  return {
+    "x-meras-client": "mobile-v1",
+    "x-meras-platform": Platform.OS,
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+  };
 }
 
 async function downloadInBrowser(path: string, fileName: string): Promise<ProtectedDownloadResult> {

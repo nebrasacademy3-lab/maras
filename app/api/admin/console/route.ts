@@ -146,7 +146,7 @@ export async function GET(request: Request) {
       pendingReviews: Number(totalRow.pending_reviews || 0),
     },
     institutions: institutionRows.map((row) => ({ ...row, status: managedInstitutionMap.get(row.slug)?.status || "published" })),
-    courses: courses.map((row) => ({ ...row, status: managedCourseMap.get(row.slug)?.status || "published", specialtySlug: managedCourseMap.get(row.slug)?.specialtySlug || "", coverTheme: managedCourseMap.get(row.slug)?.coverTheme || "blue-violet", waitlistCount: waitlistByCourse.get(row.slug) || 0 })),
+    courses: courses.map((row) => ({ ...row, status: managedCourseMap.get(row.slug)?.status || "published", specialtySlug: managedCourseMap.get(row.slug)?.specialtySlug || "", audienceScope: managedCourseMap.get(row.slug)?.audienceScope === "institution" ? "institution" : "specialty", coverTheme: managedCourseMap.get(row.slug)?.coverTheme || "blue-violet", waitlistCount: waitlistByCourse.get(row.slug) || 0 })),
     specialties: specialtyRows,
     specialtyLinks: links,
     units: unitRows,
@@ -348,6 +348,7 @@ export async function POST(request: Request) {
     const title = cleanText(payload.title, 160);
     const suppliedSlug = cleanText(payload.slug, 80).toLowerCase();
     const status = cleanText(payload.status, 20) || "draft";
+    const audienceScope = cleanText(payload.audienceScope, 20) === "institution" ? "institution" : "specialty";
     const price = Number(payload.price);
     const oldPriceValue = Number(payload.oldPrice);
     const coverImageUrl = cleanText(payload.coverImageUrl, 1000);
@@ -368,7 +369,7 @@ export async function POST(request: Request) {
       accessDurationDays: normalizeAccessDurationDays(payload.accessDurationDays, cleanText(payload.accessLabel, 80)),
       sourceUrl: cleanText(payload.sourceUrl, 500) || before?.sourceUrl || null,
       verifiedAt: cleanText(payload.verifiedAt, 30) || before?.verifiedAt || null,
-      status, featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
+      status, audienceScope, featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
     };
     await db.insert(catalogCourses).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogCourses.slug, set: values });
     invalidateCatalogCache();
@@ -611,7 +612,7 @@ export async function POST(request: Request) {
     const course = await getCourseCatalog(courseSlug, true);
     if (!course) return jsonError("المادة غير موجودة أو غير منشورة", 404);
     if (before.universitySlug && course.universitySlug && before.universitySlug !== course.universitySlug) return jsonError("المادة لا تتبع جامعة الطلب");
-    if (before.specialty && course.specialty && before.specialty !== course.specialty) return jsonError("المادة لا تتبع تخصص الطلب");
+    if (course.audienceScope !== "institution" && before.specialty && course.specialty && before.specialty !== course.specialty) return jsonError("المادة لا تتبع تخصص الطلب");
     await db.update(courseRequests).set({ status: "available", preparedCourseSlug: course.slug, updatedAt: now }).where(eq(courseRequests.id, id));
     if (before.userId) {
       const [student] = await db.select({ email: users.email }).from(users).where(eq(users.id, before.userId)).limit(1);
@@ -637,7 +638,7 @@ export async function POST(request: Request) {
     const [before] = await db.select().from(courseRequests).where(eq(courseRequests.id, id)).limit(1);
     if (!before) return jsonError("الطلب غير موجود", 404);
     const selectedCourse = status === "available" && selectedCourseSlug ? await getCourseCatalog(selectedCourseSlug, true) : null;
-    const matchedCourse = status === "available" ? selectedCourse || (await getCoursesCatalog()).find((course) => course.title.trim() === before.courseName.trim() && (!before.universitySlug || course.universitySlug === before.universitySlug) && (!before.specialty || course.specialty === before.specialty)) : null;
+    const matchedCourse = status === "available" ? selectedCourse || (await getCoursesCatalog()).find((course) => course.title.trim() === before.courseName.trim() && (!before.universitySlug || course.universitySlug === before.universitySlug) && (course.audienceScope === "institution" || !before.specialty || course.specialty === before.specialty)) : null;
     if (status === "available" && selectedCourseSlug && !selectedCourse) return jsonError("المادة المختارة غير موجودة أو غير منشورة", 404);
     await db.update(courseRequests).set({ status, preparedCourseSlug: matchedCourse?.slug || before.preparedCourseSlug || null, updatedAt: now }).where(eq(courseRequests.id, id));
     if (before.userId) {
@@ -697,10 +698,15 @@ export async function POST(request: Request) {
       .filter(([key]) => allowed.includes(key as SettingKey))
       .map(([key, value]) => [key as SettingKey, cleanText(value, key === "announcement" || key.endsWith("description") ? 500 : 300)] as const);
     if (!entries.length) return jsonError("لا توجد إعدادات صالحة");
+    const submittedSettings = Object.fromEntries(entries);
+    if (submittedSettings.first_platform_claim_enabled && !["true", "false"].includes(submittedSettings.first_platform_claim_enabled)) return jsonError("حالة عبارة الأولوية غير صالحة");
+    if (submittedSettings.payment_methods_marketing_enabled && !["true", "false"].includes(submittedSettings.payment_methods_marketing_enabled)) return jsonError("حالة إظهار خيارات الدفع غير صالحة");
+    if (submittedSettings.first_platform_claim_enabled === "true" && (!submittedSettings.first_platform_claim_evidence_url || !safeUrl(submittedSettings.first_platform_claim_evidence_url))) return jsonError("أضف رابط إثبات HTTPS صالحًا قبل إظهار عبارة الأولوية");
     for (const [key, value] of entries) {
-      if ((key.startsWith("social_") || key === "ios_app_url" || key === "android_app_url") && value && !safeUrl(value)) return jsonError(`رابط ${SETTING_META[key].label} يجب أن يبدأ بـ https`);
+      if ((key.startsWith("social_") || key === "ios_app_url" || key === "android_app_url" || key.endsWith("_verify_url") || key === "first_platform_claim_evidence_url") && value && !safeUrl(value)) return jsonError(`رابط ${SETTING_META[key].label} يجب أن يبدأ بـ https`);
       if (key === "support_email" && value && !validEmail(value)) return jsonError("بريد الدعم غير صالح");
       if (key === "whatsapp_number" && value && !/^\+?[0-9\s-]{9,20}$/.test(value)) return jsonError("رقم واتساب غير صالح");
+      if (["commercial_registration_number", "ecommerce_authentication_number", "vat_number"].includes(key) && value && !/^[0-9 -]{5,30}$/.test(value)) return jsonError(`${SETTING_META[key].label} غير صالح`);
       if (key === "max_student_devices" && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 10)) return jsonError("حد أجهزة الطالب يجب أن يكون بين 1 و10");
       if (key === "content_view_mode" && !["both", "app_only", "web_only"].includes(value)) return jsonError("اختر طريقة مشاهدة محتوى صالحة");
       const meta = SETTING_META[key];

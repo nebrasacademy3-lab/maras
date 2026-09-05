@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Bot, CircleDollarSign, Gift, LayoutDashboard, LockKeyhole, PackageOpen, Route, type LucideIcon } from "lucide-react";
+import { Activity, Bot, CircleDollarSign, FileStack, Gift, Handshake, LayoutDashboard, LockKeyhole, PackageOpen, Route, type LucideIcon } from "lucide-react";
 import styles from "./admin-center-nav.module.css";
 
 export const ADMIN_CENTERS: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }> = [
@@ -11,8 +11,10 @@ export const ADMIN_CENTERS: ReadonlyArray<{ href: string; label: string; icon: L
   { href: "/admin/operations", label: "التشغيل والتحليلات", icon: Activity, description: "الطوابير والأتمتة والامتثال" },
   { href: "/admin/bundles", label: "الباقات والعروض", icon: PackageOpen, description: "عروض مركبة بتسعير محكوم" },
   { href: "/admin/learning-tracks", label: "المسارات القادمة", icon: Route, description: "خارطة المحتوى وتسجيل الاهتمام" },
+  { href: "/admin/course-resources", label: "ملفات المواد", icon: FileStack, description: "ملفات الطلاب ونطاق ظهور المواد" },
   { href: "/admin/referrals", label: "الإحالات والهدايا", icon: Gift, description: "المستويات والكوبونات والمراجعة" },
-  { href: "/admin/ai", label: "مراس AI", icon: Bot, description: "المفاتيح والخدمات والاشتراكات" },
+  { href: "/admin/partners", label: "الشركاء والاعتمادات", icon: Handshake, description: "الشعارات والموافقات وحالة النشر" },
+  { href: "/admin/ai", label: "أدوات مراس", icon: Bot, description: "المفاتيح والخدمات والاشتراكات" },
   { href: "/admin/security", label: "أمان الحساب", icon: LockKeyhole, description: "المصادقة الإضافية والتحقق الإداري" },
 ];
 

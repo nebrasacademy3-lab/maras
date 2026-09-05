@@ -26,7 +26,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   if (!/^[a-z0-9.-]+$/.test(appLinkHost)) {
     throw new Error("EXPO_PUBLIC_APP_LINK_HOST must be a bare hostname such as merasalelm.com");
   }
-  const appLinkPaths = ["/r", "/courses", "/learn", "/referrals", "/notifications", "/meras-ai", "/support", "/cart", "/favorites", "/dashboard", "/tracks", "/learning-tracks"];
+  const appLinkPaths = ["/r", "/courses", "/learn", "/referrals", "/notifications", "/study-tools", "/support", "/cart", "/favorites", "/dashboard", "/tracks", "/learning-tracks"];
 
   return {
     ...config,

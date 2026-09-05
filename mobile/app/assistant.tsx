@@ -18,7 +18,7 @@ type Message = { id: string; role: "user" | "assistant"; text: string; actions?:
 
 const initialMessage = (isRTL: boolean): Message => isRTL ? {
   id: "welcome-ar", role: "assistant",
-  text: "أهلًا بك، أنا مساعد مراس الذكي. اسألني بطريقتك عن الجامعات والتخصصات والمواد والدروس والتسجيل والدفع والمشغل وطلب مادة والدعم.",
+  text: "أهلًا بك، أنا مساعد مراس. اسألني بطريقتك عن الجامعات والتخصصات والمواد والدروس والتسجيل والدفع والمشغل وطلب مادة والدعم.",
   suggestions: ["ما لقيت مادتي", "كيف أشاهد درسًا مجانيًا؟", "كيف أتواصل مع الدعم؟"],
 } : {
   id: "welcome-en", role: "assistant",

@@ -13,9 +13,9 @@ async function scopeFor(request: Request) {
   return { user: user!, assignments };
 }
 
-function assigned(course: { universitySlug:string; specialty:string }, scope: Awaited<ReturnType<typeof scopeFor>>) {
+function assigned(course: { universitySlug:string; specialty:string; audienceScope?:"specialty"|"institution" }, scope: Awaited<ReturnType<typeof scopeFor>>) {
   if (!scope) return false;
-  return scope.user.role === "admin" || scope.assignments.some((item) => (!item.institutionSlug || item.institutionSlug === course.universitySlug) && (!item.specialty || item.specialty === course.specialty));
+  return scope.user.role === "admin" || scope.assignments.some((item) => (!item.institutionSlug || item.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !item.specialty : !item.specialty || item.specialty === course.specialty));
 }
 
 export async function GET(request: Request) {

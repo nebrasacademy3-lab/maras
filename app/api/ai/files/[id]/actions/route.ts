@@ -26,7 +26,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   return observeRequest(request, "ai.files.action", async (requestId) => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-file-action", `user:${user.id}`, 20, 60 * 60)) return jsonError("طلبات معالجة كثيرة. حاول لاحقًا.", 429);
     const { id: rawId } = await params;
     const fileId = Math.floor(Number(rawId));

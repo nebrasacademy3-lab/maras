@@ -149,7 +149,7 @@ export async function getProgramsCatalog(institutionSlug: string): Promise<{ pro
 }
 
 export async function getCoursesCatalog(includeDraft = false): Promise<Course[]> {
-  if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item, accessDurationDays: normalizeAccessDurationDays(item.accessDurationDays, item.access), ...courseReadiness(item.units) }));
+  if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item, rating: 0, ratingsCount: 0, students: 0, instructor: "فريق مراس الأكاديمي", audienceScope: item.audienceScope || "specialty", accessDurationDays: normalizeAccessDurationDays(item.accessDurationDays, item.access), ...courseReadiness(item.units) }));
   if (!includeDraft && coursesCache && coursesCache.expiresAt > Date.now()) return coursesCache.value;
   if (!includeDraft && coursesInFlight) return coursesInFlight;
   const load = async () => {
@@ -191,12 +191,14 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
     unitBucket.push(lesson);
     lessonsByUnit.set(lesson.unitId, unitBucket);
   }
+  const specialtyBySlug = new Map(specialties.map((row) => [row.slug, row.name]));
+  const institutionBySlug = new Map(institutions.map((row) => [row.slug, row.name]));
   const managedBySlug = new Map(managed.map((row) => [row.slug, row]));
   const result = new Map<string, Course>();
   for (const item of staticCourses) {
     const row = managedBySlug.get(item.slug);
     const linkedRow = row && validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`) ? row : undefined;
-    if (linkedRow && linkedRow.status !== "published" && !includeDraft) continue;
+    if (row && (!linkedRow || row.status !== "published") && !includeDraft) continue;
     const liveReviews = reviewsByCourse.get(item.slug) || [];
     const liveRating = liveReviews.length ? Math.round(liveReviews.reduce((sum, review) => sum + review.rating, 0) / liveReviews.length * 10) / 10 : 0;
     const liveStudents = accessCountByCourse.get(item.slug) || 0;
@@ -215,13 +217,17 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       })),
     })) : [];
     const liveLessonCount = liveUnits.reduce((sum, unit) => sum + unit.lessons.length, 0);
-    const resolvedUnits = liveUnits.length ? liveUnits : item.units;
+    const resolvedUnits = linkedRow ? liveUnits : item.units;
     result.set(item.slug, linkedRow ? {
       ...item,
       ...live,
       title: linkedRow.title,
       titleEn: linkedRow.titleEn,
       code: linkedRow.code || undefined,
+      university: institutionBySlug.get(linkedRow.institutionSlug) || linkedRow.institutionSlug,
+      universitySlug: linkedRow.institutionSlug,
+      specialty: specialtyBySlug.get(linkedRow.specialtySlug) || linkedRow.specialtySlug,
+      specialtySlug: linkedRow.specialtySlug,
       description: studentFacingCopy(linkedRow.description),
       coverImage: publicCover(item.slug, linkedRow.coverImageUrl) || item.coverImage,
       price: linkedRow.price,
@@ -229,14 +235,13 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       access: linkedRow.accessLabel,
       accessDurationDays: linkedRow.accessDurationDays,
       featured: linkedRow.featured,
+      audienceScope: linkedRow.audienceScope === "institution" ? "institution" : "specialty",
       color: themes[linkedRow.coverTheme] || item.color,
       units: resolvedUnits,
-      lessons: liveUnits.length ? liveLessonCount : item.lessons,
+      lessons: liveLessonCount,
       ...courseReadiness(resolvedUnits),
-    } : { ...item, ...live, ...courseReadiness(item.units) });
+    } : { ...item, audienceScope: item.audienceScope || "specialty", ...live, ...courseReadiness(item.units) });
   }
-  const specialtyBySlug = new Map(specialties.map((row) => [row.slug, row.name]));
-  const institutionBySlug = new Map(institutions.map((row) => [row.slug, row.name]));
   for (const row of managed) {
     if (!validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`)) continue;
     if (result.has(row.slug) || (row.status !== "published" && !includeDraft)) continue;
@@ -259,6 +264,7 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       universitySlug: row.institutionSlug,
       specialty: specialtyBySlug.get(row.specialtySlug) || row.specialtySlug,
       specialtySlug: row.specialtySlug,
+      audienceScope: row.audienceScope === "institution" ? "institution" : "specialty",
       description: studentFacingCopy(row.description),
       coverImage: publicCover(row.slug, row.coverImageUrl),
       price: row.price,
@@ -296,7 +302,7 @@ export async function getCourseCatalog(slug: string, includeDraft = false) {
 
 export async function getRecommendedCourses(institutionSlug: string, specialty: string) {
   const rows = await getCoursesCatalog();
-  const primary = rows.filter((course) => course.universitySlug === institutionSlug && course.specialty === specialty);
+  const primary = rows.filter((course) => course.universitySlug === institutionSlug && (course.audienceScope === "institution" || course.specialty === specialty));
   const sameProgram = rows.filter((course) => course.specialty === specialty && !primary.some((item) => item.slug === course.slug));
   const sameInstitution = rows.filter((course) => course.universitySlug === institutionSlug && !primary.some((item) => item.slug === course.slug));
   return [...primary, ...sameProgram, ...sameInstitution].slice(0, 8);

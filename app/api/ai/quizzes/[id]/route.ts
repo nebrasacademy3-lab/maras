@@ -9,7 +9,7 @@ import { observeRequest } from "@/lib/observability";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return observeRequest(request, "ai.quiz.read", async () => {
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-quiz-read", `user:${user.id}`, 120, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     const { id: rawId } = await params;
     const id = Math.floor(Number(rawId));

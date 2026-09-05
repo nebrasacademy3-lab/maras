@@ -12,7 +12,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   return observeRequest(request, "ai.chat.generate", async (requestId) => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
-    if (!user) return jsonError("سجّل الدخول لاستخدام مراس AI", 401);
+    if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-chat", `user:${user.id}`, 30, 60)) return jsonError("أرسلت رسائل كثيرة بسرعة. انتظر قليلًا.", 429);
     const { id: rawId } = await params;
     const conversationId = Math.floor(Number(rawId));

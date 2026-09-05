@@ -73,7 +73,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
     try {
       const payload = await responseJson<ConversationDetail>(await fetch(`/api/ai/conversations/${id}`, { cache: "no-store", credentials: "same-origin" }));
       setActiveId(id); setMessages(payload.messages || []); setFiles(payload.files || []); setArtifacts(payload.artifacts || []); setQuiz(null); setQuizAnswers({}); setQuizResults({}); setSidebarOpen(false);
-      window.history.replaceState(null, "", `/meras-ai?conversation=${id}`);
+      window.history.replaceState(null, "", `/study-tools?conversation=${id}`);
     } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر فتح المحادثة" }); }
     finally { setBusy(""); }
   }, []);
@@ -83,7 +83,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
     try {
       const payload = await responseJson<{ quiz: AiQuizPayload }>(await fetch(`/api/ai/quizzes/${id}`, { cache: "no-store", credentials: "same-origin" }));
       setQuiz(payload.quiz); setActiveId(payload.quiz.conversationId); setQuizAnswers({}); setQuizResults({});
-      window.history.replaceState(null, "", `/meras-ai?quiz=${id}`);
+      window.history.replaceState(null, "", `/study-tools?quiz=${id}`);
     } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر فتح الاختبار" }); }
     finally { setBusy(""); }
   }, []);
@@ -95,7 +95,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
         if (!active) return;
         if (initialQuizId) return openQuiz(initialQuizId);
         if (initialConversationId) return openConversation(initialConversationId);
-      }).catch((error) => active && setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر تحميل مراس AI" }));
+      }).catch((error) => active && setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر تحميل أدوات مراس" }));
     }, 0);
     return () => { active = false; window.clearTimeout(timer); };
   }, [initialConversationId, initialQuizId, loadShell, openConversation, openQuiz]);
@@ -108,7 +108,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
       const payload = await responseJson<{ conversation: AiConversationSummary }>(await fetch("/api/ai/conversations", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }));
       setConversations((current) => [payload.conversation, ...current]);
       setActiveId(payload.conversation.id); setMessages([]); setFiles([]); setArtifacts([]); setQuiz(null); setSidebarOpen(false);
-      window.history.replaceState(null, "", `/meras-ai?conversation=${payload.conversation.id}`);
+      window.history.replaceState(null, "", `/study-tools?conversation=${payload.conversation.id}`);
     } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر إنشاء المحادثة" }); }
     finally { setBusy(""); }
   };
@@ -157,7 +157,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
       const payload = await responseJson<{ artifact?: AiArtifactPayload; quiz?: AiQuizPayload; message: AiMessagePayload; usage: AiUsageStatus }>(await fetch(`/api/ai/files/${file.id}/actions`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, conversationId: activeId, targetLanguage, language: "العربية", questionCount, requestId: crypto.randomUUID() }) }));
       setMessages((current) => [...current, payload.message]);
       if (payload.artifact) setArtifacts((current) => [payload.artifact!, ...current]);
-      if (payload.quiz) { setQuiz(payload.quiz); setQuizAnswers({}); setQuizResults({}); window.history.replaceState(null, "", `/meras-ai?quiz=${payload.quiz.id}`); }
+      if (payload.quiz) { setQuiz(payload.quiz); setQuizAnswers({}); setQuizResults({}); window.history.replaceState(null, "", `/study-tools?quiz=${payload.quiz.id}`); }
       setStatus((current) => current ? { ...current, services: { ...current.services, [action]: payload.usage } } : current);
       await loadShell();
     } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر معالجة الملف" }); }
@@ -183,10 +183,10 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
     <div className={styles.ambientOne}/><div className={styles.ambientTwo}/>
     <section className={styles.shell}>
       <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
-        <div className={styles.sideBrand}><span><Sparkles size={19}/></span><div><b>مراس AI</b><small>مساحة تعلمك الذكية</small></div><button className={styles.closeSide} onClick={()=>setSidebarOpen(false)} aria-label="إغلاق"><X size={19}/></button></div>
+        <div className={styles.sideBrand}><span><Sparkles size={19}/></span><div><b>أدوات مراس</b><small>مساحة تعلمك</small></div><button className={styles.closeSide} onClick={()=>setSidebarOpen(false)} aria-label="إغلاق"><X size={19}/></button></div>
         <button className={styles.newChat} type="button" onClick={()=>void newConversation()} disabled={Boolean(busy)}><MessageSquarePlus size={18}/> محادثة جديدة</button>
         <div className={styles.historyTitle}><History size={15}/><span>السجل</span></div>
-        <nav className={styles.history} aria-label="سجل محادثات مراس AI">
+        <nav className={styles.history} aria-label="سجل محادثات أدوات مراس">
           {conversations.map((conversation) => <button key={conversation.id} className={activeId === conversation.id ? styles.activeConversation : ""} onClick={()=>void openConversation(conversation.id)}><span>{conversation.title}</span><small>{conversation.preview || "ابدأ بالسؤال أو أرفق ملفًا"}</small></button>)}
           {!conversations.length ? <div className={styles.emptyHistory}><History size={22}/><span>ستظهر محادثاتك هنا</span></div> : null}
         </nav>
@@ -197,10 +197,10 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
       <div className={styles.workspace}>
         <header className={styles.topbar}>
           <div className={styles.title}><button className={styles.menu} onClick={()=>setSidebarOpen(true)} aria-label="فتح السجل"><Menu size={21}/></button><span><BrainCircuit size={23}/></span><div><h1>مرحبًا {studentName.split(" ")[0]}</h1><p>اسأل، لخّص، ترجم واختبر فهمك</p></div></div>
-          <div className={`${styles.plan} ${status?.entitlement.tier === "subscriber" ? styles.pro : ""}`} title={status?.entitlement.tier === "subscriber" && status.entitlement.expiresAt ? `ينتهي في ${new Date(status.entitlement.expiresAt).toLocaleDateString("ar-SA")}` : undefined}>{status?.entitlement.tier === "subscriber" ? <Crown size={16}/> : <Gauge size={16}/>}<span>{status?.entitlement.tier === "subscriber" ? `مراس AI بلس${status.entitlement.expiresAt ? ` · حتى ${new Date(status.entitlement.expiresAt).toLocaleDateString("ar-SA")}` : ""}` : "الخطة المجانية"}</span>{status?.entitlement.tier === "subscriber" && status.entitlement.expiresAt && status.entitlement.source === "paid" ? <Link href="/meras-ai/subscribe" className={styles.renewLink}>تجديد</Link> : null}</div>
+          <div className={`${styles.plan} ${status?.entitlement.tier === "subscriber" ? styles.pro : ""}`} title={status?.entitlement.tier === "subscriber" && status.entitlement.expiresAt ? `ينتهي في ${new Date(status.entitlement.expiresAt).toLocaleDateString("ar-SA")}` : undefined}>{status?.entitlement.tier === "subscriber" ? <Crown size={16}/> : <Gauge size={16}/>}<span>{status?.entitlement.tier === "subscriber" ? `أدوات مراس بلس${status.entitlement.expiresAt ? ` · حتى ${new Date(status.entitlement.expiresAt).toLocaleDateString("ar-SA")}` : ""}` : "الخطة المجانية"}</span>{status?.entitlement.tier === "subscriber" && status.entitlement.expiresAt && status.entitlement.source === "paid" ? <Link href="/study-tools/subscribe" className={styles.renewLink}>تجديد</Link> : null}</div>
         </header>
 
-        <div className={styles.usageStrip}>{usageCards.map((service) => <div key={service.service}><span>{serviceLabel[service.service]}</span><b>{service.remaining}</b><small>متبقٍ من {service.limit}</small><i style={{ "--usage": `${Math.min(100, service.limit ? service.used / service.limit * 100 : 100)}%` } as React.CSSProperties}/></div>)}{status?.entitlement.tier === "free" ? <Link href="/meras-ai/subscribe"><Crown size={15}/> ترقية بـ {status.entitlement.monthlyPrice} ر.س</Link> : null}</div>
+        <div className={styles.usageStrip}>{usageCards.map((service) => <div key={service.service}><span>{serviceLabel[service.service]}</span><b>{service.remaining}</b><small>متبقٍ من {service.limit}</small><i style={{ "--usage": `${Math.min(100, service.limit ? service.used / service.limit * 100 : 100)}%` } as React.CSSProperties}/></div>)}{status?.entitlement.tier === "free" ? <Link href="/study-tools/subscribe"><Crown size={15}/> ترقية بـ {status.entitlement.monthlyPrice} ر.س</Link> : null}</div>
 
         {notice ? <div className={`${styles.notice} ${styles[notice.tone]}`}>{notice.tone === "ok" ? <Check size={17}/> : <CircleAlert size={17}/>}<span>{notice.text}</span><button onClick={()=>setNotice(null)} aria-label="إغلاق"><X size={16}/></button></div> : null}
 
@@ -216,7 +216,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
                 <span className={styles.spark}><Sparkles size={31}/></span><small>مساعدك الدراسي من مراس</small><h2>كيف أساعدك اليوم؟</h2><p>اسأل عن فكرة، أو ارفع شرائحك لتحصل على ملخص وترجمة واختبار تفاعلي.</p>
                 <div className={styles.starters}><button onClick={()=>setText("اشرح لي مفهومًا صعبًا بطريقة مبسطة مع مثال")}>اشرح لي ببساطة</button><button onClick={()=>fileInput.current?.click()}>لخّص ملف المحاضرة</button><button onClick={()=>fileInput.current?.click()}>أنشئ اختبارًا من الشرائح</button></div>
               </div> : null}
-              <div className={styles.messages}>{displayMessages.map((message) => <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.aiMessage}>{message.role === "assistant" ? <span><Sparkles size={16}/></span> : null}<div><small>{message.role === "assistant" ? "مراس AI" : "أنت"}</small><p>{message.content}</p></div></article>)}{busy==="chat" ? <article className={styles.aiMessage}><span><Sparkles size={16}/></span><div><small>مراس AI</small><p className={styles.thinking}><i/><i/><i/></p></div></article> : null}<div ref={endRef}/></div>
+              <div className={styles.messages}>{displayMessages.map((message) => <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.aiMessage}>{message.role === "assistant" ? <span><Sparkles size={16}/></span> : null}<div><small>{message.role === "assistant" ? "أدوات مراس" : "أنت"}</small><p>{message.content}</p></div></article>)}{busy==="chat" ? <article className={styles.aiMessage}><span><Sparkles size={16}/></span><div><small>أدوات مراس</small><p className={styles.thinking}><i/><i/><i/></p></div></article> : null}<div ref={endRef}/></div>
               {artifacts.length ? <div className={styles.artifacts}><h3><FileText size={17}/> نتائج محفوظة</h3>{artifacts.map((artifact)=><details key={artifact.id}><summary><span>{artifact.kind === "summary" ? <BookOpenCheck size={17}/> : <Languages size={17}/>}<b>{artifact.title}</b></span><small>{new Date(artifact.createdAt).toLocaleDateString("ar-SA")}</small></summary><pre>{artifact.content}</pre></details>)}</div> : null}
             </>}
           </section>
@@ -233,7 +233,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
           </aside>
         </div>
 
-        {!quiz ? <footer className={styles.composer}><button onClick={()=>fileInput.current?.click()} aria-label="إرفاق ملف"><Paperclip size={20}/></button><textarea rows={1} value={text} onChange={(event)=>setText(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();void send();}}} placeholder="اسأل مراس AI…"/><button className={styles.send} disabled={text.trim().length<2||Boolean(busy)} onClick={()=>void send()} aria-label="إرسال">{busy==="chat"?<LoaderCircle className={styles.spin} size={20}/>:<Send size={20}/>}</button></footer> : null}
+        {!quiz ? <footer className={styles.composer}><button onClick={()=>fileInput.current?.click()} aria-label="إرفاق ملف"><Paperclip size={20}/></button><textarea rows={1} value={text} onChange={(event)=>setText(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();void send();}}} placeholder="اسأل أدوات مراس…"/><button className={styles.send} disabled={text.trim().length<2||Boolean(busy)} onClick={()=>void send()} aria-label="إرسال">{busy==="chat"?<LoaderCircle className={styles.spin} size={20}/>:<Send size={20}/>}</button></footer> : null}
       </div>
     </section>
   </div>;
