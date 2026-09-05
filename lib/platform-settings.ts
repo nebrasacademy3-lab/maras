@@ -35,7 +35,7 @@ export const PUBLIC_SETTING_DEFAULTS = {
   vat_number: "",
   positioning_claim: "منصة سعودية متخصصة في شروحات المقررات الجامعية ومواد التعلّم المساندة.",
   first_platform_claim_enabled: "true",
-  first_platform_claim_text: "أول منصة سعودية متخصصة في تقديم شروحات المقررات الجامعية.",
+  first_platform_claim_text: "أول منصة سعودية رسمية",
   first_platform_claim_evidence_url: "",
   payment_methods_marketing_enabled: "true",
 } as const;
@@ -155,6 +155,8 @@ export async function getPublicSettings(): Promise<PublicSettings> {
     try {
       const rows = await getDb().select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.isPublic, true));
       for (const row of rows) if (Object.hasOwn(PUBLIC_SETTING_DEFAULTS, row.key)) output[row.key as PublicSettingKey] = row.value;
+      // Upgrade only the previous built-in copy; preserve any administrator-written wording.
+      if (output.first_platform_claim_text === "أول منصة سعودية متخصصة في تقديم شروحات المقررات الجامعية.") output.first_platform_claim_text = PUBLIC_SETTING_DEFAULTS.first_platform_claim_text;
     } catch {
       return output;
     }

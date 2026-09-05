@@ -50,11 +50,9 @@ export default async function Home() {
 
   return <main className={styles.page}>
     <SiteHeader />
-    <HomeGateway courses={searchCourses} institutions={searchInstitutions} featuredCourse={gatewayCourse} />
+    <HomeGateway courses={searchCourses} institutions={searchInstitutions} featuredCourse={gatewayCourse} firstClaim={firstClaim} showPayments={settings.payment_methods_marketing_enabled !== "false"} />
 
-    <section className={styles.identity} aria-label="تعريف المنصة"><div className={`container ${styles.identityInner}`}><div><span><i /> منصة سعودية</span><strong>{firstClaim}</strong></div><Link href="/how-it-works">تعرّف على مراس <ArrowLeft size={15} /></Link></div></section>
 
-    <section className={styles.credentials} aria-labelledby="credentials-title"><div className="container"><header className={styles.compactHeading}><span>بيانات المنشأة</span><h2 id="credentials-title">مراس العلم، عن قرب.</h2><p>بيانات المنشأة والسجل التجاري والتراخيص في مكان واحد.</p></header><div className={styles.credentialGrid}>{credentials.map(({ label, value, href, icon: Icon }) => { const content = <><i><Icon size={21} /></i><span><small>{label}</small>{value ? <strong dir="ltr">{value}</strong> : null}</span>{isHttps(href) ? <em>تحقق <ArrowLeft size={14} /></em> : null}</>; return isHttps(href) ? <a key={label} href={href} target="_blank" rel="noreferrer">{content}</a> : <article key={label}>{content}</article>; })}</div></div></section>
 
     <section className={styles.catalogSection} id="explore" aria-labelledby="universities-title" data-home-reveal><div className="container"><header className={styles.sectionHeading}><div><span><GraduationCap size={16} /> ابدأ من جامعتك</span><h2 id="universities-title">جامعتك. موادك. بداية أوضح.</h2></div><div><p>حرّك البطاقات، اختر جامعتك، ثم انتقل إلى تخصصك والمواد المرتبطة به.</p><Link href="/universities">جميع الجامعات <ArrowLeft size={16} /></Link></div></header><HomeHorizontalRail label="الجامعات">{universityPreview.map((institution) => <Link key={institution.slug} href={`/universities/${institution.slug}`} className={styles.universityCard}><span className={styles.universityMark}><UniversityLogo institution={institution} /></span><span><small>{institution.region} · {institution.type}</small><strong>{institution.name}</strong><bdi dir="ltr">{institution.nameEn}</bdi></span><footer><em>{institution.courses.toLocaleString("ar-SA")} مواد</em><ArrowLeft size={17} /></footer></Link>)}</HomeHorizontalRail></div></section>
 
@@ -74,6 +72,7 @@ export default async function Home() {
       </div>
     </section> : null}
     <section className={styles.finalSection} data-home-reveal><div className={`container ${styles.finalCard}`}><span aria-hidden="true">✦</span><div><small>لم تجد ما تبحث عنه؟</small><h2>اطلب المادة، واترك لنا تفاصيلها.</h2><p>أرسل الجامعة والتخصص واسم المادة، وسيتابع الطلب فريق المنصة من حسابك.</p></div><div><Link href="/request-course">أرسل طلب مادة <ArrowLeft size={16} /></Link><Link href="/courses">استكشف الكتالوج</Link></div></div></section>
+    <section className={styles.credentials} aria-labelledby="credentials-title"><div className="container"><header className={styles.compactHeading}><span>بيانات المنشأة</span><h2 id="credentials-title">مراس العلم، عن قرب.</h2><p>بيانات المنشأة والسجل التجاري والتراخيص في مكان واحد.</p></header><div className={styles.credentialGrid}>{credentials.map(({ label, value, href, icon: Icon }) => { const content = <><i><Icon size={21} /></i><span><small>{label}</small>{value ? <strong dir="ltr">{value}</strong> : null}</span>{isHttps(href) ? <em>تحقق <ArrowLeft size={14} /></em> : null}</>; return isHttps(href) ? <a key={label} href={href} target="_blank" rel="noreferrer">{content}</a> : <article key={label}>{content}</article>; })}</div></div></section>
     <HomeFaq title="كل ما تحتاجه قبل الاشتراك" /><SiteFooter />
   </main>;
 }

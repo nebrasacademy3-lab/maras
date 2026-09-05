@@ -140,3 +140,20 @@ test("public payment capabilities fail closed and never expose credential values
   assert.deepEqual(Object.keys(flags()).sort(), ["payments_ready", "tabby_available", "tamara_available"]);
   assert.equal(counts().queries, 0, "capability flags must not query or expose platform secrets");
 });
+
+test("the previous built-in first-platform copy upgrades while custom administrator wording survives", async () => {
+  const requested = "أول منصة سعودية رسمية";
+  const previous = "أول منصة سعودية متخصصة في تقديم شروحات المقررات الجامعية.";
+  const custom = "مراس العلم، شروحات جامعية مصممة لرحلتك.";
+  const defaults = await isolatedSettings();
+  assert.equal(defaults.settings.PUBLIC_SETTING_DEFAULTS.first_platform_claim_text, requested);
+  assert.equal((await defaults.settings.getPublicSettings()).first_platform_claim_text, requested);
+  for (const [stored, expected] of [[previous, requested], [custom, custom], [requested, requested]]) {
+    const { settings } = await isolatedSettings({
+      env: { DATABASE_URL: "configured" },
+      query: async () => [{ key: "first_platform_claim_text", value: stored }],
+    });
+    assert.equal((await settings.getPublicSettings()).first_platform_claim_text, expected);
+    assert.equal((await settings.getPublicSettings()).first_platform_claim_text, expected, "the cached value must preserve the same wording");
+  }
+});

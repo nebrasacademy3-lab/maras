@@ -1140,6 +1140,8 @@ Object.assign(exact, {
   "تعرض الواجهة خيارات التقسيط، وتُحدد طرق الدفع المتاحة عند الطلب حسب الأهلية.": "The interface presents installment options. Available payment methods are determined at checkout based on eligibility."
 });
 
+Object.assign(exact, { "أول منصة سعودية رسمية": "Saudi Arabia’s first official platform" });
+
 const dynamicEnglish: [RegExp, (...parts: string[]) => string][] = [
   [/^(\d+) جهة تعليمية$/, (_all, n) => `${n} institutions`],
   [/^(\d+) مادة ظاهرة$/, (_all, n) => `${n} visible courses`],

@@ -47,8 +47,8 @@ test("the homepage animation system is responsive and respects reduced motion", 
     source("components/motion-orchestrator.tsx"),
   ]);
 
-  assert.match(styles, /@media\(max-width:980px\)/);
-  assert.match(styles, /@media\(max-width:640px\)/);
+  assert.match(styles, /@media\s*\(\s*max-width\s*:\s*980px\s*\)/);
+  assert.match(styles, /@media\s*\(\s*max-width\s*:\s*640px\s*\)/);
   assert.match(`${styles}\n${gatewayStyles}`, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
   assert.match(gatewayStyles, /@keyframes enterCopy/);
   assert.match(gatewayStyles, /@keyframes enterCanvas/);

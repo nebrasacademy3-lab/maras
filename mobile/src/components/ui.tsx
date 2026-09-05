@@ -89,7 +89,8 @@ export function EmptyState({ icon = "sparkles-outline", title, text, action }: {
 }
 
 export function HeroGradient({ children }: { children: React.ReactNode }) {
-  return <LinearGradient colors={["#081D35", "#10394A", "#17605E"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>{children}</LinearGradient>;
+  const { colors } = useTheme();
+  return <LinearGradient colors={[colors.primaryDark, colors.primary, colors.violet]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>{children}</LinearGradient>;
 }
 
 const styles = StyleSheet.create({

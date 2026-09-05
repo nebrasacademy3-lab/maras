@@ -9,6 +9,7 @@ import {
   FileText,
   Languages,
   ListChecks,
+  NotebookPen,
   Play,
   Sparkles,
   UploadCloud,
@@ -87,10 +88,14 @@ function CourseCanvas({ course }: { course?: FeaturedCourse }) {
   }
   return (
     <div className={styles.courseCanvas}>
-      <div className={styles.canvasLabel}><span>من كتالوج مراس</span><i /></div>
-      <div className={styles.lessonVisual} aria-hidden="true"><div><BookOpen size={38} strokeWidth={1.4} /><span>مراس العلم</span></div><i><Play size={21} fill="currentColor" /></i><span>خطوة للفهم<small>ومساحة لطموحك</small></span></div>
+      <div className={styles.canvasLabel}><span><i /> داخل تجربة مراس</span><small>مادة من الكتالوج</small></div>
+      <Link className={styles.lessonVisual} href={"/courses/" + course.slug + (course.previewReady ? "#preview" : "")}>
+        <div className={styles.lessonArtwork} aria-hidden="true"><span /><span /><span /><BookOpen size={46} strokeWidth={1.3} /></div>
+        <div className={styles.lessonCaption}><small>من السؤال، إلى الفهم</small><strong>كل فكرة،<br />تصير أوضح.</strong></div>
+        <span className={styles.playPreview}>{course.previewReady ? <Play size={20} fill="currentColor" /> : <ArrowLeft size={20} />}<small>{course.previewReady ? "جرّب الشرح" : "اكتشف المادة"}</small></span>
+      </Link>
       <div className={styles.courseIdentity}>
-        <span>{course.title.slice(0, 1)}</span>
+        <span><BookOpen size={23} /></span>
         <div><small>{course.university}</small><h2>{course.title}</h2><p>{course.specialty}</p></div>
       </div>
       <div className={styles.courseFacts}>
@@ -100,10 +105,10 @@ function CourseCanvas({ course }: { course?: FeaturedCourse }) {
       </div>
       <div className={styles.courseCanvasActions}>
         <Link href={"/courses/" + course.slug + (course.previewReady ? "#preview" : "")}>
-          <Play size={16} fill="currentColor" />
+          <ArrowLeft size={16} />
           {course.previewReady ? "شاهد الدرس المجاني" : "استعرض تفاصيل المادة"}
         </Link>
-        <Link href={"/courses/" + course.slug}>تفاصيل المادة <ArrowLeft size={15} /></Link>
+        <Link href="/courses">كل المواد <ArrowLeft size={15} /></Link>
       </div>
     </div>
   );
@@ -166,12 +171,16 @@ export function HomeGateway({
   featuredCourse,
   resume,
   firstName,
+  firstClaim = "أول منصة سعودية رسمية",
+  showPayments = true,
 }: {
   courses: SearchCourse[];
   institutions: SearchInstitution[];
   featuredCourse?: FeaturedCourse;
   resume?: ResumeCourse;
   firstName?: string;
+  firstClaim?: string;
+  showPayments?: boolean;
 }) {
   const [intent, setIntent] = useState<Intent>(resume ? "resume" : "course");
   const tabs = resume
@@ -180,21 +189,16 @@ export function HomeGateway({
 
   return (
     <section className={styles.gateway} aria-labelledby="home-gateway-title">
-      <div className={styles.thread} aria-hidden="true">
-        <svg viewBox="0 0 1200 620" preserveAspectRatio="none">
-          <path d="M1140 145 C960 145 930 480 730 480 S400 180 80 475" />
-        </svg>
-        <i />
-      </div>
+      <div className={styles.backdrop} aria-hidden="true"><i /><i /><span>✦</span><span>✧</span></div>
       <div className={"container " + styles.layout}>
         <div className={styles.copy}>
-          <span className={styles.eyebrow}><i /> من جامعتك، إلى أبعد مما تتخيّل</span>
+          <span className={styles.eyebrow}><Sparkles size={16} aria-hidden="true" /> {firstClaim}</span>
           <h1 id="home-gateway-title">
-            {firstName ? "مرحبًا " + firstName + "،" : "الفهم يبدأ هنا."}
+            {firstName ? "مرحبًا " + firstName + "،" : "هنا، تتّضح الفكرة."}
             <br />
-            <em>{firstName ? "نكمّل رحلتك؟" : "وطموحك أبعد."}</em>
+            <em>{firstName ? "نكملها خطوة أبعد؟" : "ويكبر الطموح."}<svg viewBox="0 0 560 20" aria-hidden="true" preserveAspectRatio="none"><path d="M5 13 Q250 -5 555 9" /></svg></em>
           </h1>
-          <p>شروحات تناسب موادك، وأدوات ترتّب مذاكرتك. من أول محاضرة إلى آخر مراجعة؛ مراس معك في كل خطوة.</p>
+          <p>مواد جامعتك بشرح يقرّب البعيد، وأدوات تجعل للمذاكرة معنى جديدًا.<br className={styles.desktopBreak} /> من أول سؤال إلى لحظة الفهم؛ هذه مساحتك في مراس.</p>
 
           <div className={styles.intentShell}>
             <div className={styles.intentTabs} role="tablist" aria-label="اختر ما تريد إنجازه">
@@ -241,11 +245,16 @@ export function HomeGateway({
           <div className={styles.assurances}>
             <span><Check size={14} /> درس تجريبي قبل الاشتراك</span>
             <span><Check size={14} /> تقدّم محفوظ على أجهزتك</span>
-            <a href="#payment"><Check size={14} /> تابي وتمارا عبر Tap</a>
+            {showPayments ? <a href="#payment"><Check size={14} /> تابي وتمارا عبر Tap</a> : null}
           </div>
         </div>
 
-        <div
+        <div className={styles.stage}>
+          <div className={styles.orbit} aria-hidden="true"><i /><i /></div>
+          <div className={styles.noteCard}><span><NotebookPen size={20} /></span><small>لحظة فهم تستحق الحفظ</small><strong>فكرة. ملاحظة.<br />ورجعة في وقتها.</strong><i /><i /><i /></div>
+          <Link href="/study-tools" className={styles.toolsCard}><span><Sparkles size={19} /></span><div><strong>مذاكرتك، بطريقتك.</strong><small>تلخيص · ترجمة · تدريب</small></div><ArrowLeft size={17} /></Link>
+          <span className={styles.stageWord} aria-hidden="true">مساحةٌ لطموحك</span>
+          <div
           id="home-intent-panel"
           className={styles.canvas}
           role="tabpanel"
@@ -257,6 +266,8 @@ export function HomeGateway({
           {intent === "resume" && resume ? <ResumeCanvas resume={resume} /> : null}
           {intent !== "course" && intent !== "resume" ? <AiCanvas intent={intent} /> : null}
         </div>
+        </div>
+        <a href="#explore" className={styles.exploreLink}>اكتشف عالم مراس <span><ArrowLeft size={17} /></span></a>
       </div>
     </section>
   );
