@@ -12,7 +12,7 @@ import { AdminAi } from "@/src/components/AdminAi";
 import { AdminFinance, AdminLearningTracks, AdminOperations, AdminStudentProfile } from "@/src/components/AdminCenters";
 import { AdminReferrals } from "@/src/components/AdminReferrals";
 import { AppearanceSettings } from "@/src/components/AppearanceSettings";
-import { SearchPicker } from "@/src/components/SearchPicker";
+import { SearchChoice, SearchPicker } from "@/src/components/SearchPicker";
 import { AppButton, Card, EmptyState, Field, LoadingState, Screen, SearchBox, SectionTitle } from "@/src/components/ui";
 import { absoluteUrl, ADMIN_STEP_UP_MESSAGE, api, ApiError, getApiToken, isAdminStepUpError, jsonBody, setAdminStepUpToken } from "@/src/lib/api";
 import { downloadProtectedFile } from "@/src/lib/downloads";
@@ -168,6 +168,10 @@ export default function Admin() {
 
   return <Screen keyboard>
     <AppHeader title="لوحة الإدارة" subtitle="تحكم مباشر وآمن في منصة مراس" back />
+    <View style={[styles.adminNavigator, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+      <View style={[styles.adminNavigatorHead, { flexDirection: rowDirection }]}><View style={[styles.adminNavigatorIcon, { backgroundColor: colors.surface }]}><Ionicons name="grid-outline" size={23} color={colors.primary} /></View><View style={{ flex: 1 }}><Text style={[styles.adminNavigatorTitle, { color: colors.text }]}>مركز التحكم</Text><Text style={[styles.adminNavigatorCopy, { color: colors.textSoft }]}>انتقل لأي قسم بالاسم، ثم ابحث داخل اختياراته</Text></View></View>
+      <SearchPicker label="أقسام الإدارة" hideLabel value={tab} placeholder="ابحث عن قسم" items={tabs.map((item) => ({ key: item.key, label: item.label }))} onSelect={(item) => setTab(item.key as Tab)} />
+    </View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.tabs, { direction, flexDirection: rowDirection }]}>{tabs.map((item) => <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected: tab === item.key }} onPress={() => setTab(item.key)} style={[styles.tab, { backgroundColor: tab === item.key ? colors.primary : colors.surface, borderColor: tab === item.key ? colors.primary : colors.border }]}><View style={styles.tabIcon}><Ionicons name={item.icon} size={18} color={tab === item.key ? "#FFF" : colors.primary} /></View><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.82} style={[styles.tabLabel, { color: tab === item.key ? "#FFF" : colors.text }]}>{item.label}</Text></Pressable>)}</ScrollView>
     {message ? <Text style={[styles.message, { color: message.startsWith("تم") ? colors.success : colors.danger }]}>{message}</Text> : null}
     {tab === "overview" && <Overview data={data} colors={colors} />}
@@ -182,8 +186,8 @@ export default function Admin() {
     {tab === "operations" && <AdminOperations onStepUpRequired={stepUpRequired} />}
     {tab === "bundles" && <MobileBundleAdmin colors={colors} institutions={data.institutions}/>}
     {tab === "tracks" && <AdminLearningTracks onStepUpRequired={stepUpRequired} />}
-    {tab === "referrals" && <AdminReferrals onStepUpRequired={stepUpRequired} />}
-    {tab === "ai" && <AdminAi onStepUpRequired={stepUpRequired} />}
+    {tab === "referrals" && <AdminReferrals onStepUpRequired={stepUpRequired} users={data.users.map((row) => ({ key: row.email, label: row.fullName, detail: row.email }))} courses={data.courses.map((row) => ({ key: row.slug, label: row.title, detail: row.university }))} />}
+    {tab === "ai" && <AdminAi onStepUpRequired={stepUpRequired} users={data.users.map((row) => ({ key: row.email, label: row.fullName, detail: row.email }))} />}
     {tab === "reviews" && <Reviews data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "communication" && <Communication data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "security" && <MobileAdminSecurity colors={colors} />}
@@ -278,7 +282,7 @@ function Users({ data, colors, mutate, onDelete, onOpenProfile }: { data: AdminD
 function AdminRequestStatus({ status, colors }: { status: string; colors: Colors }) { const { language } = useLanguage(); return <Text style={{ color: status === "available" ? colors.success : colors.primary, fontSize: 9, fontWeight: "900" }}>{requestStatusLabels[language][status] || "حالة طلب غير معروفة"}</Text>; }
 
 function Requests({ rows, courses, colors, mutate, onDelete }: { rows: AdminData["requests"]; courses: AdminData["courses"]; colors: Colors; mutate: Mutate; onDelete: DeleteEntity }) {
-  const { language, direction, rowDirection } = useLanguage();
+  const { language } = useLanguage();
   const [selectedCourses, setSelectedCourses] = useState<Record<number, string>>({});
   const [query, setQuery] = useState("");
   const visibleRows = rows.filter((row) => !query.trim() || `${row.courseName} ${row.student?.fullName || ""} ${row.student?.email || ""} ${row.university} ${row.specialty}`.toLowerCase().includes(query.trim().toLowerCase()));
@@ -306,7 +310,7 @@ function Requests({ rows, courses, colors, mutate, onDelete }: { rows: AdminData
     <SearchPicker label="المادة بعد التجهيز" value={selected} placeholder="اختر مادة منشورة مطابقة" items={options.map((course) => ({ key: course.slug, label: course.title, detail: course.specialty }))} onSelect={(item) => setSelectedCourses((current) => ({ ...current, [row.id]: item.key }))} />
     <AppButton title="تم تجهيز الطلب وإشعار الطالب" icon="checkmark-done-outline" disabled={!selected} onPress={() => void mutate({ action: "prepareRequest", id: row.id, courseSlug: selected }, "تم تجهيز الطلب وإرسال الإشعار")}/>
     <AppButton title="حذف الطلب وملفاته" icon="trash-outline" variant="danger" onPress={() => onDelete("course_request", row.id, row.courseName, "سيُحذف الطلب وجميع ملفاته من التخزين نهائيًا.")} />
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.statuses, { direction, flexDirection: rowDirection }]}>{requestStatuses.map((status) => <Pressable key={status} onPress={() => mutate({ action: "updateRequest", id: row.id, status, courseSlug: status === "available" ? selected : undefined })} style={[styles.status, { backgroundColor: row.status === status ? colors.primary : colors.surfaceAlt }]}><Text style={{ color: row.status === status ? "#FFF" : colors.textSoft, fontSize: 8 }}>{requestStatusLabels[language][status] || "حالة طلب غير معروفة"}</Text></Pressable>)}</ScrollView>
+    <SearchPicker label="حالة الطلب" value={row.status} placeholder="اختر حالة الطلب" items={requestStatuses.map((key) => ({ key, label: requestStatusLabels[language][key] || key }))} onSelect={(item) => void mutate({ action: "updateRequest", id: row.id, status: item.key, courseSlug: item.key === "available" ? selected : undefined })} />
   </Card>; }) : <EmptyState title="لا توجد نتائج" text="لا توجد طلبات مطابقة لبحثك." />}</>;
 }
 
@@ -490,7 +494,7 @@ function Commerce({ data, colors, mutate, onDelete }: { data: AdminData; colors:
     <Card>
       <ChoiceRow
         values={["false", "true"]}
-        selected={data.settings.payment_methods_marketing_enabled || "false"}
+        selected={data.settings.payment_methods_marketing_enabled || "true"}
         onSelect={(value) => void mutate(
           { action: "saveSettings", values: { payment_methods_marketing_enabled: value } },
           "تم تحديث سياسة عرض وسائل الدفع",
@@ -498,7 +502,7 @@ function Commerce({ data, colors, mutate, onDelete }: { data: AdminData; colors:
         colors={colors}
         labels={{ false: "إخفاء الأسماء", true: "السماح بالعرض" }}
       />
-      <Text style={[styles.dataMeta, { color: colors.textSoft }]}>يظهر المحتوى التسويقي فقط عندما تكون بوابة الدفع المطلوبة مهيأة فعليًا على الخادم.</Text>
+      <Text style={[styles.dataMeta, { color: colors.textSoft }]}>تعرض الواجهة خيارات التقسيط، وتُحدد طرق الدفع المتاحة عند الطلب حسب الأهلية.</Text>
     </Card>
     <SectionTitle title="منح صلاحية مادة" subtitle="اختر هل الوصول ناتج عن دفعة يدوية مسجلة أو منحة مجانية" />
     <Card>
@@ -529,12 +533,11 @@ type MobileBundle = { id:number;slug:string;title:string;description:string;inst
 function MobileBundleAdmin({ colors, institutions }:{ colors:Colors;institutions:AdminData["institutions"] }) {
   const bundles = useQuery({ queryKey:["admin-bundles"], queryFn:()=>api<{bundles:MobileBundle[];catalog:MobileBundleCatalogCourse[]}>("/api/admin/bundles"), staleTime:10_000, retry:1 });
   const [editingId,setEditingId] = useState<number|null>(null);
-  const [courseQuery,setCourseQuery] = useState("");
   const [feedback,setFeedback] = useState("");
   const [busy,setBusy] = useState(false);
   const [form,setForm] = useState({ slug:"",title:"",description:"",institutionSlug:"",specialtySlug:"",discountType:"percent" as "percent"|"fixed",discountValue:"10",status:"draft" as "draft"|"published"|"archived",featured:false,startsAt:"",expiresAt:"",courseSlugs:[] as string[] });
   const catalog=bundles.data?.catalog || [];
-  const reset=()=>{setEditingId(null);setCourseQuery("");setForm({slug:"",title:"",description:"",institutionSlug:"",specialtySlug:"",discountType:"percent",discountValue:"10",status:"draft",featured:false,startsAt:"",expiresAt:"",courseSlugs:[]});};
+  const reset=()=>{setEditingId(null);setForm({slug:"",title:"",description:"",institutionSlug:"",specialtySlug:"",discountType:"percent",discountValue:"10",status:"draft",featured:false,startsAt:"",expiresAt:"",courseSlugs:[]});};
   const edit=(bundle:MobileBundle)=>{setEditingId(bundle.id);setForm({slug:bundle.slug,title:bundle.title,description:bundle.description,institutionSlug:bundle.institutionSlug||"",specialtySlug:bundle.specialtySlug||"",discountType:bundle.discountType,discountValue:String(bundle.discountValue),status:bundle.status,featured:bundle.featured,startsAt:bundle.startsAt||"",expiresAt:bundle.expiresAt||"",courseSlugs:bundle.courseSlugs});setFeedback("");};
   const toggle=(slug:string)=>setForm((current)=>({...current,courseSlugs:current.courseSlugs.includes(slug)?current.courseSlugs.filter((item)=>item!==slug):[...current.courseSlugs,slug]}));
   const selected=catalog.filter((course)=>form.courseSlugs.includes(course.slug));
@@ -545,8 +548,7 @@ function MobileBundleAdmin({ colors, institutions }:{ colors:Colors;institutions
   const visibleCourses=catalog.filter((course)=>{
     if(form.institutionSlug&&course.universitySlug!==form.institutionSlug)return false;
     if(form.specialtySlug&&course.specialtySlug!==form.specialtySlug)return false;
-    const normalized=courseQuery.trim().toLowerCase();
-    return !normalized||`${course.title} ${course.university} ${course.specialty}`.toLowerCase().includes(normalized);
+    return true;
   });
   const specialtyOptions=[...new Map(catalog.filter((course)=>!form.institutionSlug||course.universitySlug===form.institutionSlug).map((course)=>[course.specialtySlug,course.specialty])).entries()].filter(([slug])=>Boolean(slug));
   const save=async()=>{
@@ -572,9 +574,8 @@ function MobileBundleAdmin({ colors, institutions }:{ colors:Colors;institutions
       <Text style={[styles.dataMeta,{color:colors.textSoft}]}>حالة الباقة</Text><ChoiceRow values={["draft","published","archived"]} selected={form.status} onSelect={(value)=>setForm({...form,status:value as typeof form.status})} colors={colors} labels={{draft:"مسودة",published:"منشورة",archived:"مؤرشفة"}}/>
       <ChoiceRow values={["normal","featured"]} selected={form.featured?"featured":"normal"} onSelect={(value)=>setForm({...form,featured:value==="featured"})} colors={colors} labels={{normal:"عرض عادي",featured:"إبراز في الواجهة"}}/>
       <Field label="بداية العرض ISO — اختياري" value={form.startsAt} onChangeText={(value)=>setForm({...form,startsAt:value})} autoCapitalize="none"/><Field label="نهاية العرض ISO — اختياري" value={form.expiresAt} onChangeText={(value)=>setForm({...form,expiresAt:value})} autoCapitalize="none"/>
-      <SearchBox value={courseQuery} onChangeText={setCourseQuery} placeholder="ابحث عن مادة لإضافتها"/>
-      <View style={styles.bundleCourseGrid}>{visibleCourses.slice(0,50).map((course)=>{const active=form.courseSlugs.includes(course.slug);return <Pressable key={course.slug} onPress={()=>toggle(course.slug)} style={[styles.bundleCourse,{borderColor:active?colors.primary:colors.border,backgroundColor:active?`${colors.primary}12`:colors.surfaceAlt}]}><Ionicons name={active?"checkmark-circle":"add-circle-outline"} size={20} color={active?colors.primary:colors.textSoft}/><View style={{flex:1}}><Text style={[styles.dataTitle,{color:colors.text}]}>{course.title}</Text><Text style={[styles.dataMeta,{color:colors.textSoft}]}>{course.university} · {course.specialty}</Text></View><Text style={{color:course.availableForPurchase?colors.primary:colors.warning,fontSize:9,fontWeight:"900"}}>{course.availableForPurchase?`${course.price} ر.س`:"قيد التجهيز"}</Text></Pressable>;})}</View>
-      {visibleCourses.length>50?<Text style={[styles.dataMeta,{color:colors.textSoft}]}>استخدم البحث للوصول إلى بقية المواد.</Text>:null}
+      <SearchPicker label="إضافة مواد إلى الباقة" placeholder="ابحث وأضف مادة" items={visibleCourses.filter((course) => !form.courseSlugs.includes(course.slug)).map((course) => ({ key: course.slug, label: course.title, detail: `${course.university} · ${course.specialty} · ${course.price} ر.س` }))} onSelect={(item) => toggle(item.key)} />
+      <View style={styles.bundleSelected}>{selected.map((course) => <View key={course.slug} style={[styles.bundleCourse, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}><Ionicons name="checkmark-circle" size={20} color={colors.success} /><View style={{ flex: 1 }}><Text style={[styles.dataTitle, { color: colors.text }]}>{course.title}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{course.university} · {course.price} ر.س</Text></View><Pressable accessibilityRole="button" accessibilityLabel={`إزالة ${course.title} من الباقة`} onPress={() => toggle(course.slug)} hitSlop={8} style={styles.removeChoice}><Ionicons name="close-circle-outline" size={23} color={colors.danger} /></Pressable></View>)}</View>
       <View style={[styles.bundleQuote,{backgroundColor:colors.surfaceAlt,borderColor:colors.border}]}><Text style={[styles.dataMeta,{color:colors.textSoft}]}>{form.courseSlugs.length} مواد · قبل الخصم {subtotal.toFixed(2)} ر.س</Text><Text style={[styles.dataTitle,{color:colors.primary}]}>سعر الباقة {total.toFixed(2)} ر.س</Text></View>
       {feedback?<Text style={[styles.message,{color:feedback.startsWith("تم")?colors.success:colors.danger}]}>{feedback}</Text>:null}
       <View style={styles.actionRow}><AppButton full={false} title={editingId?"حفظ التعديلات":"إنشاء الباقة"} icon="save-outline" loading={busy} onPress={()=>void save()}/>{editingId?<AppButton full={false} title="إلغاء" variant="soft" onPress={reset}/>:null}</View>
@@ -717,13 +718,14 @@ function Communication({ data, colors, mutate, onDelete }: { data: AdminData; co
   </>;
 }
 
-function ChoiceRow({ values, selected, onSelect, colors, labels }: { values: string[]; selected: string; onSelect: (value: string) => void; colors: Colors; labels?: Record<string, string> }) {
-  const { direction, rowDirection } = useLanguage();
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.choices, { direction, flexDirection: rowDirection }]}>{values.map((value) => <Pressable key={value} onPress={() => onSelect(value)} style={[styles.choice, { backgroundColor: selected === value ? colors.primary : colors.surfaceAlt }]}><Text style={{ color: selected === value ? "#FFF" : colors.text, fontSize: 9, fontWeight: "800" }}>{labels?.[value] || value}</Text></Pressable>)}</ScrollView>;
+function ChoiceRow({ values, selected, onSelect, labels }: { values: string[]; selected: string; onSelect: (value: string) => void; colors: Colors; labels?: Record<string, string> }) {
+  return <SearchChoice values={values} selected={selected} labels={labels} onChange={onSelect} />;
 }
 
 const styles = StyleSheet.create({
-  tabs: { gap: 8, paddingBottom: 14 }, tab: { width: 100, height: 62, flexShrink: 0, overflow: "hidden", borderWidth: 1, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 4 }, tabIcon: { width: 24, height: 24, flexShrink: 0, alignItems: "center", justifyContent: "center" }, tabLabel: { width: "100%", paddingHorizontal: 5, textAlign: "center", fontSize: 9, fontWeight: "900" }, message: { fontSize: 10, textAlign: "center", marginBottom: 8, fontWeight: "800" }, segmentBox: { gap: 10, padding: 12, borderWidth: 1, borderRadius: 15 }, securitySetup: { gap: 9, padding: 12, borderWidth: 1, borderRadius: 14 }, securitySecret: { fontSize: 14, fontWeight: "900", letterSpacing: 2, textAlign: "center" }, bundleCourseGrid: { maxHeight: 420, gap: 7 }, bundleCourse: { minHeight: 58, flexDirection: "row-reverse", alignItems: "center", gap: 9, padding: 10, borderWidth: 1, borderRadius: 13 }, bundleQuote: { gap: 5, padding: 12, borderWidth: 1, borderRadius: 13 },
+  bundleSelected: { gap: 8, marginBottom: 14 }, removeChoice: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" },
+  adminNavigator: { borderWidth: 1, borderRadius: 24, padding: 16, paddingBottom: 2, marginBottom: 16 }, adminNavigatorHead: { alignItems: "center", gap: 12, marginBottom: 14 }, adminNavigatorIcon: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center" }, adminNavigatorTitle: { fontSize: 19, lineHeight: 28, fontWeight: "900" }, adminNavigatorCopy: { fontSize: 11, lineHeight: 19, marginTop: 3 },
+  tabs: { gap: 8, paddingBottom: 14 }, tab: { width: 100, height: 62, flexShrink: 0, overflow: "hidden", borderWidth: 1, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 4 }, tabIcon: { width: 24, height: 24, flexShrink: 0, alignItems: "center", justifyContent: "center" }, tabLabel: { width: "100%", paddingHorizontal: 5, textAlign: "center", fontSize: 9, fontWeight: "900" }, message: { fontSize: 10, textAlign: "center", marginBottom: 8, fontWeight: "800" }, segmentBox: { gap: 10, padding: 12, borderWidth: 1, borderRadius: 15 }, securitySetup: { gap: 9, padding: 12, borderWidth: 1, borderRadius: 14 }, securitySecret: { fontSize: 14, fontWeight: "900", letterSpacing: 2, textAlign: "center" }, bundleCourseGrid: { maxHeight: 420, gap: 7 }, bundleCourse: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 9, padding: 10, borderWidth: 1, borderRadius: 13 }, bundleQuote: { gap: 5, padding: 12, borderWidth: 1, borderRadius: 13 },
   metricGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 }, metric: { width: "48%", minHeight: 130, alignItems: "flex-start" }, metricValue: { fontSize: 20, fontWeight: "900", marginTop: 12 }, metricLabel: { fontSize: 9, marginTop: 4 },
   queue: { minHeight: 54, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, queueValue: { fontSize: 18, fontWeight: "900" }, queueLabel: { fontSize: 11, fontWeight: "800" }, service: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: 9 }, serviceText: { flex: 1, fontSize: 11, fontWeight: "800", textAlign: "right" },
   dataCard: { marginBottom: 9 }, coverPreview: { width: "100%", height: 150, borderRadius: 16, marginTop: 10, backgroundColor: "#CBD5E1" }, requestFiles: { marginTop: 6, gap: 5 }, requestFile: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6 }, requestLink: { marginTop: 9, borderWidth: 1, borderRadius: 13, padding: 10, flexDirection: "row", alignItems: "center", gap: 9 }, deviceBox: { marginTop: 10, borderWidth: 1, borderRadius: 14, padding: 10, gap: 7 }, deviceTitle: { fontSize: 10, fontWeight: "900" }, deviceRow: { minHeight: 52, borderTopWidth: 1, paddingTop: 7, flexDirection: "row", alignItems: "center", gap: 8 }, deviceCopy: { flex: 1 }, deviceName: { fontSize: 10, fontWeight: "900" }, noticePreview: { minHeight: 86, borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center", gap: 12 }, dataHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }, dataTitle: { flex: 1, fontSize: 13, fontWeight: "900", textAlign: "right" }, role: { fontSize: 9, fontWeight: "900" }, dataMeta: { fontSize: 8, textAlign: "right", marginTop: 5 }, actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 12 }, statuses: { gap: 6, marginTop: 11 }, status: { minHeight: 34, borderRadius: 11, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },

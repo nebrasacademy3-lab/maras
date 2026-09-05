@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
@@ -16,7 +17,7 @@ function phoneCandidate(value: string) {
 export async function POST(request: Request) {
   if (!isMobileRequest(request)) return jsonError("طلب تطبيق غير صالح", 403);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الدخول غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request); } catch { return jsonError("بيانات الدخول غير صالحة"); }
   const identifier = cleanText(payload.identifier, 180).toLowerCase();
   const password = typeof payload.password === "string" ? payload.password : "";
   const ipIdentity = clientIp(request);

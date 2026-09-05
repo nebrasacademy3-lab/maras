@@ -6,6 +6,7 @@ import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { getCourseCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { syncCatalogTemplates } from "@/lib/catalog-sync";
 import { deleteObject, putObject } from "@/lib/storage";
+import { readBoundedFormData, RequestBodyTooLargeError } from "@/lib/request-body";
 
 const MAX_COVER_BYTES = 6 * 1024 * 1024;
 const allowedTypes = new Map([["image/png", "png"], ["image/jpeg", "jpg"], ["image/webp", "webp"]]);
@@ -26,8 +27,9 @@ export async function POST(request: Request) {
   if (!await checkRateLimit("admin-cover-upload", identity, 20, 60)) return jsonError("طلبات الرفع كثيرة. حاول بعد دقيقة.", 429);
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_COVER_BYTES + 1 * 1024 * 1024) return jsonError("حجم الطلب أكبر من المسموح", 413);
-  const form = await request.formData().catch(() => null);
-  if (!form) return jsonError("تعذر قراءة الغلاف", 400);
+  let form: FormData;
+  try { form = await readBoundedFormData(request, MAX_COVER_BYTES + 1024 * 1024); }
+  catch (error) { return jsonError(error instanceof RequestBodyTooLargeError ? error.message : "تعذر قراءة الغلاف", error instanceof RequestBodyTooLargeError ? 413 : 400); }
   const slug = cleanText(form.get("courseSlug"), 80).toLowerCase();
   const file = form.get("file");
   if (!await getCourseCatalog(slug, true)) return jsonError("المادة غير موجودة", 404);
@@ -48,10 +50,12 @@ export async function POST(request: Request) {
     if (!existing) return jsonError("حوّل المادة إلى سجل قابل للإدارة قبل رفع الغلاف", 409);
     await putObject(objectKey, file.stream(), detectedType);
     const coverImageUrl = `r2:${objectKey}`;
-    const updated = await db.update(catalogCourses).set({ coverImageUrl, updatedAt: new Date().toISOString() }).where(eq(catalogCourses.slug, slug)).returning({ slug: catalogCourses.slug });
-    if (!updated.length) throw new Error("course-update-failed");
+    await db.transaction(async (tx) => {
+      const updated = await tx.update(catalogCourses).set({ coverImageUrl, updatedAt: new Date().toISOString() }).where(eq(catalogCourses.slug, slug)).returning({ slug: catalogCourses.slug });
+      if (!updated.length) throw new Error("course-update-failed");
+      await tx.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "course_cover", entityId: slug, beforeJson: existing?.coverImageUrl || null, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
+    });
     if (existing?.coverImageUrl?.startsWith("r2:")) await deleteObject(existing.coverImageUrl.slice(3)).catch(() => undefined);
-    await db.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "course_cover", entityId: slug, beforeJson: existing?.coverImageUrl || null, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
     invalidateCatalogCache();
     return Response.json({ ok: true, coverImageUrl: `/api/covers/${slug}` }, { status: 201, headers: { "cache-control": "no-store" } });
   } catch {

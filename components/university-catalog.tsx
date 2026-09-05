@@ -1,4 +1,5 @@
 "use client";
+import { SearchableSelect } from "@/components/searchable-select";
 
 import { useMemo, useState } from "react";
 import { ArrowLeft, Search, SlidersHorizontal } from "lucide-react";
@@ -23,8 +24,8 @@ export function UniversityCatalog({ institutions }: { institutions: Institution[
     <>
       <div className="filter-bar">
         <label className="filter-search"><Search size={19} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="ابحث باسم الجامعة أو الكلية..." /></label>
-        <select value={type} onChange={(e) => setType(e.target.value as typeof type)} aria-label="نوع الجهة"><option>الكل</option><option>حكومية</option><option>أهلية</option><option>كلية</option><option>تقنية</option></select>
-        <select value={region} onChange={(e) => setRegion(e.target.value)} aria-label="المنطقة">{regions.map((value) => <option key={value}>{value}</option>)}</select>
+        <SearchableSelect value={type} onChange={(e) => setType(e.target.value as typeof type)} aria-label="نوع الجهة"><option>الكل</option><option>حكومية</option><option>أهلية</option><option>كلية</option><option>تقنية</option></SearchableSelect>
+        <SearchableSelect value={region} onChange={(e) => setRegion(e.target.value)} aria-label="المنطقة">{regions.map((value) => <option key={value}>{value}</option>)}</SearchableSelect>
         <span className="filter-icon"><SlidersHorizontal size={18} /></span>
       </div>
       <p className="results-count">نعرض {filtered.length} جهة تعليمية من أصل {institutions.length}</p>

@@ -1,4 +1,5 @@
 "use client";
+import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, FileSpreadsheet, LoaderCircle, RotateCcw, ShieldCheck, XCircle } from "lucide-react";
@@ -136,7 +137,7 @@ export function FinanceGovernance({ prefill, refreshKey = 0 }: { prefill?: Refun
         }}>
           <h3>استيراد كشف تسوية Tap</h3>
           <label>رقم الكشف<input name="id" dir="ltr" required /></label>
-          <label>العملة<select name="currency" defaultValue="SAR"><option value="SAR">SAR</option><option value="AED">AED</option><option value="KWD">KWD</option><option value="BHD">BHD</option></select></label>
+          <label>العملة<SearchableSelect name="currency" defaultValue="SAR"><option value="SAR">SAR</option><option value="AED">AED</option><option value="KWD">KWD</option><option value="BHD">BHD</option></SearchableSelect></label>
           <label>بداية الفترة<input name="from" type="date" /></label><label>نهاية الفترة<input name="to" type="date" /></label>
           <label>ملف CSV<input name="file" type="file" accept=".csv,text/csv" required /></label>
           <small>الأعمدة: charge_id أو transaction_id، order_number، gross، refund (اختياري)، fee، tax، net. لا تُعتمد المطابقة عند اختلاف المعرّف أو العملة أو الإجمالي أو معادلة الصافي.</small>

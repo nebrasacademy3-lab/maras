@@ -3,6 +3,7 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiEntitlements, aiSubscriptionOrders, couponUses, courseAccess, courseAccessEvents, notificationsDb, orderItems, orders, paymentEvents, refundRequests } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
+import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 import { sendPushNotification } from "@/lib/push";
 import { createAndSendNotification } from "@/lib/notifications";
 import { fulfillPaidOrderTx } from "@/lib/order-fulfillment";
@@ -324,11 +325,9 @@ export async function POST(request: Request) {
 
   let posted: TapCharge;
   try {
-    const raw = await request.text();
-    if (raw.length > 256 * 1024) return jsonError("حمولة Tap كبيرة جدًا", 413);
-    posted = JSON.parse(raw) as TapCharge;
-  } catch {
-    return jsonError("حمولة Tap غير صالحة");
+    posted = await readBoundedJsonObject(request, 256 * 1024) as TapCharge;
+  } catch (error) {
+    return jsonError("حمولة Tap غير صالحة", error instanceof RequestBodyTooLargeError ? 413 : 400);
   }
 
   const hashString = request.headers.get("hashstring") || request.headers.get("x-hashstring") || "";

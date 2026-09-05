@@ -1,6 +1,7 @@
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { readBoundedJsonObject } from "@/lib/request-body";
+import { and, eq, isNull, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { authSessions, pushDevices, users } from "@/db/schema";
+import { authSessions, passwordResetTokens, pushDevices, users } from "@/db/schema";
 import { jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, hashOpaqueToken, hashPassword, requestSessionToken, sameOriginRequest, validPassword, verifyPassword } from "@/lib/auth";
 import { isNativeAppRequest } from "@/lib/mobile-api";
@@ -11,7 +12,7 @@ export async function POST(request: Request) {
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
   if (!await checkRateLimit("change-password", `user:${user.id}`, 6, 15 * 60)) return jsonError("محاولات كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request); } catch { return jsonError("بيانات غير صالحة"); }
   const currentPassword = typeof payload.currentPassword === "string" ? payload.currentPassword : "";
   const newPassword = typeof payload.newPassword === "string" ? payload.newPassword : "";
   if (!currentPassword) return jsonError("أدخل كلمة المرور الحالية");
@@ -25,7 +26,9 @@ export async function POST(request: Request) {
   const token = requestSessionToken(request);
   const currentTokenHash = token ? await hashOpaqueToken(token) : "";
   const revokedSessions = await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${user.id})`);
     await tx.update(users).set({ passwordHash, updatedAt: now }).where(eq(users.id, user.id));
+    await tx.update(passwordResetTokens).set({ usedAt: now }).where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
     const revoked = await tx.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, user.id), isNull(authSessions.revokedAt), currentTokenHash ? ne(authSessions.tokenHash, currentTokenHash) : undefined)).returning({ deviceId: authSessions.deviceId });
     for (const session of revoked) {
       if (session.deviceId) await tx.update(pushDevices).set({ status: "revoked", lastSeenAt: now }).where(and(eq(pushDevices.userId, user.id), eq(pushDevices.deviceId, session.deviceId)));

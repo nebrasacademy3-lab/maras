@@ -34,10 +34,10 @@ export const PUBLIC_SETTING_DEFAULTS = {
   legal_address: "",
   vat_number: "",
   positioning_claim: "منصة سعودية متخصصة في شروحات المقررات الجامعية ومواد التعلّم المساندة.",
-  first_platform_claim_enabled: "false",
+  first_platform_claim_enabled: "true",
   first_platform_claim_text: "أول منصة سعودية متخصصة في تقديم شروحات المقررات الجامعية.",
   first_platform_claim_evidence_url: "",
-  payment_methods_marketing_enabled: "false",
+  payment_methods_marketing_enabled: "true",
 } as const;
 
 export const ADMIN_SETTING_DEFAULTS = {
@@ -51,6 +51,16 @@ export type PublicSettingKey = keyof typeof PUBLIC_SETTING_DEFAULTS;
 export type AdminSettingKey = keyof typeof ADMIN_SETTING_DEFAULTS;
 export type SettingKey = PublicSettingKey | AdminSettingKey;
 export type PublicSettings = Record<PublicSettingKey, string>;
+
+// Public capability flags are derived server-side; never expose payment credentials.
+export function getPublicPaymentAvailability() {
+  const ready = Boolean(process.env.TAP_SECRET_KEY?.trim() && process.env.TAP_WEBHOOK_SECRET?.trim());
+  return {
+    payments_ready: String(ready),
+    tabby_available: String(ready && process.env.TAP_TABBY_ENABLED === "true"),
+    tamara_available: String(ready && process.env.TAP_TAMARA_ENABLED === "true"),
+  };
+}
 
 export const SETTING_META: Record<SettingKey, { label: string; category: string; isPublic: boolean }> = {
   support_email: { label: "بريد الدعم", category: "support", isPublic: true },
@@ -125,28 +135,33 @@ export function contentViewModeError(mode: ContentViewMode, client: "app" | "web
 
 let publicSettingsCache: { expiresAt: number; value: PublicSettings } | null = null;
 let publicSettingsInFlight: Promise<PublicSettings> | null = null;
+let publicSettingsGeneration = 0;
 const SETTINGS_CACHE_TTL = 5_000;
 
 export function invalidatePublicSettingsCache() {
   publicSettingsCache = null;
+  publicSettingsInFlight = null;
+  publicSettingsGeneration += 1;
 }
 
 export async function getPublicSettings(): Promise<PublicSettings> {
   noStore();
   if (publicSettingsCache && publicSettingsCache.expiresAt > Date.now()) return publicSettingsCache.value;
   if (publicSettingsInFlight) return publicSettingsInFlight;
+  const generation = publicSettingsGeneration;
   const load = async () => {
     const output = { ...PUBLIC_SETTING_DEFAULTS } as PublicSettings;
     if (!process.env.DATABASE_URL) return output;
     try {
       const rows = await getDb().select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.isPublic, true));
-      for (const row of rows) if (row.key in output) output[row.key as PublicSettingKey] = row.value;
+      for (const row of rows) if (Object.hasOwn(PUBLIC_SETTING_DEFAULTS, row.key)) output[row.key as PublicSettingKey] = row.value;
     } catch {
       return output;
     }
-    publicSettingsCache = { expiresAt: Date.now() + SETTINGS_CACHE_TTL, value: output };
+    if (generation === publicSettingsGeneration) publicSettingsCache = { expiresAt: Date.now() + SETTINGS_CACHE_TTL, value: output };
     return output;
   };
-  publicSettingsInFlight = load();
-  try { return await publicSettingsInFlight; } finally { publicSettingsInFlight = null; }
+  const pending = load();
+  publicSettingsInFlight = pending;
+  try { return await pending; } finally { if (publicSettingsInFlight === pending) publicSettingsInFlight = null; }
 }

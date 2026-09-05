@@ -1,4 +1,5 @@
 "use client";
+import { SearchableSelect } from "@/components/searchable-select";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRealtimeSync } from "@/components/realtime-sync";
@@ -95,7 +96,7 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
       <label className="filter-search"><Search size={19} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم المادة أو رمزها أو الجامعة..." aria-label="بحث المواد" /></label>
       <SearchSelect label="الجامعة أو الكلية" value={university} options={[{ value: ALL, label: `كل الجامعات`, detail: `${liveInstitutions.length} جهة تعليمية` }, ...universityOptions]} onChange={chooseUniversity} />
       <SearchSelect label="التخصص" value={specialty} options={[{ value: ALL, label: programsLoading ? "جارٍ تحميل التخصصات..." : university === ALL ? "كل التخصصات" : `كل تخصصات ${selectedUniversity?.name || "الجامعة"}` }, ...specialtyOptions.map((item) => ({ value: item, label: item }))]} onChange={setSpecialty} disabled={programsLoading} />
-      <select className="catalog-sort" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="الترتيب"><option>الأكثر طلبًا</option><option>الأعلى تقييمًا</option><option>السعر الأقل</option></select>
+      <SearchableSelect className="catalog-sort" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="الترتيب"><option>الأكثر طلبًا</option><option>الأعلى تقييمًا</option><option>السعر الأقل</option></SearchableSelect>
       <button type="button" className="filter-reset" onClick={clearFilters} aria-label="مسح الفلاتر"><X size={17} /><span>مسح</span></button><span className="filter-icon"><SlidersHorizontal size={18} /></span>
     </div>
     {university !== ALL && <div className="catalog-filter-selection"><Check size={15} /><span>{selectedUniversity?.name || "الجامعة المختارة"}</span><b>{programsLoading ? "جارٍ جلب التخصصات..." : `${specialtyOptions.length} تخصصًا في الدليل`}</b></div>}

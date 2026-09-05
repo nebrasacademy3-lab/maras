@@ -154,6 +154,9 @@ export type PublicSettings = {
   first_platform_claim_text: string;
   first_platform_claim_evidence_url: string;
   payment_methods_marketing_enabled: string;
+  payments_ready?: string;
+  tabby_available?: string;
+  tamara_available?: string;
 };
 
 export type Review = { id: number; courseSlug: string; rating: number; body: string; createdAt: string; author: string; specialty: string; verifiedPurchase: true };

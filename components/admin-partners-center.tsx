@@ -1,4 +1,5 @@
 "use client";
+import { SearchableSelect } from "@/components/searchable-select";
 
 import Image from "next/image";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -157,14 +158,6 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
         setError("أدخل رقم الاعتماد أو الترخيص قبل النشر.");
         return;
       }
-      if (editor.rightsReference.trim().length < 3) {
-        setError("أدخل رقم الموافقة أو مرجعها قبل نشر علامة الاعتماد.");
-        return;
-      }
-      if (!isHttps(editor.verificationUrl.trim())) {
-        setError("أدخل رابط تحقق HTTPS للاعتماد أو الترخيص قبل النشر.");
-        return;
-      }
     }
     const body = new FormData();
     if (editor.id) body.set("id", String(editor.id));
@@ -286,9 +279,9 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
                 <input value={editor.name} onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))} required minLength={2} maxLength={140} placeholder="مثال: اسم الجهة الشريكة" />
               </label>
               <label>التصنيف
-                <select value={editor.kind} onChange={(event) => { const kind = event.target.value as PartnerKind; setEditor((current) => ({ ...current, kind, rightsConfirmed: kind === "accreditation" ? false : true })); }}>
+                <SearchableSelect value={editor.kind} onChange={(event) => { const kind = event.target.value as PartnerKind; setEditor((current) => ({ ...current, kind, rightsConfirmed: kind === "accreditation" ? false : true })); }}>
                   <option value="partner">شريك للمنصة</option><option value="accreditation">اعتماد أو ترخيص</option><option value="payment">شريك دفع</option>
-                </select>
+                </SearchableSelect>
               </label>
               <label className={styles.wide}>وصف مختصر
                 <textarea value={editor.description} onChange={(event) => setEditor((current) => ({ ...current, description: event.target.value }))} rows={3} maxLength={500} placeholder="ما طبيعة الشراكة أو الاعتماد؟" />
@@ -313,21 +306,21 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
                 <label>رقم الاعتماد أو الترخيص
                   <input dir="ltr" value={editor.credentialNumber} onChange={(event) => setEditor((current) => ({ ...current, credentialNumber: event.target.value }))} maxLength={180} required={editor.status === "published"} placeholder="مثال: NELC-000000" />
                 </label>
-                <label>رابط التحقق الرسمي
-                  <input dir="ltr" type="url" value={editor.verificationUrl} onChange={(event) => setEditor((current) => ({ ...current, verificationUrl: event.target.value }))} required={editor.status === "published"} placeholder="https://official.example.sa/verify/..." />
+                <label>رابط التحقق الرسمي (اختياري)
+                  <input dir="ltr" type="url" value={editor.verificationUrl} onChange={(event) => setEditor((current) => ({ ...current, verificationUrl: event.target.value }))} placeholder="https://..." />
                 </label>
               </> : null}
               <label>حالة الظهور
-                <select value={editor.status} onChange={(event) => setEditor((current) => ({ ...current, status: event.target.value as PartnerStatus }))}>
+                <SearchableSelect value={editor.status} onChange={(event) => setEditor((current) => ({ ...current, status: event.target.value as PartnerStatus }))}>
                   <option value="draft">مسودة — لا تظهر للزوار</option><option value="published">منشور — يظهر للزوار</option><option value="hidden">مخفي — محفوظ دون عرض</option>
-                </select>
+                </SearchableSelect>
               </label>
               <label>أولوية الترتيب
                 <input type="number" min={0} max={10000} value={editor.sortOrder} onChange={(event) => setEditor((current) => ({ ...current, sortOrder: Number(event.target.value) || 0 }))} />
                 <small>الأصغر يظهر أولًا.</small>
               </label>
-              {editor.kind === "accreditation" ? <label className={styles.wide}>مرجع الاعتماد أو حق استخدام العلامة
-                <input value={editor.rightsReference} onChange={(event) => setEditor((current) => ({ ...current, rightsReference: event.target.value }))} maxLength={500} required={editor.status === "published"} placeholder="رقم الخطاب أو العقد" />
+              {editor.kind === "accreditation" ? <label className={styles.wide}>ملاحظة داخلية للاعتماد (اختياري)
+                <input value={editor.rightsReference} onChange={(event) => setEditor((current) => ({ ...current, rightsReference: event.target.value }))} maxLength={500} placeholder="ملاحظة للإدارة" />
               </label> : null}
               {editor.kind === "accreditation" ? <label className={styles.consent}>
                 <input type="checkbox" checked={editor.rightsConfirmed} onChange={(event) => setEditor((current) => ({ ...current, rightsConfirmed: event.target.checked }))} />
@@ -349,12 +342,12 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
             </div>
             <div className={styles.filters}>
               <label className={styles.searchField}><Search size={17} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث بالاسم أو المرجع" /></label>
-              <select aria-label="تصفية حسب التصنيف" value={kindFilter} onChange={(event) => setKindFilter(event.target.value as "all" | PartnerKind)}>
+              <SearchableSelect aria-label="تصفية حسب التصنيف" value={kindFilter} onChange={(event) => setKindFilter(event.target.value as "all" | PartnerKind)}>
                 <option value="all">كل التصنيفات</option><option value="partner">الشركاء</option><option value="accreditation">الاعتمادات والتراخيص</option><option value="payment">شركاء الدفع</option>
-              </select>
-              <select aria-label="تصفية حسب الحالة" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | PartnerStatus)}>
+              </SearchableSelect>
+              <SearchableSelect aria-label="تصفية حسب الحالة" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as "all" | PartnerStatus)}>
                 <option value="all">كل الحالات</option><option value="published">المنشورة</option><option value="draft">المسودات</option><option value="hidden">المخفية</option>
-              </select>
+              </SearchableSelect>
             </div>
             {loading ? (
               <div className={styles.loading}><LoaderCircle className={styles.spin} /><span>جارٍ تحميل السجلات...</span></div>

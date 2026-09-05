@@ -5,3 +5,21 @@
 @media(max-width:720px){.page{padding:12px}.header{display:block;padding:19px}.heading>span{width:45px;height:45px}.heading h1{font-size:20px}.headerActions{margin-top:15px;justify-content:flex-start}.metrics{grid-template-columns:1fr 1fr}.tabs{width:100%}.overview{grid-template-columns:1fr}.healthCard{grid-column:auto}.healthGrid{grid-template-columns:1fr}.formGrid{grid-template-columns:1fr 1fr}.providers{display:block}.providerList{margin-top:12px}.providerList>article{grid-template-columns:38px minmax(0,1fr) 65px}.providerList>article>button{grid-column:2/-1}.subscriptionControls{grid-template-columns:1fr}.subscriptionControls>div+div{border:0;border-top:1px solid var(--line);padding:22px 0 0}.grantForm{grid-template-columns:1fr 1fr}.table{overflow:auto}.tableHead,.tableRow{min-width:690px}}
 @media(max-width:470px){.metrics{grid-template-columns:1fr}.heading p{display:none}.heading h1{font-size:18px}.formGrid{grid-template-columns:1fr}.keyFields{grid-template-columns:1fr}.keyFields .keyInput,.keyFields>button{grid-column:1}.grantForm{grid-template-columns:1fr}.headerActions a,.headerActions button{min-width:39px;padding:0 10px}.tabs button{padding:9px 10px;font-size:8px}}
 @media(prefers-reduced-motion:reduce){.spin{animation:none!important}}
+
+.page { overflow-x: clip; }
+.shell, .page section, .page article, .page form, .page fieldset { min-width: 0; }
+.page :is(input,textarea) { max-width: 100%; }
+.page label { font-size: 12px; line-height: 1.65; }
+.page label small { font-size: 11px; line-height: 1.6; }
+.page [data-search-select] { font-size: 13px; }
+.page input:not([type="checkbox"]):not([type="radio"]), .page textarea { font-size: 14px; }
+.page table { font-size: 13px; }
+.page button, .page a { touch-action: manipulation; }
+.page button:focus-visible, .page a:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+@media(max-width:700px) {
+  .page input:not([type="checkbox"]):not([type="radio"]), .page textarea { font-size: 16px; }
+  .page label { font-size: 13px; }
+  .page form button { min-height: 44px; }
+}
+.table { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
+.tableRow,.tableHead { min-width: 690px; }

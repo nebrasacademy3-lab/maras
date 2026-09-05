@@ -13,11 +13,11 @@ test("public partners API exposes only the already-filtered bounded projection",
   ]);
   assert.match(store, /eq\(platformPartners\.status, "published"\)/);
   assert.match(store, /eq\(platformPartners\.rightsConfirmed, true\)/);
-  assert.match(store, /kind === "accreditation".+credentialNumber.+rightsReference.+verificationUrl/s);
+  assert.match(store, /kind === "accreditation" && !row\.credentialNumber\?\.trim\(\)/);
   assert.match(store, /isHttps\(row\.logoUrl\) \? row\.logoUrl/);
   assert.match(route, /slice\(0, MAX_PUBLIC_PARTNERS\)/);
   assert.match(route, /"x-content-type-options": "nosniff"/);
-  assert.match(logoRoute, /partner\.kind === "accreditation".+credentialNumber.+rightsReference.+verificationUrl/s);
+  assert.match(logoRoute, /partner\.kind === "accreditation" && !partner\.credentialNumber\?\.trim\(\)/);
 });
 
 test("mobile home hides an empty partner rail and bounds cached logo rendering", async () => {

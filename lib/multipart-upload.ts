@@ -2,6 +2,7 @@ import Busboy from "busboy";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { deleteObject, putObject } from "@/lib/storage";
+import { boundedRequestBody } from "@/lib/request-body";
 
 export type StoredMultipartFile = {
   objectKey: string;
@@ -42,6 +43,7 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
   const fields: Record<string, string> = {};
   const files: StoredMultipartFile[] = [];
   const uploadTasks: Array<Promise<void>> = [];
+  const uploadStreams: Array<{ file: Readable; validator: Transform }> = [];
   const parser = Busboy({
     headers: Object.fromEntries(request.headers),
     limits: { files: options.maxFiles, fileSize: options.maxFileBytes, fields: 20, fieldSize: 16 * 1024, parts: options.maxFiles + 20 },
@@ -54,6 +56,9 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
     fields[name] = value;
   });
   parser.on("file", (fieldName, file, info) => {
+    // Busboy emits errors on file streams too when the request is interrupted,
+    // including rejected fields which are being drained rather than stored.
+    file.on("error", () => undefined);
     if (fieldName !== (options.fieldName || "files")) {
       failure ||= "اسم حقل الملف غير صالح";
       file.resume();
@@ -95,6 +100,8 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
         callback();
       },
     });
+    file.once("error", (error) => validator.destroy(error));
+    uploadStreams.push({ file, validator });
     const webStream = Readable.toWeb(file.pipe(validator)) as ReadableStream<Uint8Array>;
     uploadTasks.push(putObject(objectKey, webStream, mimeType).then(() => {
       files.push({ objectKey, originalName, contentType: mimeType, sizeBytes: fileBytes });
@@ -107,11 +114,20 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
   parser.once("partsLimit", () => { failure ||= "عدد أجزاء الطلب أكبر من المسموح"; });
 
   try {
-    await pipeline(Readable.fromWeb(request.body as import("node:stream/web").ReadableStream<Uint8Array>), parser);
+    const body = boundedRequestBody(request, options.maxTotalBytes + 2 * 1024 * 1024)!;
+    await pipeline(Readable.fromWeb(body as import("node:stream/web").ReadableStream<Uint8Array>), parser);
     await Promise.all(uploadTasks);
     if (failure) throw new Error(failure);
     return { fields, files };
   } catch (error) {
+    // An interrupted parser can outlive pending storage writes. Stop each file,
+    // wait for writes to settle, then remove every completed object.
+    const uploadError = error instanceof Error ? error : new Error("Upload interrupted");
+    for (const { file, validator } of uploadStreams) {
+      file.destroy(uploadError);
+      validator.destroy(uploadError);
+    }
+    await Promise.all(uploadTasks);
     await deleteStoredMultipartFiles(files);
     throw error;
   }

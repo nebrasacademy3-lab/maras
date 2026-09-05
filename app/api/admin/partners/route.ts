@@ -4,6 +4,7 @@ import { auditLogs, platformPartners } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { deleteObject, putObject } from "@/lib/storage";
+import { readBoundedFormData, RequestBodyTooLargeError } from "@/lib/request-body";
 
 const MAX_LOGO_BYTES = 2 * 1024 * 1024;
 const allowedTypes = new Map([["image/png", "png"], ["image/jpeg", "jpg"], ["image/webp", "webp"]]);
@@ -51,8 +52,9 @@ export async function POST(request: Request) {
   if (!await checkRateLimit("admin-partners-write", authorization.actor, 30, 60)) return jsonError("طلبات كثيرة. حاول بعد دقيقة.", 429);
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_LOGO_BYTES + 1024 * 1024) return jsonError("حجم الشعار أكبر من المسموح", 413);
-  const form = await request.formData().catch(() => null);
-  if (!form) return jsonError("تعذر قراءة البيانات");
+  let form: FormData;
+  try { form = await readBoundedFormData(request, MAX_LOGO_BYTES + 1024 * 1024); }
+  catch (error) { return jsonError(error instanceof RequestBodyTooLargeError ? error.message : "تعذر قراءة البيانات", error instanceof RequestBodyTooLargeError ? 413 : 400); }
   const id = Math.max(0, Math.floor(Number(form.get("id")) || 0));
   const db = getDb();
   const [before] = id ? await db.select().from(platformPartners).where(eq(platformPartners.id, id)).limit(1) : [];
@@ -75,8 +77,6 @@ export async function POST(request: Request) {
   if (status === "published" && !rightsConfirmed) return jsonError("أكد حق استخدام الشعار قبل النشر");
   if (status === "published" && kind === "accreditation") {
     if (credentialNumber.length < 2) return jsonError("أدخل رقم الاعتماد أو الترخيص قبل النشر");
-    if (rightsReference.length < 3) return jsonError("أدخل مرجع موافقة استخدام علامة الاعتماد قبل النشر");
-    if (!verificationUrl || !safeHttps(verificationUrl)) return jsonError("أدخل رابط تحقق HTTPS للاعتماد أو الترخيص قبل النشر");
   }
   const file = form.get("file");
   let nextObjectKey = before?.logoObjectKey || null;
@@ -106,10 +106,13 @@ export async function POST(request: Request) {
     status, sortOrder, createdBy: before?.createdBy || authorization.actor, updatedAt: now,
   };
   try {
-    const [saved] = before
-      ? await db.update(platformPartners).set(values).where(eq(platformPartners.id, before.id)).returning()
-      : await db.insert(platformPartners).values({ ...values, createdAt: now }).returning();
-    await db.insert(auditLogs).values({ actorEmail: authorization.actor, action: before ? "update" : "create", entityType: "platform_partner", entityId: String(saved.id), beforeJson: before ? JSON.stringify(output(before)) : null, afterJson: JSON.stringify(output(saved)), ipAddress: clientIp(request) });
+    const saved = await db.transaction(async (tx) => {
+      const [row] = before
+        ? await tx.update(platformPartners).set(values).where(eq(platformPartners.id, before.id)).returning()
+        : await tx.insert(platformPartners).values({ ...values, createdAt: now }).returning();
+      await tx.insert(auditLogs).values({ actorEmail: authorization.actor, action: before ? "update" : "create", entityType: "platform_partner", entityId: String(row.id), beforeJson: before ? JSON.stringify(output(before)) : null, afterJson: JSON.stringify(output(row)), ipAddress: clientIp(request) });
+      return row;
+    });
     if (uploadedKey && before?.logoObjectKey && before.logoObjectKey !== uploadedKey) await deleteObject(before.logoObjectKey).catch(() => undefined);
     return Response.json({ ok: true, partner: output(saved) }, { status: before ? 200 : 201, headers: { "cache-control": "no-store" } });
   } catch {

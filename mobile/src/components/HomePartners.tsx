@@ -5,7 +5,7 @@ import * as Linking from "expo-linking";
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
-import { SectionTitle } from "@/src/components/ui";
+import { SectionTitle, useReduceMotion } from "@/src/components/ui";
 import { absoluteUrl, api } from "@/src/lib/api";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -30,6 +30,7 @@ function actionLabel(partner: PublicPartner) {
 
 export function HomePartners() {
   const { width } = useWindowDimensions();
+  const reduceMotion = useReduceMotion();
   const { colors } = useTheme();
   const { direction, rowDirection } = useLanguage();
   const query = useQuery({
@@ -86,7 +87,7 @@ export function HomePartners() {
                 recyclingKey={String(partner.id)}
                 source={{ uri: absoluteUrl(partner.logo) }}
                 style={styles.logo}
-                transition={120}
+                transition={reduceMotion ? 0 : 120}
               />
             </View>
             <View style={styles.headCopy}>

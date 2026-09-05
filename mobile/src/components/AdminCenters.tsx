@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
-import { Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Alert, StyleSheet, View } from "react-native";
+import { SearchChoice } from "@/src/components/SearchPicker";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { AppButton, Card, EmptyState, Field, LoadingState, SectionTitle } from "@/src/components/ui";
@@ -122,8 +123,7 @@ type TrackDraft = { slug: string; title: string; subtitle: string; description: 
 const emptyTrack: TrackDraft = { slug: "", title: "", subtitle: "", description: "", category: "language", status: "coming_soon", ctaLabel: "أبلغني عند الإطلاق", destination: "", position: "100", featured: false, showInterestCount: false };
 
 function Chips({ values, selected, labels, onChange }: { values: string[]; selected: string; labels: Record<string, string>; onChange: (value: string) => void }) {
-  const { colors } = useTheme();
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>{values.map((value) => <Pressable key={value} onPress={() => onChange(value)} style={[styles.chip, { backgroundColor: selected === value ? colors.primary : colors.surfaceAlt }]}><Text style={{ color: selected === value ? "#FFF" : colors.text, fontSize: 9, fontWeight: "900" }}>{labels[value] || value}</Text></Pressable>)}</ScrollView>;
+  return <SearchChoice values={values} selected={selected} labels={labels} onChange={onChange} />;
 }
 
 export function AdminLearningTracks({ onStepUpRequired }: { onStepUpRequired?: StepUp }) {
@@ -216,22 +216,22 @@ export function AdminStudentProfile({ email, onClose, onStepUpRequired }: { emai
 }
 
 const styles = StyleSheet.create({
-  metrics: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 8, marginBottom: 12 },
-  metric: { width: "48%", flexGrow: 1, gap: 4, alignItems: "flex-end" },
+  metrics: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  metric: { width: "48%", flexGrow: 1, gap: 4, alignItems: "flex-start" },
   metricValue: { fontSize: 16, fontWeight: "900" },
   metricLabel: { fontSize: 9, fontWeight: "700" },
   feedback: { fontSize: 10, fontWeight: "800", textAlign: "right", marginBottom: 8, lineHeight: 17 },
   list: { gap: 10, marginBottom: 12 },
   rowCard: { gap: 8 },
-  rowHead: { flexDirection: "row-reverse", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  rowHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
   rowCopy: { flex: 1, gap: 2 },
   rowTitle: { fontSize: 12, fontWeight: "900", textAlign: "right", writingDirection: "rtl" },
   rowMeta: { fontSize: 9, lineHeight: 15, textAlign: "right", writingDirection: "rtl" },
   amount: { fontSize: 12, fontWeight: "900" },
-  actions: { flexDirection: "row-reverse", flexWrap: "wrap", gap: 6, marginBottom: 4 },
+  actions: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 4 },
   area: { minHeight: 80, borderWidth: 1, borderRadius: 12, padding: 10, textAlign: "right", writingDirection: "rtl", fontSize: 11, marginBottom: 8 },
   caption: { fontSize: 9, fontWeight: "800", textAlign: "right", marginBottom: 4, marginTop: 4 },
-  chips: { gap: 6, paddingBottom: 8, flexDirection: "row-reverse" },
+  chips: { gap: 6, paddingBottom: 8, flexDirection: "row" },
   chip: { paddingHorizontal: 11, paddingVertical: 7, borderRadius: 999 },
   interestBox: { borderTopWidth: 1, paddingTop: 8, gap: 4 },
   profileName: { fontSize: 15, fontWeight: "900", textAlign: "right", writingDirection: "rtl" },

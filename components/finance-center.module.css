@@ -147,3 +147,20 @@
 .trendDay span { font-size: 10px; color: var(--text-soft); }
 .trendDay small { font-size: 10px; font-weight: 750; color: var(--text); white-space: nowrap; }
 @media (prefers-reduced-motion: reduce) { .spinIcon { animation: none; } }
+
+.page { overflow-x: clip; }
+.shell, .page section, .page article, .page form, .page fieldset { min-width: 0; }
+.page :is(input,textarea) { max-width: 100%; }
+.page label { font-size: 12px; line-height: 1.65; }
+.page label small { font-size: 11px; line-height: 1.6; }
+.page [data-search-select] { font-size: 13px; }
+.page input:not([type="checkbox"]):not([type="radio"]), .page textarea { font-size: 14px; }
+.page table { font-size: 13px; }
+.page button, .page a { touch-action: manipulation; }
+.page button:focus-visible, .page a:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+@media(max-width:700px) {
+  .page input:not([type="checkbox"]):not([type="radio"]), .page textarea { font-size: 16px; }
+  .page label { font-size: 13px; }
+  .page form button { min-height: 44px; }
+}
+.tableWrap { max-width: 100%; overscroll-behavior-x: contain; scrollbar-width: thin; }

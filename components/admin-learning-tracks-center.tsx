@@ -1,4 +1,5 @@
 "use client";
+import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -145,10 +146,10 @@ export function AdminLearningTracksCenter({ adminName }:{ adminName:string }) {
         <label>المعرّف الإنجليزي<input dir="ltr" value={form.slug} onChange={(event)=>setForm({...form,slug:event.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,"-")})} placeholder="english-boost"/></label>
         <label className={styles.wide}>العنوان المختصر<input value={form.subtitle} onChange={(event)=>setForm({...form,subtitle:event.target.value})} placeholder="ما الذي سيحصل عليه الطالب؟"/></label>
         <label className={styles.wide}>الوصف<textarea value={form.description} onChange={(event)=>setForm({...form,description:event.target.value})} placeholder="وصف واضح ومختصر للمسار ومحتواه المتوقع."/></label>
-        <label>التصنيف<select value={form.category} onChange={(event)=>setForm({...form,category:event.target.value as TrackCategory})}>{Object.entries(categoryLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
-        <label>الأيقونة<select value={form.iconKey} onChange={(event)=>setForm({...form,iconKey:event.target.value as TrackIcon})}>{Object.entries(iconLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
-        <label>اللون<select value={form.accent} onChange={(event)=>setForm({...form,accent:event.target.value as TrackAccent})}>{Object.entries(accentLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
-        <label>الحالة<select value={form.status} onChange={(event)=>setForm({...form,status:event.target.value as TrackStatus})}>{Object.entries(statusLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</select></label>
+        <label>التصنيف<SearchableSelect value={form.category} onChange={(event)=>setForm({...form,category:event.target.value as TrackCategory})}>{Object.entries(categoryLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</SearchableSelect></label>
+        <label>الأيقونة<SearchableSelect value={form.iconKey} onChange={(event)=>setForm({...form,iconKey:event.target.value as TrackIcon})}>{Object.entries(iconLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</SearchableSelect></label>
+        <label>اللون<SearchableSelect value={form.accent} onChange={(event)=>setForm({...form,accent:event.target.value as TrackAccent})}>{Object.entries(accentLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</SearchableSelect></label>
+        <label>الحالة<SearchableSelect value={form.status} onChange={(event)=>setForm({...form,status:event.target.value as TrackStatus})}>{Object.entries(statusLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</SearchableSelect></label>
         <label>الترتيب<input type="number" min="0" value={form.position} onChange={(event)=>setForm({...form,position:event.target.value})}/></label>
         <label>موعد متوقع<input type="datetime-local" value={form.launchAt} onChange={(event)=>setForm({...form,launchAt:event.target.value})}/></label>
         <label>نص الزر<input value={form.ctaLabel} onChange={(event)=>setForm({...form,ctaLabel:event.target.value})}/></label>

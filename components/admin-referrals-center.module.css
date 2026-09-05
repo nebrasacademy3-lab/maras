@@ -9,3 +9,20 @@
 .headerActions{display:flex;flex-wrap:wrap;gap:8px}.headerActions button{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:45px;padding:0 16px;border:0;border-radius:13px;background:#baf5e0;color:#0a4242;font-weight:900;cursor:pointer}.headerActions button:first-child{background:rgba(255,255,255,.14);color:#fff}.headerActions button:disabled{opacity:.55;cursor:not-allowed}.headerActions button svg{width:18px}
 .empty{margin:0;padding:18px 22px;color:#74828d;font-size:.84rem}.loadMore{display:flex;justify-content:center;padding:14px}.loadMore button{display:inline-flex;align-items:center;gap:8px;padding:10px 16px;border:1px solid #cad9de;border-radius:11px;background:#fff;color:#315263;font-weight:800;cursor:pointer}.loadMore button:disabled{opacity:.6}
 .actions{flex-wrap:wrap}
+
+.page { overflow-x: clip; }
+.shell, .page section, .page article, .page form, .page fieldset { min-width: 0; }
+.page :is(input,textarea) { max-width: 100%; }
+.page label { font-size: 12px; line-height: 1.65; }
+.page label small { font-size: 11px; line-height: 1.6; }
+.page [data-search-select] { font-size: 13px; }
+.page input:not([type="checkbox"]):not([type="radio"]), .page textarea { font-size: 14px; }
+.page table { font-size: 13px; }
+.page button, .page a { touch-action: manipulation; }
+.page button:focus-visible, .page a:focus-visible { outline: 2px solid var(--primary); outline-offset: 3px; }
+@media(max-width:700px) {
+  .page input:not([type="checkbox"]):not([type="radio"]), .page textarea { font-size: 16px; }
+  .page label { font-size: 13px; }
+  .page form button { min-height: 44px; }
+}
+.tableWrap { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }

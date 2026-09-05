@@ -1,4 +1,5 @@
 "use client";
+import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CheckCircle2, FileUp, LoaderCircle, MessageCircle, RefreshCw, ShieldCheck, X } from "lucide-react";
@@ -59,9 +60,9 @@ export function SupportForm() {
       <div className="support-card-heading"><span className="support-heading-icon"><MessageCircle size={20}/></span><div><h2>ابدأ محادثة مع فريق مراس</h2><p>أرسل نصًا أو صورًا أو مستندات، وبعد فتح المحادثة يمكنك إرسال رسائل صوتية والرد على أي رسالة.</p></div></div>
       <form className="support-form" onSubmit={submit}>
         {prefill.order&&<p className="support-prefill-note"><ShieldCheck size={15}/> هذه المحادثة مرتبطة بالطلب <b dir="ltr">{prefill.order}</b>{prefill.category==="payment"?" — سنراجع طلب الاسترداد أو مشكلة الدفع وفق سياسة الاسترداد.":""}</p>}
-        <div className="two-fields"><label>التصنيف<select name="category" required key={prefill.category||"default"} defaultValue={prefill.category||"technical"}><option value="technical">مشكلة تقنية</option><option value="payment">الدفع والفواتير</option><option value="course">المواد والدروس</option><option value="account">الحساب</option><option value="suggestion">اقتراح</option></select></label><label>الأولوية<select name="priority" required><option value="normal">عادية</option><option value="high">عالية</option><option value="urgent">عاجلة</option></select></label></div>
+        <div className="two-fields"><label>التصنيف<SearchableSelect name="category" required key={prefill.category||"default"} defaultValue={prefill.category||"technical"}><option value="technical">مشكلة تقنية</option><option value="payment">الدفع والفواتير</option><option value="course">المواد والدروس</option><option value="account">الحساب</option><option value="suggestion">اقتراح</option></SearchableSelect></label><label>الأولوية<SearchableSelect name="priority" required><option value="normal">عادية</option><option value="high">عالية</option><option value="urgent">عاجلة</option></SearchableSelect></label></div>
         <label>عنوان المحادثة<input name="title" required minLength={3} key={prefill.order||"title"} defaultValue={prefill.order?(prefill.category==="payment"?`طلب استرداد للطلب ${prefill.order}`:`بخصوص الطلب ${prefill.order}`):""} placeholder="مثال: لا يعمل الفيديو في المادة"/></label>
-        <label>قناة المتابعة<select name="contactChannel" defaultValue="in_app"><option value="in_app">محادثة مراس</option><option value="email">البريد الإلكتروني</option><option value="whatsapp">واتساب</option></select></label>
+        <label>قناة المتابعة<SearchableSelect name="contactChannel" defaultValue="in_app"><option value="in_app">محادثة مراس</option><option value="email">البريد الإلكتروني</option><option value="whatsapp">واتساب</option></SearchableSelect></label>
         <label>اشرح المشكلة<textarea name="message" minLength={3} key={prefill.order?`message-${prefill.order}`:"message"} defaultValue={prefill.order?`رقم الطلب: ${prefill.order}\n`:""} placeholder="اكتب التفاصيل..."/></label>
         <label className="support-file-picker"><FileUp size={20}/><span><strong>إرفاق صور أو مستندات</strong><small>حتى 8 ملفات، و15 ميجابايت للملف الواحد</small></span><input name="files" type="file" multiple accept="image/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.txt"/></label>
         {error&&<p className="form-error" role="alert">{error}</p>}

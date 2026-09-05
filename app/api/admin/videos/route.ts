@@ -9,6 +9,7 @@ import { isNativeAppRequest } from "@/lib/mobile-api";
 import { activeStorageProvider, deleteObject, deletePrefix, putObject, type StorageProvider } from "@/lib/storage";
 import { probeStoredVideoDuration } from "@/lib/video-metadata";
 import { enqueueVideoProcessing, videoProcessingSummary } from "@/lib/video-processing";
+import { readBoundedFormData, RequestBodyTooLargeError } from "@/lib/request-body";
 
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska", "video/x-msvideo"]);
@@ -54,6 +55,10 @@ async function inspectUploadStream(input: ReadableStream<Uint8Array>) {
     buffered.push(item.value);
     bufferedBytes += item.value.byteLength;
     transferredBytes += item.value.byteLength;
+    if (transferredBytes > MAX_VIDEO_BYTES) {
+      await reader.cancel("video-too-large").catch(() => undefined);
+      throw new Error("video-too-large");
+    }
   }
   const header = new Uint8Array(Math.min(bufferedBytes, 64));
   let offset = 0;
@@ -126,8 +131,9 @@ export async function POST(request: Request) {
       return jsonError("تعذر قراءة ملف الفيديو", 400);
     }
   } else {
-    const form = await request.formData().catch(() => null);
-    if (!form) return jsonError("تعذر قراءة ملف الفيديو", 400);
+    let form: FormData;
+    try { form = await readBoundedFormData(request, MAX_VIDEO_BYTES + 2 * 1024 * 1024); }
+    catch (error) { return jsonError(error instanceof RequestBodyTooLargeError ? error.message : "تعذر قراءة ملف الفيديو", error instanceof RequestBodyTooLargeError ? 413 : 400); }
     const file = form.get("file");
     courseSlug = cleanText(form.get("courseSlug"), 120);
     lessonId = cleanText(form.get("lessonId"), 120);

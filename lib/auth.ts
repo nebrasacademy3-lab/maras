@@ -119,7 +119,9 @@ function parseCookie(cookieHeader: string | null, name: string) {
   if (!cookieHeader) return "";
   for (const item of cookieHeader.split(";")) {
     const [key, ...parts] = item.trim().split("=");
-    if (key === name) return decodeURIComponent(parts.join("="));
+    if (key === name) {
+      try { return decodeURIComponent(parts.join("=")); } catch { return ""; }
+    }
   }
   return "";
 }
@@ -217,7 +219,7 @@ export async function createSession(userId: number, request: Request, remember =
     });
   });
 
-  const secure = new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
+  const secure = process.env.NODE_ENV === "production" || process.env.SESSION_COOKIE_SECURE === "true" || new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
   return {
     token,
     expiresAt,
@@ -234,7 +236,7 @@ export async function revokeSession(request: Request) {
       // Always clear the browser/device session locally, even when the database is temporarily unavailable.
     }
   }
-  const secure = new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
+  const secure = process.env.NODE_ENV === "production" || process.env.SESSION_COOKIE_SECURE === "true" || new URL(request.url).protocol === "https:" || request.headers.get("x-forwarded-proto")?.split(",")[0].trim() === "https";
   return `${SESSION_COOKIE}=; Path=/; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Max-Age=0`;
 }
 

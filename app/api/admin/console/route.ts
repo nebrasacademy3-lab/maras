@@ -699,9 +699,8 @@ export async function POST(request: Request) {
       .map(([key, value]) => [key as SettingKey, cleanText(value, key === "announcement" || key.endsWith("description") ? 500 : 300)] as const);
     if (!entries.length) return jsonError("لا توجد إعدادات صالحة");
     const submittedSettings = Object.fromEntries(entries);
-    if (submittedSettings.first_platform_claim_enabled && !["true", "false"].includes(submittedSettings.first_platform_claim_enabled)) return jsonError("حالة عبارة الأولوية غير صالحة");
-    if (submittedSettings.payment_methods_marketing_enabled && !["true", "false"].includes(submittedSettings.payment_methods_marketing_enabled)) return jsonError("حالة إظهار خيارات الدفع غير صالحة");
-    if (submittedSettings.first_platform_claim_enabled === "true" && (!submittedSettings.first_platform_claim_evidence_url || !safeUrl(submittedSettings.first_platform_claim_evidence_url))) return jsonError("أضف رابط إثبات HTTPS صالحًا قبل إظهار عبارة الأولوية");
+    if (Object.hasOwn(submittedSettings, "first_platform_claim_enabled") && !["true", "false"].includes(submittedSettings.first_platform_claim_enabled)) return jsonError("حالة عبارة الأولوية غير صالحة");
+    if (Object.hasOwn(submittedSettings, "payment_methods_marketing_enabled") && !["true", "false"].includes(submittedSettings.payment_methods_marketing_enabled)) return jsonError("حالة إظهار خيارات الدفع غير صالحة");
     for (const [key, value] of entries) {
       if ((key.startsWith("social_") || key === "ios_app_url" || key === "android_app_url" || key.endsWith("_verify_url") || key === "first_platform_claim_evidence_url") && value && !safeUrl(value)) return jsonError(`رابط ${SETTING_META[key].label} يجب أن يبدأ بـ https`);
       if (key === "support_email" && value && !validEmail(value)) return jsonError("بريد الدعم غير صالح");
@@ -709,11 +708,20 @@ export async function POST(request: Request) {
       if (["commercial_registration_number", "ecommerce_authentication_number", "vat_number"].includes(key) && value && !/^[0-9 -]{5,30}$/.test(value)) return jsonError(`${SETTING_META[key].label} غير صالح`);
       if (key === "max_student_devices" && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 10)) return jsonError("حد أجهزة الطالب يجب أن يكون بين 1 و10");
       if (key === "content_view_mode" && !["both", "app_only", "web_only"].includes(value)) return jsonError("اختر طريقة مشاهدة محتوى صالحة");
-      const meta = SETTING_META[key];
-      await db.insert(platformSettings).values({ key, value, category: meta.category, isPublic: meta.isPublic, updatedBy: authorization.actor, updatedAt: now }).onConflictDoUpdate({ target: platformSettings.key, set: { value, category: meta.category, isPublic: meta.isPublic, updatedBy: authorization.actor, updatedAt: now } });
     }
+    // Validate the entire form first, then save atomically (never a partial settings update).
+    await db.transaction(async (tx) => {
+      for (const [key, value] of entries) {
+        const meta = SETTING_META[key];
+        await tx.insert(platformSettings).values({ key, value, category: meta.category, isPublic: meta.isPublic, updatedBy: authorization.actor, updatedAt: now }).onConflictDoUpdate({ target: platformSettings.key, set: { value, category: meta.category, isPublic: meta.isPublic, updatedBy: authorization.actor, updatedAt: now } });
+      }
+      await tx.insert(auditLogs).values({
+        actorEmail: authorization.actor, action: "update", entityType: "platform_settings", entityId: "settings",
+        beforeJson: null, afterJson: asJson(Object.fromEntries(entries)),
+        ipAddress: (request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "unknown").slice(0, 80),
+      });
+    });
     invalidatePublicSettingsCache();
-    await audit(request, authorization.actor, "update", "platform_settings", "settings", null, Object.fromEntries(entries));
     return Response.json({ ok: true });
   }
 

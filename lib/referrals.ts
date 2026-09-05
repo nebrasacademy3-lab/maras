@@ -43,7 +43,9 @@ export function referralCodeFromRegistration(payload: Record<string, unknown>, r
   const cookie = request.headers.get("cookie") || "";
   for (const part of cookie.split(";")) {
     const [name, ...value] = part.trim().split("=");
-    if (name === "meras_referral") return normalizeReferralCode(decodeURIComponent(value.join("=")));
+    if (name === "meras_referral") {
+      try { return normalizeReferralCode(decodeURIComponent(value.join("="))); } catch { return ""; }
+    }
   }
   return "";
 }

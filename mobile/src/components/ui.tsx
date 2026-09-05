@@ -10,7 +10,7 @@ import { useLanguage } from "@/src/providers/LanguageProvider";
 import { metrics } from "@/src/theme/colors";
 import { MobileFooter } from "@/src/components/MobileFooter";
 
-function useReduceMotion() {
+export function useReduceMotion() {
   const [reduceMotion, setReduceMotion] = useState(false);
   useEffect(() => {
     let active = true;
@@ -89,11 +89,11 @@ export function EmptyState({ icon = "sparkles-outline", title, text, action }: {
 }
 
 export function HeroGradient({ children }: { children: React.ReactNode }) {
-  return <LinearGradient colors={["#061B49", "#0A56CF", "#7038E8"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>{children}</LinearGradient>;
+  return <LinearGradient colors={["#081D35", "#10394A", "#17605E"]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>{children}</LinearGradient>;
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1 }, screenContent: { flexGrow: 1 }, scroll: { flexGrow: 1, paddingBottom: 120 }, padded: { paddingHorizontal: metrics.screen },
+  flex: { flex: 1 }, screenContent: { flexGrow: 1, width: "100%", maxWidth: 1160, alignSelf: "center" }, scroll: { flexGrow: 1, paddingBottom: 120 }, padded: { paddingHorizontal: metrics.screen },
   button: { minHeight: 50, paddingHorizontal: 18, borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }, buttonFull: { width: "100%" }, buttonText: { fontSize: 14, fontWeight: "800" },
   fieldWrap: { gap: 7, marginBottom: 14 }, label: { fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, inputWrap: { minHeight: 52, borderWidth: 1, borderRadius: 15, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 9 }, input: { flex: 1, minHeight: 50, fontSize: 14 }, trailing: { flexShrink: 0, alignItems: "center", justifyContent: "center" }, inputLtr: { writingDirection: "ltr", textAlign: "left" }, error: { fontSize: 11, textAlign: "right" },
   card: { borderRadius: metrics.radius, borderWidth: 1, padding: 16, shadowColor: "#061A42", shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2 },

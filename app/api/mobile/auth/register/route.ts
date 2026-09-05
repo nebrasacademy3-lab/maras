@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
   if (!isMobileRequest(request)) return jsonError("طلب تطبيق غير صالح", 403);
   if (!await checkRateLimit("mobile-register-ip", clientIp(request), 100, 60 * 60)) return jsonError("محاولات كثيرة. حاول بعد ساعة.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات التسجيل غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request); } catch { return jsonError("بيانات التسجيل غير صالحة"); }
   const fullName = cleanText(payload.fullName, 120).replace(/\s+/g, " ");
   const email = cleanText(payload.email, 180).toLowerCase();
   const rawPhone = normalizePhone(payload.phone);

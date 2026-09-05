@@ -35,7 +35,7 @@ export async function getPublicPartners(): Promise<PublicPartner[]> {
       const logo = publicLogo(row);
       if (!logo) return [];
       const kind: PublicPartner["kind"] = row.kind === "accreditation" || row.kind === "payment" ? row.kind : "partner";
-      if (kind === "accreditation" && (!row.credentialNumber?.trim() || !row.rightsReference?.trim() || !isHttps(row.verificationUrl))) return [];
+      if (kind === "accreditation" && !row.credentialNumber?.trim()) return [];
       return [{
         id: row.id, name: row.name, kind, description: row.description, logo,
         destinationUrl: isHttps(row.destinationUrl) ? row.destinationUrl : null,

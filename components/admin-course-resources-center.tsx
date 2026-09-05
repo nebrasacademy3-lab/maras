@@ -1,4 +1,5 @@
 "use client";
+import { SearchableSelect } from "@/components/searchable-select";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -308,7 +309,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
                 <label>العنوان<input required minLength={2} maxLength={160} value={editState.title} onChange={(event) => setEditState({ ...editState, title: event.target.value })} /></label>
                 <label>الترتيب<input type="number" min="0" max="10000" value={editState.sortOrder} onChange={(event) => setEditState({ ...editState, sortOrder: event.target.value })} /></label>
                 <label className={styles.wide}>الوصف<textarea maxLength={1000} value={editState.description} onChange={(event) => setEditState({ ...editState, description: event.target.value })} /></label>
-                <label>الحالة<select value={editState.status} onChange={(event) => setEditState({ ...editState, status: event.target.value as Resource["status"], studentVisible: event.target.value === "archived" ? false : editState.studentVisible })}><option value="active">نشط</option><option value="archived">مؤرشف</option></select></label>
+                <label>الحالة<SearchableSelect value={editState.status} onChange={(event) => setEditState({ ...editState, status: event.target.value as Resource["status"], studentVisible: event.target.value === "archived" ? false : editState.studentVisible })}><option value="active">نشط</option><option value="archived">مؤرشف</option></SearchableSelect></label>
                 <label className={styles.switch}><input type="checkbox" checked={editState.studentVisible} disabled={resource.scanStatus !== "clean" || editState.status !== "active"} onChange={(event) => setEditState({ ...editState, studentVisible: event.target.checked })} /><span>{editState.studentVisible ? <Eye size={17} /> : <EyeOff size={17} />} ظاهر للطلاب</span></label>
               </div>
               <button className={styles.primary} disabled={busyId === resource.id} type="submit">{busyId === resource.id ? <LoaderCircle className={styles.spin} size={17} /> : <Check size={17} />} حفظ التعديلات</button>

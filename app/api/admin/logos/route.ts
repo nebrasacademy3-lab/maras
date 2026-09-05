@@ -5,6 +5,7 @@ import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginReques
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { getInstitutionCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { deleteObject, putObject } from "@/lib/storage";
+import { readBoundedFormData, RequestBodyTooLargeError } from "@/lib/request-body";
 
 const MAX_LOGO_BYTES = 4 * 1024 * 1024;
 const allowedTypes = new Map([["image/png", "png"], ["image/jpeg", "jpg"], ["image/webp", "webp"]]);
@@ -26,8 +27,9 @@ export async function POST(request: Request) {
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > MAX_LOGO_BYTES + 1 * 1024 * 1024) return jsonError("حجم الطلب أكبر من المسموح", 413);
 
-  const form = await request.formData().catch(() => null);
-  if (!form) return jsonError("تعذر قراءة الشعار", 400);
+  let form: FormData;
+  try { form = await readBoundedFormData(request, MAX_LOGO_BYTES + 1024 * 1024); }
+  catch (error) { return jsonError(error instanceof RequestBodyTooLargeError ? error.message : "تعذر قراءة الشعار", error instanceof RequestBodyTooLargeError ? 413 : 400); }
   const slug = cleanText(form.get("slug"), 80).toLowerCase();
   const file = form.get("file");
   const institution = await getInstitutionCatalog(slug, true);
@@ -57,8 +59,10 @@ export async function POST(request: Request) {
       sortOrder: existing?.sortOrder || 0,
       updatedAt: now,
     };
-    await db.insert(catalogInstitutions).values({ ...values, createdAt: existing?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
-    await db.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "institution_logo", entityId: slug, beforeJson: existing?.logoUrl || null, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
+    await db.transaction(async (tx) => {
+      await tx.insert(catalogInstitutions).values({ ...values, createdAt: existing?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
+      await tx.insert(auditLogs).values({ actorEmail: user?.email || "admin-api-token", action: "upload", entityType: "institution_logo", entityId: slug, beforeJson: existing?.logoUrl || null, afterJson: JSON.stringify({ objectKey, contentType: detectedType, sizeBytes: file.size }), ipAddress: clientIp(request) });
+    });
     if (existing?.logoUrl?.startsWith("r2:")) await deleteObject(existing.logoUrl.slice(3)).catch((error) => console.warn("[logo-upload] previous object cleanup failed", error instanceof Error ? error.message : "unknown"));
     invalidateCatalogCache();
     return Response.json({ ok: true, logoUrl: `/api/logos/${slug}` }, { status: 201, headers: { "cache-control": "no-store" } });

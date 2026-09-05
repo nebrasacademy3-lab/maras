@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Activity, Bot, CircleDollarSign, FileStack, Gift, Handshake, LayoutDashboard, LockKeyhole, PackageOpen, Route, type LucideIcon } from "lucide-react";
+import { useState } from "react";
+import { Activity, Bot, CircleDollarSign, FileStack, Gift, Handshake, LayoutDashboard, LockKeyhole, PackageOpen, Route, Search, type LucideIcon } from "lucide-react";
 import styles from "./admin-center-nav.module.css";
 
 export const ADMIN_CENTERS: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }> = [
@@ -20,11 +21,16 @@ export const ADMIN_CENTERS: ReadonlyArray<{ href: string; label: string; icon: L
 
 export function AdminCenterNav({ compact = false }: { compact?: boolean }) {
   const pathname = usePathname() || "";
-  return <nav className={`${styles.nav} ${compact ? styles.compact : ""}`} aria-label="مراكز الإدارة">
-    {ADMIN_CENTERS.map((center) => {
+  const [query, setQuery] = useState("");
+  const centers = ADMIN_CENTERS.filter((center) => `${center.label} ${center.description}`.includes(query.trim()));
+  return <div className={styles.workspaceNav}>
+    <label className={styles.search}><Search size={16} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث عن مركز الإدارة..." aria-label="البحث في مراكز الإدارة" /></label>
+    <nav className={`${styles.nav} ${compact ? styles.compact : ""}`} aria-label="مراكز الإدارة">
+    {centers.map((center) => {
       const Icon = center.icon;
       const active = center.href === "/admin" ? pathname === "/admin" : pathname.startsWith(center.href);
       return <Link key={center.href} href={center.href} className={active ? styles.active : ""} aria-current={active ? "page" : undefined}><Icon size={15} /><span>{center.label}</span></Link>;
     })}
-  </nav>;
+    {!centers.length ? <span className={styles.empty}>لا يوجد مركز مطابق.</span> : null}
+  </nav></div>;
 }

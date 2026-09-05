@@ -87,7 +87,8 @@ function CourseCanvas({ course }: { course?: FeaturedCourse }) {
   }
   return (
     <div className={styles.courseCanvas}>
-      <div className={styles.canvasLabel}><span>نتيجة فعلية من المنصة</span><i /></div>
+      <div className={styles.canvasLabel}><span>من كتالوج مراس</span><i /></div>
+      <div className={styles.lessonVisual} aria-hidden="true"><div><BookOpen size={38} strokeWidth={1.4} /><span>مراس العلم</span></div><i><Play size={21} fill="currentColor" /></i><span>خطوة للفهم<small>ومساحة لطموحك</small></span></div>
       <div className={styles.courseIdentity}>
         <span>{course.title.slice(0, 1)}</span>
         <div><small>{course.university}</small><h2>{course.title}</h2><p>{course.specialty}</p></div>
@@ -187,13 +188,13 @@ export function HomeGateway({
       </div>
       <div className={"container " + styles.layout}>
         <div className={styles.copy}>
-          <span className={styles.eyebrow}><i /> مساحتك للتعلّم</span>
+          <span className={styles.eyebrow}><i /> من جامعتك، إلى أبعد مما تتخيّل</span>
           <h1 id="home-gateway-title">
-            {firstName ? "مرحبًا " + firstName + "،" : "ماذا تريد أن"}
+            {firstName ? "مرحبًا " + firstName + "،" : "الفهم يبدأ هنا."}
             <br />
-            <em>{firstName ? "ماذا ستتعلّم اليوم؟" : "تتعلّم اليوم؟"}</em>
+            <em>{firstName ? "نكمّل رحلتك؟" : "وطموحك أبعد."}</em>
           </h1>
-          <p>من مواد جامعتك وسلايداتك، إلى الإنجليزية والدورات والمهارات القادمة—ابدأ من هدفك مباشرة.</p>
+          <p>شروحات تناسب موادك، وأدوات ترتّب مذاكرتك. من أول محاضرة إلى آخر مراجعة؛ مراس معك في كل خطوة.</p>
 
           <div className={styles.intentShell}>
             <div className={styles.intentTabs} role="tablist" aria-label="اختر ما تريد إنجازه">
@@ -202,10 +203,21 @@ export function HomeGateway({
                   key={id}
                   type="button"
                   role="tab"
+                  id={"home-intent-" + id}
+                  tabIndex={intent === id ? 0 : -1}
                   aria-selected={intent === id}
                   aria-controls="home-intent-panel"
                   className={intent === id ? styles.activeIntent : ""}
                   onClick={() => setIntent(id)}
+                  onKeyDown={(event) => {
+                    const step = event.key === "ArrowLeft" ? 1 : event.key === "ArrowRight" ? -1 : 0;
+                    if (!step && event.key !== "Home" && event.key !== "End") return;
+                    event.preventDefault();
+                    const index = tabs.findIndex((tab) => tab.id === id);
+                    const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (index + step + tabs.length) % tabs.length;
+                    setIntent(tabs[next].id);
+                    document.getElementById("home-intent-" + tabs[next].id)?.focus();
+                  }}
                 >
                   <Icon size={15} /> {label}
                 </button>
@@ -229,7 +241,7 @@ export function HomeGateway({
           <div className={styles.assurances}>
             <span><Check size={14} /> درس تجريبي قبل الاشتراك</span>
             <span><Check size={14} /> تقدّم محفوظ على أجهزتك</span>
-            <span><Check size={14} /> تفاصيل الدفع واضحة قبل التأكيد</span>
+            <a href="#payment"><Check size={14} /> تابي وتمارا عبر Tap</a>
           </div>
         </div>
 
@@ -237,6 +249,7 @@ export function HomeGateway({
           id="home-intent-panel"
           className={styles.canvas}
           role="tabpanel"
+          aria-labelledby={"home-intent-" + intent}
           aria-live="polite"
           key={intent}
         >

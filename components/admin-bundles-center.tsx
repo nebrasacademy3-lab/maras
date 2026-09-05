@@ -1,4 +1,5 @@
 "use client";
+import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
@@ -258,13 +259,13 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
         <label>اسم الباقة<input value={form.title} onChange={(event)=>setForm({...form,title:event.target.value})} placeholder="مثال: باقة المستوى الأول"/></label>
         <label>المعرّف الإنجليزي<input dir="ltr" value={form.slug} onChange={(event)=>setForm({...form,slug:event.target.value.toLowerCase().replace(/[^a-z0-9._-]/g, "-")})} placeholder="level-one-bundle"/></label>
         <label className={styles.wide}>الوصف<textarea value={form.description} onChange={(event)=>setForm({...form,description:event.target.value})} placeholder="وضّح فائدة الباقة والمواد التي تجمعها."/></label>
-        <label>الجامعة<select value={form.institutionSlug} onChange={(event)=>setForm({...form,institutionSlug:event.target.value,specialtySlug:""})}><option value="">كل الجامعات</option>{universities.map(([slug,name])=><option key={slug} value={slug}>{name}</option>)}</select></label>
-        <label>التخصص<select value={form.specialtySlug} onChange={(event)=>setForm({...form,specialtySlug:event.target.value})}><option value="">كل التخصصات</option>{specialties.map(([slug,name])=><option key={slug} value={slug}>{name}</option>)}</select></label>
-        <label>نوع الخصم<select value={form.discountType} onChange={(event)=>setForm({...form,discountType:event.target.value as FormState["discountType"]})}><option value="percent">نسبة مئوية</option><option value="fixed">مبلغ ثابت</option></select></label>
+        <label>الجامعة<SearchableSelect value={form.institutionSlug} onChange={(event)=>setForm({...form,institutionSlug:event.target.value,specialtySlug:""})}><option value="">كل الجامعات</option>{universities.map(([slug,name])=><option key={slug} value={slug}>{name}</option>)}</SearchableSelect></label>
+        <label>التخصص<SearchableSelect value={form.specialtySlug} onChange={(event)=>setForm({...form,specialtySlug:event.target.value})}><option value="">كل التخصصات</option>{specialties.map(([slug,name])=><option key={slug} value={slug}>{name}</option>)}</SearchableSelect></label>
+        <label>نوع الخصم<SearchableSelect value={form.discountType} onChange={(event)=>setForm({...form,discountType:event.target.value as FormState["discountType"]})}><option value="percent">نسبة مئوية</option><option value="fixed">مبلغ ثابت</option></SearchableSelect></label>
         <label>قيمة الخصم<input type="number" min="0.01" max={form.discountType === "percent" ? 95 : undefined} step="0.01" value={form.discountValue} onChange={(event)=>setForm({...form,discountValue:event.target.value})}/></label>
         <label>تبدأ في<input type="datetime-local" value={form.startsAt} onChange={(event)=>setForm({...form,startsAt:event.target.value})}/></label>
         <label>تنتهي في<input type="datetime-local" value={form.expiresAt} onChange={(event)=>setForm({...form,expiresAt:event.target.value})}/></label>
-        <label>حالة الباقة<select value={form.status} onChange={(event)=>setForm({...form,status:event.target.value as BundleStatus})}><option value="draft">مسودة</option><option value="published">منشورة</option><option value="archived">مؤرشفة</option></select></label>
+        <label>حالة الباقة<SearchableSelect value={form.status} onChange={(event)=>setForm({...form,status:event.target.value as BundleStatus})}><option value="draft">مسودة</option><option value="published">منشورة</option><option value="archived">مؤرشفة</option></SearchableSelect></label>
         <label className={styles.switch}><input type="checkbox" checked={form.featured} onChange={(event)=>setForm({...form,featured:event.target.checked})}/><span><Sparkles size={16}/> إبراز الباقة في الواجهة</span></label>
       </div>
 
