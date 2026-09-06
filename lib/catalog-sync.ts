@@ -1,9 +1,10 @@
-import { asc } from "drizzle-orm";
+import { asc, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { catalogCourses, catalogInstitutions, catalogSpecialties, courseUnitsDb, institutionSpecialties, lessonsDb } from "@/db/schema";
+import { catalogTombstones, catalogCourses, catalogInstitutions, catalogSpecialties, courseUnitsDb, institutionSpecialties, lessonsDb } from "@/db/schema";
 import { getInstitutionPrograms, getProgramCourses, type AcademicProgram } from "@/lib/academic-data";
 import { getInstitutionsCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { courses as staticCourses, type Course, type CourseUnit } from "@/lib/data";
+import { catalogDeletionSet, courseWasDeleted } from "@/lib/catalog-deletion-ledger";
 import { courseSlug, lessonId, specialtySlug, templateDescription, templateLessonDescription, templateLessons, templateUnitDescription, templateUnits, templateCourseCode } from "@/lib/catalog-templates";
 
 export type CatalogSeedMode = "core" | "full";
@@ -57,9 +58,12 @@ function completeStaticOutline(course: Course): CourseUnit[] {
 }
 
 export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeedMode = "core") {
-  const db = getDb();
+  const currentInstitutions = await getInstitutionsCatalog(true);
+  const result = await getDb().transaction(async (db) => {
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext('maras_catalog_mutation_v2'))`);
+  const deleted = catalogDeletionSet(await db.select().from(catalogTombstones));
   const now = new Date().toISOString();
-  const institutions = await getInstitutionsCatalog(true);
+  const institutions = currentInstitutions.filter(item => !deleted.has(`institution:${item.slug}`));
   const institutionBySlug = new Map(institutions.map((institution) => [institution.slug, institution]));
   const existingInstitutions = await db.select({ slug: catalogInstitutions.slug }).from(catalogInstitutions);
   const existingInstitutionSlugs = new Set(existingInstitutions.map((row) => row.slug));
@@ -121,7 +125,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
   };
 
   for (const institution of institutions) {
-    const programs = getInstitutionPrograms(institution.slug);
+    const programs = getInstitutionPrograms(institution.slug).filter(program => !deleted.has(`specialty:${specialtySlug(program.name)}`));
     programsByInstitution.set(institution.slug, programs);
     for (const [index, program] of programs.entries()) {
       const specialty = ensureSpecialty(program.name, program, institution);
@@ -132,7 +136,8 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
       }
     }
   }
-  for (const course of staticCourses) ensureLink(course.universitySlug, course.specialty, 0);
+  const eligibleStaticCourses = staticCourses.filter(course => institutionBySlug.has(course.universitySlug) && !courseWasDeleted(deleted, { slug: course.slug, institutionSlug: course.universitySlug, specialtySlug: specialtySlug(course.specialty) }));
+  for (const course of eligibleStaticCourses) ensureLink(course.universitySlug, course.specialty, 0);
   await insertChunks(specialtyRows, async (batch) => db.insert(catalogSpecialties).values(batch).onConflictDoNothing());
   await insertChunks(linkRows, async (batch) => db.insert(institutionSpecialties).values(batch).onConflictDoNothing());
 
@@ -142,7 +147,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
   const courseRows: typeof catalogCourses.$inferInsert[] = [];
   const targetCourseSlugs = new Set<string>();
 
-  for (const [index, course] of staticCourses.entries()) {
+  for (const [index, course] of eligibleStaticCourses.entries()) {
     targetCourseSlugs.add(course.slug);
     if (existingCourseSlugs.has(course.slug)) continue;
     const specialty = ensureSpecialty(course.specialty, undefined, institutionBySlug.get(course.universitySlug));
@@ -175,6 +180,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
         if (!specialty) continue;
         for (const courseName of getProgramCourses(program)) {
           const slug = courseSlug(institution.slug, program.name, courseName);
+          if (courseWasDeleted(deleted, { slug, institutionSlug: institution.slug, specialtySlug: specialty.slug })) continue;
           targetCourseSlugs.add(slug);
           if (scheduledCourseSlugs.has(slug)) continue;
           courseRows.push({
@@ -203,7 +209,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
   }
   await insertChunks(courseRows, async (batch) => db.insert(catalogCourses).values(batch).onConflictDoNothing());
 
-  const allManagedCourses = (await db.select({ slug: catalogCourses.slug, title: catalogCourses.title }).from(catalogCourses)).filter((course) => targetCourseSlugs.has(course.slug));
+  const allManagedCourses = (await db.select({ slug: catalogCourses.slug, title: catalogCourses.title }).from(catalogCourses)).filter((course) => targetCourseSlugs.has(course.slug) && !deleted.has(`course-outline:${course.slug}`));
   const existingUnits = await db.select().from(courseUnitsDb).orderBy(asc(courseUnitsDb.position));
   const unitCount = new Map<string, number>();
   for (const unit of existingUnits) unitCount.set(unit.courseSlug, (unitCount.get(unit.courseSlug) || 0) + 1);
@@ -282,8 +288,6 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
     });
   }
   await insertChunks(lessonsRows, async (batch) => db.insert(lessonsDb).values(batch).onConflictDoNothing());
-  invalidateCatalogCache();
-
   return {
     mode,
     institutions: institutionRows.length,
@@ -295,4 +299,7 @@ export async function syncCatalogTemplates(templatePrice = 49, mode: CatalogSeed
     totalInstitutions: institutions.length,
     coreCourses: staticCourses.length,
   };
+  });
+  invalidateCatalogCache();
+  return result;
 }

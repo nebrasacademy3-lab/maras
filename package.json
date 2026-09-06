@@ -17,7 +17,10 @@
     "db:push": "drizzle-kit push",
     "video:worker": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/video-worker.ts",
     "video:worker:once": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/video-worker.ts --once",
-    "lifecycle:dispatch": "bash scripts/dispatch-lifecycle.sh"
+    "lifecycle:dispatch": "bash scripts/dispatch-lifecycle.sh",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "node scripts/test-unit.mjs",
+    "preflight": "node scripts/preflight.mjs"
   },
   "dependencies": {
     "busboy": "1.6.0",

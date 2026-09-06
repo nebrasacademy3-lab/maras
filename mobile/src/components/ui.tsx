@@ -3,13 +3,14 @@ import { LinearGradient } from "expo-linear-gradient";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useFocusEffect } from "expo-router";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { AccessibilityInfo, ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, type StyleProp, type TextInputProps, View, type ViewStyle } from "react-native";
+import { ActivityIndicator, Animated, Easing, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, type StyleProp, type TextInputProps, View, type ViewStyle } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import { metrics } from "@/src/theme/colors";
 import { MobileFooter } from "@/src/components/MobileFooter";
+import { useDeviceReducedMotion } from "@/src/lib/reduced-motion";
 import { intersectsMotionViewport } from "@/src/lib/motion-visibility";
 
 type RevealRegistration = { current: View | null };
@@ -55,27 +56,18 @@ function useScrollReveals(viewport: React.RefObject<View | null>) {
   return controller;
 }
 
-export function useReduceMotion() {
-  const [reduceMotion, setReduceMotion] = useState(false);
-  useEffect(() => {
-    let active = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((value) => { if (active) setReduceMotion(value); }).catch(() => { if (active) setReduceMotion(true); });
-    const subscription = AccessibilityInfo.addEventListener("reduceMotionChanged", setReduceMotion);
-    return () => { active = false; subscription.remove(); };
-  }, []);
-  return reduceMotion;
-}
+export const useReduceMotion = useDeviceReducedMotion;
 
 export function Screen({ children, scroll = true, padded = true, keyboard = false, showFooter = true, style }: { children: React.ReactNode; scroll?: boolean; padded?: boolean; keyboard?: boolean; showFooter?: boolean; style?: ViewStyle }) {
   const { colors } = useTheme();
   const { direction } = useLanguage();
-  const [entrance] = useState(() => new Animated.Value(0));
+  const [entrance] = useState(() => new Animated.Value(1));
   const reduceMotion = useReduceMotion();
   const viewport = useRef<View>(null);
   const reveals = useScrollReveals(viewport);
   useFocusEffect(useCallback(() => {
     if (reduceMotion) entrance.setValue(1);
-    else { entrance.setValue(0); Animated.timing(entrance, { toValue: 1, duration: 480, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); }
+    else { entrance.setValue(.65); Animated.timing(entrance, { toValue: 1, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); }
     reveals.check();
     return () => entrance.stopAnimation();
   }, [entrance, reduceMotion, reveals]));
@@ -87,18 +79,23 @@ export function Screen({ children, scroll = true, padded = true, keyboard = fals
 }
 
 export function FadeIn({ children, delay = 0, style }: { children: React.ReactNode; delay?: number; style?: StyleProp<ViewStyle> }) {
-  const [value] = useState(() => new Animated.Value(0));
+  const [value] = useState(() => new Animated.Value(1));
+  const revealed = useRef(false);
   const reduceMotion = useReduceMotion();
   const reveals = useContext(ScrollRevealContext);
   const view = useRef<View>(null);
   useEffect(() => {
     if (reduceMotion) { value.setValue(1); return; }
-    const reveal = () => Animated.timing(value, { toValue: 1, delay: Math.min(240, Math.max(0, delay)), duration: 560, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    const reveal = () => {
+      if (revealed.current) return;
+      revealed.current = true; value.setValue(0);
+      Animated.timing(value, { toValue: 1, delay: Math.min(140, Math.max(0, delay)), duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    };
     const unregister = reveals?.register(view, reveal);
     if (!reveals) reveal();
-    return () => { unregister?.(); value.stopAnimation(); };
+    return () => { unregister?.(); value.stopAnimation(); value.setValue(1); };
   }, [delay, reduceMotion, value, reveals]);
-  return <Animated.View ref={view} collapsable={false} onLayout={reveals?.check} style={[style, { opacity: value, transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) }, { scale: value.interpolate({ inputRange: [0, 1], outputRange: [.985, 1] }) }] }]}>{children}</Animated.View>;
+  return <Animated.View ref={view} collapsable={false} onLayout={reveals?.check} style={[style, { opacity: value.interpolate({ inputRange: [0, 1], outputRange: [.65, 1] }), transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }]}>{children}</Animated.View>;
 }
 
 export function AppButton({ title, onPress, icon, variant = "primary", disabled = false, loading = false, full = true }: { title: string; onPress?: () => void; icon?: React.ComponentProps<typeof Ionicons>["name"]; variant?: "primary" | "soft" | "ghost" | "danger"; disabled?: boolean; loading?: boolean; full?: boolean }) {
@@ -107,7 +104,7 @@ export function AppButton({ title, onPress, icon, variant = "primary", disabled 
   const reduceMotion = useReduceMotion();
   const contentColor = variant === "primary" || variant === "danger" ? "#FFFFFF" : colors.primary;
   const background = variant === "primary" ? colors.primary : variant === "danger" ? colors.danger : variant === "soft" ? colors.surfaceAlt : "transparent";
-  return <Pressable accessibilityRole="button" disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { direction, flexDirection: rowDirection, backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, opacity: disabled ? .45 : pressed ? .8 : 1, transform: [{ scale: pressed && !reduceMotion ? .97 : 1 }] }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { direction, flexDirection: rowDirection, backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, opacity: disabled ? .45 : pressed ? .8 : 1, transform: [{ scale: pressed && !reduceMotion ? .97 : 1 }] }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
 }
 
 export function Field({ label, error, icon, trailing, inputDirection = "natural", ...props }: TextInputProps & { label: string; error?: string; icon?: React.ComponentProps<typeof Ionicons>["name"]; trailing?: React.ReactNode; inputDirection?: "natural"|"ltr" }) {
@@ -120,7 +117,7 @@ export function Field({ label, error, icon, trailing, inputDirection = "natural"
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const { colors, dark } = useTheme();
   const { direction } = useLanguage();
-  return <View style={[styles.card, { direction, backgroundColor: colors.surface, borderColor: colors.border, shadowOpacity: dark ? .22 : .06 }, style]}>{children}</View>;
+  return <FadeIn style={[styles.card, { direction, backgroundColor: colors.surface, borderColor: colors.border, shadowOpacity: dark ? .22 : .06 }, style]}>{children}</FadeIn>;
 }
 
 export function SectionTitle({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {

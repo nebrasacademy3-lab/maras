@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
-import { AppButton, Card, Field } from "@/src/components/ui";
+import { AppButton, Card } from "@/src/components/ui";
 import { api, ApiError, jsonBody } from "@/src/lib/api";
-import { normalizeEmailCode } from "@/src/lib/account-access";
+import { CodeField, NewPasswordField, acceptsPassword } from "./SecurityFields";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 
@@ -28,7 +28,9 @@ export function PasswordChange() {
     finally { setBusy(null); }
   };
   const confirm = async () => {
-    if (busy || code.length !== 6 || password !== confirmation) return;
+    if (busy || code.length !== 6) return;
+    if (!acceptsPassword(password)) { setError("استخدم 10 أحرف على الأقل مع رقم ورمز خاص."); return; }
+    if (password !== confirmation) { setError("كلمتا المرور غير متطابقتين."); return; }
     setBusy("confirm"); setError(""); setMessage("");
     try {
       await api("/api/profile/password", { method: "POST", body: jsonBody({ action: "confirm", code, newPassword: password }) });
@@ -42,10 +44,11 @@ export function PasswordChange() {
     <Text style={[styles.email, { color: colors.primary }]}>{user?.email}</Text>
     <AppButton title={cooldown ? `إعادة إرسال الرمز بعد ${cooldown} ثانية` : sent ? "إعادة إرسال رمز التأكيد" : "إرسال رمز التأكيد إلى بريدي"} variant="soft" disabled={Boolean(busy) || cooldown > 0} loading={busy === "send"} onPress={() => void send()} />
     {sent ? <View style={styles.form}>
-      <Field label="رمز تأكيد تغيير كلمة المرور" value={code} onChangeText={(value) => setCode(normalizeEmailCode(value))} inputDirection="ltr" keyboardType="number-pad" maxLength={6} textContentType="oneTimeCode" autoComplete="one-time-code" />
-      <Field label="كلمة المرور الجديدة" value={password} onChangeText={setPassword} inputDirection="ltr" secureTextEntry autoComplete="new-password" placeholder="10 أحرف، رقم ورمز خاص" />
-      <Field label="تأكيد كلمة المرور الجديدة" value={confirmation} onChangeText={setConfirmation} inputDirection="ltr" secureTextEntry autoComplete="new-password" />
-      <AppButton title="تأكيد وحفظ كلمة المرور" disabled={Boolean(busy) || code.length !== 6 || password.length < 10 || password !== confirmation} loading={busy === "confirm"} onPress={() => void confirm()} />
+      <CodeField label="رمز تأكيد تغيير كلمة المرور" value={code} onChange={setCode} disabled={Boolean(busy)} error={Boolean(error)} />
+      <NewPasswordField label="كلمة المرور الجديدة" value={password} onChange={setPassword} disabled={Boolean(busy)} />
+      <NewPasswordField label="تأكيد كلمة المرور الجديدة" value={confirmation} onChange={setConfirmation} disabled={Boolean(busy)} />
+      <Text style={[styles.copy, { color: colors.textSoft }]}>10 أحرف على الأقل مع رقم ورمز خاص.</Text>
+      <AppButton title="تأكيد وحفظ كلمة المرور" disabled={Boolean(busy) || code.length !== 6 || !acceptsPassword(password) || password !== confirmation} loading={busy === "confirm"} onPress={() => void confirm()} />
     </View> : null}
     {message ? <Text style={[styles.copy, { color: colors.success }]}>{message}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error}</Text> : null}

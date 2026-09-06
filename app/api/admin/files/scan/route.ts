@@ -15,31 +15,35 @@ export async function POST(request: Request) {
     if (!await checkRateLimit("file-scan", identity, 4, 60)) return jsonError("تم تشغيل الفحص مؤخرًا", 429);
     const db = getDb();
     const [requests, support, resources] = await Promise.all([
-      db.select().from(courseRequestFiles).where(eq(courseRequestFiles.scanStatus, "pending")).orderBy(asc(courseRequestFiles.createdAt)).limit(30),
-      db.select().from(supportReplyFiles).where(eq(supportReplyFiles.scanStatus, "pending")).orderBy(asc(supportReplyFiles.createdAt)).limit(30),
-      db.select().from(courseResources).where(eq(courseResources.scanStatus, "pending")).orderBy(asc(courseResources.createdAt)).limit(30),
+      db.select().from(courseRequestFiles).where(eq(courseRequestFiles.scanStatus, "pending")).orderBy(asc(courseRequestFiles.createdAt)).limit(6),
+      db.select().from(supportReplyFiles).where(eq(supportReplyFiles.scanStatus, "pending")).orderBy(asc(supportReplyFiles.createdAt)).limit(6),
+      db.select().from(courseResources).where(eq(courseResources.scanStatus, "pending")).orderBy(asc(courseResources.createdAt)).limit(6),
     ]);
     const summary = { scanned: 0, clean: 0, quarantined: 0, pending: 0 };
+    const deadline = Date.now() + 25_000;
     for (const row of requests) {
+      if (Date.now() >= deadline) break;
       const result = await scanStoredFile(row);
       await db.update(courseRequestFiles).set(scanColumns(result)).where(eq(courseRequestFiles.id, row.id));
       summary.scanned += 1; summary[result.status] += 1;
     }
     for (const row of support) {
+      if (Date.now() >= deadline) break;
       const result = await scanStoredFile(row);
       await db.update(supportReplyFiles).set(scanColumns(result)).where(eq(supportReplyFiles.id, row.id));
       summary.scanned += 1; summary[result.status] += 1;
     }
     for (const row of resources) {
+      if (Date.now() >= deadline) break;
       const result = await scanStoredFile(row);
       await db.update(courseResources).set({
         ...scanColumns(result),
-        studentVisible: result.status === "clean" ? row.studentVisible : false,
+        studentVisible: result.status === "quarantined" ? false : row.studentVisible,
         status: result.status === "quarantined" ? "archived" : row.status,
         updatedAt: new Date().toISOString(),
       }).where(eq(courseResources.id, row.id));
       summary.scanned += 1; summary[result.status] += 1;
     }
-    return Response.json({ ok: true, summary, completedAt: new Date().toISOString() }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ ok: true, summary, hasMore: summary.scanned < requests.length + support.length + resources.length || requests.length === 6 || support.length === 6 || resources.length === 6, completedAt: new Date().toISOString() }, { headers: { "cache-control": "no-store" } });
   });
 }

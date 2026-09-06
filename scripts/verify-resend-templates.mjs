@@ -16,7 +16,7 @@ const origin = "https://marasalelm.com";
 const resetUrl = origin + "/reset-password?token=LOCAL_EMAIL_PREVIEW_ONLY_NOT_A_REAL_TOKEN_" + "a".repeat(96);
 const settings = Object.fromEntries(SOCIAL_CHANNELS.map(channel => [channel.key, channel.id === "whatsapp" ? "0500000000" : `https://${channel.hosts[0]}/meras-preview-only`]));
 const socialUrls = normalizedSocialLinks(settings).map(link => link.url);
-const browser = await chromium.launch({ headless: true, channel: "msedge" });
+const browser = await chromium.launch({ headless: true, ...(process.env.MARAS_TEST_BROWSER ? { channel: process.env.MARAS_TEST_BROWSER } : {}) });
 const results = [];
 try {
   for (const file of files) {
@@ -31,7 +31,7 @@ try {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
       await page.route("**/*", route => {
         const url = new URL(route.request().url());
-        if (url.origin === origin && (url.pathname === "/brand/logo-light-hq.png" || /^\/email-assets\/[a-z]+\.png$/.test(url.pathname))) return route.fulfill({ contentType: "image/png", body: fs.readFileSync(path.join(root, "public", url.pathname.slice(1))) });
+        if (url.origin === origin && (url.pathname === "/brand/mark-light.png" || /^\/email-assets\/[a-z]+\.png$/.test(url.pathname))) return route.fulfill({ contentType: "image/png", body: fs.readFileSync(path.join(root, "public", url.pathname.slice(1))) });
         return route.abort();
       });
       let html = renderSecurityEmail(source, securityEmailVariables(content, withSocials ? settings : {}, origin));
@@ -46,14 +46,14 @@ try {
         code: document.querySelector(".code")?.textContent,
         codeDirection: document.querySelector(".code") ? getComputedStyle(document.querySelector(".code")).direction : null,
         links: [...document.links].map(link => link.href),
-        heading: document.querySelector("h1").innerText,
+        heading: document.querySelector(".email-title").innerText,
         unresolved: document.body.textContent.includes("{{{")
       }));
       assert.ok(result.scrollWidth <= width + 1, file + " overflow: " + JSON.stringify({ width, stripHeadStyles, result }));
       assert.equal(result.direction, "rtl");
       assert.equal(result.logoLoaded, true);
       assert.equal(result.imageCount, withSocials ? 11 : 1);
-      assert.equal(result.background, "rgb(248, 250, 255)");
+      assert.equal(result.background, "rgb(237, 242, 250)");
       assert.equal(result.unresolved, false);
       assert.ok(result.links.every(link => link.startsWith(origin + "/") || socialUrls.includes(link)));
       assert.equal(result.links.filter(link => socialUrls.includes(link)).length, withSocials ? 10 : 0);

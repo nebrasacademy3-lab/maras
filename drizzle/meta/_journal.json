@@ -197,6 +197,13 @@
       "when": 1788641070966,
       "tag": "0027_oauth_email_verification",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1788717600000,
+      "tag": "0028_catalog_deletion_ledger",
+      "breakpoints": true
     }
   ]
 }

@@ -17,6 +17,7 @@ export function MobileFooter() {
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: () => api<{ settings: PublicSettings }>("/api/public/settings"), staleTime: 5_000 });
   const settings = settingsQuery.data?.settings;
   const socials = mobileSocialLinks(settings);
+  const telegram = socials.find(link => link.id === "telegram");
   const legalRecords = [
     settings?.legal_name ? { key: "legal-name", label: "الاسم النظامي", value: settings.legal_name, verifyUrl: "" } : null,
     { key: "commercial-registration", label: "السجل التجاري", value: settings?.commercial_registration_number || "", verifyUrl: settings?.commercial_registration_verify_url || "" },
@@ -38,6 +39,7 @@ export function MobileFooter() {
       {settings.support_email ? <Pressable onPress={() => Linking.openURL(`mailto:${settings.support_email}`)} style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="button" accessibilityLabel="البريد الإلكتروني"><Ionicons name="mail-outline" size={17} color={colors.primary} /></Pressable> : null}
       {socials.map((item) => <Pressable key={item.id} onPress={() => void Linking.openURL(item.url).catch(() => Alert.alert(isRTL ? "تعذر فتح الرابط" : "Could not open link", isRTL ? "تحقق من اتصالك ثم حاول مرة أخرى." : "Check your connection and try again."))} style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="link" accessibilityLabel={isRTL ? item.labelAr : item.label}><Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={20} color={colors.primary} /></Pressable>)}
     </View>}
+    {telegram ? <Pressable accessibilityRole="link" accessibilityLabel="تيليجرام مراس" onPress={() => void Linking.openURL(telegram.url).catch(() => Alert.alert("تعذر فتح تيليجرام", "تحقق من اتصالك ثم حاول مرة أخرى."))} style={{ flexDirection: rowDirection, alignItems: "center", gap: 8, minHeight: 46, borderRadius: 14, paddingHorizontal: 18, backgroundColor: colors.surfaceAlt }}><Ionicons name="paper-plane-outline" size={19} color={colors.primary} /><Text style={{ color: colors.primary, fontSize: 13, fontWeight: "800" }}>تيليجرام مراس</Text></Pressable> : null}
     <View style={[styles.legalBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={[styles.legalHead, { flexDirection: rowDirection }]}>
         <View style={[styles.legalIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="business-outline" size={19} color={colors.primary} /></View>

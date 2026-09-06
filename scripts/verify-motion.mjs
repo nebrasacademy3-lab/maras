@@ -21,7 +21,7 @@ const cases = [
 ];
 for (const scene of cases.filter(scene => !engineFilter || scene.engine === engineFilter)) {
   const label = `${scene.engine}-${scene.width}`;
-  const browser = await ({ chromium, webkit, firefox }[scene.engine]).launch({ headless: true, ...(scene.engine === "chromium" ? { channel: "msedge" } : {}) });
+  const browser = await ({ chromium, webkit, firefox }[scene.engine]).launch({ headless: true, ...(scene.engine === "chromium" ? { ...(process.env.MARAS_TEST_BROWSER ? { channel: process.env.MARAS_TEST_BROWSER } : {}) } : {}) });
   const context = await browser.newContext({ viewport: { width: scene.width, height: scene.height }, reducedMotion: "no-preference" });
   const page = await context.newPage();
   const errors = [];

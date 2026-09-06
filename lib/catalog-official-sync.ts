@@ -1,8 +1,9 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { catalogSpecialties, institutionSpecialties } from "@/db/schema";
+import { catalogTombstones, catalogSpecialties, institutionSpecialties } from "@/db/schema";
 import { getInstitutionCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { specialtySlug } from "@/lib/catalog-templates";
+import { catalogDeletionSet } from "@/lib/catalog-deletion-ledger";
 import { getVerifiedInstitutionPrograms } from "@/lib/official-programs";
 
 export async function syncOfficialInstitutionPrograms(institutionSlug: string) {
@@ -14,7 +15,10 @@ export async function syncOfficialInstitutionPrograms(institutionSlug: string) {
     return { institution: institution.name, sourceUrl: verified.sourceUrl, liveVerified: false, officialPrograms: 0, created: 0, updated: 0, linked: 0 };
   }
 
-  const db = getDb();
+  const result = await getDb().transaction(async db => {
+  await db.execute(sql`select pg_advisory_xact_lock(hashtext('maras_catalog_mutation_v2'))`);
+  const deleted = catalogDeletionSet(await db.select().from(catalogTombstones));
+  if (deleted.has(`institution:${institution.slug}`)) throw new Error("institution_not_found");
   const existingRows = await db.select().from(catalogSpecialties);
   const existingByName = new Map(existingRows.map((row) => [row.name, row]));
   const now = new Date().toISOString();
@@ -25,6 +29,7 @@ export async function syncOfficialInstitutionPrograms(institutionSlug: string) {
   for (const [index, program] of officialPrograms.entries()) {
     const existing = existingByName.get(program.name);
     const resolvedSlug = existing?.slug || specialtySlug(program.name);
+    if (deleted.has(`specialty:${resolvedSlug}`)) continue;
     if (existing) {
       await db.update(catalogSpecialties).set({
         sourceUrl: program.sourceUrl || verified.sourceUrl,
@@ -60,6 +65,8 @@ export async function syncOfficialInstitutionPrograms(institutionSlug: string) {
     if (inserted.length) linked += 1;
   }
 
-  invalidateCatalogCache();
   return { institution: institution.name, sourceUrl: verified.sourceUrl, liveVerified: true, officialPrograms: officialPrograms.length, created, updated, linked };
+  });
+  invalidateCatalogCache();
+  return result;
 }

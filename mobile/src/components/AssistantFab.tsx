@@ -2,7 +2,7 @@ import { Image } from "expo-image";
 import * as SecureStore from "expo-secure-store";
 import { router, useSegments } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AccessibilityInfo, Animated, PanResponder, Platform, StyleSheet, View, useWindowDimensions, type GestureResponderEvent, type PanResponderGestureState } from "react-native";
+import { AccessibilityInfo, Animated, PanResponder, Platform, Keyboard, StyleSheet, View, useWindowDimensions, type GestureResponderEvent, type PanResponderGestureState } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useReduceMotion } from "@/src/components/ui";
 import { ASSISTANT_SIZE, clampFloatingPoint, floatingBounds, floatingReleaseAction, normalizedFloatingPoint, parseFloatingPoint, resolveFloatingPoint, type FloatingPoint } from "@/src/lib/floating-position";
@@ -17,9 +17,15 @@ export function AssistantFab() {
   const { isRTL, t } = useLanguage();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", () => setKeyboardVisible(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setKeyboardVisible(false));
+    return () => { show.remove(); hide.remove(); };
+  }, []);
   const reduceMotion = useReduceMotion();
   const storageKey = `meras_assistant_position_${user?.id || "guest"}`;
-  const bounds = useMemo(() => floatingBounds(width, height, insets), [width, height, insets]);
+  const bounds = useMemo(() => floatingBounds(width, height, { top: insets.top, right: insets.right, bottom: insets.bottom, left: insets.left }), [width, height, insets.top, insets.right, insets.bottom, insets.left]);
   const [loadedKey, setLoadedKey] = useState("");
   const ready = loadedKey === storageKey;
   const [dragHighlight] = useState(() => new Animated.Value(0));
@@ -59,6 +65,7 @@ export function AssistantFab() {
       holdTimer.current = setTimeout(() => { gesture.current.held = true; dragHighlight.setValue(1); animatePress(1.06); AccessibilityInfo.announceForAccessibility(t("حرّك زر المساعد ثم ارفع إصبعك لحفظ موضعه")); }, 420);
   }, [animatePress, dragHighlight, stopTimer, t]);
   const onMove = useCallback((_event: GestureResponderEvent, state: PanResponderGestureState) => {
+      if (state.numberActiveTouches > 1) { stopTimer(); gesture.current.moved = true; gesture.current.held = false; moveTo(gesture.current.origin); return; }
       if (Math.abs(state.dx) + Math.abs(state.dy) > 10) gesture.current.moved = true;
       if (!gesture.current.held) { if (gesture.current.moved) stopTimer(); return; }
       moveTo({ x: gesture.current.origin.x + state.dx, y: gesture.current.origin.y + state.dy });
@@ -75,9 +82,10 @@ export function AssistantFab() {
   // eslint-disable-next-line react-hooks/refs -- Gesture refs are never read during render; RN invokes handlers later.
   const pan = useMemo(() => PanResponder.create({ onStartShouldSetPanResponder: () => true, onMoveShouldSetPanResponder: onMoveShouldSet, onPanResponderGrant: onGrant, onPanResponderMove: onMove, onPanResponderRelease: onRelease, onPanResponderTerminationRequest: onTerminationRequest, onPanResponderTerminate: onTerminate }), [onGrant, onMove, onMoveShouldSet, onRelease, onTerminate, onTerminationRequest]);
   const route = segments.join("/");
-  if (!ready || route.includes("(auth)") || route.includes("admin") || /assistant|lesson|oauth|verify-email/.test(route)) return null;
+  if (!ready || keyboardVisible || route.includes("(auth)") || route.includes("admin") || /assistant|lesson|learn\/|oauth|verify-email|reset-password/.test(route)) return null;
   return <View pointerEvents="box-none" style={styles.layer}><Animated.View
     {...pan.panHandlers}
+    focusable
     accessible accessibilityRole="button" accessibilityLabel={t("مساعد مراس")}
     accessibilityHint={t("اضغط للفتح، أو اضغط مطولًا ثم اسحب لتغيير موضع الزر")}
     accessibilityActions={[{ name: "activate", label: t("فتح المساعد") }, { name: "resetPosition", label: t("إعادة موضع الزر") }, { name: "moveUp", label: t("تحريك لأعلى") }, { name: "moveDown", label: t("تحريك لأسفل") }, { name: "moveLeft", label: t("تحريك لليسار") }, { name: "moveRight", label: t("تحريك لليمين") }]}

@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
-import { Platform, type ColorValue } from "react-native";
+import { useWindowDimensions, type ColorValue } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useReduceMotion } from "@/src/components/ui";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 
@@ -10,9 +12,13 @@ function icon(name: React.ComponentProps<typeof Ionicons>["name"]) {
 }
 export default function TabsLayout() {
   const { colors } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const reduceMotion = useReduceMotion();
   const { direction, t } = useLanguage();
   return <Tabs screenOptions={{
     headerShown: false,
+    animation: reduceMotion ? "none" : "fade",
     sceneStyle: { direction },
     tabBarHideOnKeyboard: true,
     tabBarActiveTintColor: colors.primary,
@@ -21,15 +27,16 @@ export default function TabsLayout() {
       direction,
       position: "absolute",
       alignSelf: "center",
-      width: Platform.OS === "web" ? 650 : undefined,
+      width: Math.min(650, Math.max(280, width - insets.left - insets.right - 16)),
       maxWidth: "98%",
-      bottom: Platform.OS === "ios" ? 14 : 10,
+      bottom: Math.max(10, insets.bottom),
       backgroundColor: colors.tab,
       borderTopColor: "transparent",
       borderColor: colors.border,
       borderWidth: 1,
       borderRadius: 22,
-      height: Platform.OS === "ios" ? 78 : 68,
+      height: 68,
+      paddingBottom: 7,
       paddingTop: 7,
       shadowColor: "#061A42",
       shadowOpacity: .13,
@@ -38,7 +45,7 @@ export default function TabsLayout() {
       elevation: 10,
     },
     tabBarItemStyle: { borderRadius: 15, marginHorizontal: 1 },
-    tabBarLabelStyle: { fontSize: 8, fontWeight: "800", paddingBottom: Platform.OS === "ios" ? 0 : 7 },
+    tabBarLabelStyle: { fontSize: width < 360 ? 9 : 10, fontWeight: "800", paddingBottom: 2 },
   }}>
     <Tabs.Screen name="index" options={{ title: t("الرئيسية"), tabBarIcon: icon("home-outline") }} />
     <Tabs.Screen name="universities" options={{ title: t("الجامعات"), tabBarIcon: icon("school-outline") }} />

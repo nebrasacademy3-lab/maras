@@ -20,9 +20,10 @@ export async function sendTransactionalEmail(input: { to: string; subject: strin
   if (!emailDeliveryConfigured()) throw new EmailDeliveryError(false);
   try {
     const prepared = input.security ? await prepareSecurityEmail(input.security) : null;
-    const templateId = input.security ? process.env[EMAIL_TEMPLATE_ENV[input.security.kind]]?.trim() : "";
+    const templateId = input.security && process.env.RESEND_USE_HOSTED_TEMPLATES === "true" ? process.env[EMAIL_TEMPLATE_ENV[input.security.kind]]?.trim() : "";
     if (templateId && !/^[A-Za-z0-9_-]{1,128}$/.test(templateId)) throw new EmailDeliveryError(true);
-    // Defaults work immediately with server-rendered HTML. Optional published
+    // New designs always ship with this release. Opt in only after republishing
+    // the hosted templates with matching variable names. Optional published
     // Resend templates receive the same current settings on every new message.
     const body = prepared && prepared.allowHostedTemplate && templateId && canUseHostedEmailTemplate(prepared.variables)
       ? { template: { id: templateId, variables: prepared.variables } }

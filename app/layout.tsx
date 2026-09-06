@@ -7,6 +7,8 @@ import "./campaigns.css";
 import "./brand-premium.css";
 import "./admin-premium.css";
 import "./motion.css";
+import "./experience.css";
+import "./security-experience.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DeferredEnhancements } from "@/components/deferred-enhancements";
 import { AnnouncementCampaign } from "@/components/announcement-campaign";
@@ -46,7 +48,7 @@ export const viewport: Viewport = {
   ],
 };
 
-const themeScript = `(function(){try{var t=localStorage.getItem('meras-theme');var p=localStorage.getItem('meras-palette');var s=localStorage.getItem('meras-font-scale');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.dataset.palette=['official','violet','rose','teal'].indexOf(p)>=0?p:'official';document.documentElement.dataset.fontScale=['0.9','1','1.1','1.2'].indexOf(s)>=0?s:'1'}catch(e){}})()`;
+const themeScript = `(function(){try{document.documentElement.dataset.motion=localStorage.getItem('meras-motion')==='off'?'off':'on';var t=localStorage.getItem('meras-theme');var p=localStorage.getItem('meras-palette');var s=localStorage.getItem('meras-font-scale');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.dataset.palette=['official','violet','rose','teal'].indexOf(p)>=0?p:'official';document.documentElement.dataset.fontScale=['0.9','1','1.1','1.2'].indexOf(s)>=0?s:'1'}catch(e){}})()`;
 const structuredData = siteStructuredData();
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

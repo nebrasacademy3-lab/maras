@@ -10,7 +10,7 @@ const baseURL = process.env.MARAS_TEST_URL || "http://127.0.0.1:3000";
 assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(new URL(baseURL).hostname));
 const folder = path.resolve("outputs/home-content-parity", new Date().toISOString().replace(/[:.]/g, "-"));
 fs.mkdirSync(folder, { recursive: true });
-const browser = await chromium.launch({ headless: true, channel: process.env.MARAS_TEST_BROWSER || "msedge" });
+const browser = await chromium.launch({ headless: true, ...(process.env.MARAS_TEST_BROWSER ? { channel: process.env.MARAS_TEST_BROWSER } : {}) });
 const results = [];
 let signature;
 try {

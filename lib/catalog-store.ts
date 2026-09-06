@@ -1,10 +1,12 @@
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
-import { catalogCourses, catalogInstitutions, catalogSpecialties, courseAccess, courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, videoAssets } from "@/db/schema";
+import { catalogTombstones, catalogCourses, catalogInstitutions, catalogSpecialties, courseAccess, courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, videoAssets } from "@/db/schema";
 import { courses as staticCourses, institutions as staticInstitutions, type Course, type Institution, type InstitutionType } from "@/lib/data";
 import { getVerifiedInstitutionPrograms } from "@/lib/official-programs";
 import { withCatalogSource } from "@/lib/catalog-sources";
 import type { AcademicProgram } from "@/lib/academic-data";
+import { catalogDeletionSet, courseWasDeleted } from "@/lib/catalog-deletion-ledger";
+import { specialtySlug as programSlug } from "@/lib/catalog-templates";
 import { normalizeAccessDurationDays } from "@/lib/course-access";
 
 const themes: Record<string, string> = {
@@ -15,12 +17,16 @@ const themes: Record<string, string> = {
 };
 
 const CATALOG_CACHE_TTL = 20_000;
+let cacheGeneration = 0;
 let institutionsCache: { expiresAt: number; value: Institution[] } | null = null;
 let coursesCache: { expiresAt: number; value: Course[] } | null = null;
 let institutionsInFlight: Promise<Institution[]> | null = null;
 let coursesInFlight: Promise<Course[]> | null = null;
 
 export function invalidateCatalogCache() {
+  cacheGeneration += 1;
+  institutionsInFlight = null;
+  coursesInFlight = null;
   institutionsCache = null;
   coursesCache = null;
 }
@@ -62,19 +68,24 @@ export async function getInstitutionsCatalog(includeHidden = false): Promise<Ins
   if (!process.env.DATABASE_URL) return staticInstitutionFallback();
   if (!includeHidden && institutionsCache && institutionsCache.expiresAt > Date.now()) return institutionsCache.value;
   if (!includeHidden && institutionsInFlight) return institutionsInFlight;
+  const generation = cacheGeneration;
   const load = async () => {
   const db = getDb();
-  const [rows, specialties, courseRows] = await Promise.all([
+  const [rows, specialties, courseRows, deletionRows] = await Promise.all([
+    // All merges respect intentional removals, including administrator listings.
     db.select().from(catalogInstitutions).orderBy(asc(catalogInstitutions.sortOrder), asc(catalogInstitutions.name)),
     db.select().from(institutionSpecialties),
     db.select({ slug: catalogCourses.slug, institutionSlug: catalogCourses.institutionSlug, status: catalogCourses.status }).from(catalogCourses),
+    db.select().from(catalogTombstones),
   ]);
+  const deleted = catalogDeletionSet(deletionRows);
   const overrides = new Map(rows.map((row) => [row.slug, row]));
   const courseStatus = new Map(courseRows.map((row) => [row.slug, row.status]));
   const staticCourseSlugs = new Set(staticCourses.map((course) => course.slug));
-  const actualCourseCount = (slug: string) => staticCourses.filter((course) => course.universitySlug === slug && (courseStatus.get(course.slug) === undefined || courseStatus.get(course.slug) === "published")).length + courseRows.filter((course) => course.institutionSlug === slug && course.status === "published" && !staticCourseSlugs.has(course.slug)).length;
+  const actualCourseCount = (slug: string) => staticCourses.filter((course) => !deleted.has(`course:${course.slug}`) && course.universitySlug === slug && (courseStatus.get(course.slug) === undefined || courseStatus.get(course.slug) === "published")).length + courseRows.filter((course) => course.institutionSlug === slug && course.status === "published" && !staticCourseSlugs.has(course.slug)).length;
   const merged = new Map<string, Institution>();
   for (const item of staticInstitutions) {
+    if (deleted.has(`institution:${item.slug}`) && !overrides.has(item.slug)) continue;
     const row = overrides.get(item.slug);
     if (row?.status === "hidden" && !includeHidden) continue;
     merged.set(item.slug, row ? withCatalogSource({
@@ -88,7 +99,7 @@ export async function getInstitutionsCatalog(includeHidden = false): Promise<Ins
       directorySourceUrl: row.directorySourceUrl || item.directorySourceUrl,
       aliases: parseAliases(row.aliasesJson, item.aliases),
       verificationStatus: row.verificationStatus === "official-directory" ? "official-directory" : item.verificationStatus,
-      specialties: specialties.filter((link) => link.institutionSlug === item.slug && link.status === "published").length || item.specialties,
+      specialties: specialties.filter((link) => link.institutionSlug === item.slug && link.status === "published" && !deleted.has(`specialty:${link.specialtySlug}`)).length,
       courses: actualCourseCount(item.slug),
       featured: row.featured,
     }) : withCatalogSource({ ...item, logo: bundledLogo(item.slug) }));
@@ -112,12 +123,12 @@ export async function getInstitutionsCatalog(includeHidden = false): Promise<Ins
     }));
   }
   const value = [...merged.values()];
-  if (!includeHidden) institutionsCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
+  if (!includeHidden && generation === cacheGeneration) institutionsCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
   return value;
   };
   if (!includeHidden) {
-    institutionsInFlight = load();
-    try { return await institutionsInFlight; } finally { institutionsInFlight = null; }
+    const pending = load(); institutionsInFlight = pending;
+    try { return await pending; } finally { if (institutionsInFlight === pending) institutionsInFlight = null; }
   }
   return load();
 }
@@ -132,11 +143,14 @@ export async function getProgramsCatalog(institutionSlug: string): Promise<{ pro
     return getVerifiedInstitutionPrograms(institutionSlug, institution?.domain, institution?.name);
   }
   const db = getDb();
-  const [links, specialties, institution] = await Promise.all([
+  const [links, specialties, institution, deletionRows] = await Promise.all([
     db.select().from(institutionSpecialties).where(eq(institutionSpecialties.institutionSlug, institutionSlug)).orderBy(asc(institutionSpecialties.sortOrder)),
     db.select().from(catalogSpecialties),
-    getInstitutionCatalog(institutionSlug, true),
+    getInstitutionCatalog(institutionSlug),
+    db.select().from(catalogTombstones),
   ]);
+  const deleted = catalogDeletionSet(deletionRows);
+  if (!institution) return { programs: [], sourceUrl: "/universities", liveVerified: false };
   const bySlug = new Map(specialties.map((item) => [item.slug, item]));
   const linked = links.filter((item) => item.status === "published").flatMap((item) => {
     const specialty = bySlug.get(item.specialtySlug);
@@ -144,28 +158,38 @@ export async function getProgramsCatalog(institutionSlug: string): Promise<{ pro
     const verificationStatus: AcademicProgram["verificationStatus"] = specialty?.verificationStatus === "official-program" || specialty?.verificationStatus === "discovery" ? specialty.verificationStatus : "pending-review";
     return specialty && specialty.status === "published" ? [{ name: specialty.name, area: "إنسانية" as const, degree, verificationStatus, sourceUrl: specialty.sourceUrl || undefined }] : [];
   });
-  if (linked.length) return { programs: linked, sourceUrl: institution?.domain ? `https://${institution.domain}` : "/universities", liveVerified: linked.every((program) => program.verificationStatus === "official-program") };
-  return getVerifiedInstitutionPrograms(institutionSlug, institution?.domain, institution?.name);
+  if (links.length || linked.length) return { programs: linked, sourceUrl: institution?.domain ? `https://${institution.domain}` : "/universities", liveVerified: linked.every((program) => program.verificationStatus === "official-program") };
+  const discovered = await getVerifiedInstitutionPrograms(institutionSlug, institution?.domain, institution?.name);
+  const byName = new Map(specialties.map(item => [item.name, item]));
+  return { ...discovered, programs: discovered.programs.filter(program => {
+    const managed = byName.get(program.name);
+    return !deleted.has(`specialty:${managed?.slug || programSlug(program.name)}`) && (!managed || managed.status === "published");
+  }) };
 }
 
 export async function getCoursesCatalog(includeDraft = false): Promise<Course[]> {
   if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item, rating: 0, ratingsCount: 0, students: 0, instructor: "فريق مراس الأكاديمي", audienceScope: item.audienceScope || "specialty", accessDurationDays: normalizeAccessDurationDays(item.accessDurationDays, item.access), ...courseReadiness(item.units) }));
   if (!includeDraft && coursesCache && coursesCache.expiresAt > Date.now()) return coursesCache.value;
   if (!includeDraft && coursesInFlight) return coursesInFlight;
+  const generation = cacheGeneration;
   const load = async () => {
   const db = getDb();
-  const [managed, units, lessons, specialties, institutions, reviews, accessRows, links, readyVideos] = await Promise.all([
+  const [managed, units, lessons, specialties, institutions, reviews, accessRows, links, readyVideos, deletionRows] = await Promise.all([
     db.select().from(catalogCourses),
     db.select().from(courseUnitsDb).orderBy(asc(courseUnitsDb.position)),
     db.select().from(lessonsDb).orderBy(asc(lessonsDb.position)),
     db.select().from(catalogSpecialties),
-    getInstitutionsCatalog(true),
+    getInstitutionsCatalog(includeDraft),
     db.select().from(courseReviews).where(eq(courseReviews.status, "published")),
     db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(and(isNull(courseAccess.revokedAt), isNull(courseAccess.suspendedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, new Date().toISOString())))),
     db.select({ institutionSlug: institutionSpecialties.institutionSlug, specialtySlug: institutionSpecialties.specialtySlug, status: institutionSpecialties.status }).from(institutionSpecialties),
     db.select({ lessonId: videoAssets.lessonId }).from(videoAssets).where(eq(videoAssets.status, "ready")),
+    db.select().from(catalogTombstones),
   ]);
-  const validSpecialtyLinks = new Set(links.filter((link) => link.status === "published").map((link) => `${link.institutionSlug}:${link.specialtySlug}`));
+  const deleted = catalogDeletionSet(deletionRows);
+  const validInstitutions = new Set(institutions.map(item => item.slug));
+  const publicSpecialties = new Set(specialties.filter(item => item.status === "published").map(item => item.slug));
+  const validSpecialtyLinks = new Set(links.filter((link) => link.status === "published" && publicSpecialties.has(link.specialtySlug)).map((link) => `${link.institutionSlug}:${link.specialtySlug}`));
   const readyLessonIds = new Set(readyVideos.map((row) => row.lessonId));
   const reviewsByCourse = new Map<string, typeof reviews>();
   const accessCountByCourse = new Map<string, number>();
@@ -197,7 +221,9 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
   const result = new Map<string, Course>();
   for (const item of staticCourses) {
     const row = managedBySlug.get(item.slug);
-    const linkedRow = row && validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`) ? row : undefined;
+    if (!validInstitutions.has(row?.institutionSlug || item.universitySlug)) continue;
+    if (!row && courseWasDeleted(deleted, { slug: item.slug, institutionSlug: item.universitySlug, specialtySlug: programSlug(item.specialty) })) continue;
+    const linkedRow = row && (includeDraft || validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`)) ? row : undefined;
     if (row && (!linkedRow || row.status !== "published") && !includeDraft) continue;
     const liveReviews = reviewsByCourse.get(item.slug) || [];
     const liveRating = liveReviews.length ? Math.round(liveReviews.reduce((sum, review) => sum + review.rating, 0) / liveReviews.length * 10) / 10 : 0;
@@ -244,7 +270,7 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
     } : { ...item, audienceScope: item.audienceScope || "specialty", ...live, ...courseReadiness(item.units) });
   }
   for (const row of managed) {
-    if (!validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`)) continue;
+    if (!validInstitutions.has(row.institutionSlug) || (!includeDraft && !validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`))) continue;
     if (result.has(row.slug) || (row.status !== "published" && !includeDraft)) continue;
     const courseUnits = (unitsByCourse.get(row.slug) || []).filter((unit) => includeDraft || unit.status === "published");
     const unitRows = courseUnits.map((unit) => ({
@@ -287,12 +313,12 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
     });
   }
   const value = [...result.values()];
-  if (!includeDraft) coursesCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
+  if (!includeDraft && generation === cacheGeneration) coursesCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
   return value;
   };
   if (!includeDraft) {
-    coursesInFlight = load();
-    try { return await coursesInFlight; } finally { coursesInFlight = null; }
+    const pending = load(); coursesInFlight = pending;
+    try { return await pending; } finally { if (coursesInFlight === pending) coursesInFlight = null; }
   }
   return load();
 }

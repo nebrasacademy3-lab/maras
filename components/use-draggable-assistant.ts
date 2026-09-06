@@ -11,6 +11,8 @@ export function useDraggableAssistant() {
   const [point, setPoint] = useState<Point | null>(null);
   const [bounds, setBounds] = useState<Bounds | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [holding, setHolding] = useState(false);
+  const paint = useRef<number | null>(null);
   const current = useRef<Point | null>(null);
   const limits = useRef<Bounds | null>(null);
   const hold = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -23,7 +25,8 @@ export function useDraggableAssistant() {
     const area = limits.current;
     if (!area) return;
     const next = { x: clamp(position.x, area.left, area.right), y: clamp(position.y, area.top, area.bottom) };
-    current.current = next; setPoint(next);
+    current.current = next;
+    if (paint.current === null) paint.current = requestAnimationFrame(() => { paint.current = null; setPoint(current.current); });
     if (save) persist(next, area);
   }, [persist]);
   const reset = useCallback(() => {
@@ -35,7 +38,9 @@ export function useDraggableAssistant() {
     const probe = document.createElement("div");
     probe.style.cssText = "position:fixed;visibility:hidden;pointer-events:none;padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)";
     document.body.append(probe);
+    const cancelGesture = () => { if (hold.current) clearTimeout(hold.current); hold.current = null; if (drag.current) suppressClick.current = true; drag.current = null; setDragging(false); setHolding(false); };
     const measure = () => {
+      cancelGesture();
       const viewport = window.visualViewport;
       const width = viewport?.width || window.innerWidth;
       const height = viewport?.height || window.innerHeight;
@@ -57,24 +62,27 @@ export function useDraggableAssistant() {
     };
     measure();
     window.addEventListener("resize", measure);
+    window.addEventListener("blur", cancelGesture);
+    document.addEventListener("visibilitychange", cancelGesture);
     window.visualViewport?.addEventListener("resize", measure);
     window.visualViewport?.addEventListener("scroll", measure);
-    return () => { window.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("scroll", measure); if (hold.current) clearTimeout(hold.current); probe.remove(); };
+    return () => { if (paint.current !== null) cancelAnimationFrame(paint.current); paint.current = null; window.removeEventListener("blur", cancelGesture); document.removeEventListener("visibilitychange", cancelGesture); window.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("resize", measure); window.visualViewport?.removeEventListener("scroll", measure); if (hold.current) clearTimeout(hold.current); probe.remove(); };
   }, [move]);
 
   const onPointerDown = (event: PointerEvent<HTMLButtonElement>) => {
     if (!event.isPrimary || event.button !== 0 || !current.current) return;
     suppressClick.current = false;
     drag.current = { pointer: event.pointerId, startX: event.clientX, startY: event.clientY, start: current.current, active: false };
-    event.currentTarget.setPointerCapture(event.pointerId);
-    hold.current = setTimeout(() => { if (drag.current) { drag.current.active = true; suppressClick.current = true; setDragging(true); } }, 360);
+    setHolding(true);
+    try { event.currentTarget.setPointerCapture(event.pointerId); } catch { /* Capture can be unavailable after a pointer is cancelled. */ }
+    hold.current = setTimeout(() => { if (drag.current) { drag.current.active = true; suppressClick.current = true; setHolding(false); setDragging(true); } }, 360);
   };
   const onPointerMove = (event: PointerEvent<HTMLButtonElement>) => {
     const state = drag.current;
     if (!state || state.pointer !== event.pointerId) return;
     const dx = event.clientX - state.startX; const dy = event.clientY - state.startY;
     if (!state.active) {
-      if (Math.hypot(dx, dy) > 9) { if (hold.current) clearTimeout(hold.current); suppressClick.current = true; }
+      if (Math.hypot(dx, dy) > 9) { setHolding(false); if (hold.current) clearTimeout(hold.current); suppressClick.current = true; }
       return;
     }
     event.preventDefault();
@@ -85,7 +93,7 @@ export function useDraggableAssistant() {
     if (hold.current) clearTimeout(hold.current);
     if (cancelled) move(drag.current.start);
     else if (drag.current.active && current.current && limits.current) persist(current.current, limits.current);
-    drag.current = null; setDragging(false);
+    drag.current = null; setDragging(false); setHolding(false);
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
   };
   const onKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
@@ -102,5 +110,5 @@ export function useDraggableAssistant() {
   const panelWidth = bounds ? Math.max(1, Math.min(390, bounds.right + bounds.size - bounds.left)) : 390;
   const panelHeight = bounds ? Math.max(1, Math.min(650, bounds.bottom + bounds.size - bounds.top)) : 500;
   const panelStyle: CSSProperties | undefined = point && bounds ? { position: "fixed", left: clamp(point.x, bounds.left, bounds.right + bounds.size - panelWidth), top: clamp(point.y - panelHeight - 12, bounds.top, bounds.bottom + bounds.size - panelHeight), bottom: "auto", width: panelWidth, height: panelHeight, maxHeight: "calc(100dvh - 24px)" } : undefined;
-  return { button, dragging, wrapperStyle, panelStyle, reset, consumeDragClick, onPointerDown, onPointerMove, onPointerUp: (event: PointerEvent<HTMLButtonElement>) => finish(event), onPointerCancel: (event: PointerEvent<HTMLButtonElement>) => finish(event, true), onKeyDown };
+  return { button, dragging, holding, wrapperStyle, panelStyle, reset, consumeDragClick, onPointerDown, onPointerMove, onPointerUp: (event: PointerEvent<HTMLButtonElement>) => finish(event), onPointerCancel: (event: PointerEvent<HTMLButtonElement>) => finish(event, true), onLostPointerCapture: (event: PointerEvent<HTMLButtonElement>) => finish(event, true), onKeyDown };
 }
