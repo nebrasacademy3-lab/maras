@@ -50,8 +50,6 @@ export function absoluteUrl(path?: string | null) {
 export type ApiRequestInit = RequestInit & { timeoutMs?: number };
 
 export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
-  const endpoint = new URL(absoluteUrl(path));
-  if (endpoint.origin !== new URL(API_URL).origin || endpoint.username || endpoint.password) throw new ApiError("عنوان الخدمة غير موثوق", 400);
   if (!STORE_COMMERCE_ENABLED && new URL(absoluteUrl(path)).pathname === "/api/checkout") {
     throw new ApiError("نسخة المتجر مخصصة لمشاهدة الاشتراكات الحالية ولا تنفذ شراء المحتوى الرقمي داخل التطبيق.", 403);
   }
@@ -69,21 +67,16 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
   if (adminStepUpToken && new URL(absoluteUrl(path)).pathname.startsWith("/api/admin/")) headers.set("x-meras-admin-stepup", adminStepUpToken);
   if (requestInit.body && !(requestInit.body instanceof FormData) && !headers.has("content-type")) headers.set("content-type", "application/json");
   const controller = new AbortController();
-  const safeTimeout = Math.max(1_000, Math.min(15 * 60_000, Math.floor(Number.isFinite(timeoutMs) ? timeoutMs : 15_000)));
+  const safeTimeout = Math.max(1_000, Math.min(15 * 60_000, Math.floor(timeoutMs)));
   const timeout = setTimeout(() => controller.abort(), safeTimeout);
   const externalSignal = requestInit.signal;
-  const abort = () => controller.abort();
   if (externalSignal?.aborted) controller.abort();
-  else if (externalSignal) externalSignal.addEventListener("abort", abort, { once: true });
+  else if (externalSignal) externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
   try {
-    const response = await fetch(absoluteUrl(path), { credentials: Platform.OS === "web" ? "include" : "omit", ...requestInit, redirect: "error", headers, signal: controller.signal });
+    const response = await fetch(absoluteUrl(path), { credentials: Platform.OS === "web" ? "include" : "omit", ...requestInit, headers, signal: controller.signal });
     const text = await response.text();
     let payload: unknown = {};
-    try { payload = text ? JSON.parse(text) : {}; } catch {
-      if (response.ok) throw new ApiError("استجابة غير صالحة من الخدمة. حاول مرة أخرى.", 502);
-      payload = {};
-    }
-    if (response.ok && response.status !== 204 && (!text || payload === null || typeof payload !== "object")) throw new ApiError("استجابة غير مكتملة من الخدمة. حاول مرة أخرى.", 502);
+    try { payload = text ? JSON.parse(text) : {}; } catch { payload = {}; }
     if (!response.ok) {
       const error = payload && typeof payload === "object" && "error" in payload
         ? String((payload as { error: unknown }).error)
@@ -99,7 +92,6 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
     throw new ApiError(`تعذر الاتصال بخدمة مراس${detail}. حاول مرة أخرى.`, 0);
   } finally {
     clearTimeout(timeout);
-    externalSignal?.removeEventListener("abort", abort);
   }
 }
 

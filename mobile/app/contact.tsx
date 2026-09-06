@@ -30,7 +30,6 @@ export default function Contact() {
   const links = mobileSocialLinks(publicSettings);
   const socials = links.filter((link) => link.id !== "whatsapp");
   const whatsapp = links.find((link) => link.id === "whatsapp")?.url;
-  const telegram = links.find(link => link.id === "telegram")?.url;
   const supportEmail = publicSettings.support_email;
 
   return <Screen>
@@ -48,7 +47,6 @@ export default function Contact() {
         <Card style={styles.channel}><Ionicons name="mail-outline" size={28} color={colors.primary} /><Text style={[styles.channelTitle, { color: colors.text }]}>البريد</Text><Text style={[styles.channelCopy, { color: colors.textSoft }]}>{supportEmail}</Text></Card>
       </Pressable> : null}
     </View> : null}
-    {telegram ? <Card style={{ marginTop: 14, gap: 10 }}><Ionicons name="paper-plane-outline" size={26} color={colors.primary} /><Text style={[styles.channelTitle, { color: colors.text }]}>تيليجرام مراس</Text><Text style={[styles.supportCopy, { color: colors.textSoft }]}>قناتنا الرسمية لمستجدات المنصة والتواصل.</Text><AppButton title="افتح تيليجرام" variant="soft" onPress={() => void Linking.openURL(telegram).catch(() => Alert.alert("تعذر فتح الرابط", "تحقق من الاتصال ثم حاول مرة أخرى."))} /></Card> : null}
     {socials.length ? <>
       <SectionTitle title="تابعنا" subtitle="آخر المواد والإعلانات التعليمية" />
       <View style={styles.socialGrid}>{socials.map((item) => <Pressable
@@ -79,12 +77,12 @@ const styles = StyleSheet.create({
   channelGrid: { flexDirection: "row", justifyContent: "space-between" },
   channel: { alignItems: "center", minHeight: 125 },
   channelTitle: { fontSize: 13, fontWeight: "900", marginTop: 8 },
-  channelCopy: { fontSize: 12, marginTop: 3, textAlign: "center" },
+  channelCopy: { fontSize: 9, marginTop: 3, textAlign: "center" },
   socialGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  social: { flexBasis: "47%", flexGrow: 1, minHeight: 54, borderWidth: 1, borderRadius: 15, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 7 },
-  socialText: { flex: 1, fontSize: 12, fontWeight: "800", textAlign: "right" },
+  social: { width: "48%", minHeight: 52, borderWidth: 1, borderRadius: 15, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 7 },
+  socialText: { flex: 1, fontSize: 10, fontWeight: "800", textAlign: "right" },
   supportCard: { marginTop: 20, alignItems: "flex-start" },
   supportTitle: { fontSize: 16, fontWeight: "900", marginTop: 8 },
-  supportCopy: { fontSize: 13, lineHeight: 23, textAlign: "right", marginVertical: 8 },
+  supportCopy: { fontSize: 10, lineHeight: 19, textAlign: "right", marginVertical: 8 },
   empty: { textAlign: "center", fontSize: 11, lineHeight: 20, padding: 12 },
 });

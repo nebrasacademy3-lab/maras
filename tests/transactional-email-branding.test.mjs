@@ -45,7 +45,7 @@ test("all three real templates render current-domain branded HTML and preserve l
   for (const kind of kinds) {
     const { html, variables } = await s.prepareSecurityEmail(contentFor(kind));
     assert.match(html, /<html[^>]+lang="ar"[^>]+dir="rtl"/);
-    assert.ok(html.includes(`${origin}/brand/mark-light.png`));
+    assert.ok(html.includes(`${origin}/brand/logo-light-hq.png`));
     assert.ok(html.includes(`${origin}/email-assets/x.png`));
     assert.ok(html.includes("https://x.com/our_saved_account"));
     assert.ok(html.includes("https://instagram.com/our_saved_account"));
@@ -113,7 +113,7 @@ test("development sends all three templates with local actions and public HTTPS 
       const security = kind === "reset-password" ? { kind, resetUrl: `${local}/reset-password?token=${token}` } : { kind, code: "012345" };
       const prepared = await s.prepareSecurityEmail(security);
       assert.equal(prepared.allowHostedTemplate, false);
-      assert.equal(prepared.variables.LOGO_URL, `${origin}/brand/mark-light.png`);
+      assert.equal(prepared.variables.LOGO_URL, `${origin}/brand/logo-light-hq.png`);
       assert.ok(prepared.variables.SOCIAL_1.includes(`${origin}/email-assets/x.png`));
       assert.ok(prepared.html.includes(`href="${local}/`));
       assert.doesNotMatch(prepared.html, /src="http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])/);
@@ -239,7 +239,7 @@ test("default sender posts both the real branded HTML and plain-text fallback fo
 });
 
 test("optional hosted IDs choose template-only payloads and include freshly saved account variables", async () => {
-  const environment = { RESEND_USE_HOSTED_TEMPLATES: "true", ...Object.fromEntries(kinds.map(kind => [branding.EMAIL_TEMPLATE_ENV[kind], `meras-${kind}`])) };
+  const environment = Object.fromEntries(kinds.map(kind => [branding.EMAIL_TEMPLATE_ENV[kind], `meras-${kind}`]));
   const s = await setup({ environment, settings: { social_x: "https://x.com/current_account" } });
   for (const kind of kinds) {
     await s.send(kind);
@@ -255,7 +255,7 @@ test("optional hosted IDs choose template-only payloads and include freshly save
 });
 
 test("oversized safely escaped social variables fall back to direct HTML instead of exceeding hosted template limits", async () => {
-  const s = await setup({ environment: { RESEND_USE_HOSTED_TEMPLATES: "true", RESEND_TEMPLATE_VERIFY_EMAIL: "meras-verify-email" }, settings: { whatsapp_number: "0501234567", whatsapp_message: "مرحبا ".repeat(200) } });
+  const s = await setup({ environment: { RESEND_TEMPLATE_VERIFY_EMAIL: "meras-verify-email" }, settings: { whatsapp_number: "0501234567", whatsapp_message: "مرحبا ".repeat(200) } });
   const prepared = await s.prepareSecurityEmail(contentFor("verify-email"));
   assert.ok(prepared.variables.SOCIAL_1.length > 2000);
   assert.equal(branding.canUseHostedEmailTemplate(prepared.variables), false);
@@ -281,7 +281,7 @@ test("delivery errors are sanitized for provider failures, malformed successes a
     await assert.rejects(s.send(), error => error instanceof s.EmailDeliveryError && error.status === 503 && error.code === "EMAIL_DELIVERY_FAILED" && !/PRIVATE_ACCOUNT|secret-key|student@example|012345/.test(error.message));
     assert.equal(s.calls.provider.length, 1);
   }
-  const invalid = await setup({ environment: { RESEND_USE_HOSTED_TEMPLATES: "true", RESEND_TEMPLATE_VERIFY_EMAIL: "<malformed-template>" } });
+  const invalid = await setup({ environment: { RESEND_TEMPLATE_VERIFY_EMAIL: "<malformed-template>" } });
   await assert.rejects(invalid.send(), error => error instanceof invalid.EmailDeliveryError);
   assert.equal(invalid.calls.provider.length, 0);
   const disabled = await setup({ environment: { RESEND_API_KEY: "" } });
@@ -305,11 +305,4 @@ test("Docker runtime and Next API tracing include each of the three real email t
     assert.match(file, /^0[1-3]-.+\.html$/);
     assert.match(await readFile(join(root, "emails", "resend", file), "utf8"), /<!doctype html>/i);
   }
-});
-
-test("an old hosted-template ID cannot silently restore outdated artwork without explicit opt-in", async () => {
-  const s = await setup({ environment: { RESEND_TEMPLATE_VERIFY_EMAIL: "legacy-template" } });
-  await s.send();
-  assert.equal(s.calls.provider[0].body.template, undefined);
-  assert.ok(s.calls.provider[0].body.html.includes("/brand/mark-light.png"));
 });

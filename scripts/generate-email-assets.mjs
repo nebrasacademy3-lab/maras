@@ -11,7 +11,7 @@ const font = fs.readFileSync(path.join(vendor, "Fonts/FontAwesome6_Brands.ttf"))
 const names = { whatsapp: "whatsapp", x: "x-twitter", instagram: "instagram", tiktok: "tiktok", youtube: "youtube", telegram: "telegram", linkedin: "linkedin-in", facebook: "facebook-f", snapchat: "snapchat", threads: "threads" };
 const directory = path.resolve("public/email-assets");
 fs.mkdirSync(directory, { recursive: true });
-const browser = await chromium.launch({ headless: true, ...(process.env.MARAS_TEST_BROWSER ? { channel: process.env.MARAS_TEST_BROWSER } : {}) });
+const browser = await chromium.launch({ headless: true, channel: "msedge" });
 try {
   const page = await browser.newPage({ viewport: { width: 96, height: 96 }, deviceScaleFactor: 1 });
   await page.route("**/*", route => route.request().url() === "https://email-assets.invalid/brands.ttf" ? route.fulfill({ contentType: "font/ttf", body: font }) : route.abort());

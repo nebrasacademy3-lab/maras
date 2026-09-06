@@ -1,7 +1,7 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
-  catalogTombstones, adminMfaFactors, analyticsEvents, auditLogs, authSessions, cartItems, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb,
+  adminMfaFactors, analyticsEvents, auditLogs, authSessions, cartItems, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb,
   courseAccess, courseRequestFiles, courseRequests, courseReviews, courseUnitsDb, favorites, invoices,
   institutionSpecialties, lessonNotes, lessonProgress, lessonsDb, notificationsDb, orderItems, orders,
   passwordResetTokens, paymentEvents, pushDevices, supportReplyFiles, supportReplies,
@@ -107,7 +107,6 @@ async function deleteCourseRows(tx: Parameters<Parameters<ReturnType<typeof getD
   await tx.delete(analyticsEvents).where(eq(analyticsEvents.courseSlug, courseSlug));
   const coverKey = storedKey(courses[0].coverImageUrl);
   if (coverKey) cleanup.push({ key: coverKey, source: "course-cover" });
-  await tx.insert(catalogTombstones).values({ entityType: "course", entityId: courseSlug }).onConflictDoNothing();
   await tx.delete(catalogCourses).where(eq(catalogCourses.slug, courseSlug));
   return 1 + units.length + lessons.length;
 }
@@ -164,8 +163,6 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
   }
 
   await db.transaction(async (tx) => {
-    // Serialize with startup/catalog seeding, so a concurrent seed cannot undo deletion.
-    await tx.execute(sql`select pg_advisory_xact_lock(hashtext('maras_catalog_mutation_v2'))`);
     if (input.entityType === "course") {
       const [row] = await tx.select().from(catalogCourses).where(eq(catalogCourses.slug, input.entityId)).limit(1);
       if (!row) throw new DeletionPolicyError("المادة غير موجودة.");
@@ -310,12 +307,6 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       before = { id: row.id, supervisorId: row.supervisorId, institutionSlug: row.institutionSlug, specialty: row.specialty };
       await tx.delete(supervisorAssignments).where(eq(supervisorAssignments.id, id));
       deletedRows = 1;
-    }
-    if (["course", "institution", "specialty"].includes(input.entityType)) {
-      await tx.insert(catalogTombstones).values({ entityType: input.entityType, entityId: input.entityId, deletedAt: now }).onConflictDoNothing();
-    }
-    if (["unit", "lesson"].includes(input.entityType) && before && typeof before === "object" && "courseSlug" in before) {
-      await tx.insert(catalogTombstones).values({ entityType: "course-outline", entityId: String(before.courseSlug), deletedAt: now }).onConflictDoNothing();
     }
     await tx.insert(auditLogs).values({ actorEmail: input.actor, action: "delete", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson(before), afterJson: null, ipAddress: input.ipAddress, createdAt: now });
   });

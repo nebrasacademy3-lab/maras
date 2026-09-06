@@ -194,7 +194,7 @@ async function checkUniversityFilters(page, baseURL, theme, screenshotPath) {
 (async () => {
   const baseURL = (process.env.MARAS_TEST_URL || "http://localhost:3000").replace(/\/$/, "");
   assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(new URL(baseURL).hostname), "This QA script only targets a local development server");
-  const browser = await chromium.launch({ headless: true, ...(process.env.MARAS_TEST_BROWSER ? { channel: process.env.MARAS_TEST_BROWSER } : {}) });
+  const browser = await chromium.launch({ headless: true, channel: process.env.MARAS_TEST_BROWSER || "msedge" });
   const folder = path.resolve("outputs/responsive-review", new Date().toISOString().replace(/[:.]/g, "-"));
   fs.mkdirSync(folder, { recursive: true });
   const results = [];

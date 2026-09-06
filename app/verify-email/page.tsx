@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { SecurityAuthShell } from "@/components/security-auth-shell";
+import { AuthShell } from "@/components/auth-shell";
 import { VerifyEmailForm } from "@/components/verify-email-form";
 import { currentUser } from "@/lib/server-auth";
 import { accountNext, safeAccountReturnTo } from "@/lib/account-readiness";
@@ -16,5 +16,5 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
     const next = accountNext(user);
     redirect(next === "/dashboard" ? (returnTo.startsWith("/verify-email") ? "/dashboard" : returnTo) : `${next}?return_to=${encodeURIComponent(returnTo)}`);
   }
-  return <SecurityAuthShell mode="verify"><VerifyEmailForm email={user.email} /></SecurityAuthShell>;
+  return <AuthShell mode="register"><VerifyEmailForm email={user.email} /></AuthShell>;
 }

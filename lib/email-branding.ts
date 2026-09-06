@@ -31,7 +31,7 @@ export function securityEmailVariables(content: SecurityEmailContent, settings: 
   // for the developer; logos and channel icons remain on the public HTTPS site.
   const assetSite = site.startsWith("http:") ? DEFAULT_EMAIL_ORIGIN : site;
   const links = normalizedSocialLinks(settings);
-  const variables: Record<string, string> = { LOGO_URL: assetSite + "/brand/mark-light.png", SOCIAL_HEADING: links.length ? "تابع مراس العلم على قنواتها الرسمية" : "" };
+  const variables: Record<string, string> = { LOGO_URL: assetSite + "/brand/logo-light-hq.png", SOCIAL_HEADING: links.length ? "تابع مراس العلم على قنواتها الرسمية" : "" };
   for (let index = 0; index < 10; index++) {
     const link = links[index];
     variables[`SOCIAL_${index + 1}`] = link ? `<a href="${escapeEmailHtml(link.url)}" title="${escapeEmailHtml(link.labelAr)}" style="display:inline-block;margin:4px;padding:4px;border:1px solid #e3e8f3;border-radius:12px;background:#fff;text-decoration:none"><img src="${assetSite}/email-assets/${link.id}.png" alt="${escapeEmailHtml(link.labelAr)}" width="36" height="36" style="display:block;border:0;color:#1258e8;font:11px Tahoma,Arial,sans-serif"></a>` : "";

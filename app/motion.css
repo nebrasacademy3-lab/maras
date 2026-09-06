@@ -6,17 +6,17 @@
     animation: none;
   }
   [aria-labelledby="home-gateway-title"] > .container > div:first-child > :not(br) {
-    animation: merasHeroArrival 620ms cubic-bezier(.16,1,.3,1) backwards;
+    animation: merasHeroArrival 900ms cubic-bezier(.16,1,.3,1) backwards;
   }
-  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(2) { animation-delay: 60ms; }
-  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(3) { animation-delay: 120ms; }
-  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(4) { animation-delay: 180ms; }
-  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(5) { animation-delay: 240ms; }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(2) { animation-delay: 90ms; }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(3) { animation-delay: 180ms; }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(4) { animation-delay: 270ms; }
+  [aria-labelledby="home-gateway-title"] > .container > div:first-child > :nth-child(5) { animation-delay: 360ms; }
   #home-intent-panel {
-    animation: merasCanvasArrival 660ms cubic-bezier(.16,1,.3,1) 150ms backwards;
+    animation: merasCanvasArrival 950ms cubic-bezier(.16,1,.3,1) 150ms backwards;
   }
   #home-intent-panel ~ :not([aria-hidden="true"]) {
-    animation: merasHeroArrival 660ms cubic-bezier(.16,1,.3,1) 300ms backwards;
+    animation: merasHeroArrival 950ms cubic-bezier(.16,1,.3,1) 300ms backwards;
   }
   [aria-labelledby="home-gateway-title"] > .container > div:first-child > :focus-within,
   #home-intent-panel:focus-within,
@@ -30,7 +30,7 @@
     animation: merasStarGreeting 1.4s cubic-bezier(.16,1,.3,1) backwards;
   }
   :where(.page-hero,.catalog-hero,.request-page-hero,.how-page-hero) h1 {
-    animation: merasHeroArrival 520ms cubic-bezier(.16,1,.3,1) backwards;
+    animation: merasHeroArrival 740ms cubic-bezier(.16,1,.3,1) backwards;
   }
   @media (hover: hover) {
     [data-home-reveal] :is(article,a):hover > :is(i,span) > svg {
@@ -39,12 +39,12 @@
   }
 }
 @keyframes merasHeroArrival {
-  from { opacity: .65; translate: 0 14px; }
+  from { opacity: .04; translate: 0 30px; }
   65% { opacity: .94; }
   to { opacity: 1; translate: none; }
 }
 @keyframes merasCanvasArrival {
-  from { opacity: .65; translate: 0 18px; scale: .995; }
+  from { opacity: .08; translate: 0 38px; scale: .985; }
   to { opacity: 1; translate: none; scale: none; }
 }
 @keyframes merasExploreNudge { 0%, 100% { translate: none; } 50% { translate: 0 5px; } }
@@ -65,10 +65,3 @@
 /* Keep panel controls above the movable launcher, including at screen corners. */
 .meras-assistant .assistant-fab{z-index:1}.meras-assistant .assistant-panel{z-index:2}
 @media(prefers-reduced-motion:reduce){.motion-reveal{opacity:1!important;transform:none!important;translate:none!important}.assistant-fab-rings,.assistant-fab-rings::before{animation:none!important}}
-
-/* Animation settings do not hide content and are honored before hydration. */
-html[data-motion="off"] *,html[data-motion="off"] *::before,html[data-motion="off"] *::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}
-html[data-motion="off"] [aria-labelledby="home-gateway-title"] h1 path{stroke-dashoffset:0!important}
-.motion-preference{display:inline-flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:8px 13px;border:1px solid var(--line);border-radius:12px;color:var(--text-soft);background:var(--surface);font:inherit;font-size:12px;cursor:pointer}
-.assistant-fab-rings,.assistant-fab-rings::before{animation-iteration-count:2;animation-duration:2s}.meras-assistant.is-holding .assistant-fab{outline:3px solid color-mix(in srgb,var(--primary) 45%,transparent);outline-offset:5px}.meras-assistant.is-dragging .assistant-fab{outline:3px solid var(--primary);outline-offset:4px}.assistant-reset-position{min-height:44px}.assistant-input input{font-size:16px}.assistant-panel{overscroll-behavior:contain}.assistant-panel>header button{min-width:44px;min-height:44px}
-@media(prefers-reduced-motion:reduce){.security-orbit-badge,.assistant-fab,.journey-card{animation:none!important;transition:none!important}}

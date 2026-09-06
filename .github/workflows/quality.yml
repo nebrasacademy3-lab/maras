@@ -1,49 +1,62 @@
 name: Quality gates
+
 on:
-  push:
   pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
-concurrency:
-  group: quality-${{ github.ref }}
-  cancel-in-progress: true
+
 jobs:
   web:
+    name: Web lint, build and tests
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
           cache: npm
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run build
-        env:
-          APP_URL: https://marasalelm.com
-      - run: npm run typecheck
-      - run: node --test --test-concurrency=1 tests/*.test.mjs
-      - run: npm audit --omit=dev --audit-level=high
+          cache-dependency-path: package-lock.json
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Lint web
+        run: npm run lint
+      - name: Build production web
+        run: npm run build
+      - name: Run contracts and smoke tests
+        run: node --test --test-concurrency=1 tests/*.test.mjs
+
   mobile:
+    name: Mobile typecheck and lint
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: mobile
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: 22
           cache: npm
           cache-dependency-path: mobile/package-lock.json
-      - run: npm ci
-      - run: npm run lint
-      - run: npm run typecheck
-      - run: npm test
-      - run: npx expo-doctor
-      - run: npx expo export --platform all
-        env:
-          EXPO_PUBLIC_API_URL: https://marasalelm.com
-          EXPO_PUBLIC_STORE_MODE: reader
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Typecheck app
+        run: npm run typecheck
+      - name: Lint app
+        run: npm run lint

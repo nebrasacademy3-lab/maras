@@ -15,7 +15,7 @@ export function normalizedFloatingPoint(point: FloatingPoint, bounds: FloatingBo
   return { x: (safe.x - bounds.minX) / Math.max(1, bounds.maxX - bounds.minX), y: (safe.y - bounds.minY) / Math.max(1, bounds.maxY - bounds.minY) };
 }
 export function resolveFloatingPoint(normalized: FloatingPoint | null, bounds: FloatingBounds, rtl: boolean): FloatingPoint {
-  if (!normalized) return { x: rtl ? bounds.minX : bounds.maxX, y: Math.max(bounds.minY, bounds.maxY - 90) };
+  if (!normalized) return { x: rtl ? bounds.minX : bounds.maxX, y: Math.max(bounds.minY, bounds.maxY - 78) };
   return clampFloatingPoint({ x: bounds.minX + normalized.x * (bounds.maxX - bounds.minX), y: bounds.minY + normalized.y * (bounds.maxY - bounds.minY) }, bounds);
 }
 export function parseFloatingPoint(raw: string | null): FloatingPoint | null {

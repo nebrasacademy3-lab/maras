@@ -1,4 +1,3 @@
-import { limitByteStream, scanVerdict } from "@/lib/file-scan-policy";
 import { getObject } from "@/lib/storage";
 
 export type FileScanResult = {
@@ -25,9 +24,7 @@ export async function scanStoredFile(input: { objectKey: string; originalName: s
     const provider = input.storageProvider === "s3" ? "s3" : input.storageProvider === "local" ? "local" : undefined;
     const object = await getObject(input.objectKey, undefined, provider);
     if (!object) return { status: "pending", provider: "remote", scannedAt: null, error: "stored_object_missing", reason: null };
-    const maxBytes = 100 * 1024 * 1024;
-    if (object.size > maxBytes) { await object.body.cancel(); return { status: "pending", provider: "remote", scannedAt: null, error: "scan_size_limit", reason: null }; }
-    const bytes = limitByteStream(object.body, maxBytes);
+    const bytes = await new Response(object.body).arrayBuffer();
     const headers: Record<string, string> = {
       "content-type": input.contentType,
       "x-file-name": encodeURIComponent(safeFileName(input.originalName)),
@@ -35,13 +32,16 @@ export async function scanStoredFile(input: { objectKey: string; originalName: s
     };
     const token = process.env.MALWARE_SCAN_TOKEN?.trim();
     if (token) headers.authorization = `Bearer ${token}`;
-    const response = await fetch(endpoint, { method: "POST", headers, body: bytes, signal: AbortSignal.timeout(20_000), duplex: "half" } as RequestInit & { duplex: "half" });
+    const response = await fetch(endpoint, { method: "POST", headers, body: bytes, signal: AbortSignal.timeout(45_000) });
     if (!response.ok) return { status: "pending", provider: "remote", scannedAt: null, error: `scanner_http_${response.status}`, reason: null };
-    if (!response.body) return { status: "pending", provider: "remote", scannedAt: null, error: "scanner_empty_response", reason: null };
-    const payload: unknown = JSON.parse(await new Response(limitByteStream(response.body, 32 * 1024)).text());
-    return scanVerdict(payload, now);
-  } catch {
-    return { status: "pending", provider: "remote", scannedAt: null, error: "scanner_unavailable", reason: null };
+    const payload = await response.json() as { clean?: boolean; status?: string; threat?: string; engine?: string };
+    const clean = payload.clean === true || payload.status === "clean";
+    const infected = payload.clean === false || ["infected", "malicious", "quarantined"].includes(String(payload.status || "").toLowerCase());
+    if (clean) return { status: "clean", provider: String(payload.engine || "remote").slice(0, 80), scannedAt: now, error: null, reason: null };
+    if (infected) return { status: "quarantined", provider: String(payload.engine || "remote").slice(0, 80), scannedAt: now, error: null, reason: String(payload.threat || "malware_detected").slice(0, 500) };
+    return { status: "pending", provider: String(payload.engine || "remote").slice(0, 80), scannedAt: null, error: "scanner_indeterminate", reason: null };
+  } catch (error) {
+    return { status: "pending", provider: "remote", scannedAt: null, error: (error instanceof Error ? error.message : "scanner_failed").slice(0, 500), reason: null };
   }
 }
 

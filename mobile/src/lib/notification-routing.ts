@@ -11,10 +11,9 @@ export function safeInternalPath(value: unknown): string | null {
 }
 
 export function openNotificationRoute(actionUrl: unknown) {
-  try {
   if (typeof actionUrl !== "string" || !actionUrl) return;
   if (actionUrl.startsWith("https://")) {
-    void Linking.openURL(actionUrl).catch(() => undefined);
+    void Linking.openURL(actionUrl);
     return;
   }
   if (!actionUrl.startsWith("/") || actionUrl.startsWith("//")) return;
@@ -72,5 +71,4 @@ export function openNotificationRoute(actionUrl: unknown) {
     else if (view === "courses") router.push("/(tabs)/learning");
     else router.push("/(tabs)");
   }
-  } catch { /* Invalid notification links do not interrupt the app. */ }
 }

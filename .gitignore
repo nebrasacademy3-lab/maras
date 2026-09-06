@@ -14,11 +14,3 @@ coverage
 /outputs
 /work
 .sites-runtime/
-
-# Private exports and local audit/cache material
-*.zip
-*.p12
-*.mobileprovision
-*.keystore
-*.jks
-.env.railway.generated

@@ -12,9 +12,9 @@ vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.Mo
 const { revealTiming, revealFrames, startMotionOrchestrator } = compiledModule.exports;
 
 test("scroll reveals have perceptible finite durations and a bounded stagger", () => {
-  assert.equal(revealTiming(0, false).duration, 540);
-  assert.equal(revealTiming(0, true).duration, 420);
-  assert.deepEqual([0, 1, 2, 3, 99, -1].map(index => revealTiming(index, false).delay), [0, 45, 90, 135, 135, 0]);
+  assert.equal(revealTiming(0, false).duration, 820);
+  assert.equal(revealTiming(0, true).duration, 680);
+  assert.deepEqual([0, 1, 2, 3, 99, -1].map(index => revealTiming(index, false).delay), [0, 75, 150, 225, 225, 0]);
   assert.equal(revealTiming(1, false).fill, "backwards");
 });
 
@@ -55,6 +55,6 @@ test("first-paint hero motion is independent of deferred JS and respects reduced
   assert.match(css, /@media \(prefers-reduced-motion: no-preference\)/);
   assert.match(css, /#home-intent-panel\s*\{\s*animation: merasCanvasArrival/);
   assert.match(css, /@keyframes merasHeroArrival/);
-  assert.match(css, /:nth-child\(5\) \{ animation-delay: 240ms/);
+  assert.match(css, /:nth-child\(5\) \{ animation-delay: 360ms/);
   assert.doesNotMatch(css, /merasHeroArrival[^;}]*\b(forwards|both|infinite)\b/);
 });

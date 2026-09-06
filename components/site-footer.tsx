@@ -1,9 +1,7 @@
 import Link from "next/link";
-import { Apple, BadgeCheck, Building2, Mail, MessageCircle, Send, Smartphone } from "lucide-react";
+import { Apple, BadgeCheck, Building2, Mail, MessageCircle, Smartphone } from "lucide-react";
 import { BrandLogo } from "./brand-logo";
 import { getPublicSettings, whatsappHref } from "@/lib/platform-settings";
-import { MotionPreference } from "./motion-preference";
-import { normalizedSocialLinks } from "@/lib/social-links";
 import { SocialLinks } from "./social-links";
 
 function isHttps(value: string) {
@@ -13,7 +11,6 @@ function isHttps(value: string) {
 export async function SiteFooter() {
   const settings = await getPublicSettings();
   const whatsapp = whatsappHref(settings);
-  const telegram = normalizedSocialLinks(settings).find(link => link.id === "telegram");
   const hasLegalRecords = Boolean(
     settings.legal_name.trim()
     || settings.commercial_registration_number.trim()
@@ -39,7 +36,7 @@ export async function SiteFooter() {
         <div><h3>استكشف</h3><Link href="/universities">الجامعات والكليات</Link><Link href="/courses">جميع المواد</Link><Link href="/request-course">اطلب مادة</Link><Link href="/how-it-works">كيف تعمل مراس؟</Link></div>
         <div><h3>مساعدة</h3><Link href="/support">الدعم الفني</Link><Link href="/#faq">الأسئلة الشائعة</Link><Link href="/refund-policy">سياسة الاسترداد</Link><Link href="/contact">تواصل معنا</Link></div>
         <div><h3>قانوني</h3><Link href="/terms">الشروط والأحكام</Link><Link href="/privacy">سياسة الخصوصية</Link><Link href="/content-policy">حقوق المحتوى</Link><Link href="/accessibility">إمكانية الوصول</Link></div>
-        <div className="footer-contact"><h3>تواصل معنا</h3>{settings.support_email && <a href={`mailto:${settings.support_email}`}><Mail size={17} /> {settings.support_email}</a>}{whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={17} /> واتساب مراس</a>}{telegram && <a href={telegram.url} target="_blank" rel="noopener noreferrer"><Send size={17} /> تيليجرام مراس</a>}<Link href="/support">فتح تذكرة دعم</Link><p>{settings.support_hours}</p></div>
+        <div className="footer-contact"><h3>تواصل معنا</h3>{settings.support_email && <a href={`mailto:${settings.support_email}`}><Mail size={17} /> {settings.support_email}</a>}{whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={17} /> واتساب مراس</a>}<Link href="/support">فتح تذكرة دعم</Link><p>{settings.support_hours}</p></div>
       </div>
       {hasLegalRecords ? <div className="container footer-legal-records" aria-label="بيانات المنشأة والتراخيص">
         {settings.legal_name.trim() ? <span><Building2 size={16}/><b>{settings.legal_name.trim()}</b></span> : null}
@@ -48,7 +45,7 @@ export async function SiteFooter() {
         {settings.nelc_program_license_number.trim() ? <span>ترخيص برنامج «{settings.nelc_program_name.trim() || "تعليم إلكتروني"}» رقم <bdi dir="ltr">{settings.nelc_program_license_number.trim()}</bdi>{isHttps(settings.nelc_program_license_verify_url) ? <a href={settings.nelc_program_license_verify_url} target="_blank" rel="noreferrer">تحقق من النطاق</a> : null}</span> : null}
         {settings.vat_number.trim() ? <span>الرقم الضريبي <bdi dir="ltr">{settings.vat_number.trim()}</bdi></span> : null}
       </div> : null}
-      <div className="container footer-bottom"><p>© 2026 مراس العلم. جميع الحقوق محفوظة.</p><span>صُنع للطالب الجامعي في السعودية 🇸🇦</span><MotionPreference /></div>
+      <div className="container footer-bottom"><p>© 2026 مراس العلم. جميع الحقوق محفوظة.</p><span>صُنع للطالب الجامعي في السعودية 🇸🇦</span></div>
     </footer>
   );
 }

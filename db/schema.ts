@@ -1134,10 +1134,3 @@ export const aiQuizAttempts = pgTable("ai_quiz_attempts", {
   total: integer("total").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [index("ai_quiz_attempts_quiz_idx").on(table.quizId, table.userId, table.createdAt)]);
-
-/** Durable deletion ledger; intentionally no FK to the removed record. */
-export const catalogTombstones = pgTable("catalog_tombstones", {
-  entityType: text("entity_type").notNull(),
-  entityId: text("entity_id").notNull(),
-  deletedAt: text("deleted_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, table => [primaryKey({ columns: [table.entityType, table.entityId] })]);

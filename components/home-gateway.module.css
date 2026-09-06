@@ -17,10 +17,10 @@
 .backdrop { position: absolute; z-index: -1; inset: 0; overflow: hidden; pointer-events: none; }
 .backdrop > i { position: absolute; top: 125px; left: -180px; width: 490px; height: 490px; border: 1px solid color-mix(in srgb, var(--primary) 10%, transparent); border-radius: 50%; box-shadow: 0 0 0 35px color-mix(in srgb, var(--primary) 2%, transparent), 0 0 0 110px color-mix(in srgb, var(--primary) 1.5%, transparent); }
 .backdrop > i:nth-child(2) { left: auto; right: -240px; top: 40%; width: 510px; height: 510px; }
-.backdrop > span { position: absolute; top: 160px; right: 10%; color: var(--primary-2); font-size: 42px;  }
+.backdrop > span { position: absolute; top: 160px; right: 10%; color: var(--primary-2); font-size: 42px; animation: starIn 1s .15s both; }
 .backdrop > span:last-child { top: 285px; right: auto; left: 11%; font-size: 32px; color: var(--primary); animation-delay: .3s; }
 .layout { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; }
-.copy { position: relative; z-index: 5; width: 100%; max-width: 900px; text-align: center;  }
+.copy { position: relative; z-index: 5; width: 100%; max-width: 900px; text-align: center; animation: enterCopy .7s cubic-bezier(.16,1,.3,1) both; }
 .eyebrow { display: inline-flex; justify-content: center; align-items: center; gap: 9px; max-width: 100%; padding: 9px 17px; border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line)); border-radius: 999px; color: var(--primary); background: var(--surface); box-shadow: 0 4px 18px color-mix(in srgb, var(--primary) 5%, transparent); font-size: 14px; font-weight: 850; line-height: 1.7; }
 .eyebrow svg { flex: none; color: var(--primary-2); }
 .copy h1 { margin: 24px 0 0; font-size: clamp(44px, 5.5vw, 80px); font-weight: 850; line-height: 1.28; letter-spacing: -.045em; text-wrap: balance; }
@@ -54,7 +54,7 @@
 .orbit::before { content: ""; position: absolute; width: 750px; height: 420px; left: calc(50% - 375px); top: 45px; border-radius: 50%; background: radial-gradient(ellipse, color-mix(in srgb, var(--primary-2) 15%, transparent), transparent 69%); }
 .orbit > i { position: absolute; left: calc(50% - 500px); top: 90px; width: 1000px; height: 360px; border: 1px solid color-mix(in srgb, var(--primary) 13%, transparent); border-radius: 50%; transform: rotate(-13deg); }
 .orbit > i:last-child { transform: rotate(13deg); border-color: color-mix(in srgb, var(--primary-2) 10%, transparent); }
-.canvas { position: relative; z-index: 2; width: min(100%, 630px); min-height: 465px; margin-inline: auto; padding: 22px; border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line)); border-radius: 24px; background: var(--surface); color: var(--text); box-shadow: 0 32px 85px color-mix(in srgb, var(--primary) 13%, transparent), 0 6px 16px color-mix(in srgb, var(--text) 4%, transparent);  }
+.canvas { position: relative; z-index: 2; width: min(100%, 630px); min-height: 465px; margin-inline: auto; padding: 22px; border: 1px solid color-mix(in srgb, var(--primary) 18%, var(--line)); border-radius: 24px; background: var(--surface); color: var(--text); box-shadow: 0 32px 85px color-mix(in srgb, var(--primary) 13%, transparent), 0 6px 16px color-mix(in srgb, var(--text) 4%, transparent); animation: enterCanvas .6s cubic-bezier(.16,1,.3,1) both; }
 .canvas::before, .canvas::after { content: ""; position: absolute; z-index: -1; inset: 8px 18px -10px; border: 1px solid var(--line); border-radius: inherit; background: var(--surface); }
 .canvas::after { inset: 15px 34px -19px; z-index: -2; opacity: .65; }
 .canvasLabel { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 18px; font-size: 12px; font-weight: 750; color: var(--text-soft); }
@@ -89,13 +89,13 @@
 .courseCanvasActions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 13px; margin-top: 18px; }
 .courseCanvasActions a, .resumeCanvas > a { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 42px; padding: 0 14px; border-radius: 11px; color: var(--primary); font-size: 12px; font-weight: 800; }
 .courseCanvasActions a:first-child, .resumeCanvas > a { background: color-mix(in srgb,var(--primary) 8%,var(--surface)); }
-.noteCard { position: absolute; z-index: 3; top: 90px; inset-inline-start: 4px; width: 210px; display: grid; gap: 10px; padding: 22px; border: 1px solid var(--line); border-radius: 17px; color: var(--text); background: var(--surface); box-shadow: var(--shadow-md); transform: rotate(7deg);  }
+.noteCard { position: absolute; z-index: 3; top: 90px; inset-inline-start: 4px; width: 210px; display: grid; gap: 10px; padding: 22px; border: 1px solid var(--line); border-radius: 17px; color: var(--text); background: var(--surface); box-shadow: var(--shadow-md); transform: rotate(7deg); animation: noteIn .8s .3s both; }
 .noteCard > span { display: grid; place-items: center; width: 39px; height: 39px; margin-bottom: 5px; color: var(--primary-2); border-radius: 12px; background: color-mix(in srgb,var(--primary-2) 8%,var(--surface)); }
 .noteCard small { color: var(--text-soft); font-size: 11px; }
 .noteCard strong { font-size: 19px; line-height: 1.5; }
 .noteCard > i { display: block; height: 5px; width: 100%; border-radius: 5px; background: var(--surface-3); }
 .noteCard > i:last-child { width: 57%; background: color-mix(in srgb,var(--primary-2) 19%,var(--surface)); }
-.toolsCard { position: absolute; z-index: 3; inset-inline-end: -6px; top: 285px; width: 243px; display: flex; align-items: center; gap: 10px; padding: 17px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: var(--shadow-md); transform: rotate(-6deg);  }
+.toolsCard { position: absolute; z-index: 3; inset-inline-end: -6px; top: 285px; width: 243px; display: flex; align-items: center; gap: 10px; padding: 17px; border: 1px solid var(--line); border-radius: 17px; background: var(--surface); box-shadow: var(--shadow-md); transform: rotate(-6deg); animation: toolsIn .8s .4s both; }
 .toolsCard > span { display: grid; place-items: center; flex: none; width: 39px; height: 43px; color: #fff; background: linear-gradient(130deg,var(--primary),var(--primary-2)); border-radius: 12px; }
 .toolsCard > div { display: grid; gap: 5px; min-width: 0; }
 .toolsCard strong { font-size: 13px; }
@@ -147,7 +147,7 @@
 @media(max-width:1100px) {
   .stage { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: stretch; gap: 15px; max-width: 700px; padding-top: 37px; }
   .canvas { grid-column: 1/-1; grid-row: 1; max-width: 100%; margin-bottom: 15px; }
-  .noteCard, .toolsCard { position: relative; inset: auto; width: auto; min-width: 0; padding: 18px; transform: none;  box-shadow: var(--shadow-sm); }
+  .noteCard, .toolsCard { position: relative; inset: auto; width: auto; min-width: 0; padding: 18px; transform: none; animation: enterCopy .6s .2s both; box-shadow: var(--shadow-sm); }
   .noteCard { grid-column: 1; grid-row: 2; grid-template-columns: auto minmax(0,1fr); gap: 7px 12px; align-content: center; }
   .noteCard > span { grid-row: 1/3; margin: 0; align-self: center; }
   .noteCard strong { font-size: 16px; }
@@ -209,10 +209,3 @@
 .sampleFile > div { min-width: 0; }
 .sampleFile > span, .sampleFile > svg, .outputSample li i, .quizSample > span i { flex: none; }
 @media(prefers-reduced-motion:reduce) { .gateway *, .gateway *::before, .gateway *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } .copy h1 em path { stroke-dashoffset: 0; } }
-
-/* Editorial split hero on wide displays; centered content on tablets and phones. */
-@media(min-width:1120px){.gateway{padding:60px 0 34px}.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:48px;row-gap:14px;align-items:center}.copy{text-align:start;max-width:none}.copy h1{font-size:clamp(48px,4.6vw,66px);letter-spacing:-2px;line-height:1.4}.copy>p{margin-inline:0;font-size:16px;max-width:530px}.intentShell{margin:26px 0 0}.intentTabs{justify-content:flex-start;gap:3px}.intentTabs button{padding-inline:10px;font-size:12px;min-height:44px}.assurances{justify-content:flex-start;gap:9px 17px}.stage{padding:34px 0 94px}.canvas{width:100%;min-height:430px;padding:20px;border-radius:27px}.lessonVisual{padding:23px 20px;gap:14px}.lessonArtwork{width:78px}.lessonCaption>strong{font-size:27px}.playPreview>svg{padding:10px}.noteCard{top:-8px;inset-inline-start:auto;inset-inline-end:10px;width:154px;padding:13px;transform:rotate(-5deg)}.noteCard>strong{font-size:14px}.noteCard>small{font-size:9px}.noteCard>i{display:none}.noteCard>span{width:33px;height:33px}.toolsCard{top:auto;bottom:15px;inset-inline-end:16px;width:235px;transform:rotate(2deg)}.stageWord{display:none}.exploreLink{grid-column:1/-1;margin-inline:auto}.orbit>i{width:720px;left:calc(50% - 360px);top:70px}.canvasLabel{padding-inline-end:170px;min-height:36px;flex-wrap:wrap;gap:4px}.canvasLabel>small{display:inline;font-size:10px}}
-.intentTabs button[aria-selected=true]{background:linear-gradient(115deg,var(--primary),var(--primary-2));color:#fff;box-shadow:0 5px 14px color-mix(in srgb,var(--primary) 18%,transparent)}.intentTabs button:focus-visible{outline:3px solid var(--primary);outline-offset:3px}.canvas:focus-within{border-color:var(--primary)}
-@media(hover:hover) and (prefers-reduced-motion:no-preference){.toolsCard{transition:transform .25s,box-shadow .25s}.toolsCard:hover{transform:translateY(-4px);box-shadow:var(--shadow-lg)}.eyebrow:hover>svg{animation:badge-turn .55s ease}}
-@keyframes badge-turn{50%{transform:rotate(-15deg) scale(1.1)}}
-@media(max-width:480px){.gateway{padding-top:32px}.copy h1{font-size:41px;letter-spacing:-1.5px}.copy>p{font-size:14px;line-height:2}.intentTabs button{min-height:44px;padding-inline:10px;font-size:12px}.intentShell{border-radius:20px}.stage{padding-top:28px}.canvas{border-radius:20px;min-height:420px}.canvasLabel{flex-wrap:wrap;line-height:1.8}.assurances{font-size:11px;gap:7px 13px}.aiComposer,.resumeComposer{gap:9px;padding:11px}.aiComposer em{font-size:10px}.aiComposer strong{font-size:13px}.aiComposer small{font-size:11px}}

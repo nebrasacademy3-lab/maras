@@ -6,7 +6,7 @@ const STANDARD_TARGETS = [
   ".catalog-filter-context", ".filter-bar", ".catalog-filter-selection", ".course-detail-copy > *", ".course-detail-art",
   ".course-about-block", ".course-curriculum details", ".learning-points span", ".course-purchase-card",
   ".footer-grid > *", ".footer-app-download", ".footer-store-link", ".checkout-section", ".cart-item",
-  ".contact-channel-card", ".contact-social-panel", ".contact-support-panel", ".student-view > *", ".security-feature-icon", ".security-code-field", ".security-password-field", ".admin-stat-card", ".admin-section-head", ".support-ticket", ".notification-day", ".security-form",
+  ".admin-stat-card", ".admin-section-head", ".support-ticket", ".notification-day", ".security-form",
   "[data-motion]:not([data-motion='off'])", "[data-home-reveal] article", "[data-home-reveal] aside",
   "[data-home-reveal] [tabindex='0'][aria-label] > *", "#home-intent-panel", "#home-intent-panel ~ :not([aria-hidden='true'])",
 ].join(",");
@@ -15,12 +15,12 @@ const PROTECTED_CHILDREN = "video,audio,.secure-player,dialog,[role='dialog'],[p
 
 /** Finite, composited motion only: no fill-forwards, layout changes or persistent containing blocks. */
 export function revealTiming(position: number, compact: boolean) {
-  return { duration: compact ? 420 : 540, delay: Math.min(Math.max(0, position), 3) * 45, easing: "cubic-bezier(.16,1,.3,1)", fill: "backwards" as const };
+  return { duration: compact ? 680 : 820, delay: Math.min(Math.max(0, position), 3) * 75, easing: "cubic-bezier(.16,1,.3,1)", fill: "backwards" as const };
 }
 
 export function revealFrames(compact: boolean): Keyframe[] {
   return [
-    { opacity: .62, translate: `0 ${compact ? 12 : 18}px` },
+    { opacity: .12, translate: `0 ${compact ? 24 : 34}px` },
     { opacity: .9, offset: .65 },
     { opacity: 1, translate: "none" },
   ];
@@ -42,9 +42,10 @@ export function collectMotionTargets(root: Document | HTMLElement): HTMLElement[
     if (parts.length) parts.forEach(add);
     else section.querySelectorAll(":scope > .container > *").forEach(add);
   }
-  const eligible = new Set([...candidates].filter(element => !element.closest(EXCLUDED) && !element.querySelector(PROTECTED_CHILDREN)));
-  return [...eligible].filter(element => {
-    for (let parent = element.parentElement; parent; parent = parent.parentElement) if (eligible.has(parent)) return false;
+  return [...candidates].filter(element => {
+    if (element.closest(EXCLUDED) || element.querySelector(PROTECTED_CHILDREN)) return false;
+    // Avoid a parent and its children animating on top of each other.
+    for (let parent = element.parentElement; parent; parent = parent.parentElement) if (candidates.has(parent)) return false;
     return true;
   }).sort((left, right) => left === right ? 0 : left.compareDocumentPosition(right) & 4 ? -1 : 1);
 }
@@ -53,7 +54,6 @@ export function startMotionOrchestrator(document: Document) {
   const view = document.defaultView;
   if (!view || typeof view.IntersectionObserver !== "function") return () => undefined;
   const preference = view.matchMedia("(prefers-reduced-motion: reduce)");
-  const reduced = () => preference.matches || document.documentElement.dataset.motion === "off";
   const seen = new WeakSet<HTMLElement>();
   const waiting = new Set<HTMLElement>();
   const active = new Map<HTMLElement, Animation>();
@@ -69,7 +69,7 @@ export function startMotionOrchestrator(document: Document) {
   };
   const reveal = (element: HTMLElement, index: number) => {
     finish(element);
-    if (reduced() || typeof element.animate !== "function" || element.closest(EXCLUDED) || element.querySelector(PROTECTED_CHILDREN)) return;
+    if (preference.matches || typeof element.animate !== "function" || element.closest(EXCLUDED) || element.querySelector(PROTECTED_CHILDREN)) return;
     // Keyboard users must not have a focused form/control moving beneath them.
     if (element.contains(document.activeElement)) return;
     const compact = view.innerWidth < 700;
@@ -85,7 +85,7 @@ export function startMotionOrchestrator(document: Document) {
       const element = entry.target as HTMLElement;
       if (entry.isIntersecting && waiting.has(element)) reveal(element, position++);
     }
-  }, { rootMargin: "0px 0px 12px 0px", threshold: .04 });
+  }, { rootMargin: "0px 0px -40px 0px", threshold: .06 });
 
   const register = (root: Document | HTMLElement) => {
     for (const element of collectMotionTargets(root)) {
@@ -97,11 +97,11 @@ export function startMotionOrchestrator(document: Document) {
         continue;
       }
       waiting.add(element);
-      if (!reduced()) observer.observe(element);
+      if (!preference.matches) observer.observe(element);
     }
   };
   const onPreference = () => {
-    if (reduced()) {
+    if (preference.matches) {
       observer.disconnect();
       active.forEach(animation => animation.cancel());
       active.clear();
@@ -128,7 +128,6 @@ export function startMotionOrchestrator(document: Document) {
     });
   });
   preference.addEventListener("change", onPreference);
-  view.addEventListener("meras:motion-preference", onPreference);
   document.addEventListener("focusin", onFocus);
   register(document);
   mutations.observe(document.body, { childList: true, subtree: true });
@@ -137,7 +136,6 @@ export function startMotionOrchestrator(document: Document) {
     observer.disconnect();
     mutations.disconnect();
     preference.removeEventListener("change", onPreference);
-    view.removeEventListener("meras:motion-preference", onPreference);
     document.removeEventListener("focusin", onFocus);
     view.cancelAnimationFrame(frame);
     active.forEach(animation => animation.cancel());

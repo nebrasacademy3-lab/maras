@@ -4,14 +4,12 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Mail, RefreshCw, ShieldCheck } from "lucide-react";
 import { safeAccountReturnTo } from "@/lib/account-readiness";
-import { VerificationCodeInput } from "./security-fields";
 import styles from "./verify-email-form.module.css";
 
-type Result = { ok?: boolean; error?: string; next?: string; emailVerified?: boolean; alreadyVerified?: boolean; deliveryConfigured?: boolean; cooldownSeconds?: number; retryAfterSeconds?: number; expiresInSeconds?: number; codeSent?: boolean };
+type Result = { error?: string; next?: string; emailVerified?: boolean; alreadyVerified?: boolean; deliveryConfigured?: boolean; cooldownSeconds?: number; retryAfterSeconds?: number; expiresInSeconds?: number; codeSent?: boolean };
 async function readResult(response: Response): Promise<Result> {
-  const result = await response.json() as Result;
-  if (!result || typeof result !== "object" || Array.isArray(result)) throw new Error("تعذر قراءة استجابة الخادم. حاول مرة أخرى.");
-  if (!response.ok || result.ok !== true) throw new Error(result.error || "تعذر إكمال الطلب. حاول مرة أخرى.");
+  const result = await response.json().catch(() => ({})) as Result;
+  if (!response.ok) throw new Error(result.error || "تعذر إكمال الطلب. حاول مرة أخرى.");
   return result;
 }
 
@@ -41,7 +39,7 @@ export function VerifyEmailForm({ email }: { email: string }) {
   const send = useCallback(async () => {
     setBusy("sending"); setError("");
     try {
-      const result = await readResult(await fetch("/api/auth/email-verification", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(20000), body: JSON.stringify({ action: "send" }) }));
+      const result = await readResult(await fetch("/api/auth/email-verification", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "send" }) }));
       if (!alive.current) return;
       if (result.alreadyVerified) { continueAccount(result.next); return; }
       setCooldown(result.retryAfterSeconds || 60);
@@ -54,7 +52,6 @@ export function VerifyEmailForm({ email }: { email: string }) {
   useEffect(() => {
     alive.current = true;
     const controller = new AbortController();
-    const deadline = window.setTimeout(() => controller.abort(new Error("انتهت مهلة الاتصال. حاول تحديث الصفحة.")), 20000);
     void fetch("/api/auth/email-verification", { credentials: "same-origin", cache: "no-store", signal: controller.signal }).then(readResult).then(async result => {
       if (controller.signal.aborted) return;
       if (result.emailVerified) { continueAccount(result.next); return; }
@@ -63,8 +60,8 @@ export function VerifyEmailForm({ email }: { email: string }) {
       if (result.deliveryConfigured === false) { setError("إرسال البريد غير متاح حاليًا. يمكنك التصفح والتواصل مع الدعم، وسيبقى الشراء متاحًا بعد تأكيد بريدك."); setBusy(""); }
       else if (!result.codeSent && !result.cooldownSeconds) await send();
       else { setNotice("أدخل آخر رمز أُرسل إلى بريدك. تأكيد البريد مطلوب مرة واحدة فقط."); setBusy(""); }
-    }).catch(caught => { if (alive.current) { setError(caught instanceof Error ? caught.message : "تعذر تحميل حالة البريد"); setBusy(""); } }).finally(() => window.clearTimeout(deadline));
-    return () => { alive.current = false; window.clearTimeout(deadline); controller.abort(); };
+    }).catch(caught => { if (!controller.signal.aborted) { setError(caught instanceof Error ? caught.message : "تعذر تحميل حالة البريد"); setBusy(""); } });
+    return () => { alive.current = false; controller.abort(); };
   }, [send]);
   useEffect(() => {
     if (!cooldown) return;
@@ -77,13 +74,13 @@ export function VerifyEmailForm({ email }: { email: string }) {
     if (busy) return;
     setBusy("verifying"); setError("");
     try {
-      const result = await readResult(await fetch("/api/auth/email-verification", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, signal: AbortSignal.timeout(20000), body: JSON.stringify({ action: "verify", code }) }));
+      const result = await readResult(await fetch("/api/auth/email-verification", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "verify", code }) }));
       if (alive.current) continueAccount(result.next);
     } catch (caught) { if (alive.current) { setError(caught instanceof Error ? caught.message : "تعذر تأكيد البريد"); setBusy(""); } }
   }
 
   return <div className={styles.panel} dir="rtl"><span className={styles.icon}><Mail size={30} /></span><div className="auth-heading"><span>خطوة واحدة لحساب موثوق</span><h1>أكّد بريدك الإلكتروني</h1><p>نؤكد ملكية بريدك مرة واحدة لحماية حسابك ومشترياتك، وليس قبل كل عملية شراء.</p></div><strong className={styles.email} dir="ltr">{email}</strong>
-    <form className="auth-form" onSubmit={verify} aria-busy={Boolean(busy)}><VerificationCodeInput ref={input} id="email-code" value={code} onChange={setCode} disabled={busy === "verifying"} invalid={Boolean(error)} />
+    <form className="auth-form" onSubmit={verify} aria-busy={Boolean(busy)}><label className="form-label" htmlFor="email-code">رمز التحقق<input ref={input} id="email-code" className={styles.code} inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={6} minLength={6} required pattern="[0-9٠-٩۰-۹]{6}" value={code} onChange={event => setCode(event.target.value.replace(/[^0-9٠-٩۰-۹]/g, "").slice(0, 6))} placeholder="000000" /></label>
       {notice && <p className={styles.notice} role="status"><CheckCircle2 size={17} />{notice}</p>}{error && <p className="form-error" role="alert">{error}</p>}
       <button className="button button-primary auth-submit" disabled={Boolean(busy) || code.length !== 6}>{busy === "verifying" ? "جارٍ التأكيد…" : <>تأكيد البريد والمتابعة <ArrowLeft size={17} /></>}</button>
       <button className="button button-soft" type="button" disabled={Boolean(busy) || cooldown > 0 || !configured} onClick={() => void send()}><RefreshCw size={15} />{busy === "sending" ? "جارٍ الإرسال…" : cooldown ? `إعادة الإرسال بعد ${cooldown} ثانية` : "إرسال رمز جديد"}</button>

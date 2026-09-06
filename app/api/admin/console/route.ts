@@ -1,7 +1,7 @@
 import { and, asc, count, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
-  aiApiKeys, auditLogs, authSessions, catalogTombstones, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseAccessEvents, courseRequestFiles, courseRequests,
+  aiApiKeys, auditLogs, authSessions, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseAccessEvents, courseRequestFiles, courseRequests,
   courseReviews, courseUnitsDb, courseWaitlist, institutionSpecialties, lessonsDb, notificationsDb, orderItems, orders, paymentEvents, platformSettings,
   pushDevices, supervisorAssignments, supportReplyFiles, supportReplies, supportTickets, users, videoAssets,
 } from "@/db/schema";
@@ -20,8 +20,6 @@ import { courseSlug, institutionSlug as makeInstitutionSlug, lessonId, specialty
 import { deleteAdminEntity, DeletionPolicyError, type AdminDeletionType } from "@/lib/admin-deletion";
 import { accessExpiryIso, normalizeAccessDurationDays } from "@/lib/course-access";
 import { ADMIN_PERMISSIONS, hasPermission, type AdminPermission } from "@/lib/permissions";
-import { courseFlagPatch, coursePolicyForSave } from "@/lib/course-update";
-import { readBoundedJsonObject } from "@/lib/request-body";
 import { isSocialSettingKey, normalizeSocialUrl, normalizeWhatsappNumber } from "@/lib/social-links";
 
 async function authorize(request: Request, delegatedPermission?: AdminPermission) {
@@ -215,7 +213,7 @@ export async function POST(request: Request) {
   const machineAuthorized = isAdminRequest(request);
   if (!machineAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   let payload: Record<string, unknown>;
-  try { payload = await readBoundedJsonObject(request, 256 * 1024); } catch { return jsonError("بيانات غير صالحة أو أكبر من الحد المسموح"); }
+  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
   const action = cleanText(payload.action, 50);
   const delegatedPermission = action === "deleteEntity"
     ? ADMIN_PERMISSIONS.RECORDS_DELETE
@@ -315,12 +313,7 @@ export async function POST(request: Request) {
     if (directorySourceUrl && !safeUrl(directorySourceUrl)) return jsonError("رابط المصدر يجب أن يبدأ بـ https");
     const [before] = await db.select().from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
     const values = { slug, name, nameEn, region, type, domain: domain || null, logoUrl: logoUrl || before?.logoUrl || null, directorySourceUrl: directorySourceUrl || before?.directorySourceUrl || null, verificationStatus: verificationStatus === "pending-review" && before?.verificationStatus === "official-directory" ? "official-directory" : verificationStatus, aliasesJson: aliasesJson ?? before?.aliasesJson ?? "[]", status, featured: payload.featured === true, sortOrder: Number.isFinite(Number(payload.sortOrder)) ? Math.floor(Number(payload.sortOrder)) : 0, updatedAt: now };
-    await db.transaction(async tx => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('maras_catalog_mutation_v2'))`);
-    await tx.insert(catalogInstitutions).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
-      // Only a deliberate administrator save may restore this identity.
-      await tx.delete(catalogTombstones).where(and(eq(catalogTombstones.entityType, "institution"), eq(catalogTombstones.entityId, slug)));
-    });
+    await db.insert(catalogInstitutions).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "institution", slug, before, values);
     return Response.json({ ok: true, institution: values });
@@ -343,46 +336,11 @@ export async function POST(request: Request) {
     if (institutionSlug && !await getInstitutionCatalog(institutionSlug, true)) return jsonError("الجهة غير موجودة");
     const [before] = await db.select().from(catalogSpecialties).where(eq(catalogSpecialties.slug, slug)).limit(1);
     const values = { slug, name, description, sourceUrl: sourceUrl || before?.sourceUrl || null, verifiedAt: verifiedAt || before?.verifiedAt || null, verificationStatus, faculty, degree, status, updatedAt: now };
-    await db.transaction(async tx => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('maras_catalog_mutation_v2'))`);
-    await tx.insert(catalogSpecialties).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogSpecialties.slug, set: values });
-    if (institutionSlug) await tx.insert(institutionSpecialties).values({ institutionSlug, specialtySlug: slug, status: "published", sortOrder: 0 }).onConflictDoUpdate({ target: [institutionSpecialties.institutionSlug, institutionSpecialties.specialtySlug], set: { status: "published" } });
-      // Only a deliberate administrator save may restore this identity.
-      await tx.delete(catalogTombstones).where(and(eq(catalogTombstones.entityType, "specialty"), eq(catalogTombstones.entityId, slug)));
-    });
-
+    await db.insert(catalogSpecialties).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogSpecialties.slug, set: values });
+    if (institutionSlug) await db.insert(institutionSpecialties).values({ institutionSlug, specialtySlug: slug, status: "published", sortOrder: 0 }).onConflictDoUpdate({ target: [institutionSpecialties.institutionSlug, institutionSpecialties.specialtySlug], set: { status: "published" } });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "specialty", slug, before, { ...values, institutionSlug });
     return Response.json({ ok: true, specialty: values });
-  }
-
-  if (action === "updateInstitutionFlags") {
-    const slug = cleanText(payload.slug, 80).toLowerCase();
-    if (!validSlug(slug)) return jsonError("معرّف الجهة غير صالح");
-    let patch: ReturnType<typeof courseFlagPatch>;
-    try { patch = courseFlagPatch(payload); } catch { return jsonError("تعديل غير صالح"); }
-    if (patch.status === "draft") return jsonError("حالة نشر الجهة غير صالحة");
-    const [before] = await db.select().from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
-    if (!before) return jsonError("الجهة غير موجودة؛ حدّث القائمة", 404);
-    const [institution] = await db.update(catalogInstitutions).set({ ...patch, updatedAt: now }).where(eq(catalogInstitutions.slug, slug)).returning();
-    if (!institution) return jsonError("الجهة لم تعد موجودة", 404);
-    invalidateCatalogCache();
-    await audit(request, authorization.actor, "update", "institution", slug, before, institution);
-    return Response.json({ ok: true, institution }, { headers: { "cache-control": "no-store" } });
-  }
-
-  if (action === "updateCourseFlags") {
-    const slug = cleanText(payload.slug, 80).toLowerCase();
-    if (!validSlug(slug)) return jsonError("معرّف المادة غير صالح");
-    let patch: ReturnType<typeof courseFlagPatch>;
-    try { patch = courseFlagPatch(payload); } catch (error) { return jsonError(error instanceof Error ? error.message : "تعديل غير صالح"); }
-    const [before] = await db.select().from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
-    if (!before) return jsonError("المادة غير موجودة؛ حدّث القائمة", 404);
-    const [course] = await db.update(catalogCourses).set({ ...patch, updatedAt: now }).where(eq(catalogCourses.slug, slug)).returning();
-    if (!course) return jsonError("المادة لم تعد موجودة", 404);
-    invalidateCatalogCache();
-    await audit(request, authorization.actor, "update", "course", slug, before, course);
-    return Response.json({ ok: true, course }, { headers: { "cache-control": "no-store" } });
   }
 
   if (action === "saveCourse") {
@@ -391,7 +349,7 @@ export async function POST(request: Request) {
     const title = cleanText(payload.title, 160);
     const suppliedSlug = cleanText(payload.slug, 80).toLowerCase();
     const status = cleanText(payload.status, 20) || "draft";
-
+    const audienceScope = cleanText(payload.audienceScope, 20) === "institution" ? "institution" : "specialty";
     const price = Number(payload.price);
     const oldPriceValue = Number(payload.oldPrice);
     const coverImageUrl = cleanText(payload.coverImageUrl, 1000);
@@ -403,26 +361,18 @@ export async function POST(request: Request) {
     const [specialtyLink] = await db.select().from(institutionSpecialties).where(and(eq(institutionSpecialties.institutionSlug, institutionSlug), eq(institutionSpecialties.specialtySlug, specialtySlug), eq(institutionSpecialties.status, "published"))).limit(1);
     if (!specialtyLink) return jsonError("التخصص غير مربوط بهذه الجهة");
     const [before] = await db.select().from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
-    let policy: ReturnType<typeof coursePolicyForSave>;
-    try { policy = coursePolicyForSave(payload, before); } catch (error) { return jsonError(error instanceof Error ? error.message : "سياسة المادة غير صالحة"); }
-    const sourceUrl = cleanText(payload.sourceUrl, 500);
-    if (sourceUrl && !safeUrl(sourceUrl)) return jsonError("رابط المصدر يجب أن يكون HTTPS صالحًا");
     const values = {
       slug, institutionSlug, specialtySlug, title,
       titleEn: cleanText(payload.titleEn, 160), code: cleanText(payload.code, 50) || null,
       description: cleanText(payload.description, 3000), coverImageUrl: coverImageUrl || before?.coverImageUrl || null, price,
       oldPrice: Number.isFinite(oldPriceValue) && oldPriceValue > price ? oldPriceValue : null,
-      ...policy,
+      accessLabel: cleanText(payload.accessLabel, 80) || "90 يومًا",
+      accessDurationDays: normalizeAccessDurationDays(payload.accessDurationDays, cleanText(payload.accessLabel, 80)),
       sourceUrl: cleanText(payload.sourceUrl, 500) || before?.sourceUrl || null,
       verifiedAt: cleanText(payload.verifiedAt, 30) || before?.verifiedAt || null,
-      status, featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
+      status, audienceScope, featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
     };
-    await db.transaction(async tx => {
-      await tx.execute(sql`select pg_advisory_xact_lock(hashtext('maras_catalog_mutation_v2'))`);
-    await tx.insert(catalogCourses).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogCourses.slug, set: values });
-      // Only a deliberate administrator save may restore this identity.
-      await tx.delete(catalogTombstones).where(and(eq(catalogTombstones.entityType, "course"), eq(catalogTombstones.entityId, slug)));
-    });
+    await db.insert(catalogCourses).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogCourses.slug, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "course", slug, before, values);
     return Response.json({ ok: true, course: values });

@@ -9,7 +9,7 @@ assert.ok(["localhost", "127.0.0.1", "[::1]"].includes(new URL(baseURL).hostname
 const storageKey = "meras-assistant-position-v1";
 const folder = path.resolve("outputs/assistant-motion", new Date().toISOString().replace(/[:.]/g, "-"));
 fs.mkdirSync(folder, { recursive: true });
-const browser = await chromium.launch({ headless: true, ...(process.env.MARAS_TEST_BROWSER ? { channel: process.env.MARAS_TEST_BROWSER } : {}) });
+const browser = await chromium.launch({ headless: true, channel: process.env.MARAS_TEST_BROWSER || "msedge" });
 const results = [];
 const closeEnough = (a, b, label, tolerance = 2) => assert.ok(Math.abs(a - b) <= tolerance, `${label}: ${a} vs ${b}`);
 

@@ -1,13 +1,12 @@
-import { CodeField } from "@/src/components/SecurityFields";
 import { Ionicons } from "@expo/vector-icons";
 import { Redirect, router, useLocalSearchParams, type Href } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppHeader } from "@/src/components/AppHeader";
-import { AppButton, Card, LoadingState, Screen } from "@/src/components/ui";
+import { AppButton, Card, Field, LoadingState, Screen } from "@/src/components/ui";
 import { api, ApiError, jsonBody } from "@/src/lib/api";
-import { authDestination } from "@/src/lib/account-access";
+import { authDestination, normalizeEmailCode } from "@/src/lib/account-access";
 import { safeInternalPath } from "@/src/lib/notification-routing";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -70,7 +69,7 @@ export default function VerifyEmail() {
       <Text style={[styles.title, { color: colors.text }]}>خطوة واحدة لحسابك</Text>
       <Text style={[styles.copy, { color: colors.textSoft }]}>تحقق من بريدك مرة واحدة فقط. بعد اكتمال ملفك، يمكنك الشراء دون طلب رمز جديد لكل عملية.</Text>
       <Text style={[styles.email, { color: colors.primary }]}>{user.email}</Text>
-      <View style={styles.form}><CodeField value={code} onChange={setCode} disabled={busy === "verify"} error={Boolean(error)} onSubmit={() => void verify()} />
+      <View style={styles.form}><Field label="رمز التحقق المكوّن من 6 أرقام" value={code} onChangeText={(value) => setCode(normalizeEmailCode(value))} keyboardType="number-pad" inputDirection="ltr" textContentType="oneTimeCode" autoComplete="one-time-code" maxLength={6} placeholder="000000" style={styles.code} onSubmitEditing={() => void verify()} />
         {message ? <Text style={[styles.feedback, { color: colors.textSoft }]}>{message}</Text> : null}
         {error ? <Text accessibilityRole="alert" style={[styles.feedback, { color: colors.danger }]}>{error}</Text> : null}
         <AppButton title="تأكيد البريد والمتابعة" icon="shield-checkmark-outline" loading={busy === "verify"} disabled={Boolean(busy) || code.length !== 6} onPress={() => void verify()} />
@@ -81,4 +80,4 @@ export default function VerifyEmail() {
   </Screen>;
 }
 
-const styles = StyleSheet.create({ card: { alignItems: "center", gap: 14, marginTop: 20, paddingVertical: 30, borderRadius: 26, maxWidth: 580, width: "100%", alignSelf: "center" }, icon: { width: 72, height: 72, borderRadius: 24, alignItems: "center", justifyContent: "center" }, title: { fontSize: 25, fontWeight: "900", textAlign: "center" }, copy: { fontSize: 14, lineHeight: 24, textAlign: "center" }, email: { fontSize: 14, writingDirection: "ltr", textAlign: "center", fontWeight: "700" }, form: { width: "100%", gap: 10 }, code: { letterSpacing: 8, textAlign: "center", fontSize: 24 }, feedback: { fontSize: 12, lineHeight: 21, textAlign: "center", marginBottom: 6 } });
+const styles = StyleSheet.create({ card: { alignItems: "center", gap: 14, marginTop: 20, paddingVertical: 26, maxWidth: 580, width: "100%", alignSelf: "center" }, icon: { width: 72, height: 72, borderRadius: 24, alignItems: "center", justifyContent: "center" }, title: { fontSize: 25, fontWeight: "900", textAlign: "center" }, copy: { fontSize: 12, lineHeight: 23, textAlign: "center" }, email: { fontSize: 14, writingDirection: "ltr", textAlign: "center", fontWeight: "700" }, form: { width: "100%", gap: 10 }, code: { letterSpacing: 8, textAlign: "center", fontSize: 24 }, feedback: { fontSize: 12, lineHeight: 21, textAlign: "center", marginBottom: 6 } });

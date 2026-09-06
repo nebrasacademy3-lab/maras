@@ -5,7 +5,7 @@ export const SOCIAL_CHANNELS = [
   { key: "social_instagram", id: "instagram", label: "Instagram", labelAr: "إنستغرام", icon: "logo-instagram", hosts: ["instagram.com"] },
   { key: "social_tiktok", id: "tiktok", label: "TikTok", labelAr: "تيك توك", icon: "logo-tiktok", hosts: ["tiktok.com"] },
   { key: "social_youtube", id: "youtube", label: "YouTube", labelAr: "يوتيوب", icon: "logo-youtube", hosts: ["youtube.com", "youtu.be"] },
-  { key: "social_telegram", id: "telegram", label: "Telegram", labelAr: "تيليجرام", icon: "paper-plane-outline", hosts: ["t.me", "telegram.me", "telegram.org"] },
+  { key: "social_telegram", id: "telegram", label: "Telegram", labelAr: "تيليغرام", icon: "paper-plane-outline", hosts: ["t.me", "telegram.me", "telegram.org"] },
   { key: "social_linkedin", id: "linkedin", label: "LinkedIn", labelAr: "لينكدإن", icon: "logo-linkedin", hosts: ["linkedin.com"] },
   { key: "social_facebook", id: "facebook", label: "Facebook", labelAr: "فيسبوك", icon: "logo-facebook", hosts: ["facebook.com", "fb.com", "fb.me"] },
   { key: "social_snapchat", id: "snapchat", label: "Snapchat", labelAr: "سناب شات", icon: "logo-snapchat", hosts: ["snapchat.com"] },
@@ -27,12 +27,7 @@ export function normalizeSocialUrl(key: SocialSettingKey, value: unknown): strin
   const channel = SOCIAL_CHANNELS.find((item) => item.key === key);
   if (!channel) return "";
   try {
-    let input = value.trim();
-    if (key === "social_telegram") {
-      if (/^@[A-Za-z][A-Za-z0-9_]{4,31}$/.test(input)) input = `https://t.me/${input.slice(1)}`;
-      else if (/^(?:t\.me|telegram\.me)\//i.test(input)) input = `https://${input}`;
-    }
-    const url = new URL(input);
+    const url = new URL(value.trim());
     if (url.protocol !== "https:" || url.username || url.password || url.port) return "";
     if (!channel.hosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) return "";
     return url.href;

@@ -89,7 +89,6 @@ const nextConfig: NextConfig = {
         source: "/brand/logo-light-hq.png",
         headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }, { key: "Access-Control-Allow-Origin", value: "*" }],
       },
-      ...["/brand/mark-light.png", "/brand/sender-icon.png"].map(source => ({ source, headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }, { key: "Access-Control-Allow-Origin", value: "*" }] })),
       ...privatePageRoots.map((root) => ({ source: `/${root}/:path*`, headers: privateResponseHeaders })),
       ...privateApiRoots.map((root) => ({ source: `/api/${root}/:path*`, headers: privateResponseHeaders })),
       ...privateMobileRoots.map((root) => ({ source: `/api/mobile/${root}/:path*`, headers: privateResponseHeaders })),
