@@ -1,7 +1,7 @@
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
-import { authSessions, pushDevices } from "@/db/schema";
+import { authDevices, authSessions, pushDevices } from "@/db/schema";
 import { finiteNumber, jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, hashOpaqueToken, requestSessionToken, sameOriginRequest } from "@/lib/auth";
 import { isNativeAppRequest } from "@/lib/mobile-api";
@@ -18,8 +18,12 @@ export async function GET(request: Request) {
   const currentHash = await currentSessionHash(request);
   const rows = await getDb().select({ id: authSessions.id, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, lastSeenAt: authSessions.lastSeenAt, createdAt: authSessions.createdAt, expiresAt: authSessions.expiresAt, tokenHash: authSessions.tokenHash })
     .from(authSessions).where(and(eq(authSessions.userId, user.id), isNull(authSessions.revokedAt), gt(authSessions.expiresAt, now))).orderBy(desc(authSessions.lastSeenAt)).limit(50);
+  const enrolled = await getDb().select({ id: authDevices.id, deviceId: authDevices.deviceId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(eq(authDevices.userId, user.id), isNull(authDevices.revokedAt)));
+  const currentDeviceId = rows.find(row => row.tokenHash === currentHash)?.deviceId;
   return Response.json({
     ok: true,
+    deviceLimit: 2,
+    registeredDevices: enrolled.map(({ deviceId, ...device }) => ({ ...device, current: Boolean(currentDeviceId && currentDeviceId === deviceId) })),
     sessions: rows.map((row) => ({ id: row.id, deviceLabel: row.deviceLabel, platform: row.platform, ipAddress: row.ipAddress, lastSeenAt: row.lastSeenAt, createdAt: row.createdAt, expiresAt: row.expiresAt, current: Boolean(currentHash && row.tokenHash === currentHash) })),
   }, { headers: { "cache-control": "no-store" } });
 }

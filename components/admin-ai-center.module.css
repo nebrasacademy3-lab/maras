@@ -23,3 +23,12 @@
 }
 .table { max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; }
 .tableRow,.tableHead { min-width: 690px; }
+
+/* Readable administration controls on touch screens and desktop. */
+.formGrid label,.keyFields label { font-size: 12px; line-height: 1.7; }
+.formGrid input,.formGrid textarea,.keyFields input { min-height: 44px; font-size: 16px; min-width: 0; width: 100%; }
+.formGrid input:focus-visible,.formGrid textarea:focus-visible,.keyFields input:focus-visible { outline: 2px solid #1258e8; outline-offset: 2px; }
+.sectionTitle p { font-size: 12px; }
+.keyMeta small { font-size: 11px; line-height: 1.9; overflow-wrap: anywhere; }
+.keyFields > button,.saveButton { min-height: 44px; font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .spin { animation: none; } }

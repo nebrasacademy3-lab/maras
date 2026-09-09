@@ -1,0 +1,360 @@
+{
+  "screens": [
+    {
+      "file": "mobile/app/(auth)/login.tsx",
+      "lines": 28,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(auth)/register.tsx",
+      "lines": 38,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(auth)/welcome.tsx",
+      "lines": 57,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(auth)/_layout.tsx",
+      "lines": 4,
+      "rawNativeTextImports": [],
+      "usesSharedText": false,
+      "usesSharedInput": false,
+      "screenRoot": "navigation layout",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(tabs)/account.tsx",
+      "lines": 38,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(tabs)/ai.tsx",
+      "lines": 182,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(tabs)/courses.tsx",
+      "lines": 124,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(tabs)/index.tsx",
+      "lines": 111,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(tabs)/learning.tsx",
+      "lines": 71,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(tabs)/universities.tsx",
+      "lines": 20,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/(tabs)/_layout.tsx",
+      "lines": 60,
+      "rawNativeTextImports": [],
+      "usesSharedText": false,
+      "usesSharedInput": false,
+      "screenRoot": "tab navigation",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/admin.tsx",
+      "lines": 738,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": true,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/ai/conversation/[id].tsx",
+      "lines": 84,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": true,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/ai/quiz/[id].tsx",
+      "lines": 113,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/assistant.tsx",
+      "lines": 169,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": true,
+      "screenRoot": "custom safe area",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/cart.tsx",
+      "lines": 51,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": true,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/complete-profile.tsx",
+      "lines": 66,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/contact.tsx",
+      "lines": 89,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/course/[slug].tsx",
+      "lines": 45,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": true,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/favorites.tsx",
+      "lines": 30,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/forgot-password.tsx",
+      "lines": 43,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/index.tsx",
+      "lines": 48,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/learn/[slug].tsx",
+      "lines": 314,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/lesson/[courseSlug]/[lessonId].tsx",
+      "lines": 676,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": true,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/notifications.tsx",
+      "lines": 138,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/oauth/callback.tsx",
+      "lines": 12,
+      "rawNativeTextImports": [],
+      "usesSharedText": false,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/onboarding.tsx",
+      "lines": 114,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/orders.tsx",
+      "lines": 56,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/profile.tsx",
+      "lines": 23,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/r/[code].tsx",
+      "lines": 15,
+      "rawNativeTextImports": [],
+      "usesSharedText": false,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/referrals.tsx",
+      "lines": 208,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/requests.tsx",
+      "lines": 35,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": true,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/security.tsx",
+      "lines": 22,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/supervisor.tsx",
+      "lines": 155,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/support.tsx",
+      "lines": 161,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": true,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/tracks.tsx",
+      "lines": 9,
+      "rawNativeTextImports": [],
+      "usesSharedText": false,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/university/[slug].tsx",
+      "lines": 25,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/verify-email.tsx",
+      "lines": 81,
+      "rawNativeTextImports": [],
+      "usesSharedText": true,
+      "usesSharedInput": false,
+      "screenRoot": "shared Screen (explicit locale direction)",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    },
+    {
+      "file": "mobile/app/_layout.tsx",
+      "lines": 20,
+      "rawNativeTextImports": [],
+      "usesSharedText": false,
+      "usesSharedInput": false,
+      "screenRoot": "navigation layout",
+      "rtlCorrection": "Shared native text box direction separates physical alignment from Arabic writing direction; intentional centered labels remain centered."
+    }
+  ],
+  "summary": {
+    "count": 39,
+    "rawNativeTextBypasses": 0,
+    "physicalDevicesTested": false
+  }
+}

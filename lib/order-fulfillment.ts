@@ -23,6 +23,7 @@ export type FulfillmentOptions = {
 // invoice, clear the cart/waitlist and notify the student identically.
 export async function fulfillPaidOrderTx(tx: Tx, current: OrderRow, purchaseItems: FulfillmentItem[], options: FulfillmentOptions) {
   const { chargeId, actorEmail, now } = options;
+  if (["refunded", "partially_refunded"].includes(current.status)) return { newlyPaid: false, notice: null };
   const changed = await tx.update(orders).set({ status: "paid", tapChargeId: chargeId ?? current.tapChargeId, updatedAt: now, paidAt: current.paidAt || now }).where(and(eq(orders.id, current.id), ne(orders.status, "paid"), ne(orders.status, "refunded"))).returning({ id: orders.id });
   const newlyPaid = changed.length > 0;
   const startsAt = current.paidAt || now;
@@ -33,7 +34,8 @@ export async function fulfillPaidOrderTx(tx: Tx, current: OrderRow, purchaseItem
     const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, current.customerEmail), eq(courseAccess.courseSlug, item.courseSlug))).limit(1);
     let accessId = existing?.id;
     const activeElsewhere = Boolean(existing && !existing.revokedAt && existing.orderNumber !== current.orderNumber && (!existing.expiresAt || Date.parse(existing.expiresAt) > Date.now()));
-    const canRepair = !existing || existing.orderNumber === current.orderNumber || Boolean(existing.revokedAt) || Boolean(existing.expiresAt && Date.parse(existing.expiresAt) <= Date.now());
+    const administrativelyStopped = existing?.orderNumber === current.orderNumber && Boolean(existing.revokedAt || existing.suspendedAt);
+    const canRepair = !administrativelyStopped && (!existing || existing.orderNumber === current.orderNumber || Boolean(existing.revokedAt) || Boolean(existing.expiresAt && Date.parse(existing.expiresAt) <= Date.now()));
     if (!existing) {
       const [created] = await tx.insert(courseAccess).values({ userEmail: current.customerEmail, courseSlug: item.courseSlug, source: "tap", orderNumber: current.orderNumber, startsAt, expiresAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now }).returning({ id: courseAccess.id });
       accessId = created?.id;

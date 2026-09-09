@@ -3,6 +3,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { normalizeCatalogSearch } from "@/lib/catalog-search";
 import { ArrowLeft, BookOpen, Building2, Search, TrendingUp } from "lucide-react";
 
 export type SearchCourse = {
@@ -28,15 +29,7 @@ type SearchResult = {
   type: "course" | "university" | "request";
 };
 
-function normalizeSearch(value: string) {
-  return value
-    .normalize("NFKD")
-    .replace(/[\u064B-\u065F\u0670]/g, "")
-    .replace(/[أإآ]/g, "ا")
-    .replace(/ى/g, "ي")
-    .replace(/ة/g, "ه")
-    .toLocaleLowerCase("ar");
-}
+const normalizeSearch = normalizeCatalogSearch;
 
 export function HeroSearch({
   courses,
@@ -122,7 +115,7 @@ export function HeroSearch({
       return;
     }
 
-    if (event.key === "Enter" && showResults && activeIndex >= 0) {
+    if (event.key === "Enter" && showResults && activeIndex >= 0 && visibleResults[activeIndex]) {
       event.preventDefault();
       router.push(visibleResults[activeIndex].href);
       setOpen(false);

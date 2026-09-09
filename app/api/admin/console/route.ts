@@ -1,14 +1,14 @@
-import { and, asc, count, desc, eq, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
-  aiApiKeys, auditLogs, authSessions, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseAccessEvents, courseRequestFiles, courseRequests,
+  aiApiKeys, auditLogs, authDevices, authSessions, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseAccessEvents, courseRequestFiles, courseRequests,
   courseReviews, courseUnitsDb, courseWaitlist, institutionSpecialties, lessonsDb, notificationsDb, orderItems, orders, paymentEvents, platformSettings,
   pushDevices, supervisorAssignments, supportReplyFiles, supportReplies, supportTickets, users, videoAssets,
 } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest, validEmail } from "@/lib/auth";
 import { AdminMfaError, adminMfaConfigured, requireAdminStepUp } from "@/lib/admin-mfa";
-import { validGeminiApiKey } from "@/lib/ai-keys";
+import { geminiEnvironmentKeys } from "@/lib/ai-keys";
 import { getCourseCatalog, getCoursesCatalog, getInstitutionCatalog, getInstitutionsCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
 import { ADMIN_SETTING_DEFAULTS, invalidatePublicSettingsCache, PUBLIC_SETTING_DEFAULTS, SETTING_META, type SettingKey } from "@/lib/platform-settings";
 import { createAndSendNotification } from "@/lib/notifications";
@@ -107,6 +107,8 @@ export async function GET(request: Request) {
     db.select().from(platformSettings),
     db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(limits.audits),
   ]);
+
+  const registeredDeviceRows = studentRows.length ? await db.select({ id: authDevices.id, userId: authDevices.userId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(inArray(authDevices.userId, studentRows.map(student => student.id)), isNull(authDevices.revokedAt))) : [];
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...ADMIN_SETTING_DEFAULTS } as Record<string, string>;
   for (const row of settingRows) settings[row.key] = row.value;
   const [managedInstitutionRows, managedCourseRows, totals, waitlistRows, activeAiKeys] = await Promise.all([
@@ -129,7 +131,7 @@ export async function GET(request: Request) {
   const managedCourseMap = new Map(managedCourseRows.map((row) => [row.slug, row]));
   const totalRow = (totals.rows[0] || {}) as Record<string, unknown>;
   const waitlistByCourse = new Map(waitlistRows.map((row) => [row.courseSlug, Number(row.total)]));
-  const environmentAiKeys = [process.env.GEMINI_API_KEYS, process.env.GEMINI_API_KEY].filter(Boolean).join(",").split(/[\r\n,;]+/).map(validGeminiApiKey).filter(Boolean).length;
+  const environmentAiKeys = geminiEnvironmentKeys().length;
   return Response.json({
     ok: true,
     generatedAt: new Date().toISOString(),
@@ -155,14 +157,15 @@ export async function GET(request: Request) {
     videos: videoRows,
     users: studentRows.map((student) => {
       const activeSessions = sessionRows.filter((session) => session.userId === student.id && !session.revokedAt && new Date(session.expiresAt).getTime() > Date.now());
-      const deviceKeys = new Set(activeSessions.map((session) => session.deviceId || `session:${session.id}`));
+      const registeredDevices = registeredDeviceRows.filter((device) => device.userId === student.id);
       return {
         ...student,
-        deviceCount: deviceKeys.size,
+        deviceCount: registeredDevices.length,
+        registeredDevices,
         sessions: activeSessions.map((session) => ({ id: session.id, deviceId: session.deviceId, deviceLabel: session.deviceLabel || (session.platform === "mobile" ? "تطبيق مراس" : "متصفح ويب"), platform: session.platform, ipAddress: session.ipAddress, lastSeenAt: session.lastSeenAt, expiresAt: session.expiresAt, createdAt: session.createdAt })),
       };
     }),
-    deviceLimit: Math.max(1, Math.min(10, Number(settings.max_student_devices) || 2)),
+    deviceLimit: 2,
     orders: orderRows,
     requests: requestRows.map((request) => ({ ...request, student: request.userId ? (() => { const student = studentRows.find((user) => user.id === request.userId); return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null; })() : null, files: requestFileRows.filter((file) => file.requestId === request.id).map((file) => ({ id: file.id, requestId: file.requestId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })),
     tickets: ticketRows.map((ticket) => {
@@ -708,7 +711,7 @@ export async function POST(request: Request) {
       if (key === "support_email" && value && !validEmail(value)) return jsonError("بريد الدعم غير صالح");
       if (key === "whatsapp_number" && value && !normalizeWhatsappNumber(value)) return jsonError("رقم واتساب غير صالح. أدخل رقم الجوال السعودي أو الرقم الدولي مع رمز الدولة.");
       if (["commercial_registration_number", "ecommerce_authentication_number", "vat_number"].includes(key) && value && !/^[0-9 -]{5,30}$/.test(value)) return jsonError(`${SETTING_META[key].label} غير صالح`);
-      if (key === "max_student_devices" && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 10)) return jsonError("حد أجهزة الطالب يجب أن يكون بين 1 و10");
+      if (key === "max_student_devices" && value !== "2") return jsonError("يرتبط حساب الطالب بجهازين معتمدين دائمًا. لاستبدال جهاز استخدم إدارة أجهزة الطالب.");
       if (key === "content_view_mode" && !["both", "app_only", "web_only"].includes(value)) return jsonError("اختر طريقة مشاهدة محتوى صالحة");
     }
     // Validate the entire form first, then save atomically (never a partial settings update).

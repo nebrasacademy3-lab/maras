@@ -51,7 +51,7 @@ export function SupportForm() {
   if(selected)return <div className="support-workspace support-chat-workspace">
     <section className="support-inbox-card support-chat-card">
       <div className="support-card-heading"><button className="button button-ghost" type="button" onClick={()=>setSelectedId(null)}>كل المحادثات</button><div><h2>{selected.title}</h2><p><span dir="ltr">#{selected.ticketNumber}</span> · {channelLabel[selected.contactChannel||"in_app"]} · {statusLabel[selected.status]||selected.status}</p></div><span className="support-heading-icon"><MessageCircle size={20}/></span></div>
-      <SupportChatThread ticket={selected} onReload={loadTickets} onReopen={reopen}/>
+      <SupportChatThread key={selected.id} ticket={selected} onReload={loadTickets} onReopen={reopen}/>
     </section>
   </div>;
 

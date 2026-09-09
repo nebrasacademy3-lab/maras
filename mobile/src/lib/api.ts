@@ -1,5 +1,6 @@
 import Constants from "expo-constants";
 import { Platform } from "react-native";
+import { resolveStoreMode } from "@/src/lib/store-commerce";
 
 const defaultApiUrl = "https://marasalelm.com";
 const configured = String(Constants.expoConfig?.extra?.apiUrl || defaultApiUrl).replace(/\/$/, "");
@@ -7,8 +8,14 @@ if (!/^https:\/\//i.test(configured)) {
   throw new Error("EXPO_PUBLIC_API_URL must be an HTTPS URL");
 }
 export const API_URL = configured;
-const configuredStoreMode = String(Constants.expoConfig?.extra?.storeMode || "reader").trim().toLowerCase();
-export const STORE_MODE: "reader" | "direct" = configuredStoreMode === "direct" ? "direct" : "reader";
+export const STORE_MODE = resolveStoreMode({
+  platform: Platform.OS,
+  executionEnvironment: Constants.executionEnvironment,
+  development: typeof __DEV__ !== "undefined" && __DEV__,
+  configuredMode: Constants.expoConfig?.extra?.storeMode,
+  distribution: Constants.expoConfig?.extra?.storeDistribution,
+  readerPreview: Constants.expoConfig?.extra?.readerPreview === true,
+});
 export const STORE_COMMERCE_ENABLED = STORE_MODE === "direct";
 
 // OkHttp (Android) only accepts ASCII values in HTTP headers. Device names may

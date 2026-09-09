@@ -74,7 +74,7 @@ export default function Courses() {
   return <Screen><AppHeader title="المواد والشروحات" subtitle={`${rows.length} مادة ظاهرة`} />
     <View style={[styles.hero, { backgroundColor: colors.primary }]}>
       <View style={styles.heroIcon}><Ionicons name="search-outline" size={25} color="#FFF" /></View>
-      <View style={styles.heroCopy}><Text style={styles.heroTitle}>ابحث بهدوء، ثم صفِّ عند الحاجة</Text><Text style={styles.heroText}>كل الفلاتر المهمة في بطاقة واحدة بدل صفوف طويلة ومزدحمة.</Text></View>
+      <View style={styles.heroCopy}><Text style={styles.heroTitle}>مادتك الجامعية، بخطوات أوضح</Text><Text style={styles.heroText}>ابحث بالاسم أو الرمز، ثم اختر جامعتك وتخصصك للوصول إلى الشرح المناسب.</Text></View>
     </View>
     <SearchBox value={query} onChangeText={setQuery} placeholder="اسم المادة، الرمز، الجامعة أو التخصص" />
     <View style={[styles.filterCard, { backgroundColor: colors.surface, borderColor: colors.border }]}>
@@ -94,22 +94,22 @@ export default function Courses() {
 const styles = StyleSheet.create({
   hero: { minHeight: 104, borderRadius: 22, padding: 18, marginBottom: 13, flexDirection: "row", alignItems: "center", gap: 13, overflow: "hidden" },
   heroIcon: { width: 48, height: 48, borderRadius: 17, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(255,255,255,.16)" },
-  heroCopy: { flex: 1, alignItems: "flex-start" },
+  heroCopy: { flex: 1, minWidth: 0 },
   heroTitle: { color: "#FFF", fontSize: 16, fontWeight: "900", textAlign: "right" },
-  heroText: { color: "rgba(255,255,255,.78)", fontSize: 10, lineHeight: 18, textAlign: "right", marginTop: 5 },
+  heroText: { color: "rgba(255,255,255,.78)", fontSize: 12, lineHeight: 18, textAlign: "right", marginTop: 5 },
   filterCard: { borderWidth: 1, borderRadius: 22, padding: 15, marginTop: 13 },
   filterHeading: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 13 },
   filterIcon: { width: 40, height: 40, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  filterHeadingCopy: { flex: 1, alignItems: "flex-start" },
+  filterHeadingCopy: { flex: 1, minWidth: 0 },
   filterTitle: { fontSize: 14, fontWeight: "900", textAlign: "right" },
-  filterHint: { fontSize: 9, marginTop: 3, textAlign: "right" },
+  filterHint: { fontSize: 11, lineHeight: 18, marginTop: 3, textAlign: "right" },
   scopeGrid: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginBottom: 13 },
   scopeButton: { width: "48.5%", minHeight: 42, borderWidth: 1, borderRadius: 13, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6 },
   divider: { height: StyleSheet.hairlineWidth, marginBottom: 14 },
   filterSummary: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 2 },
-  summaryCopy: { flex: 1, alignItems: "flex-start" },
+  summaryCopy: { flex: 1, minWidth: 0 },
   summaryTitle: { fontSize: 11, fontWeight: "900" },
-  summaryText: { fontSize: 8, lineHeight: 15, textAlign: "right", marginTop: 2 },
+  summaryText: { fontSize: 11, lineHeight: 19, textAlign: "right", marginTop: 2 },
   resetButton: { minHeight: 38, borderRadius: 12, paddingHorizontal: 11, flexDirection: "row", alignItems: "center", gap: 5 },
   resultsHead: { marginTop: 20, marginBottom: 10, flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
   resultsTitle: { fontSize: 17, fontWeight: "900" },

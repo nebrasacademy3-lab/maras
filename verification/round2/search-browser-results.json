@@ -1,0 +1,78 @@
+[
+  {
+    "width": 1440,
+    "passed": true,
+    "geometry": {
+      "left": 380,
+      "right": 1060,
+      "top": 76.5,
+      "bottom": 824,
+      "scroll": 678,
+      "client": 678
+    },
+    "scenarios": [
+      "real catalog contract",
+      "focus",
+      "Escape restore",
+      "API failure",
+      "retry recovery"
+    ]
+  },
+  {
+    "width": 820,
+    "passed": true,
+    "geometry": {
+      "left": 70,
+      "right": 750,
+      "top": 76.5,
+      "bottom": 824,
+      "scroll": 678,
+      "client": 678
+    },
+    "scenarios": [
+      "real catalog contract",
+      "focus",
+      "Escape restore",
+      "API failure",
+      "retry recovery"
+    ]
+  },
+  {
+    "width": 390,
+    "passed": true,
+    "geometry": {
+      "left": 14,
+      "right": 376,
+      "top": 76.5,
+      "bottom": 824,
+      "scroll": 360,
+      "client": 360
+    },
+    "scenarios": [
+      "real catalog contract",
+      "focus",
+      "Escape restore",
+      "API failure",
+      "retry recovery"
+    ]
+  },
+  {
+    "width": 320,
+    "passed": true,
+    "geometry": {
+      "left": 14,
+      "right": 306,
+      "top": 76.5,
+      "bottom": 824,
+      "scroll": 290,
+      "client": 290
+    },
+    "scenarios": [
+      "real catalog contract",
+      "focus",
+      "Escape restore",
+      "API failure",
+      "retry recovery"
+    ]
+  }
+]

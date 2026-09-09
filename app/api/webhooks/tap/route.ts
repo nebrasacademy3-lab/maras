@@ -7,10 +7,12 @@ import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-b
 import { sendPushNotification } from "@/lib/push";
 import { createAndSendNotification } from "@/lib/notifications";
 import { fulfillPaidOrderTx } from "@/lib/order-fulfillment";
+import { isStaleChargeStatus } from "@/lib/payment-state";
 import { qualifyReferralForPaidOrderTx, reconcileReferralQualificationAfterRefundTx } from "@/lib/referrals";
 import { redeemCouponReservationTx } from "@/lib/coupons";
 import {
   applyConfirmedRefundToOrder,
+  confirmedRefundMinorById,
   issueCreditNote,
   majorAmountToMinor,
   reconcileRefundRequest,
@@ -132,12 +134,17 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
     }
 
     const now = new Date().toISOString();
-    const refundedStatus = amountMinor >= aiOrder.amountMinor ? "refunded" : "partially_refunded";
+    let refundedStatus = aiOrder.status;
+    let refundTotalInvalid = false;
     let newlyRefunded = false;
     await db.transaction(async (tx) => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-order:${aiOrder.orderNumber}`}))`);
       const [current] = await tx.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.id, aiOrder.id)).limit(1).for("update");
       if (!current) return;
+      const events = await tx.select({ status: paymentEvents.status, payload: paymentEvents.payload }).from(paymentEvents).where(eq(paymentEvents.chargeId, chargeId));
+      const refundedMinor = [...confirmedRefundMinorById(events.map((event) => ({ ...event, status: event.status === "AI_REFUND_REFUNDED" ? "REFUND_REFUNDED" : event.status }))).values()].reduce((sum, value) => sum + value, 0);
+      if (refundedMinor <= 0 || refundedMinor > current.amountMinor) { refundTotalInvalid = true; return; }
+      refundedStatus = current.status === "refunded" || refundedMinor >= current.amountMinor ? "refunded" : "partially_refunded";
       newlyRefunded = !["refunded", "partially_refunded"].includes(current.status);
       await tx.update(aiSubscriptionOrders).set({ status: refundedStatus, updatedAt: now }).where(eq(aiSubscriptionOrders.id, current.id));
       await tx.update(aiEntitlements).set({ status: "revoked", updatedAt: now }).where(and(
@@ -146,6 +153,7 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
         eq(aiEntitlements.externalRef, current.orderNumber),
       ));
     });
+    if (refundTotalInvalid) return jsonError("مجموع استرداد الاشتراك لا يطابق قيمة الطلب", 409);
     if (newlyRefunded) {
       await createAndSendNotification({
         values: {
@@ -273,7 +281,7 @@ async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string,
   const nextStatus = orderState(status);
   const requiresFinancialMatch = ["paid", "refunded", "partially_refunded"].includes(nextStatus);
   if (requiresFinancialMatch) {
-    const amountMatches = typeof verified.amount === "number" && Math.abs(Math.round(verified.amount * 100) - order.amountMinor) === 0;
+    const amountMatches = majorAmountToMinor(verified.amount) === order.amountMinor;
     const currencyMatches = cleanText(verified.currency, 10).toUpperCase() === "SAR" && order.currency.toUpperCase() === "SAR";
     const emailMatches = !verified.customer?.email || verified.customer.email.toLowerCase() === order.customerEmail.toLowerCase();
     const productMatches = cleanText(verified.metadata?.product, 40) === "meras-ai";
@@ -287,6 +295,11 @@ async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string,
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-order:${order.orderNumber}`}))`);
     const [current] = await tx.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.id, order.id)).limit(1);
     if (!current) return;
+    if (isStaleChargeStatus(current.status, nextStatus)) {
+      effectiveStatus = current.status;
+      entitlementExpiresAt = current.entitlementExpiresAt;
+      return;
+    }
     if (nextStatus === "paid") {
       if (["refunded", "partially_refunded"].includes(current.status)) {
         effectiveStatus = current.status;
@@ -294,6 +307,7 @@ async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string,
         return;
       }
       if (current.status !== "paid") {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-subscription:${current.userId}`}))`);
         const activePaid = await tx.select({ expiresAt: aiEntitlements.expiresAt }).from(aiEntitlements).where(and(eq(aiEntitlements.userId, current.userId), eq(aiEntitlements.source, "paid"), eq(aiEntitlements.status, "active"), ne(aiEntitlements.externalRef, current.orderNumber)));
         const latestExpiry = activePaid.map((item) => item.expiresAt ? Date.parse(item.expiresAt) : 0).filter(Number.isFinite).reduce((latest, value) => Math.max(latest, value), 0);
         const base = latestExpiry > Date.now() ? new Date(latestExpiry).toISOString() : now;
@@ -391,7 +405,7 @@ export async function POST(request: Request) {
   const expectedCourseSlugs = itemRows.length ? itemRows.map((item) => item.courseSlug) : [order.courseSlug];
   const nextStatus = orderState(status);
   if (["paid", "refunded", "partially_refunded"].includes(nextStatus)) {
-    const amountMatches = nextStatus !== "paid" || (typeof verified.amount === "number" && Math.abs(verified.amount - order.total) < 0.01);
+    const amountMatches = nextStatus !== "paid" || majorAmountToMinor(verified.amount) === (order.totalMinor ?? majorAmountToMinor(order.total));
     const currencyMatches = cleanText(verified.currency, 10).toUpperCase() === order.currency.toUpperCase();
     const postedCourseSlugs = verified.metadata?.course_slugs?.split(",").map((slug) => cleanText(slug, 120)).filter(Boolean) || (verified.metadata?.course_slug ? [verified.metadata.course_slug] : []);
     const courseMatches = !postedCourseSlugs.length || (postedCourseSlugs.length === expectedCourseSlugs.length && postedCourseSlugs.every((slug) => expectedCourseSlugs.includes(slug)));
@@ -407,6 +421,10 @@ export async function POST(request: Request) {
     const [current] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1);
     if (!current) return;
 
+    if (isStaleChargeStatus(current.status, nextStatus)) {
+      effectiveStatus = current.status;
+      return;
+    }
     if (nextStatus === "paid" && current.status !== "refunded") {
       const purchaseItems = itemRows.length ? itemRows : [{ courseSlug: current.courseSlug, accessDurationDays: 90 }];
       if (current.couponCode) {

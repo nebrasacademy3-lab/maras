@@ -58,7 +58,7 @@ export async function POST(request: Request) {
   if (!created) return jsonError("يوجد حساب مرتبط بالبريد أو رقم الجوال", 409);
   let session;
   try { session = await createSession(created.id, request, true); }
-  catch (error) { if (error instanceof DeviceLimitError) return jsonError(`وصل حسابك إلى الحد المسموح (${error.limit}) من الأجهزة.`, 409); throw error; }
+  catch (error) { if (error instanceof DeviceLimitError) return jsonError(`حسابك مرتبط بالجهازين المعتمدين. استخدم أحدهما أو تواصل مع الدعم لاستبدال جهاز. تسجيل الخروج لا يحرر الجهاز.`, 409); throw error; }
   await ensureVerificationEmail(created.id, request);
   return Response.json({ ok: true, token: session.token, expiresAt: session.expiresAt, user: sessionUserFromRow(created), next: "/verify-email" }, { status: 201, headers: mobileNoStoreHeaders });
 }

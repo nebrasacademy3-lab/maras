@@ -40,7 +40,7 @@ export function majorAmountToMinor(value: unknown) {
 export function requestedRefundMinor(input: { amountMinor?: unknown; amount?: unknown }) {
   const hasMinor = input.amountMinor !== undefined
     && input.amountMinor !== null
-    && String(input.amountMinor).trim() !== "";
+    && !(typeof input.amountMinor === "string" && input.amountMinor.trim() === "");
   if (!hasMinor) return majorAmountToMinor(input.amount);
   if (typeof input.amountMinor !== "number" && typeof input.amountMinor !== "string") return null;
   const amountMinor = typeof input.amountMinor === "number" ? input.amountMinor : Number(input.amountMinor);
@@ -48,7 +48,7 @@ export function requestedRefundMinor(input: { amountMinor?: unknown; amount?: un
 }
 
 export function tapRefundRequestStatus(status: unknown): RefundProviderRequestStatus {
-  const normalized = String(status || "").trim().toUpperCase();
+  const normalized = typeof status === "string" ? status.trim().toUpperCase() : "";
   if (normalized === "REFUNDED") return "completed";
   if (TAP_REFUND_FAILURE_STATUSES.has(normalized)) return "provider_failed";
   // PENDING, ACCEPTED, IN_PROGRESS, and UNKNOWN remain non-retryable until
@@ -62,9 +62,10 @@ export function confirmedRefundMinorById(events: Array<{ status: string; payload
     if (event.status.toUpperCase() !== "REFUND_REFUNDED" || !event.payload) continue;
     let payload: Record<string, unknown>;
     try { payload = JSON.parse(event.payload) as Record<string, unknown>; } catch { continue; }
-    const refundId = String(payload.id || "").trim();
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) continue;
+    const refundId = typeof payload.id === "string" ? payload.id.trim() : "";
     const amountMinor = majorAmountToMinor(payload.amount);
-    if (!refundId.startsWith("re_") || !amountMinor || String(payload.status || "").toUpperCase() !== "REFUNDED") continue;
+    if (!refundId.startsWith("re_") || !amountMinor || (typeof payload.status !== "string" || payload.status.toUpperCase() !== "REFUNDED")) continue;
     amounts.set(refundId, Math.max(amounts.get(refundId) || 0, amountMinor));
   }
   return amounts;

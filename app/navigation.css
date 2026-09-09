@@ -62,3 +62,6 @@ html { scroll-padding-block-start: calc(var(--navigation-offset) + 20px); }
 .student-content .owned-courses-grid article h3 { font-size: calc(18px * var(--font-scale,1)); line-height: 1.7; }
 .student-content .owned-courses-grid article p, .student-content .owned-courses-grid article small { font-size: calc(12px * var(--font-scale,1)); line-height: 1.8; }
 @media(max-width:1100px) { .student-content .account-grid { grid-template-columns: minmax(0,1fr); } }
+
+/* Keep search reachable in the signed-in header; secondary tools also exist in the menu. */
+@media(max-width:700px){.site-header-app .header-actions>.icon-button:first-child{display:grid}.site-header-app .header-actions>a[href="/favorites"]{display:none}}

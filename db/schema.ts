@@ -51,6 +51,7 @@ export const oauthStates = pgTable("oauth_states", {
   nonce: text("nonce").notNull(),
   verifier: text("verifier").notNull(),
   returnTo: text("return_to").notNull().default("/dashboard"),
+  deviceId: text("device_id"),
   mobileChallenge: text("mobile_challenge"),
   mobileRedirectUri: text("mobile_redirect_uri"),
   expiresAt: text("expires_at").notNull(),
@@ -473,6 +474,19 @@ export const authSessions = pgTable("auth_sessions", {
   revokedAt: text("revoked_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [uniqueIndex("auth_sessions_token_unique").on(table.tokenHash), index("auth_sessions_user_idx").on(table.userId), index("auth_sessions_device_idx").on(table.userId, table.deviceId, table.revokedAt)]);
+
+export const authDevices = pgTable("auth_devices", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  deviceId: text("device_id").notNull(),
+  deviceLabel: text("device_label").notNull(),
+  platform: text("platform").notNull().default("web"),
+  firstSeenAt: text("first_seen_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  lastSeenAt: text("last_seen_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  revokedAt: text("revoked_at"),
+  revokedBy: text("revoked_by"),
+  revocationReason: text("revocation_reason"),
+}, (table) => [uniqueIndex("auth_devices_user_device_unique").on(table.userId, table.deviceId), index("auth_devices_user_active_idx").on(table.userId, table.revokedAt)]);
 
 export const authRateLimits = pgTable("auth_rate_limits", {
   key: text("key").primaryKey(),

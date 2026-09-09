@@ -250,3 +250,32 @@ test("native bootstrap creates Secure HttpOnly Apple binding in browser; forged 
   const replay = await s.module.beginOAuth(new Request(bootstrapUrl), "apple");
   assert.match(replay.headers.get("location"), /oauth_error=invalid_state/);
 });
+
+test("Apple POST callback retains the enrolled browser identity from bound state without its Lax cookie", async () => {
+  const fixture = stateFixture("apple");
+  fixture.row.deviceId = "web-original-identity-aaaaaaaaaaaaaaaa";
+  let received;
+  const s = await service({ oauthStates: [fixture.row] }, { createSession: async (_id, request) => { received = request.headers.get("x-meras-device-id"); return { cookie: "meras_session=session; HttpOnly", deviceCookie: "meras_browser_device=known; HttpOnly" }; } });
+  const response = await s.module.finishOAuth(new Request("https://meras.example/api/auth/oauth/apple/callback", { method: "POST", headers: { cookie: fixture.cookie }, body: new URLSearchParams({ state: fixture.state, code: "test-code" }) }), "apple");
+  assert.equal(received, fixture.row.deviceId);
+  assert.match(response.headers.get("set-cookie"), /meras_browser_device=known/);
+});
+
+test("OAuth reports the durable device limit without releasing enrollment or returning a token", async () => {
+  class DeviceLimitError extends Error {}
+  const code = provider.opaqueOAuthToken(); const verifier = "v".repeat(43);
+  const s = await service({ users: [{ id: 3, status: "active" }], oauthExchanges: [{ id: 1, codeHash: provider.oauthHash(code), userId: 3, challenge: provider.pkceChallenge(verifier), redirectUri: provider.mobileOAuthRedirect(), expiresAt: future(), usedAt: null }] }, { DeviceLimitError, createSession: async () => { throw new DeviceLimitError(); } });
+  const response = await s.module.exchangeMobileOAuth(new Request("https://meras.example/api/auth/oauth/exchange", { method: "POST", body: JSON.stringify({ code, codeVerifier: verifier }) }));
+  assert.equal(response.status, 409);
+  const body = await response.json(); assert.equal(body.code, "device_limit"); assert.equal(body.token, undefined);
+  assert.doesNotMatch(body.error, /سجّل الخروج/);
+});
+
+test("web OAuth bootstrap persists the prepared browser identity in its bound state", async () => {
+  const id = "web-original-identity-aaaaaaaaaaaaaaaa";
+  const s = await service({}, { sessionDeviceIdentity: async () => ({ deviceId: id }), browserDeviceCookie: () => `meras_browser_device=${id}; HttpOnly; Secure; SameSite=Lax` });
+  const response = await s.module.beginOAuth(new Request("https://meras.example/api/auth/oauth/google/start"), "google");
+  assert.equal(response.status, 303); assert.equal(s.data.oauthStates[0].deviceId, id);
+  assert.match(response.headers.get("set-cookie"), /meras_browser_device=/);
+  assert.ok(!response.headers.get("location").includes(id), "installation identity must not be in provider URLs");
+});

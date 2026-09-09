@@ -2,7 +2,7 @@ import "server-only";
 import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { oauthExchanges, oauthIdentities, oauthStates, users } from "@/db/schema";
-import { checkRateLimit, clientIp, createSession, DeviceLimitError, sameOriginRequest, sessionUserFromRow, validEmail } from "@/lib/auth";
+import { browserDeviceCookie, sessionDeviceIdentity, checkRateLimit, clientIp, createSession, DeviceLimitError, sameOriginRequest, sessionUserFromRow, validEmail } from "@/lib/auth";
 import { accountNext, safeAccountReturnTo } from "@/lib/account-readiness";
 import { ensureVerificationEmail } from "@/lib/email-verification";
 import { provisionReferralCodeTx, recordReferralRegistrationTx, referralCodeFromRegistration } from "@/lib/referrals";
@@ -67,16 +67,20 @@ export async function beginOAuth(request: Request, rawProvider: string) {
     const state = opaqueOAuthToken(); const nonce = opaqueOAuthToken(); const verifier = opaqueOAuthToken();
     const binding = native ? "" : opaqueOAuthToken();
     const returnTo = safeAccountReturnTo(native ? payload.returnTo : url.searchParams.get("return_to"));
+    const browserDevice = native ? null : await sessionDeviceIdentity(request);
     await pruneExpired();
     await getDb().insert(oauthStates).values({
       stateHash: oauthHash(state), provider, bindingHash: binding ? oauthHash(binding) : null, nonce, verifier, returnTo,
       referralCode: referralCodeFromRegistration(payload, request) || null,
+      deviceId: browserDevice?.deviceId || null,
       mobileChallenge: native ? payload.codeChallenge as string : null,
       mobileRedirectUri: native ? mobileOAuthRedirect() : null,
       expiresAt: new Date(Date.now() + 600_000).toISOString(),
     });
     if (native) return Response.json({ url: `${oauthOrigin()}/api/auth/oauth/${provider}/start?ticket=${state}` }, { headers: noStore });
-    return redirect(authorizationUrl(provider, state, nonce, verifier), bindingCookie(provider, state, binding));
+    const response = redirect(authorizationUrl(provider, state, nonce, verifier), bindingCookie(provider, state, binding));
+    if (browserDevice) response.headers.append("set-cookie", browserDeviceCookie(request, browserDevice.deviceId));
+    return response;
   } catch (error) {
     return request.method === "POST" ? oauthJsonError(error) : loginError(error);
   }
@@ -152,12 +156,18 @@ export async function finishOAuth(request: Request, rawProvider: string) {
       });
       return redirect(`${row.mobileRedirectUri}?code=${code}`, clearBinding);
     }
-    const session = await createSession(account.id, request, true);
+    // Apple POST callbacks may omit Lax cookies; the claimed OAuth state carries
+    // the browser identity chosen before leaving this site.
+    const sessionHeaders = new Headers(request.headers);
+    if (row.deviceId) sessionHeaders.set("x-meras-device-id", row.deviceId);
+    const sessionRequest = new Request(request.url, { headers: sessionHeaders });
+    const session = await createSession(account.id, sessionRequest, true);
     if (!account.emailVerifiedAt) await ensureVerificationEmail(account.id, request);
     const next = accountNext(sessionUserFromRow(account));
     const target = next === "/dashboard" ? safeAccountReturnTo(row.returnTo) : `${next}?return_to=${encodeURIComponent(safeAccountReturnTo(row.returnTo))}`;
     const response = redirect(new URL(target, oauthOrigin()).toString(), clearBinding);
     response.headers.append("set-cookie", session.cookie);
+    if (session.deviceCookie) response.headers.append("set-cookie", session.deviceCookie);
     return response;
   } catch (error) {
     const response = row?.mobileRedirectUri && row.mobileRedirectUri === mobileOAuthRedirect()
@@ -198,7 +208,7 @@ export function oauthErrorMessage(code: string) {
     account_exists: "يوجد حساب بهذا البريد. سجّل الدخول بالطريقة الأصلية أو استخدم استعادة كلمة المرور؛ لن نربط حسابين تلقائيًا حفاظًا على أمانك.",
     provider_unavailable: "طريقة الدخول غير مفعّلة حاليًا. استخدم البريد الإلكتروني.",
     email_required: "لم نحصل على بريد موثّق من مزوّد الدخول. استخدم التسجيل بالبريد.",
-    device_limit: "وصل حسابك إلى الحد المسموح من الأجهزة. سجّل الخروج من جهاز سابق أو تواصل مع الدعم.",
+    device_limit: "حسابك مرتبط بالجهازين المعتمدين. استخدم أحدهما أو تواصل مع الدعم لاستبدال جهاز.",
     cancelled: "لم يكتمل تسجيل الدخول. يمكنك المحاولة مرة أخرى.",
     rate_limited: "محاولات كثيرة. انتظر قليلًا ثم حاول مجددًا.",
     account_unavailable: "تعذر الدخول إلى هذا الحساب. تواصل مع الدعم.",
@@ -209,7 +219,7 @@ export function oauthErrorMessage(code: string) {
 }
 function oauthJsonError(error: unknown) {
   const code = errorCode(error);
-  return jsonError(oauthErrorMessage(code), code === "rate_limited" ? 429 : code === "provider_unavailable" ? 503 : 400, code);
+  return jsonError(oauthErrorMessage(code), code === "rate_limited" ? 429 : code === "provider_unavailable" ? 503 : code === "device_limit" ? 409 : 400, code);
 }
 function loginError(error: unknown) {
   // Fixed code only; no identity/provider message, code, or token in the URL.

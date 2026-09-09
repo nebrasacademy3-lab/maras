@@ -96,16 +96,16 @@ export async function POST(request: Request) {
         signal: AbortSignal.timeout(15_000),
       });
     } catch {
-      await db.update(aiSubscriptionOrders).set({ status: "verification_pending", updatedAt: new Date().toISOString() }).where(eq(aiSubscriptionOrders.id, row.id));
+      await db.update(aiSubscriptionOrders).set({ status: "verification_pending", updatedAt: new Date().toISOString() }).where(and(eq(aiSubscriptionOrders.id, row.id), eq(aiSubscriptionOrders.status, "pending")));
       return Response.json({ ok: true, pending: true, orderNumber: row.orderNumber, status: "verification_pending" }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
     }
     let charge: TapChargeResponse;
     try { charge = await response.json() as TapChargeResponse; } catch { charge = {}; }
     if (!response.ok || !charge.id || !charge.transaction?.url) {
-      await db.update(aiSubscriptionOrders).set({ status: "failed", updatedAt: new Date().toISOString() }).where(eq(aiSubscriptionOrders.id, row.id));
+      await db.update(aiSubscriptionOrders).set({ status: "failed", updatedAt: new Date().toISOString() }).where(and(eq(aiSubscriptionOrders.id, row.id), eq(aiSubscriptionOrders.status, "pending")));
       return jsonError(charge.errors?.[0]?.description || "تعذر بدء عملية الدفع. حاول مرة أخرى.", 502);
     }
-    await db.update(aiSubscriptionOrders).set({ tapChargeId: charge.id, checkoutUrl: charge.transaction.url, status: "initiated", updatedAt: new Date().toISOString() }).where(eq(aiSubscriptionOrders.id, row.id));
+    await db.update(aiSubscriptionOrders).set({ tapChargeId: charge.id, checkoutUrl: charge.transaction.url, status: sql`CASE WHEN ${aiSubscriptionOrders.status} = 'pending' THEN 'initiated' ELSE ${aiSubscriptionOrders.status} END`, updatedAt: new Date().toISOString() }).where(eq(aiSubscriptionOrders.id, row.id));
     return Response.json({ ok: true, mode: "live", orderNumber: row.orderNumber, amount, currency: "SAR", checkoutUrl: charge.transaction.url }, { status: 201, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   });
 }

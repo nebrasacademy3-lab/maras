@@ -1,5 +1,5 @@
 import React from "react";
-import { StyleSheet, TextInput as NativeTextInput, type TextInputProps, type TextStyle } from "react-native";
+import { Platform, StyleSheet, TextInput as NativeTextInput, type TextInputProps, type TextStyle } from "react-native";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import { directionForText } from "@/src/lib/text-direction";
@@ -27,7 +27,8 @@ export function ScaledTextInput({ style, placeholder, secureTextEntry, keyboardT
     fontSize: baseFontSize * fontScale,
     ...(typeof flattened?.lineHeight === "number" ? { lineHeight: flattened.lineHeight * fontScale } : {}),
     writingDirection: contentDirection,
-    direction: isRTL ? "rtl" : "ltr",
+    // Keep physical alignment stable across native Fabric and web.
+    direction: Platform.OS === "web" ? contentDirection : "ltr",
     textAlign: alignment,
   };
   return <NativeTextInput {...props} secureTextEntry={secureTextEntry} keyboardType={keyboardType} textAlign={alignment} placeholder={translatedPlaceholder} style={[style, scaledStyle]} />;

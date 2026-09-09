@@ -1,0 +1,97 @@
+{
+  "results": [
+    {
+      "route": "/forgot-password",
+      "width": 320,
+      "scroll": 320,
+      "direction": "rtl",
+      "heading": "نسيت كلمة المرور؟"
+    },
+    {
+      "route": "/reset-password?token=LOCAL_TEST_ONLY_TOKEN_0123456789abcdef",
+      "width": 320,
+      "scroll": 320,
+      "direction": "rtl",
+      "heading": "كلمة مرور جديدة، بداية مطمئنة"
+    },
+    {
+      "route": "/reset-password",
+      "width": 320,
+      "scroll": 320,
+      "direction": "rtl",
+      "heading": "افتح الرابط من بريدك"
+    },
+    {
+      "route": "/forgot-password",
+      "width": 390,
+      "scroll": 390,
+      "direction": "rtl",
+      "heading": "نسيت كلمة المرور؟"
+    },
+    {
+      "route": "/reset-password?token=LOCAL_TEST_ONLY_TOKEN_0123456789abcdef",
+      "width": 390,
+      "scroll": 390,
+      "direction": "rtl",
+      "heading": "كلمة مرور جديدة، بداية مطمئنة"
+    },
+    {
+      "route": "/reset-password",
+      "width": 390,
+      "scroll": 390,
+      "direction": "rtl",
+      "heading": "افتح الرابط من بريدك"
+    },
+    {
+      "route": "/forgot-password",
+      "width": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "heading": "نسيت كلمة المرور؟"
+    },
+    {
+      "route": "/reset-password?token=LOCAL_TEST_ONLY_TOKEN_0123456789abcdef",
+      "width": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "heading": "كلمة مرور جديدة، بداية مطمئنة"
+    },
+    {
+      "route": "/reset-password",
+      "width": 768,
+      "scroll": 768,
+      "direction": "rtl",
+      "heading": "افتح الرابط من بريدك"
+    },
+    {
+      "route": "/forgot-password",
+      "width": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "heading": "نسيت كلمة المرور؟"
+    },
+    {
+      "route": "/reset-password?token=LOCAL_TEST_ONLY_TOKEN_0123456789abcdef",
+      "width": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "heading": "كلمة مرور جديدة، بداية مطمئنة"
+    },
+    {
+      "route": "/reset-password",
+      "width": 1440,
+      "scroll": 1440,
+      "direction": "rtl",
+      "heading": "افتح الرابط من بريدك"
+    },
+    {
+      "behavior": "confirmation mismatch, network retry, successful reset removes consumed token",
+      "passed": true
+    },
+    {
+      "behavior": "forgot-password safe success and editable email",
+      "passed": true
+    }
+  ],
+  "limits": "Synthetic responses only; no real email or account changes."
+}

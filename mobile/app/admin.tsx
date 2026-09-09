@@ -7,6 +7,7 @@ import React, { useState } from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { RegisteredDevices } from "@/src/components/RegisteredDevices";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AdminAi } from "@/src/components/AdminAi";
 import { AdminFinance, AdminLearningTracks, AdminOperations, AdminStudentProfile } from "@/src/components/AdminCenters";
@@ -245,7 +246,6 @@ function Users({ data, colors, mutate, onDelete, onOpenProfile }: { data: AdminD
   const { locale } = useLanguage();
   const supervisors = data.users.filter((row) => row.role === "supervisor");
   const [query, setQuery] = useState("");
-  const [deviceLimit, setDeviceLimit] = useState(String(data.settings.max_student_devices || data.deviceLimit || 2));
   const [supervisorId, setSupervisorId] = useState("");
   const [institutionSlug, setInstitutionSlug] = useState("");
   const [specialty, setSpecialty] = useState("");
@@ -253,11 +253,9 @@ function Users({ data, colors, mutate, onDelete, onOpenProfile }: { data: AdminD
   const visibleUsers = data.users.filter((row) => !normalized || `${row.fullName} ${row.email} ${row.phone || ""} ${row.specialty || ""}`.toLowerCase().includes(normalized));
   const programs = useQuery({ queryKey: ["admin-programs", institutionSlug], queryFn: () => api<{ programs: { name: string; degree: string; area: string }[] }>(`/api/catalog/programs?institution=${encodeURIComponent(institutionSlug)}`), enabled: Boolean(institutionSlug) });
   return <>
-    <SectionTitle title="أجهزة الطلاب" subtitle={`الافتراضي ${data.deviceLimit || 2} جهاز لكل طالب عبر التطبيق والويب`} />
+    <SectionTitle title="أجهزة الطلاب" subtitle="جهازان معتمدان لكل حساب طالب عبر التطبيق والويب" />
     <Card>
-      <Field label="الحد الأقصى لأجهزة الطالب" value={deviceLimit} onChangeText={(value) => setDeviceLimit(value.replace(/[^0-9]/g, "").slice(0, 2))} keyboardType="number-pad" />
-      <Text style={[styles.dataMeta, { color: colors.textSoft }]}>الجهاز نفسه يجدد جلسته ولا يُحسب مرتين. إذا وصل الطالب للحد المحدد يُرفض أي جهاز جديد حتى تسجيل خروج جهاز قائم.</Text>
-      <AppButton title="حفظ حد الأجهزة" icon="phone-portrait-outline" disabled={Number(deviceLimit) < 1 || Number(deviceLimit) > 10} onPress={() => mutate({ action: "saveSettings", values: { max_student_devices: deviceLimit } }, "تم تحديث حد أجهزة الطلاب")} />
+      <Text style={[styles.dataMeta, { color: colors.textSoft }]}>يبقى الجهاز مسجّلًا بعد تسجيل الخروج. بعد اكتمال جهازَي الحساب يُرفض أي جهاز جديد حتى تستبدل الإدارة أحد الجهازين.</Text>
     </Card>
     <SectionTitle title="الحسابات والصلاحيات" subtitle={`${data.users.length} حسابًا · بحث سريع وإدارة الأجهزة`} />
     <SearchBox value={query} onChangeText={setQuery} placeholder="ابحث بالاسم أو البريد أو الجوال أو التخصص" />
@@ -266,7 +264,7 @@ function Users({ data, colors, mutate, onDelete, onOpenProfile }: { data: AdminD
       <Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.email} · {row.phone || "بدون جوال"}</Text>
       <Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.specialty || "بدون تخصص"} · {row.academicLevel || "المستوى غير محدد"} · {row.profileCompletedAt && row.academicLevel ? "ملف مكتمل" : "ملف ناقص"} · {accountStatusLabels[row.status] || "حالة حساب غير معروفة"}</Text>
       {row.role === "student" ? <View style={[styles.deviceBox, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-        <Text style={[styles.deviceTitle, { color: colors.text }]}>الأجهزة النشطة: {row.deviceCount || 0} / {data.deviceLimit || 2}</Text><AppButton full={false} title="ملف الطالب 360" icon="person-circle-outline" variant="ghost" onPress={() => onOpenProfile(row.email)} />
+        <RegisteredDevices studentEmail={row.email} /><Text style={[styles.deviceTitle, { color: colors.text }]}>الجلسات النشطة: {(row.sessions || []).length}</Text><AppButton full={false} title="ملف الطالب 360" icon="person-circle-outline" variant="ghost" onPress={() => onOpenProfile(row.email)} />
         {(row.sessions || []).length ? row.sessions!.map((session) => <View key={session.id} style={[styles.deviceRow, { borderColor: colors.border }]}>
           <View style={styles.deviceCopy}><Text style={[styles.deviceName, { color: colors.text }]}>{session.deviceLabel || (session.platform === "mobile" ? "تطبيق مراس" : "متصفح ويب")}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{session.platform === "mobile" ? "تطبيق" : "ويب"} · آخر نشاط {new Date(session.lastSeenAt || session.createdAt).toLocaleString(locale)}</Text></View>
           <AppButton full={false} title="تسجيل خروج" variant="danger" onPress={() => mutate({ action: "revokeUserSession", sessionId: session.id }, "تم تسجيل خروج الجهاز")} />

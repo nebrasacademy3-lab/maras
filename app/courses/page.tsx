@@ -13,7 +13,9 @@ export async function generateMetadata({ searchParams }: { searchParams: Promise
 
 export const revalidate = 60;
 
-export default async function CoursesPage() {
+export default async function CoursesPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+  const params = await searchParams;
+  const query = typeof params.q === "string" ? params.q.trim().slice(0,160) : "";
   const [courses, institutions] = await Promise.all([getCoursesCatalog(), getInstitutionsCatalog()]);
-  return <main><SiteHeader /><section className="page-hero"><div className="container"><div className="breadcrumbs"><Link href="/">الرئيسية</Link><ChevronLeft size={13} /><span>المواد</span></div><h1>اختر مادتك وابدأ بالفهم</h1><p>شروحات مرتبطة بالجامعة والتخصص، ومقسمة إلى وحدات ودروس واضحة مع تجربة مجانية قبل الدفع.</p></div></section><section className="content-page"><div className="container"><CourseCatalog courses={courses} institutions={institutions} /></div></section><SiteFooter /></main>;
+  return <main><SiteHeader /><section className="page-hero"><div className="container"><div className="breadcrumbs"><Link href="/">الرئيسية</Link><ChevronLeft size={13} /><span>المواد</span></div><h1>اختر مادتك وابدأ بالفهم</h1><p>شروحات مرتبطة بالجامعة والتخصص، ومقسمة إلى وحدات ودروس واضحة مع تجربة مجانية قبل الدفع.</p></div></section><section className="content-page"><div className="container"><CourseCatalog key={query} initialQuery={query} courses={courses} institutions={institutions} /></div></section><SiteFooter /></main>;
 }

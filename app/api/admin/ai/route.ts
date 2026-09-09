@@ -4,12 +4,16 @@ import { aiApiKeys, aiEntitlements, aiServiceSettings, aiSubscriptionOrders, aiU
 import { cleanText, isUniqueConstraintError, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest, validEmail } from "@/lib/auth";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
-import { aiKeyFingerprint, decryptAiApiKey, encryptAiApiKey, maskAiKey, validGeminiApiKey } from "@/lib/ai-keys";
+import { aiKeyFingerprint, decryptAiApiKey, encryptAiApiKey, geminiEnvironmentKeys, maskAiKey, validGeminiApiKey } from "@/lib/ai-keys";
 import { AI_SERVICES, isAiService } from "@/lib/ai-contracts";
-import { DEFAULT_AI_SETTINGS, getAiMonthlyPrice, getAiServiceSettings } from "@/lib/ai-platform";
+import { AiPlatformError, DEFAULT_AI_SETTINGS, getAiMonthlyPrice, getAiServiceSettings } from "@/lib/ai-platform";
 import { ADMIN_PERMISSIONS, hasPermission } from "@/lib/permissions";
 import { createAndSendNotification } from "@/lib/notifications";
 import { observeRequest } from "@/lib/observability";
+import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
+import { normalizeGeminiModel } from "@/lib/gemini-config";
+import { GeminiProviderError, geminiErrorMessage } from "@/lib/gemini-errors";
+import { listGeminiModels, testGeminiConnection } from "@/lib/gemini-provider";
 
 export const dynamic = "force-dynamic";
 
@@ -36,7 +40,7 @@ async function audit(request: Request, actor: string, action: string, entityType
 function keyPayload(row: typeof aiApiKeys.$inferSelect) {
   let masked = "مفتاح مشفر";
   try { masked = maskAiKey(decryptAiApiKey(row.encryptedKey)); } catch { masked = "تعذر فك المفتاح"; }
-  return { id: row.id, label: row.label, projectLabel: row.projectLabel, maskedKey: masked, fingerprint: row.fingerprint.slice(0, 12), priority: row.priority, status: row.status, cooldownUntil: row.cooldownUntil, consecutiveFailures: row.consecutiveFailures, lastUsedAt: row.lastUsedAt, lastSuccessAt: row.lastSuccessAt, lastErrorCode: row.lastErrorCode, createdAt: row.createdAt, updatedAt: row.updatedAt };
+  return { id: row.id, label: row.label, projectLabel: row.projectLabel, maskedKey: masked, fingerprint: row.fingerprint.slice(0, 12), priority: row.priority, status: row.status, cooldownUntil: row.cooldownUntil, consecutiveFailures: row.consecutiveFailures, lastUsedAt: row.lastUsedAt, lastSuccessAt: row.lastSuccessAt, lastErrorCode: row.lastErrorCode, lastErrorMessage: geminiErrorMessage(row.lastErrorCode), createdAt: row.createdAt, updatedAt: row.updatedAt };
 }
 
 export async function GET(request: Request) {
@@ -53,7 +57,7 @@ export async function GET(request: Request) {
       getDb().select({ id: aiSubscriptionOrders.id, orderNumber: aiSubscriptionOrders.orderNumber, userId: aiSubscriptionOrders.userId, customerEmail: aiSubscriptionOrders.customerEmail, customerName: aiSubscriptionOrders.customerName, amount: aiSubscriptionOrders.amount, currency: aiSubscriptionOrders.currency, status: aiSubscriptionOrders.status, paidAt: aiSubscriptionOrders.paidAt, entitlementExpiresAt: aiSubscriptionOrders.entitlementExpiresAt, createdAt: aiSubscriptionOrders.createdAt }).from(aiSubscriptionOrders).orderBy(desc(aiSubscriptionOrders.createdAt)).limit(200),
       getDb().select({ status: aiSubscriptionOrders.status, total: count(), amount: sql<number>`coalesce(sum(${aiSubscriptionOrders.amount}), 0)::float` }).from(aiSubscriptionOrders).groupBy(aiSubscriptionOrders.status),
     ]);
-    const environmentKeyCount = [process.env.GEMINI_API_KEYS, process.env.GEMINI_API_KEY].filter(Boolean).join(",").split(/[\r\n,;]+/).map(validGeminiApiKey).filter(Boolean).length;
+    const environmentKeyCount = geminiEnvironmentKeys().length;
     return Response.json({
       ok: true,
       monthlyPrice: price,
@@ -74,16 +78,48 @@ export async function POST(request: Request) {
     const guarded = await adminGuard(request, true);
     if (guarded.response || !guarded.user) return guarded.response;
     let payload: Record<string, unknown>;
-    try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الإدارة غير صالحة"); }
+    try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch (error) { return jsonError(error instanceof RequestBodyTooLargeError ? "حجم بيانات الإدارة أكبر من المسموح" : "بيانات الإدارة غير صالحة", error instanceof RequestBodyTooLargeError ? 413 : 400); }
     const action = cleanText(payload.action, 40);
     const db = getDb();
     const now = new Date().toISOString();
     try {
+      if (["listModels", "testConnection", "testGeneration"].includes(action)) {
+        if (!await checkRateLimit("admin-ai-provider-check", "user:" + guarded.user.id, 5, 60)) return jsonError("انتظر دقيقة قبل تكرار فحص الاتصال.", 429, "AI_DIAGNOSTIC_RATE_LIMITED");
+        let apiKey = "";
+        let row: typeof aiApiKeys.$inferSelect | undefined;
+        if (payload.source === "draft") {
+          apiKey = validGeminiApiKey(payload.apiKey);
+          if (!apiKey) return jsonError("انسخ مفتاح Google AI Studio كاملًا، دون علامات اقتباس أو مسافات داخلية.", 400, "AI_KEY_INVALID");
+        } else if (payload.source === "environment") {
+          apiKey = geminiEnvironmentKeys()[0] || "";
+          if (!apiKey) return jsonError("لا يوجد مفتاح خادم صالح من حيث الصيغة.", 503, "AI_KEY_NOT_CONFIGURED");
+        } else {
+          const keyId = Number(payload.keyId);
+          if (!Number.isSafeInteger(keyId) || keyId < 1) return jsonError("اختر المفتاح الذي تريد اختباره.");
+          [row] = await db.select().from(aiApiKeys).where(eq(aiApiKeys.id, keyId)).limit(1);
+          if (!row) return jsonError("المفتاح غير موجود", 404);
+          apiKey = decryptAiApiKey(row.encryptedKey);
+        }
+        const model = normalizeGeminiModel(payload.model);
+        if (action !== "listModels" && !model) return jsonError("اختر معرّف النموذج أو الصقه بصيغة models/ متبوعة بالمعرّف.", 400, "AI_MODEL_INVALID");
+        try {
+          const result = action === "listModels" ? await listGeminiModels(apiKey) : await testGeminiConnection(apiKey, model, action === "testGeneration");
+          if (row && action === "testGeneration") await db.update(aiApiKeys).set({ status: row.status === "disabled" ? "disabled" : "active", cooldownUntil: null, consecutiveFailures: 0, lastErrorCode: null, lastSuccessAt: now, lastUsedAt: now, updatedAt: now }).where(eq(aiApiKeys.id, row.id));
+          await audit(request, guarded.user.email, "test", "ai_provider_connection", String(row?.id || payload.source), null, { action, model: model || null, ok: true });
+          return Response.json({ ok: true, ...result }, { headers: { "cache-control": "no-store" } });
+        } catch (error) {
+          if (error instanceof GeminiProviderError) {
+            if (row) await db.update(aiApiKeys).set({ lastErrorCode: error.code, status: row.status === "disabled" ? "disabled" : error.invalidCredential ? "error" : row.status, updatedAt: now }).where(eq(aiApiKeys.id, row.id));
+            await audit(request, guarded.user.email, "test", "ai_provider_connection", String(row?.id || payload.source), null, { action, model: model || null, ok: false, code: error.code, providerStatus: error.providerStatus });
+          }
+          throw error;
+        }
+      }
       if (action === "saveService") {
         if (!isAiService(payload.service)) return jsonError("الخدمة غير صالحة");
         const fallback = DEFAULT_AI_SETTINGS[payload.service];
-        const model = cleanText(payload.model, 100);
-        if (!/^[a-zA-Z0-9._-]{2,100}$/.test(model)) return jsonError("اسم نموذج الخدمة غير صالح");
+        const model = normalizeGeminiModel(payload.model);
+        if (!model) return jsonError("استخدم معرّف النموذج أو models/ متبوعة بالمعرّف، دون رابط كامل.", 400, "AI_MODEL_INVALID");
         const values = {
           service: payload.service,
           enabled: payload.enabled === true,
@@ -105,7 +141,8 @@ export async function POST(request: Request) {
       if (action === "addKey") {
         const apiKey = validGeminiApiKey(payload.apiKey);
         const label = cleanText(payload.label, 100);
-        if (!apiKey || label.length < 2) return jsonError("أدخل اسمًا ومفتاح مزود الخدمة صالحًا");
+        if (label.length < 2) return jsonError("أدخل اسمًا واضحًا للمفتاح من حرفين على الأقل.");
+        if (!apiKey) return jsonError("صيغة المفتاح غير مكتملة. انسخه كاملًا من Google AI Studio دون مسافات داخلية أو علامات اقتباس.", 400, "AI_KEY_INVALID");
         const [row] = await db.insert(aiApiKeys).values({ label, projectLabel: cleanText(payload.projectLabel, 120) || null, encryptedKey: encryptAiApiKey(apiKey), fingerprint: aiKeyFingerprint(apiKey), priority: Math.max(1, Math.min(10_000, Math.floor(Number(payload.priority)) || 100)), status: "active", createdBy: guarded.user.email, createdAt: now, updatedAt: now }).returning();
         await audit(request, guarded.user.email, "create", "ai_api_key", String(row.id), null, { ...keyPayload(row), encryptedKey: undefined });
         return Response.json({ ok: true, key: keyPayload(row) }, { status: 201, headers: { "cache-control": "no-store" } });
@@ -154,6 +191,8 @@ export async function POST(request: Request) {
       }
       return jsonError("الإجراء الإداري غير معروف");
     } catch (error) {
+      if (error instanceof GeminiProviderError) return Response.json({ ok: false, error: error.message, code: error.code, providerStatus: error.providerStatus, retryAfterSeconds: error.retryAfterSeconds }, { status: error.status, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff", ...(error.retryAfterSeconds ? { "retry-after": String(error.retryAfterSeconds) } : {}) } });
+      if (error instanceof AiPlatformError) return jsonError(error.message, error.status, error.code);
       if (isUniqueConstraintError(error)) return jsonError("هذا السجل موجود مسبقًا", 409);
       return jsonError("تعذر حفظ إعدادات أدوات مراس", 500);
     }

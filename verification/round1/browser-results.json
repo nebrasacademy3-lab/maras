@@ -1,0 +1,87 @@
+[
+  {
+    "test": "dashboard-navigation",
+    "width": 1440,
+    "height": 900,
+    "passed": true,
+    "layout": {
+      "viewport": 1440,
+      "document": 1440,
+      "sidebarVisible": true,
+      "sidebar": {
+        "height": 824,
+        "scroll": 887,
+        "overflow": "auto"
+      },
+      "aligned": true
+    }
+  },
+  {
+    "test": "dashboard-navigation",
+    "width": 1024,
+    "height": 768,
+    "passed": true,
+    "layout": {
+      "viewport": 1024,
+      "document": 1024,
+      "sidebarVisible": true,
+      "sidebar": {
+        "height": 692,
+        "scroll": 887,
+        "overflow": "auto"
+      },
+      "aligned": true
+    }
+  },
+  {
+    "test": "dashboard-navigation",
+    "width": 820,
+    "height": 620,
+    "passed": true,
+    "layout": {
+      "viewport": 820,
+      "document": 820,
+      "sidebarVisible": true,
+      "sidebar": {
+        "height": 544,
+        "scroll": 887,
+        "overflow": "auto"
+      },
+      "aligned": true
+    }
+  },
+  {
+    "test": "dashboard-navigation",
+    "width": 390,
+    "height": 844,
+    "passed": true,
+    "layout": {
+      "viewport": 390,
+      "document": 390,
+      "sidebarVisible": false,
+      "sidebar": {
+        "height": 0,
+        "scroll": 0,
+        "overflow": "auto"
+      },
+      "aligned": false
+    }
+  },
+  {
+    "test": "dashboard-navigation",
+    "width": 320,
+    "height": 640,
+    "passed": true,
+    "layout": {
+      "viewport": 320,
+      "document": 320,
+      "sidebarVisible": false,
+      "sidebar": {
+        "height": 0,
+        "scroll": 0,
+        "overflow": "auto"
+      },
+      "aligned": false
+    }
+  }
+]

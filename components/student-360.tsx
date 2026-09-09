@@ -26,6 +26,7 @@ import {
   Smartphone,
   UserRound,
 } from "lucide-react";
+import { AdminRegisteredDevices } from "@/components/admin-registered-devices";
 import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import styles from "@/components/student-360.module.css";
@@ -595,7 +596,8 @@ export function Student360({ email }: { email: string }) {
         </section>
 
         <section className={styles.panel} id="sessions">
-          <PanelHead icon={Laptop} title="الجلسات والأجهزة" copy="الأجهزة التي دخل منها الطالب وحالتها وآخر نشاط" count={data.sessions.length} />
+          <PanelHead icon={Laptop} title="الجلسات والأجهزة" copy="تسجيل الجهاز دائم؛ أما الجلسة فتنتهي بالخروج أو انتهاء الصلاحية" count={data.sessions.length} />
+          <AdminRegisteredDevices email={data.student.email} onChanged={load} />
           {data.sessions.length ? <div className={styles.list}>{data.sessions.map((session) => {
             const state = sessionState(session);
             const Icon = session.platform === "mobile" ? Smartphone : Laptop;

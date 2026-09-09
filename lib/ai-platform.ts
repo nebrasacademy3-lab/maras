@@ -1,3 +1,4 @@
+import { normalizeGeminiModel } from "@/lib/gemini-config";
 import { and, count, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiEntitlements, aiServiceSettings, aiUsageEvents, courseAccess, platformSettings, userRewards } from "@/db/schema";
@@ -47,11 +48,11 @@ function boundedNumber(value: unknown, fallback: number, min: number, max: numbe
 function rowConfig(service: AiService, row?: typeof aiServiceSettings.$inferSelect): AiServiceConfig {
   const fallback = DEFAULT_AI_SETTINGS[service];
   if (!row) return { ...fallback };
-  const model = row.model.trim();
+  const model = normalizeGeminiModel(row.model);
   return {
     service,
     enabled: row.enabled,
-    model: /^[a-zA-Z0-9._-]{2,100}$/.test(model) ? model : fallback.model,
+    model: model || fallback.model,
     freeMonthlyLimit: boundedInteger(row.freeMonthlyLimit, fallback.freeMonthlyLimit, 0, 100_000),
     subscriberMonthlyLimit: boundedInteger(row.subscriberMonthlyLimit, fallback.subscriberMonthlyLimit, 0, 100_000),
     maxOutputTokens: boundedInteger(row.maxOutputTokens, fallback.maxOutputTokens, 256, 65_536),

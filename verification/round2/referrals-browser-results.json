@@ -1,0 +1,61 @@
+[
+  {
+    "width": 1440,
+    "theme": "light",
+    "passed": true,
+    "layout": {
+      "width": 1440,
+      "scroll": 1440,
+      "bg": "rgb(9, 24, 59)",
+      "primary": "#1258e8"
+    }
+  },
+  {
+    "width": 820,
+    "theme": "light",
+    "passed": true,
+    "layout": {
+      "width": 820,
+      "scroll": 820,
+      "bg": "rgb(9, 24, 59)",
+      "primary": "#1258e8"
+    }
+  },
+  {
+    "width": 390,
+    "theme": "light",
+    "passed": true,
+    "layout": {
+      "width": 390,
+      "scroll": 390,
+      "bg": "rgb(9, 24, 59)",
+      "primary": "#1258e8"
+    }
+  },
+  {
+    "width": 320,
+    "theme": "dark",
+    "passed": true,
+    "layout": {
+      "width": 320,
+      "scroll": 320,
+      "bg": "rgb(245, 248, 255)",
+      "primary": "#4d82ff"
+    }
+  },
+  {
+    "width": 1440,
+    "theme": "dark",
+    "passed": true,
+    "layout": {
+      "width": 1440,
+      "scroll": 1440,
+      "bg": "rgb(245, 248, 255)",
+      "primary": "#4d82ff"
+    }
+  },
+  {
+    "test": "admin device replacement with explicit reason",
+    "passed": true
+  }
+]

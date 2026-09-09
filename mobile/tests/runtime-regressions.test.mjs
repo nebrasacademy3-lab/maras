@@ -50,8 +50,8 @@ test("invalid video values never create negative or non-finite progress", () => 
 
 const direction = load("src/lib/text-direction.ts");
 const flatten = (style) => Array.isArray(style) ? Object.assign({}, ...style.filter(Boolean).map(flatten)) : style || {};
-function textComponents(isRTL = true) {
-  const mocks = { react: { default: require("react") }, "react/jsx-runtime": { jsx: (type, props) => ({ type, props }) }, "react-native": { Text: "Text", TextInput: "TextInput", StyleSheet: { flatten } }, "@/src/providers/ThemeProvider": { useTheme: () => ({ fontScale: 1 }) }, "@/src/providers/LanguageProvider": { useLanguage: () => ({ isRTL, t: (value) => value }) }, "@/src/lib/text-direction": direction };
+function textComponents(isRTL = true, platform = "web") {
+  const mocks = { react: { default: require("react") }, "react/jsx-runtime": { jsx: (type, props) => ({ type, props }) }, "react-native": { Platform: { OS: platform }, Text: "Text", TextInput: "TextInput", StyleSheet: { flatten } }, "@/src/providers/ThemeProvider": { useTheme: () => ({ fontScale: 1 }) }, "@/src/providers/LanguageProvider": { useLanguage: () => ({ isRTL, t: (value) => value }) }, "@/src/lib/text-direction": direction };
   return { ...load("src/components/ScaledText.tsx", mocks), ...load("src/components/ScaledTextInput.tsx", mocks) };
 }
 test("Arabic paragraphs stay RTL even when a course code or English product name appears first", () => {
@@ -99,7 +99,7 @@ test("native builds initialize notification handlers only once", async () => {
 });
 
 function apiHarness(fetch, extra = {}) {
-  return load("src/lib/api.ts", { "expo-constants": { default: { expoConfig: { extra: { apiUrl: "https://example.test", storeMode: "direct" } } } }, "react-native": { Platform: { OS: "ios" } } }, { fetch, ...extra });
+  return load("src/lib/api.ts", { "expo-constants": { default: { expoConfig: { extra: { apiUrl: "https://example.test", storeMode: "direct", storeDistribution: "internal" } } } }, "react-native": { Platform: { OS: "ios" } }, "@/src/lib/store-commerce": load("src/lib/store-commerce.ts") }, { fetch, ...extra });
 }
 test("API requests and uploads cannot send credentials outside the platform", async () => {
   let calls = 0;
@@ -142,15 +142,16 @@ test("protected downloads reject external origins before requesting files or cre
   assert.equal(requested, false);
 });
 
-function authHarness(api) {
+function authHarness(api, identity = async () => {}) {
   const states = [];
   let index = 0;
   let cleared = 0;
+  let identityReady = false; const deleted = [];
   const react = require("react");
   const hooks = { __esModule: true, default: react, ...react, useState: (initial) => { const key = index++; states[key] = initial; return [initial, (value) => { states[key] = value; }]; }, useRef: (current) => ({ current }), useEffect: () => {}, useCallback: (callback) => callback, useMemo: (callback) => callback() };
   class ApiError extends Error { constructor(status) { super("API error"); this.status = status; } }
-  const runtime = load("src/providers/AuthProvider.tsx", { "react": hooks, "react/jsx-runtime": { jsx: (type, props) => ({ type, props }) }, "expo-secure-store": { deleteItemAsync: async () => {}, setItemAsync: async () => {}, AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: "private" }, "@tanstack/react-query": { useQueryClient: () => ({ clear: () => { cleared++; }, cancelQueries: async () => {} }) }, "react-native": { Platform: { OS: "ios" } }, "@/src/lib/api": { api: (...args) => api(ApiError, ...args), ApiError, jsonBody: JSON.stringify, setApiToken: () => {} }, "@/src/lib/device": { ensureDeviceIdentity: async () => {} }, "@/src/lib/social-auth": {} });
-  return { auth: runtime.AuthProvider({ children: null }).props.value, states, cleared: () => cleared };
+  const runtime = load("src/providers/AuthProvider.tsx", { "react": hooks, "react/jsx-runtime": { jsx: (type, props) => ({ type, props }) }, "expo-secure-store": { deleteItemAsync: async (key) => { deleted.push(key); }, setItemAsync: async () => {}, AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: "private" }, "@tanstack/react-query": { useQueryClient: () => ({ clear: () => { cleared++; }, cancelQueries: async () => {} }) }, "react-native": { Platform: { OS: "ios" } }, "@/src/lib/api": { api: (...args) => api(ApiError, ...args), ApiError, jsonBody: JSON.stringify, setApiToken: () => {} }, "@/src/lib/device": { ensureDeviceIdentity: async () => { await identity(); identityReady = true; } }, "@/src/lib/social-auth": {} });
+  return { auth: runtime.AuthProvider({ children: null }).props.value, states, cleared: () => cleared, deleted, identityReady: () => identityReady };
 }
 test("a late account refresh cannot restore a session after logout", async () => {
   let resolveRefresh;
@@ -207,4 +208,42 @@ test("assistant actions use the shared route resolver and retain policy fragment
   await exported.openAction("/courses/%252fadmin");
   assert.equal(pushed.length, 3); assert.equal(pushed[0].pathname, "/university/[slug]"); assert.equal(pushed[0].params.slug, "uni-a"); assert.equal(pushed[1], "/orders"); assert.equal(pushed[2].pathname, "/learn/[slug]");
   assert.deepEqual(opened, ["https://example.test/terms#privacy"]);
+});
+
+// React Native 0.86 native paragraph renderers invert physical alignment when
+// layoutDirection is RTL; web CSS does not. Exercise each actual wrapper path.
+for (const platform of ["ios", "android", "web"]) test(`Arabic content and fields remain physically right aligned on ${platform}`, () => {
+  const { ScaledText, ScaledTextInput } = textComponents(true, platform);
+  for (const children of ["شرح المادة", "CS101 شرح المادة", ["Google ", "تسجيل الدخول"], "١٢٣ درسًا"]) {
+    const style = flatten(ScaledText({ children }).props.style);
+    const physicalAlignment = platform !== "web" && style.direction === "rtl" ? (style.textAlign === "right" ? "left" : "right") : style.textAlign;
+    assert.equal(physicalAlignment, "right");
+    assert.equal(style.writingDirection, "rtl");
+  }
+  const input = flatten(ScaledTextInput({ value: "شرح المادة" }).props.style);
+  assert.equal(input.direction, platform === "web" ? "rtl" : "ltr");
+  assert.equal(input.textAlign, "right");
+  assert.equal(input.writingDirection, "rtl");
+  for (const style of [{ textAlign: "center" }, { textAlign: "justify" }]) assert.equal(flatten(ScaledText({ children: "شرح", style }).props.style).textAlign, style.textAlign);
+  assert.equal(flatten(textComponents(false, platform).ScaledText({ children: "My courses" }).props.style).textAlign, "left");
+});
+
+test("password login and registration initialize identity before API and logout preserves installation ID", async () => {
+  for (const method of ["login", "register"]) {
+    let runtime;
+    runtime = authHarness((_error, path) => { if (path.includes(method)) assert.equal(runtime.identityReady(), true); return Promise.resolve({ user: { id: 7 }, token: "session" }); });
+    await runtime.auth[method]({ email: "a@example.test", password: "long-enough" });
+    await runtime.auth.logout();
+    assert.equal(runtime.deleted.includes("meras_device_id"), false);
+    assert.ok(runtime.deleted.length > 0, "logout still clears the session token");
+  }
+});
+
+test("failed device persistence prevents every password and OAuth authentication request", async () => {
+  let requests = 0;
+  const runtime = authHarness(() => { requests++; return Promise.resolve({}); }, async () => { throw Error("secure storage unavailable"); });
+  await assert.rejects(() => runtime.auth.login({ identifier: "a@example.test", password: "long-enough" }), /secure storage/);
+  await assert.rejects(() => runtime.auth.register({ email: "a@example.test", password: "long-enough" }), /secure storage/);
+  await assert.rejects(() => runtime.auth.socialLogin("google"), /secure storage/);
+  assert.equal(requests, 0);
 });

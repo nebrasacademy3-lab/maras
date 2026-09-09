@@ -32,7 +32,7 @@ const isArabicText = (value: string) => (value.match(/[\u0600-\u06ff]/g) || []).
 
 export default function Assistant() {
   const { colors, dark } = useTheme();
-  const { isRTL } = useLanguage();
+  const { isRTL, direction, rowDirection } = useLanguage();
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Message[]>(() => [initialMessage(isRTL)]);
@@ -96,18 +96,18 @@ export default function Assistant() {
     const messageRTL = isArabicText(item.text);
     return <View style={[styles.messageRow, mine ? styles.userRow : styles.assistantRow]}>
       <View style={[styles.bubble, mine ? styles.userBubble : styles.assistantBubble, { backgroundColor: mine ? colors.primary : colors.surface, borderColor: mine ? colors.primary : colors.border }]}>
-        {!mine && <View style={[styles.assistantLabel, { flexDirection: messageRTL ? "row-reverse" : "row" }]}><BrandMark size={27} /><Text style={{ color: colors.primary, fontSize: 10, fontWeight: "900" }}>{messageRTL ? "مراس" : "Meras"}</Text></View>}
+        {!mine && <View style={[styles.assistantLabel, { direction: messageRTL ? "rtl" : "ltr", flexDirection: "row" }]}><BrandMark size={27} /><Text style={{ color: colors.primary, fontSize: 10, fontWeight: "900" }}>{messageRTL ? "مراس" : "Meras"}</Text></View>}
         <Text style={[styles.messageText, { color: mine ? "#FFFFFF" : colors.text, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }]}>{item.text}</Text>
-        {!!item.actions?.length && <View style={styles.actions}>{item.actions.map((action) => <Pressable key={`${item.id}-${action.href}`} onPress={() => void openAction(action.href)} style={[styles.action, { backgroundColor: mine ? "rgba(255,255,255,.14)" : colors.surfaceAlt, flexDirection: messageRTL ? "row" : "row-reverse" }]}><Ionicons name={messageRTL ? "arrow-back" : "arrow-forward"} size={14} color={mine ? "#FFF" : colors.primary} /><Text numberOfLines={2} style={{ color: mine ? "#FFF" : colors.primary, fontSize: 10, fontWeight: "800", flexShrink: 1, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{action.label}</Text></Pressable>)}</View>}
-        {!!item.suggestions?.length && <View style={[styles.suggestions, { justifyContent: messageRTL ? "flex-end" : "flex-start" }]}>{item.suggestions.map((suggestion) => <Pressable key={`${item.id}-${suggestion}`} onPress={() => void send(suggestion)} style={[styles.suggestion, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}><Text style={{ color: colors.textSoft, fontSize: 9, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{suggestion}</Text></Pressable>)}</View>}
+        {!!item.actions?.length && <View style={styles.actions}>{item.actions.map((action) => <Pressable key={`${item.id}-${action.href}`} onPress={() => void openAction(action.href)} style={[styles.action, { backgroundColor: mine ? "rgba(255,255,255,.14)" : colors.surfaceAlt, direction: messageRTL ? "rtl" : "ltr", flexDirection: "row" }]}><Ionicons name={messageRTL ? "arrow-back" : "arrow-forward"} size={14} color={mine ? "#FFF" : colors.primary} /><Text numberOfLines={2} style={{ color: mine ? "#FFF" : colors.primary, fontSize: 10, fontWeight: "800", flexShrink: 1, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{action.label}</Text></Pressable>)}</View>}
+        {!!item.suggestions?.length && <View style={[styles.suggestions, { direction: messageRTL ? "rtl" : "ltr", justifyContent: "flex-start" }]}>{item.suggestions.map((suggestion) => <Pressable key={`${item.id}-${suggestion}`} onPress={() => void send(suggestion)} style={[styles.suggestion, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}><Text style={{ color: colors.textSoft, fontSize: 9, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{suggestion}</Text></Pressable>)}</View>}
       </View>
     </View>;
   };
 
-  return <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: colors.background }]}>
-    <View style={[styles.header, { borderBottomColor: colors.border, flexDirection: isRTL ? "row" : "row-reverse" }]}>
+  return <SafeAreaView edges={["top", "left", "right"]} style={[styles.safe, { backgroundColor: colors.background, direction }]}>
+    <View style={[styles.header, { borderBottomColor: colors.border, flexDirection: rowDirection }]}>
       <Pressable onPress={() => router.back()} style={[styles.close, { backgroundColor: colors.surface }]}><Ionicons name="close" size={23} color={colors.text} /></Pressable>
-      <View style={[styles.headCopy, { alignItems: isRTL ? "flex-end" : "flex-start" }]}><Text style={[styles.title, { color: colors.text }]}>{isRTL ? "مساعد مراس" : "Meras Assistant"}</Text><Text style={[styles.online, { color: colors.success, textAlign: isRTL ? "right" : "left" }]}>{isRTL ? `● متصل بسياق المنصة${user ? " وحسابك" : ""}` : `● Connected to the live platform${user ? " and your account" : ""}`}</Text></View>
+      <View style={[styles.headCopy, { alignItems: "stretch" }]}><Text style={[styles.title, { color: colors.text }]}>{isRTL ? "مساعد مراس" : "Meras Assistant"}</Text><Text style={[styles.online, { color: colors.success, textAlign: isRTL ? "right" : "left" }]}>{isRTL ? `● متصل بسياق المنصة${user ? " وحسابك" : ""}` : `● Connected to the live platform${user ? " and your account" : ""}`}</Text></View>
       <BrandMark size={50} whiteTile={!dark} />
     </View>
     <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : "height"} keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 0}>
@@ -151,11 +151,11 @@ const styles = StyleSheet.create({
   safe: { flex: 1 }, flex: { flex: 1 },
   header: { minHeight: 72, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", gap: 11 },
   close: { width: 42, height: 42, borderRadius: 14, alignItems: "center", justifyContent: "center" },
-  headCopy: { flex: 1, alignItems: "flex-start" }, title: { fontSize: 17, fontWeight: "900" }, online: { fontSize: 8, fontWeight: "700", marginTop: 3 },
+  headCopy: { flex: 1, minWidth: 0 }, title: { fontSize: 17, fontWeight: "900" }, online: { fontSize: 8, fontWeight: "700", marginTop: 3 },
   messages: { paddingHorizontal: 14, paddingTop: 16, paddingBottom: 12, gap: 10, flexGrow: 1 },
   messageRow: { width: "100%", flexDirection: "row" }, userRow: { justifyContent: "flex-end" }, assistantRow: { justifyContent: "flex-start" },
   bubble: { maxWidth: "88%", minWidth: 52, flexShrink: 1, borderWidth: 1, borderRadius: 20, paddingHorizontal: 13, paddingVertical: 11 },
-  userBubble: { borderBottomRightRadius: 6 }, assistantBubble: { borderBottomLeftRadius: 6 },
+  userBubble: { borderBottomEndRadius: 6 }, assistantBubble: { borderBottomStartRadius: 6 },
   assistantLabel: { flexDirection: "row", alignItems: "center", gap: 5, marginBottom: 6 },
   messageText: { flexShrink: 1, fontSize: 12, lineHeight: 21, textAlign: "right", writingDirection: "rtl" },
   actions: { gap: 7, marginTop: 10 }, action: { minHeight: 38, borderRadius: 12, paddingHorizontal: 10, flexDirection: "row", gap: 7, alignItems: "center", justifyContent: "center" },

@@ -47,7 +47,7 @@ test("Gemini keys are server-only and encrypted with authenticated encryption", 
 });
 
 test("Gemini rotation never leaks keys and has bounded failover", () => {
-  const gemini = source("lib/gemini.ts");
+  const gemini = source("lib/gemini.ts") + "\n" + source("lib/gemini-provider.ts") + "\n" + source("lib/gemini-errors.ts");
   assert.match(gemini, /import\s+["']server-only["']/);
   assert.match(gemini, /["']x-goog-api-key["']\s*:/i);
   assert.doesNotMatch(gemini, /[?&]key=/i);

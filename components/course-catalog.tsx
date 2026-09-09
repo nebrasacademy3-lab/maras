@@ -1,27 +1,23 @@
 "use client";
 import { SearchableSelect } from "@/components/searchable-select";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import Link from "next/link";
 import { Check, ChevronDown, Search, SlidersHorizontal, Sparkles, UserRound, X } from "lucide-react";
 import type { Course, Institution } from "@/lib/data";
 import { CourseCard } from "./course-card";
+import { catalogSearchMatches } from "@/lib/catalog-search";
 
 type ViewerProfile = { universitySlug?: string | null; specialty?: string | null };
 type Program = { name: string; degree?: string; aliases?: string[] };
 const ALL = "__all__";
 
-export function CourseCatalog({ courses, institutions }: { courses: Course[]; institutions: Institution[] }) {
+export function CourseCatalog({ courses, institutions, initialQuery = "" }: { courses: Course[]; institutions: Institution[]; initialQuery?: string }) {
   const [liveCourses, setLiveCourses] = useState(courses);
   const [liveInstitutions, setLiveInstitutions] = useState(institutions);
-  const [query, setQuery] = useState("");
-  useEffect(() => {
-    const initialQuery = new URLSearchParams(window.location.search).get("q") || "";
-    if (!initialQuery) return;
-    const timer = window.setTimeout(() => setQuery(initialQuery), 0);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const [query, setQuery] = useState(initialQuery);
+  const filtersTouched = useRef(Boolean(initialQuery));
   const [university, setUniversity] = useState(ALL);
   const [specialty, setSpecialty] = useState(ALL);
   const [sort, setSort] = useState("الأكثر طلبًا");
@@ -43,13 +39,14 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
     fetch("/api/auth/me", { credentials: "include", cache: "no-store", signal: controller.signal })
       .then(async (response) => response.ok ? await response.json() as { user?: ViewerProfile } : null)
       .then((payload) => {
+        if (controller.signal.aborted) return;
         const next = payload?.user || null;
         setProfile(next);
-        if (next?.universitySlug) setUniversity(next.universitySlug);
-        if (next?.specialty) setSpecialty(next.specialty);
+        if (!filtersTouched.current && next?.universitySlug) setUniversity(next.universitySlug);
+        if (!filtersTouched.current && next?.specialty) setSpecialty(next.specialty);
         setProfileLoaded(true);
       })
-      .catch(() => setProfileLoaded(true));
+      .catch(() => { if (!controller.signal.aborted) setProfileLoaded(true); });
     return () => controller.abort();
   }, []);
 
@@ -70,9 +67,9 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
     return courseSpecialties;
   }, [courseSpecialties, programs, university]);
   const filtered = useMemo(() => {
-    const needle = query.trim().toLocaleLowerCase("ar");
+    const needle = query.trim();
     const rows = liveCourses.filter((course) =>
-      (!needle || `${course.title} ${course.titleEn} ${course.code || ""} ${course.university} ${course.specialty}`.toLocaleLowerCase("ar").includes(needle)) &&
+      (!needle || catalogSearchMatches(needle, [course.title, course.titleEn, course.code || "", course.university, course.specialty])) &&
       (university === ALL || course.universitySlug === university) &&
       (specialty === ALL || course.audienceScope === "institution" || course.specialty === specialty),
     );
@@ -82,10 +79,10 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
   const programsLoading = university !== ALL && programsSlug !== university;
   const selectedUniversity = liveInstitutions.find((item) => item.slug === university);
 
-  function showAll() { setUniversity(ALL); setSpecialty(ALL); }
-  function showPersonal() { setUniversity(profile?.universitySlug || ALL); setSpecialty(profile?.specialty || ALL); }
-  function chooseUniversity(value: string) { setUniversity(value); setSpecialty(ALL); }
-  function clearFilters() { setQuery(""); setUniversity(ALL); setSpecialty(ALL); setSort("الأكثر طلبًا"); }
+  function showAll() { filtersTouched.current = true; setUniversity(ALL); setSpecialty(ALL); }
+  function showPersonal() { filtersTouched.current = true; setUniversity(profile?.universitySlug || ALL); setSpecialty(profile?.specialty || ALL); }
+  function chooseUniversity(value: string) { filtersTouched.current = true; setUniversity(value); setSpecialty(ALL); }
+  function clearFilters() { filtersTouched.current = true; setQuery(""); setUniversity(ALL); setSpecialty(ALL); setSort("الأكثر طلبًا"); }
 
   return <>
     <div className="catalog-filter-context">
@@ -93,9 +90,9 @@ export function CourseCatalog({ courses, institutions }: { courses: Course[]; in
       <div className="catalog-filter-actions">{profile?.universitySlug && <button type="button" className={personalFilterActive ? "active" : ""} onClick={showPersonal}><UserRound size={14} /> موادي المناسبة</button>}<button type="button" onClick={showAll}>عرض الكل</button></div>
     </div>
     <div className="filter-bar">
-      <label className="filter-search"><Search size={19} /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث باسم المادة أو رمزها أو الجامعة..." aria-label="بحث المواد" /></label>
+      <label className="filter-search"><Search size={19} /><input value={query} onChange={(event) => { filtersTouched.current = true; setQuery(event.target.value); }} placeholder="ابحث باسم المادة أو رمزها أو الجامعة..." aria-label="بحث المواد" /></label>
       <SearchSelect label="الجامعة أو الكلية" value={university} options={[{ value: ALL, label: `كل الجامعات`, detail: `${liveInstitutions.length} جهة تعليمية` }, ...universityOptions]} onChange={chooseUniversity} />
-      <SearchSelect label="التخصص" value={specialty} options={[{ value: ALL, label: programsLoading ? "جارٍ تحميل التخصصات..." : university === ALL ? "كل التخصصات" : `كل تخصصات ${selectedUniversity?.name || "الجامعة"}` }, ...specialtyOptions.map((item) => ({ value: item, label: item }))]} onChange={setSpecialty} disabled={programsLoading} />
+      <SearchSelect label="التخصص" value={specialty} options={[{ value: ALL, label: programsLoading ? "جارٍ تحميل التخصصات..." : university === ALL ? "كل التخصصات" : `كل تخصصات ${selectedUniversity?.name || "الجامعة"}` }, ...specialtyOptions.map((item) => ({ value: item, label: item }))]} onChange={value => { filtersTouched.current = true; setSpecialty(value); }} disabled={programsLoading} />
       <SearchableSelect className="catalog-sort" value={sort} onChange={(event) => setSort(event.target.value)} aria-label="الترتيب"><option>الأكثر طلبًا</option><option>الأعلى تقييمًا</option><option>السعر الأقل</option></SearchableSelect>
       <button type="button" className="filter-reset" onClick={clearFilters} aria-label="مسح الفلاتر"><X size={17} /><span>مسح</span></button><span className="filter-icon"><SlidersHorizontal size={18} /></span>
     </div>

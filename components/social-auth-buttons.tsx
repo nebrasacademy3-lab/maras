@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { webDeviceHeaders } from "@/lib/client-device";
 import { safeAccountReturnTo } from "@/lib/account-readiness";
 import styles from "./social-auth-buttons.module.css";
 
@@ -21,7 +22,7 @@ export function SocialAuthButtons() {
       account_exists: "يوجد حساب بهذا البريد. سجّل الدخول بالطريقة الأصلية أو استخدم «نسيت كلمة المرور». لا نربط الحسابات تلقائيًا حفاظًا على أمانك.",
       provider_unavailable: "طريقة الدخول غير مفعّلة حاليًا. يمكنك استخدام بريدك الإلكتروني.",
       email_required: "لم نحصل على بريد موثّق من مزوّد الدخول. استخدم التسجيل بالبريد.",
-      device_limit: "وصل حسابك إلى الحد المسموح من الأجهزة. سجّل الخروج من جهاز سابق أو تواصل مع الدعم.",
+      device_limit: "حسابك مرتبط بالجهازين المعتمدين. استخدم أحدهما أو تواصل مع الدعم لاستبدال جهاز.",
       cancelled: "لم يكتمل تسجيل الدخول. يمكنك إعادة المحاولة.",
       rate_limited: "محاولات كثيرة. انتظر قليلًا ثم حاول مجددًا.",
       account_unavailable: "تعذر الدخول إلى هذا الحساب. تواصل مع الدعم.",
@@ -30,8 +31,17 @@ export function SocialAuthButtons() {
     const timer = window.setTimeout(() => { if (code) setError(messages[code] || "تعذر الدخول الآن. حاول مجددًا أو استخدم البريد الإلكتروني."); }, 0);
     return () => { controller.abort(); window.clearTimeout(timer); };
   }, []);
-  function start(provider: "google" | "apple") {
+  async function start(provider: "google" | "apple") {
     setBusy(true);
+    setError("");
+    try {
+      const response = await fetch("/api/auth/device", { method: "POST", credentials: "same-origin", headers: webDeviceHeaders() });
+      if (!response.ok) throw new Error();
+    } catch {
+      setBusy(false);
+      setError("تعذر تهيئة الدخول الآمن من هذا المتصفح. حاول مجددًا.");
+      return;
+    }
     const params = new URLSearchParams(window.location.search);
     const returnTo = safeAccountReturnTo(params.get("return_to"), "");
     if (returnTo) {

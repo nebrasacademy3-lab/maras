@@ -249,19 +249,19 @@ export async function POST(request: Request) {
     // A transport timeout is ambiguous: Tap may have received the charge even
     // when our server did not receive its response. Keep the order reconcilable
     // and never invite an immediate duplicate charge.
-    await db.update(orders).set({ status: "verification_pending", updatedAt: new Date().toISOString() }).where(eq(orders.orderNumber, orderNumber));
+    await db.update(orders).set({ status: "verification_pending", updatedAt: new Date().toISOString() }).where(and(eq(orders.orderNumber, orderNumber), eq(orders.status, "pending")));
     await db.insert(analyticsEvents).values({ event: "checkout_pending", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: new Date().toISOString() });
     return Response.json({ error: "تعذر تأكيد استجابة بوابة الدفع. لم نكرر المطالبة، وسنتحقق من المحاولة الحالية تلقائيًا.", pending: true, orderNumber }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
   }
   let charge: TapChargeResponse;
   try { charge = await chargeResponse.json() as TapChargeResponse; } catch { charge = {}; }
   if (!chargeResponse.ok || !charge.id || !charge.transaction?.url) {
-    await db.update(orders).set({ status: "failed", updatedAt: new Date().toISOString() }).where(eq(orders.orderNumber, orderNumber));
-    await releaseCouponReservation(orderNumber);
+    const failed = await db.update(orders).set({ status: "failed", updatedAt: new Date().toISOString() }).where(and(eq(orders.orderNumber, orderNumber), eq(orders.status, "pending"))).returning({ orderNumber: orders.orderNumber });
+    if (failed.length) await releaseCouponReservation(orderNumber);
     await db.insert(analyticsEvents).values({ event: "payment_failed", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: new Date().toISOString() });
     return jsonError(charge.errors?.[0]?.description || "تعذر بدء عملية الدفع. حاول مرة أخرى.", 502);
   }
-  await db.update(orders).set({ tapChargeId: charge.id, checkoutUrl: charge.transaction.url, status: "initiated", updatedAt: new Date().toISOString() }).where(eq(orders.orderNumber, orderNumber));
+  await db.update(orders).set({ tapChargeId: charge.id, checkoutUrl: charge.transaction.url, status: sql`CASE WHEN ${orders.status} = 'pending' THEN 'initiated' ELSE ${orders.status} END`, updatedAt: new Date().toISOString() }).where(eq(orders.orderNumber, orderNumber));
   await db.insert(analyticsEvents).values({ event: "checkout_redirect", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: new Date().toISOString() });
   return Response.json({ ok: true, mode: "live", paymentMethod, orderNumber, courseSlugs: uniqueSlugs, bundleSlug: bundleQuote?.slug || null, subtotal, discount, total, subtotalMinor, discountMinor, totalMinor, checkoutUrl: charge.transaction.url }, { status: 201, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }

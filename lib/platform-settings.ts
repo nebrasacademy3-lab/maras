@@ -107,15 +107,7 @@ export function whatsappHref(settings: Pick<PublicSettings, "whatsapp_number" | 
 }
 
 export async function getStudentDeviceLimit() {
-  const fallback = Number(ADMIN_SETTING_DEFAULTS.max_student_devices);
-  if (!process.env.DATABASE_URL) return fallback;
-  try {
-    const [row] = await getDb().select({ value: platformSettings.value }).from(platformSettings).where(eq(platformSettings.key, "max_student_devices")).limit(1);
-    const parsed = Number(row?.value || fallback);
-    return Number.isInteger(parsed) ? Math.max(1, Math.min(10, parsed)) : fallback;
-  } catch {
-    return fallback;
-  }
+  return 2;
 }
 
 export async function getContentViewMode(): Promise<ContentViewMode> {

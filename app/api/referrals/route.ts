@@ -1,3 +1,4 @@
+import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { analyticsEvents, couponUses, couponsDb, referralAttributions, referralCodes, referralTiers, userRewards } from "@/db/schema";
@@ -139,7 +140,7 @@ export async function POST(request: Request) {
   if (!bearer && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   if (!await checkRateLimit("referrals-share", `user:${user.id}`, 30, 60)) return jsonError("تم تسجيل مشاركات كثيرة خلال وقت قصير. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات المشاركة غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request, 4096); } catch (error) { return jsonError("بيانات المشاركة غير صالحة", error instanceof RequestBodyTooLargeError ? 413 : 400); }
   const action = cleanText(payload.action, 30);
   if (action !== "track_share") return jsonError("الإجراء غير مدعوم");
   const channel = cleanText(payload.channel, 30).toLowerCase() || "system_share";

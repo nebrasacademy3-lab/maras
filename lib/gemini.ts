@@ -3,8 +3,11 @@ import { asc, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { getDb } from "@/db";
 import { aiApiKeys } from "@/db/schema";
-import { decryptAiApiKey, validGeminiApiKey } from "@/lib/ai-keys";
+import { decryptAiApiKey, geminiEnvironmentKeys } from "@/lib/ai-keys";
 import { AiPlatformError, type AiServiceConfig } from "@/lib/ai-platform";
+import { normalizeGeminiModel } from "@/lib/gemini-config";
+import { GeminiProviderError } from "@/lib/gemini-errors";
+import { geminiTextResponse, requestGemini } from "@/lib/gemini-provider";
 
 export type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
 type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
@@ -22,17 +25,6 @@ export type GeminiResult = {
 const environmentCooldowns = new Map<string, { until: number; failures: number; lastUsedAt: string }>();
 const DEFAULT_MAX_KEY_ATTEMPTS = 3;
 
-function envApiKeys() {
-  const raw = [process.env.GEMINI_API_KEYS, process.env.GEMINI_API_KEY].filter(Boolean).join(",");
-  const values: string[] = [];
-  try {
-    const parsed = JSON.parse(process.env.GEMINI_API_KEYS || "null") as unknown;
-    if (Array.isArray(parsed)) values.push(...parsed.filter((value): value is string => typeof value === "string"));
-  } catch { /* Comma/newline parsing below handles ordinary environment values. */ }
-  values.push(...raw.split(/[\r\n,;]+/));
-  return [...new Set(values.map(validGeminiApiKey).filter(Boolean))];
-}
-
 function rawFingerprint(apiKey: string) {
   return createHash("sha256").update(`meras-ai-key:v1:${apiKey}`).digest("hex");
 }
@@ -46,7 +38,7 @@ async function keyCandidates() {
     try { return [{ id: row.id, apiKey: decryptAiApiKey(row.encryptedKey), fingerprint: row.fingerprint, priority: row.priority, lastUsedAt: row.lastUsedAt, source: "database" as const }]; }
     catch { return []; }
   });
-  const environment: KeyCandidate[] = envApiKeys().flatMap((apiKey, index) => {
+  const environment: KeyCandidate[] = geminiEnvironmentKeys().flatMap((apiKey, index) => {
     const fingerprint = rawFingerprint(apiKey);
     const state = environmentCooldowns.get(fingerprint);
     if (state && state.until > now) return [];
@@ -63,19 +55,22 @@ function retryDelayMs(status: number, failures: number) {
 }
 
 function boundedRuntimeMs(value: string | undefined, fallback: number, minimum: number, maximum: number) {
+  if (!value?.trim()) return fallback;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, Math.floor(parsed))) : fallback;
 }
 
-async function markFailure(candidate: KeyCandidate, status: number) {
+async function markFailure(candidate: KeyCandidate, error: GeminiProviderError) {
   const now = new Date();
   const memory = environmentCooldowns.get(candidate.fingerprint);
   const failures = (memory?.failures || 0) + 1;
-  const cooldownUntil = new Date(now.getTime() + retryDelayMs(status, failures)).toISOString();
-  environmentCooldowns.set(candidate.fingerprint, { until: Date.parse(cooldownUntil), failures, lastUsedAt: now.toISOString() });
+  const delay = Math.max(retryDelayMs(error.providerStatus, failures), (error.retryAfterSeconds || 0) * 1000);
+  const cooldownUntil = error.retryable ? new Date(now.getTime() + delay).toISOString() : null;
+  environmentCooldowns.set(candidate.fingerprint, { until: cooldownUntil ? Date.parse(cooldownUntil) : 0, failures, lastUsedAt: now.toISOString() });
   if (candidate.id) {
-    const databaseStatus = status === 401 || status === 403 ? "error" : "active";
-    await getDb().update(aiApiKeys).set({ status: databaseStatus, cooldownUntil, consecutiveFailures: failures, lastUsedAt: now.toISOString(), lastErrorCode: `HTTP_${status}`, updatedAt: now.toISOString() }).where(eq(aiApiKeys.id, candidate.id)).catch(() => undefined);
+    // Permission/quota/model errors do not prove the credential is invalid.
+    const databaseStatus = error.invalidCredential ? "error" : "active";
+    await getDb().update(aiApiKeys).set({ status: databaseStatus, cooldownUntil, consecutiveFailures: failures, lastUsedAt: now.toISOString(), lastErrorCode: error.code, updatedAt: now.toISOString() }).where(eq(aiApiKeys.id, candidate.id)).catch(() => undefined);
   }
 }
 
@@ -85,21 +80,14 @@ async function markSuccess(candidate: KeyCandidate) {
   if (candidate.id) await getDb().update(aiApiKeys).set({ status: "active", cooldownUntil: null, consecutiveFailures: 0, lastUsedAt: now, lastSuccessAt: now, lastErrorCode: null, updatedAt: now }).where(eq(aiApiKeys.id, candidate.id)).catch(() => undefined);
 }
 
-function textFromResponse(payload: Record<string, unknown>) {
-  const candidates = Array.isArray(payload.candidates) ? payload.candidates : [];
-  const first = candidates[0] as Record<string, unknown> | undefined;
-  const content = first?.content && typeof first.content === "object" ? first.content as Record<string, unknown> : null;
-  const parts = Array.isArray(content?.parts) ? content.parts : [];
-  const text = parts.flatMap((part) => part && typeof part === "object" && typeof (part as Record<string, unknown>).text === "string" ? [(part as Record<string, unknown>).text as string] : []).join("\n").trim();
-  return { text, finishReason: typeof first?.finishReason === "string" ? first.finishReason : null };
-}
-
 export async function generateGeminiContent(input: {
   config: AiServiceConfig;
   contents: GeminiContent[];
   systemInstruction: string;
   responseSchema?: Record<string, unknown>;
 }): Promise<GeminiResult> {
+  const model = normalizeGeminiModel(input.config.model);
+  if (!model) throw new AiPlatformError("AI_MODEL_INVALID", "معرّف نموذج الخدمة غير صالح. راجع إعدادات الخدمة في الإدارة.");
   const candidatePool = await keyCandidates();
   const maxAttempts = boundedRuntimeMs(process.env.AI_GEMINI_MAX_KEY_ATTEMPTS, DEFAULT_MAX_KEY_ATTEMPTS, 1, 5);
   const candidates = candidatePool.slice(0, maxAttempts);
@@ -107,7 +95,7 @@ export async function generateGeminiContent(input: {
   const overallTimeoutMs = boundedRuntimeMs(process.env.AI_GEMINI_OVERALL_TIMEOUT_MS, 85_000, 15_000, 120_000);
   const attemptTimeoutMs = boundedRuntimeMs(process.env.AI_GEMINI_ATTEMPT_TIMEOUT_MS, 35_000, 5_000, 60_000);
   const deadline = Date.now() + overallTimeoutMs;
-  let lastStatus = 503;
+  let lastError = new GeminiProviderError(503, "AI_PROVIDER_UNAVAILABLE");
   for (const candidate of candidates) {
     const remainingMs = deadline - Date.now();
     if (remainingMs < 1_000) break;
@@ -119,43 +107,29 @@ export async function generateGeminiContent(input: {
       generationConfig.responseMimeType = "application/json";
       generationConfig.responseSchema = input.responseSchema;
     }
-    let response: Response;
+    let payload: Record<string, unknown>;
     try {
-      response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(input.config.model)}:generateContent`, {
-        method: "POST",
-        headers: { "content-type": "application/json", "x-goog-api-client": "meras-ai/1.0", "x-goog-api-key": candidate.apiKey },
-        body: JSON.stringify({
-          systemInstruction: { parts: [{ text: input.systemInstruction }] },
-          contents: input.contents,
-          generationConfig,
-        }),
-        signal: AbortSignal.timeout(Math.min(attemptTimeoutMs, remainingMs)),
-      });
-    } catch {
-      lastStatus = 503;
-      await markFailure(candidate, 503);
-      continue;
+      payload = await requestGemini({ apiKey: candidate.apiKey, model, generation: {
+        systemInstruction: { parts: [{ text: input.systemInstruction }] }, contents: input.contents, generationConfig,
+      }, timeoutMs: Math.min(attemptTimeoutMs, remainingMs) });
+    } catch (error) {
+      if (!(error instanceof GeminiProviderError)) throw error;
+      lastError = error;
+      await markFailure(candidate, error);
+      if (error.retryable) continue;
+      throw error;
     }
-    lastStatus = response.status;
-    if (!response.ok) {
-      await response.text().catch(() => "");
-      const canTryAnotherKey = response.status === 408 || response.status === 429 || response.status === 401 || response.status === 403 || response.status >= 500;
-      if (canTryAnotherKey) { await markFailure(candidate, response.status); continue; }
-      throw new AiPlatformError("AI_PROVIDER_REQUEST_REJECTED", "تعذر معالجة الطلب بصيغته الحالية. جرّب ملفًا أصغر أو صدّر الشرائح بصيغة PDF.", response.status === 400 ? 422 : 502);
-    }
-    const payload = await response.json() as Record<string, unknown>;
-    const output = textFromResponse(payload);
-    if (!output.text) throw new AiPlatformError("AI_EMPTY_RESPONSE", "لم يتمكن المساعد من إنشاء إجابة آمنة لهذا الطلب.", 422);
+    const output = geminiTextResponse(payload);
     await markSuccess(candidate);
     const usage = payload.usageMetadata && typeof payload.usageMetadata === "object" ? payload.usageMetadata as Record<string, unknown> : {};
     return {
       text: output.text,
-      model: input.config.model,
+      model,
       keyId: candidate.id,
       inputTokens: Math.max(0, Number(usage.promptTokenCount) || 0),
       outputTokens: Math.max(0, Number(usage.candidatesTokenCount) || 0),
       finishReason: output.finishReason,
     };
   }
-  throw new AiPlatformError(lastStatus === 429 ? "AI_RATE_LIMITED" : "AI_PROVIDER_UNAVAILABLE", lastStatus === 429 ? "وصل مزود الخدمة إلى حد الاستخدام مؤقتًا. انتظر قليلًا ثم أعد المحاولة." : "الخدمة غير متاحة مؤقتًا. حاول بعد قليل.", lastStatus === 429 ? 429 : 503);
+  throw lastError;
 }

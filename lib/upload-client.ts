@@ -28,6 +28,7 @@ function responsePayload(text: string) {
 
 export function uploadWithProgress<T>({ url, method = "POST", body, headers = {}, timeoutMs = 15 * 60_000, signal, onProgress }: UploadOptions) {
   return new Promise<T>((resolve, reject) => {
+    if (signal?.aborted) { reject(new UploadError("تم إلغاء الرفع.", 499)); return; }
     const xhr = new XMLHttpRequest();
     const startedAt = performance.now();
     xhr.open(method, url, true);

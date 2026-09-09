@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Bot, Check, Copy, Gift, RefreshCw, Share2, ShieldCheck, Sparkles, TicketPercent, Trophy, UsersRound } from "lucide-react";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./referrals-center.module.css";
+import { copyBrowserText, shareBrowserLink } from "@/lib/browser-sharing";
 
 type ReferralData = {
   program: { enabled: boolean; title: string; description: string; qualificationLabel: string; terms: string };
@@ -20,6 +21,7 @@ const rewardSourceLabels: Record<string, string> = { referral_tier: "مستوى 
 
 function formatDate(value: string | null) {
   if (!value) return "بلا تاريخ انتهاء";
+  if (!Number.isFinite(Date.parse(value))) return "غير محدد";
   return new Intl.DateTimeFormat("ar-SA", { dateStyle: "medium" }).format(new Date(value));
 }
 
@@ -28,26 +30,36 @@ export function ReferralsCenter({ highlightRewardId = 0 }: { highlightRewardId?:
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState("");
+  const [actionMessage, setActionMessage] = useState("");
+  const [sharing, setSharing] = useState(false);
+  const loadController = useRef<AbortController | null>(null);
+  const tracking = useRef<{ controller: AbortController; timer: ReturnType<typeof setTimeout> } | null>(null);
+  const mounted = useRef(true);
+  const copyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastLoad = useRef(0);
   const highlighted = useRef(false);
 
   const load = useCallback(async (silent = false) => {
+    loadController.current?.abort();
+    const controller = new AbortController();
+    loadController.current = controller;
     if (!silent) setLoading(true);
     setError("");
     lastLoad.current = Date.now();
     try {
-      const response = await fetch("/api/referrals", { credentials: "same-origin", cache: "no-store" });
+      const response = await fetch("/api/referrals", { credentials: "same-origin", cache: "no-store", signal: controller.signal });
       const result = await response.json() as ReferralData & { error?: string };
       if (!response.ok) throw new Error(result.error || "تعذر تحميل الإحالات والهدايا");
-      setData(result);
+      if (!controller.signal.aborted) setData(result);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "تعذر تحميل الإحالات والهدايا");
-    } finally { setLoading(false); }
+      if (!controller.signal.aborted) setError(caught instanceof Error ? caught.message : "تعذر تحميل الإحالات والهدايا");
+    } finally { if (!controller.signal.aborted) setLoading(false); }
   }, []);
 
   useEffect(() => {
+    mounted.current = true;
     const timer = window.setTimeout(() => { void load(); }, 0);
-    return () => window.clearTimeout(timer);
+    return () => { mounted.current = false; window.clearTimeout(timer); loadController.current?.abort(); if (copyTimer.current) clearTimeout(copyTimer.current); tracking.current?.controller.abort(); if (tracking.current) clearTimeout(tracking.current.timer); };
   }, [load]);
   useRealtimeSync((payload) => {
     if (payload.changed && !payload.changed.includes("account") && !payload.changed.includes("notifications")) return;
@@ -59,34 +71,57 @@ export function ReferralsCenter({ highlightRewardId = 0 }: { highlightRewardId?:
     const target = document.getElementById(`reward-${highlightRewardId}`);
     if (!target) return;
     highlighted.current = true;
-    target.scrollIntoView({ behavior: "smooth", block: "center" });
+    target.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth", block: "center" });
   }, [data, highlightRewardId]);
 
   const copy = async (value: string, key: string) => {
-    await navigator.clipboard.writeText(value);
-    setCopied(key);
-    window.setTimeout(() => setCopied(""), 1_800);
+    const success = await copyBrowserText(value);
+    if (!mounted.current) return false;
+    setActionMessage(success ? "تم النسخ، ويمكنك مشاركته الآن." : "تعذر النسخ التلقائي. اضغط مطولًا على الرابط أو الرمز لنسخه.");
+    if (success) {
+      setCopied(key);
+      if (copyTimer.current) clearTimeout(copyTimer.current);
+      copyTimer.current = setTimeout(() => setCopied(""), 1_800);
+    }
+    return success;
+  };
+
+  const trackShare = (channel: "native" | "copy") => {
+    tracking.current?.controller.abort();
+    if (tracking.current) clearTimeout(tracking.current.timer);
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5_000);
+    tracking.current = { controller, timer };
+    void fetch("/api/referrals", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "track_share", channel }), signal: controller.signal })
+      .then(response => { if (response.ok && !controller.signal.aborted && mounted.current) void load(true); })
+      .catch(() => { /* Tracking is optional; sharing has already completed. */ })
+      .finally(() => { clearTimeout(timer); if (tracking.current?.controller === controller) tracking.current = null; });
   };
 
   const share = async () => {
-    if (!data) return;
-    const nativeShare = (navigator as Navigator & { share?: (input: ShareData) => Promise<void> }).share;
-    void fetch("/api/referrals", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "track_share", channel: typeof nativeShare === "function" ? "native" : "copy" }) });
-    if (typeof nativeShare === "function") {
-      try { await nativeShare.call(navigator, { title: "انضم إلى مراس", text: "ابدأ رحلتك الجامعية مع مراس من رابط دعوتي", url: data.referral.shareUrl }); return; } catch { /* The user may cancel the native sheet. */ }
-    }
-    await copy(data.referral.shareUrl, "link");
+    if (!data || sharing || !data.program.enabled) return;
+    setSharing(true);
+    setActionMessage("");
+    try {
+      const result = await shareBrowserLink({ title: "انضم إلى مراس", text: "ابدأ رحلتك الجامعية مع مراس من رابط دعوتي", url: data.referral.shareUrl });
+      if (result === "cancelled" || !mounted.current) return;
+      if (result === "fallback" && !await copy(data.referral.shareUrl, "link")) return;
+      if (result === "shared") setActionMessage("تمت مشاركة رابطك.");
+      // A cancelled or failed share must not increase the count.
+      trackShare(result === "shared" ? "native" : "copy");
+    } catch { /* Sharing succeeded; an analytics failure must not report the share as failed. */ }
+    finally { if (mounted.current) setSharing(false); }
   };
 
   const progressText = useMemo(() => data?.referral.nextTier
     ? `باقي ${data.referral.nextTier.remaining} للوصول إلى ${data.referral.nextTier.rewardLabel}`
-    : "أنجزت جميع المستويات المتاحة حاليًا", [data]);
+    : data?.tiers.length ? "أنجزت جميع المستويات المتاحة حاليًا" : "ستظهر مستويات المكافآت عند توفرها", [data]);
 
-  if (loading) return <div className={styles.loading}><span /><span /><span /></div>;
-  if (error || !data) return <section className={styles.error}><Gift /><h1>تعذر فتح هداياك</h1><p>{error}</p><button onClick={() => void load()}><RefreshCw size={17} /> المحاولة مجددًا</button></section>;
+  if (loading) return <div className={styles.loading} role="status" aria-label="جارٍ تحميل إحالاتك وهداياك"><span /><span /><span /></div>;
+  if (!data) return <section className={styles.error}><Gift /><h1>تعذر فتح هداياك</h1><p>{error}</p><button onClick={() => void load()}><RefreshCw size={17} /> المحاولة مجددًا</button></section>;
 
   return <main className={styles.page} dir="rtl">
-    <section className={styles.hero}>
+    <section className={styles.hero} data-motion="reveal">
       <div className={styles.heroGlow} />
       <div className={styles.heroContent}>
         <span className={styles.eyebrow}><Sparkles size={16} /> الإحالات والهدايا</span>
@@ -94,21 +129,24 @@ export function ReferralsCenter({ highlightRewardId = 0 }: { highlightRewardId?:
         <p>{data.program.description}</p>
         <div className={styles.shareBox}>
           <div><small>رابطك الشخصي</small><strong dir="ltr">{data.referral.shareUrl}</strong></div>
-          <button onClick={share}><Share2 size={18} /> مشاركة الرابط</button>
-          <button className={styles.copyButton} onClick={() => copy(data.referral.shareUrl, "link")} aria-label="نسخ رابط الإحالة">{copied === "link" ? <Check size={18} /> : <Copy size={18} />}</button>
+          <button disabled={sharing || !data.program.enabled} onClick={() => void share()}><Share2 size={18} /> {sharing ? "جارٍ المشاركة…" : "مشاركة الرابط"}</button>
+          <button className={styles.copyButton} disabled={!data.program.enabled} onClick={() => void copy(data.referral.shareUrl, "link")} aria-label="نسخ رابط الإحالة">{copied === "link" ? <Check size={18} /> : <Copy size={18} />}</button>
         </div>
       </div>
       <div className={styles.progressCard}>
-        <div className={styles.progressRing} style={{ "--progress": `${data.referral.progressPercent * 3.6}deg` } as React.CSSProperties}><span><b>{data.referral.counts.qualified}</b><small>إحالة مؤهلة</small></span></div>
+        <div className={styles.progressRing} style={{ "--progress": `${Math.min(100, Math.max(0, data.tiers.length ? data.referral.progressPercent : 0)) * 3.6}deg` } as React.CSSProperties}><span><b>{data.referral.counts.qualified}</b><small>إحالة مؤهلة</small></span></div>
         <strong>{progressText}</strong>
         <div className={styles.miniStats}><span><b>{data.referral.counts.pending}</b> قيد المراجعة</span><span><b>{data.referral.shareCount}</b> مشاركة</span></div>
       </div>
     </section>
 
+    <p className={styles.feedback} role="status" aria-live="polite">{actionMessage}</p>
+    {error && <div className={styles.refreshError} role="status">تعذر تحديث البيانات؛ المعروض هو آخر تحديث. <button onClick={() => void load(true)}>المحاولة مجددًا</button></div>}
     {!data.program.enabled && <div className={styles.paused}><ShieldCheck size={20} /><div><strong>برنامج الإحالات متوقف مؤقتًا</strong><p>تظل هداياك السابقة محفوظة، ولن تُحتسب إحالات جديدة حتى إعادة تفعيله.</p></div></div>}
 
-    <section className={styles.section}>
+    <section className={styles.section} data-home-reveal>
       <header><div><span>مسارك</span><h2>كل دعوة تقرّبك من هدية</h2></div><p>{data.program.qualificationLabel}</p></header>
+      {!data.tiers.length && <div className={styles.empty}><Gift size={28} /><h3>المستويات قادمة</h3><p>ستظهر هنا المكافآت وشروط الوصول إليها عند نشرها.</p></div>}
       <div className={styles.tiers}>{data.tiers.map((tier, index) => <article key={tier.id} className={tier.earned ? styles.earnedTier : ""}>
         <div className={styles.tierNumber}>{tier.earned ? <Check size={19} /> : index + 1}</div>
         <span>{tier.requiredReferrals} إحالات مؤهلة</span>
@@ -119,17 +157,17 @@ export function ReferralsCenter({ highlightRewardId = 0 }: { highlightRewardId?:
       </article>)}</div>
     </section>
 
-    <section className={styles.section}>
+    <section className={styles.section} data-home-reveal>
       <header><div><span>إحالاتك</span><h2>من انضم عبر رابطك</h2></div><p>{data.referral.counts.total ? `${data.referral.counts.total} تسجيل · ${data.referral.counts.qualified} مؤهلة · ${data.referral.counts.pending} قيد المراجعة` : "لم ينضم أحد عبر رابطك بعد"}</p></header>
       {data.referrals.length ? <div className={styles.referralList}>{data.referrals.map((item) => <article key={item.id} className={`${styles.referralRow} ${styles[`referral_${item.status}`] || ""}`}><i>{item.status === "qualified" ? <Check size={16} /> : item.status === "rejected" ? <ShieldCheck size={16} /> : <UsersRound size={16} />}</i><div><strong>{item.statusLabel}</strong><small>{item.detail}</small></div><time dateTime={item.createdAt}>{formatDate(item.createdAt)}{item.qualifiedAt ? ` · تأهلت ${formatDate(item.qualifiedAt)}` : ""}</time></article>)}</div> : <div className={styles.empty}><UsersRound size={28} /><h3>ابدأ بأول دعوة</h3><p>عندما يسجّل صديقك عبر رابطك ستظهر حالته هنا حتى تتأهل الإحالة.</p></div>}
     </section>
 
-    <section className={styles.section}>
+    <section className={styles.section} data-home-reveal>
       <header><div><span>هداياي</span><h2>المكافآت التي حصلت عليها</h2></div><p>{data.rewards.length ? `${data.rewards.filter((reward) => reward.status === "active").length} نشطة من ${data.rewards.length}` : "ستُصدر تلقائيًا عند اكتمال المستوى"}</p></header>
       {data.rewards.length ? <div className={styles.rewardList}>{data.rewards.map((reward) => <article key={reward.id} id={`reward-${reward.id}`} className={`${styles.rewardRow} ${reward.id === highlightRewardId ? styles.rewardHighlight : ""} ${styles[`reward_${reward.status}`] || ""}`}><i>{reward.type === "ai_subscription" ? <Bot size={18} /> : <TicketPercent size={18} />}</i><div><strong>{reward.title}</strong><small>{rewardSourceLabels[reward.sourceType] || reward.sourceType} · صدرت {formatDate(reward.issuedAt)} · {reward.expiresAt ? `تنتهي ${formatDate(reward.expiresAt)}` : "بلا تاريخ انتهاء"}</small>{reward.note && <small>{reward.note}</small>}</div><div className={styles.rewardAction}><span>{statusLabels[reward.status] || reward.status}</span>{reward.type === "ai_subscription" ? <Link href="/study-tools">افتح أدوات مراس</Link> : reward.coupon ? <button type="button" disabled={reward.coupon.status !== "active"} onClick={() => copy(reward.coupon!.code, `reward-${reward.id}`)}>{copied === `reward-${reward.id}` ? <Check size={15} /> : <Copy size={15} />} {reward.coupon.code}</button> : null}</div></article>)}</div> : <div className={styles.empty}><Gift size={28} /><h3>لا توجد هدايا بعد</h3><p>أكمل أول مستوى من الإحالات المؤهلة لتحصل على أول مكافأة.</p></div>}
     </section>
 
-    <section className={styles.section}>
+    <section className={styles.section} data-home-reveal>
       <header><div><span>محفظتي</span><h2>الكوبونات والهدايا الخاصة بك</h2></div><Link href="/cart">استخدم كوبونًا في السلة</Link></header>
       {data.coupons.length ? <div className={styles.coupons}>{data.coupons.map((coupon) => <article key={coupon.id} className={`${styles.coupon} ${styles[`coupon_${coupon.status}`] || ""}`}>
         <div className={styles.couponCut} />

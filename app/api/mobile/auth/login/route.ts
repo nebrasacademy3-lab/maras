@@ -34,7 +34,7 @@ export async function POST(request: Request) {
   await db.update(users).set({ lastLoginAt: now, updatedAt: now }).where(eq(users.id, row.id));
   let session;
   try { session = await createSession(row.id, request, payload.remember !== false); }
-  catch (error) { if (error instanceof DeviceLimitError) return jsonError(`وصل حسابك إلى الحد المسموح (${error.limit}) من الأجهزة. سجّل الخروج من جهاز سابق أو تواصل مع الإدارة.`, 409); throw error; }
+  catch (error) { if (error instanceof DeviceLimitError) return jsonError(`حسابك مرتبط بالجهازين المعتمدين. استخدم أحدهما أو تواصل مع الدعم لاستبدال جهاز. تسجيل الخروج لا يحرر الجهاز.`, 409); throw error; }
   const user = sessionUserFromRow(row);
   if (!user.emailVerified) await ensureVerificationEmail(user.id, request);
   const next = accountNext(user, true);

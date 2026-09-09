@@ -20,7 +20,8 @@ function encryptionMaterial() {
 
 export function validGeminiApiKey(value: unknown) {
   const key = typeof value === "string" ? value.trim() : "";
-  return /^[A-Za-z0-9_-]{20,200}$/.test(key) ? key : "";
+  // Google auth keys are opaque and may contain dots; do not enforce the legacy key shape.
+  return /^[A-Za-z0-9._~+\/=-]{20,4096}$/.test(key) ? key : "";
 }
 
 export function aiKeyFingerprint(apiKey: string) {
@@ -52,4 +53,14 @@ export function decryptAiApiKey(value: string) {
   } catch {
     throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر قراءة مفتاح مزود الخدمة المحفوظ.", 500);
   }
+}
+
+/** One parser for runtime and admin health counts, including JSON arrays and GOOGLE_API_KEY. */
+export function geminiEnvironmentKeys(environment: { GEMINI_API_KEYS?: string; GEMINI_API_KEY?: string; GOOGLE_API_KEY?: string } = { GEMINI_API_KEYS: process.env.GEMINI_API_KEYS, GEMINI_API_KEY: process.env.GEMINI_API_KEY, GOOGLE_API_KEY: process.env.GOOGLE_API_KEY }) {
+  const values: unknown[] = [];
+  const multiple = environment.GEMINI_API_KEYS?.trim() || "";
+  if (multiple.startsWith("[")) { try { const parsed: unknown = JSON.parse(multiple); if (Array.isArray(parsed)) values.push(...parsed); } catch { /* Malformed JSON is not a partial credential. */ } }
+  else values.push(...multiple.split(/[\r\n,;]+/));
+  values.push(environment.GEMINI_API_KEY, environment.GOOGLE_API_KEY);
+  return [...new Set(values.map(validGeminiApiKey).filter(Boolean))];
 }

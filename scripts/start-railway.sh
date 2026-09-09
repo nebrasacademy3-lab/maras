@@ -5,7 +5,7 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "${project_root}"
 
 if [[ -z "${DATABASE_URL:-}" ]]; then
-  echo "[fatal] DATABASE_URL is required. In Railway, reference the PostgreSQL service variable (for example ${{Postgres.DATABASE_URL}})." >&2
+  echo '[fatal] DATABASE_URL is required. In Railway, reference the PostgreSQL service variable (for example ${{Postgres.DATABASE_URL}}).' >&2
   exit 78
 fi
 

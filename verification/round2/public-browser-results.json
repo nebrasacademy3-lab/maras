@@ -1,0 +1,137 @@
+[
+  {
+    "route": "/courses",
+    "width": 1440,
+    "passed": true
+  },
+  {
+    "route": "/universities",
+    "width": 1440,
+    "passed": true
+  },
+  {
+    "route": "/how-it-works",
+    "width": 1440,
+    "passed": true
+  },
+  {
+    "route": "/contact",
+    "width": 1440,
+    "passed": true
+  },
+  {
+    "route": "/privacy",
+    "width": 1440,
+    "passed": true
+  },
+  {
+    "route": "/terms",
+    "width": 1440,
+    "passed": true
+  },
+  {
+    "route": "/login",
+    "width": 1440,
+    "passed": true
+  },
+  {
+    "route": "/forgot-password",
+    "width": 1440,
+    "passed": true
+  },
+  {
+    "route": "/reset-password",
+    "width": 1440,
+    "passed": true
+  },
+  {
+    "route": "/courses",
+    "width": 390,
+    "passed": true
+  },
+  {
+    "route": "/universities",
+    "width": 390,
+    "passed": true
+  },
+  {
+    "route": "/how-it-works",
+    "width": 390,
+    "passed": true
+  },
+  {
+    "route": "/contact",
+    "width": 390,
+    "passed": true
+  },
+  {
+    "route": "/privacy",
+    "width": 390,
+    "passed": true
+  },
+  {
+    "route": "/terms",
+    "width": 390,
+    "passed": true
+  },
+  {
+    "route": "/login",
+    "width": 390,
+    "passed": true
+  },
+  {
+    "route": "/forgot-password",
+    "width": 390,
+    "passed": true
+  },
+  {
+    "route": "/reset-password",
+    "width": 390,
+    "passed": true
+  },
+  {
+    "route": "/courses",
+    "width": 320,
+    "passed": true
+  },
+  {
+    "route": "/universities",
+    "width": 320,
+    "passed": true
+  },
+  {
+    "route": "/how-it-works",
+    "width": 320,
+    "passed": true
+  },
+  {
+    "route": "/contact",
+    "width": 320,
+    "passed": true
+  },
+  {
+    "route": "/privacy",
+    "width": 320,
+    "passed": true
+  },
+  {
+    "route": "/terms",
+    "width": 320,
+    "passed": true
+  },
+  {
+    "route": "/login",
+    "width": 320,
+    "passed": true
+  },
+  {
+    "route": "/forgot-password",
+    "width": 320,
+    "passed": true
+  },
+  {
+    "route": "/reset-password",
+    "width": 320,
+    "passed": true
+  }
+]

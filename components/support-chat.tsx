@@ -2,8 +2,9 @@
 
 /* eslint-disable @next/next/no-img-element -- authenticated support attachments cannot use the public Next image optimizer */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Download, FileText, Image as ImageIcon, LoaderCircle, Mic, Paperclip, Reply, Send, ShieldAlert, Square, Star, X } from "lucide-react";
+import { startVoiceRecording } from "@/lib/voice-recording";
 import { uploadWithProgress, uploadProgressLabel, type UploadProgress } from "@/lib/upload-client";
 
 export type SupportChatFile = { id:number; originalName:string; contentType:string; sizeBytes:number; createdAt?:string; scanStatus?:string|null };
@@ -24,32 +25,36 @@ function downloadAll(files:SupportChatFile[]){
   },index*180));
 }
 
-export function SupportChatThread({ticket,isManager=false,onReload,onReopen}:{ticket:SupportChatTicket;isManager?:boolean;onReload:()=>void|Promise<void>;onReopen?:()=>void|Promise<void>}){
+type SupportChatProps = {ticket:SupportChatTicket;isManager?:boolean;onReload:()=>void|Promise<void>;onReopen?:()=>void|Promise<void>};
+export function SupportChatThread(props:SupportChatProps){
+  const phase=props.ticket.status==="closed"||props.ticket.status==="resolved"?"closed":"open";
+  return <SupportChatContent key={`${props.ticket.id}:${phase}`} {...props}/>;
+}
+
+function SupportChatContent({ticket,isManager=false,onReload,onReopen}:SupportChatProps){
   const messages=useMemo(()=>[...(ticket.replies||[])].filter((item)=>!item.internal&&(item.body||item.files?.length)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt)||a.id-b.id),[ticket.replies]);
   const byId=useMemo(()=>new Map(messages.map((item)=>[item.id,item])),[messages]);
   const [text,setText]=useState(""); const [files,setFiles]=useState<File[]>([]); const [replyTo,setReplyTo]=useState<SupportChatReply|null>(null);
   const [busy,setBusy]=useState(false); const [error,setError]=useState(""); const [progress,setProgress]=useState<UploadProgress|null>(null);
-  const [recording,setRecording]=useState(false); const mediaRef=useRef<MediaRecorder|null>(null); const streamRef=useRef<MediaStream|null>(null); const chunksRef=useRef<Blob[]>([]); const inputRef=useRef<HTMLInputElement>(null);
-
+  const [recording,setRecording]=useState(false);const [startingVoice,setStartingVoice]=useState(false);
+  const voiceRef=useRef<Awaited<ReturnType<typeof startVoiceRecording>>|null>(null);
+  const voiceController=useRef<AbortController|null>(null);const inputRef=useRef<HTMLInputElement>(null);
+  useEffect(()=>()=>{voiceController.current?.abort();voiceRef.current?.dispose();},[ticket.id]);
   const startVoice=async()=>{
-    setError("");
+    if(startingVoice||recording||busy)return;
+    if(files.length>=8){setError("يمكن إرفاق ثمانية ملفات كحد أقصى في الرسالة.");return;}
+    const controller=new AbortController();voiceController.current=controller;
+    setStartingVoice(true);setError("");
     try{
-      if(!navigator.mediaDevices?.getUserMedia||typeof MediaRecorder==="undefined") throw new Error("التسجيل الصوتي غير مدعوم في هذا المتصفح.");
-      const stream=await navigator.mediaDevices.getUserMedia({audio:true}); streamRef.current=stream; chunksRef.current=[];
-      const mime=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"audio/webm";
-      const recorder=new MediaRecorder(stream,{mimeType:mime}); mediaRef.current=recorder;
-      recorder.ondataavailable=(event)=>{if(event.data.size)chunksRef.current.push(event.data);};
-      recorder.onstop=()=>{
-        const blob=new Blob(chunksRef.current,{type:"audio/webm"}); if(blob.size) setFiles((current)=>[...current,new File([blob],`voice-${Date.now()}.webm`,{type:"audio/webm"})].slice(0,8));
-        streamRef.current?.getTracks().forEach((track)=>track.stop()); streamRef.current=null; mediaRef.current=null; setRecording(false);
-      };
-      recorder.start(); setRecording(true);
-    }catch(reason){setError(reason instanceof Error?reason.message:"تعذر بدء التسجيل الصوتي");}
+      voiceRef.current=await startVoiceRecording({signal:controller.signal,onFile:file=>setFiles(current=>[...current,file].slice(0,8)),onStop:()=>setRecording(false),onError:setError});
+      if(!controller.signal.aborted)setRecording(true);
+    }catch(reason){if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:"تعذر بدء التسجيل الصوتي");}
+    finally{if(!controller.signal.aborted)setStartingVoice(false);}
   };
-  const stopVoice=()=>{if(mediaRef.current&&mediaRef.current.state!=="inactive")mediaRef.current.stop();};
+  const stopVoice=()=>voiceRef.current?.stop();
 
   const send=async()=>{
-    if(busy||(!text.trim()&&!files.length))return;
+    if(busy||recording||startingVoice||(!text.trim()&&!files.length))return;
     setBusy(true);setError("");
     const form=new FormData();form.set("ticketId",String(ticket.id));form.set("message",text.trim());if(replyTo?.id&&replyTo.id>0)form.set("replyToId",String(replyTo.id));files.forEach((file)=>form.append("files",file));
     setProgress({loaded:0,total:files.reduce((sum,file)=>sum+file.size,0),percent:0,bytesPerSecond:0,remainingSeconds:null});
@@ -73,21 +78,21 @@ export function SupportChatThread({ticket,isManager=false,onReload,onReopen}:{ti
           {message.files?.filter((file)=>isAudio(file)&&fileReady(file)).map((file)=><div className="support-chat-audio" key={file.id}><audio controls preload="metadata" src={fileUrl(file,true)}/><a href={fileUrl(file)} download><Download size={14}/></a></div>)}
           {message.files?.filter((file)=>!isImage(file)&&!isAudio(file)&&fileReady(file)).length?<div className="support-chat-files">{message.files!.filter((file)=>!isImage(file)&&!isAudio(file)&&fileReady(file)).map((file)=><a href={fileUrl(file)} download key={file.id}><FileText size={15}/><span>{file.originalName}</span><Download size={14}/></a>)}</div>:null}
           {message.files?.filter((file)=>!fileReady(file)).length?<div className="support-chat-files">{message.files!.filter((file)=>!fileReady(file)).map((file)=><PendingFile key={file.id} file={file}/>)}</div>:null}
-          <footer><button type="button" onClick={()=>setReplyTo(message)}><Reply size={13}/> رد</button>{message.files&&message.files.filter(fileReady).length>1?<button type="button" onClick={()=>downloadAll(message.files!.filter(fileReady))}><Download size={13}/> تحميل الكل</button>:null}</footer>
+          <footer><button type="button" disabled={busy} onClick={()=>setReplyTo(message)}><Reply size={13}/> رد</button>{message.files&&message.files.filter(fileReady).length>1?<button type="button" onClick={()=>downloadAll(message.files!.filter(fileReady))}><Download size={13}/> تحميل الكل</button>:null}</footer>
         </article>;
       })}
     </div>
     {closed&&!isManager&&<SatisfactionRating ticket={ticket} onReload={onReload}/>}
     {closed?<div className="support-chat-closed">المحادثة مغلقة.{onReopen&&<button type="button" className="button button-soft" onClick={()=>void onReopen()}>إعادة فتح المحادثة</button>}</div>:<div className="support-chat-composer">
-      {replyTo&&<div className="support-chat-replying"><Reply size={15}/><span><b>رد على {replyTo.authorRole==="student"?"الطالب":"فريق مراس"}</b><small>{replyTo.body||replyTo.files?.[0]?.originalName||"مرفق"}</small></span><button type="button" onClick={()=>setReplyTo(null)}><X size={15}/></button></div>}
-      {files.length?<div className="support-chat-selected-files">{files.map((file,index)=><span key={`${file.name}-${index}`}><Paperclip size={13}/>{file.name}<button type="button" onClick={()=>setFiles((rows)=>rows.filter((_,i)=>i!==index))}><X size={12}/></button></span>)}</div>:null}
-      <textarea value={text} onChange={(event)=>setText(event.target.value)} placeholder="اكتب رسالة..." maxLength={4000}/>
+      {replyTo&&<div className="support-chat-replying"><Reply size={15}/><span><b>رد على {replyTo.authorRole==="student"?"الطالب":"فريق مراس"}</b><small>{replyTo.body||replyTo.files?.[0]?.originalName||"مرفق"}</small></span><button type="button" disabled={busy} onClick={()=>setReplyTo(null)}><X size={15}/></button></div>}
+      {files.length?<div className="support-chat-selected-files">{files.map((file,index)=><span key={`${file.name}-${index}`}><Paperclip size={13}/>{file.name}<button type="button" disabled={busy} onClick={()=>setFiles((rows)=>rows.filter((_,i)=>i!==index))}><X size={12}/></button></span>)}</div>:null}
+      <textarea disabled={busy} value={text} onChange={(event)=>setText(event.target.value)} placeholder="اكتب رسالة..." maxLength={4000}/>
       {progress&&<div className="upload-progress-card compact"><div><span style={{width:`${progress.percent}%`}}/></div><small>{uploadProgressLabel(progress)}</small></div>}
       {error&&<p className="form-error">{error}</p>}
       <div className="support-chat-actions">
-        <label className="support-chat-attach"><Paperclip size={18}/><input ref={inputRef} type="file" multiple accept="image/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.txt" onChange={(event)=>setFiles(Array.from(event.target.files||[]).slice(0,8))}/></label>
-        <button type="button" className={`support-chat-mic ${recording?"recording":""}`} onClick={()=>recording?stopVoice():void startVoice()} aria-label={recording?"إيقاف التسجيل":"تسجيل صوتي"}>{recording?<Square size={18}/>:<Mic size={18}/>}</button>
-        <button type="button" className="support-chat-send" disabled={busy||(!text.trim()&&!files.length)} onClick={()=>void send()}>{busy?<LoaderCircle size={18} className="spin"/>:<Send size={18}/>}</button>
+        <label className="support-chat-attach"><Paperclip size={18}/><input ref={inputRef} disabled={busy} type="file" multiple accept="image/*,audio/*,.pdf,.doc,.docx,.ppt,.pptx,.txt" onChange={(event)=>setFiles(Array.from(event.target.files||[]).slice(0,8))}/></label>
+        <button type="button" disabled={busy||startingVoice} className={`support-chat-mic ${recording?"recording":""}`} onClick={()=>recording?stopVoice():void startVoice()} aria-label={recording?"إيقاف التسجيل":"تسجيل صوتي"}>{recording?<Square size={18}/>:<Mic size={18}/>}</button>
+        <button type="button" className="support-chat-send" aria-label="إرسال الرسالة" disabled={busy||recording||startingVoice||(!text.trim()&&!files.length)} onClick={()=>void send()}>{busy?<LoaderCircle size={18} className="spin"/>:<Send size={18}/>}</button>
       </div>
     </div>}
   </div>;

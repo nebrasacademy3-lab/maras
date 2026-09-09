@@ -1,5 +1,5 @@
 import React from "react";
-import { Text as NativeText, StyleSheet, type TextProps, type TextStyle } from "react-native";
+import { Text as NativeText, Platform, StyleSheet, type TextProps, type TextStyle } from "react-native";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import { directionForText } from "@/src/lib/text-direction";
@@ -37,7 +37,9 @@ export function ScaledText({ style, children, ...props }: TextProps) {
     fontSize: baseFontSize * fontScale,
     ...(typeof flattened?.lineHeight === "number" ? { lineHeight: flattened.lineHeight * fontScale } : {}),
     writingDirection: contentDirection,
-    direction: contentDirection,
+    // Native Fabric mirrors left/right alignment in an RTL text box.
+    // Keep the box physical; writingDirection still shapes Arabic and mixed text.
+    direction: Platform.OS === "web" ? contentDirection : "ltr",
     textAlign: centered ? "center" : justified ? "justify" : (forceLtr ? "left" : isRTL ? "right" : "left"),
   };
 

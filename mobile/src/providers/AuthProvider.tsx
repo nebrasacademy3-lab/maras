@@ -84,6 +84,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await ensureDeviceIdentity();
         const saved = await readPersistedToken();
         if (saved) { setToken(saved); setApiToken(saved); await refresh(); }
+      } catch {
+        // Authentication retries identity initialization and shows a recoverable storage error.
+        setApiToken(null);
       } finally { setLoading(false); }
     })();
   }, [refresh]);
@@ -93,8 +96,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     queryClient.clear();
     await persistToken(response.token); setToken(response.token); setUser(response.user); return response;
   }, [queryClient]);
-  const login = useCallback(async (value: Credentials) => accept(await api<AuthResponse>("/api/mobile/auth/login", { method: "POST", body: jsonBody(value) })), [accept]);
-  const register = useCallback(async (value: Registration) => accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) })), [accept]);
+  const login = useCallback(async (value: Credentials) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/mobile/auth/login", { method: "POST", body: jsonBody(value) })); }, [accept]);
+  const register = useCallback(async (value: Registration) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) })); }, [accept]);
   const socialLogin = useCallback(async (provider: SocialProvider, referralCode?: string) => {
     await ensureDeviceIdentity();
     const exchange = await socialAuthCode(provider, referralCode);

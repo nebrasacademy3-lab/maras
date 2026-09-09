@@ -1,21 +1,15 @@
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { authRateLimits, authSessions, users } from "@/db/schema";
-import { getStudentDeviceLimit } from "@/lib/platform-settings";
+import { authDevices, authRateLimits, authSessions, users } from "@/db/schema";
+import { enrollStudentDeviceTx } from "@/lib/auth-devices";
+export { DeviceLimitError } from "@/lib/auth-devices";
 
 export const SESSION_COOKIE = "meras_session";
 const PASSWORD_ITERATIONS = 210_000;
 
 export type UserRole = "student" | "supervisor" | "admin";
 
-export class DeviceLimitError extends Error {
-  readonly limit: number;
-  constructor(limit: number) {
-    super(`DEVICE_LIMIT:${limit}`);
-    this.name = "DeviceLimitError";
-    this.limit = limit;
-  }
-}
+export const BROWSER_DEVICE_COOKIE = "meras_browser_device";
 
 function sanitizeDeviceId(value: string | null) {
   const cleaned = (value || "").trim().replace(/[^A-Za-z0-9._:-]/g, "").slice(0, 128);
@@ -38,13 +32,20 @@ function platformFromRequest(request: Request) {
   return "web";
 }
 
-async function deviceIdentity(request: Request) {
+export async function sessionDeviceIdentity(request: Request) {
   const supplied = sanitizeDeviceId(request.headers.get("x-meras-device-id"));
   const userAgent = request.headers.get("user-agent")?.slice(0, 300) || "unknown";
   const platform = platformFromRequest(request);
-  const deviceId = supplied || `fallback-${(await sha256(`${platform}:${userAgent}`)).slice(0, 48)}`;
+  const native = request.headers.get("x-meras-client") === "mobile-v1" && (platform === "android" || platform === "ios");
+  const browserId = native ? "" : sanitizeDeviceId(parseCookie(request.headers.get("cookie"), BROWSER_DEVICE_COOKIE));
+  const deviceId = browserId || supplied || `web-${randomToken()}`;
   const label = sanitizeDeviceLabel(request.headers.get("x-meras-device-label")) || (platform === "web" ? "متصفح ويب" : platform === "android" ? "جهاز Android" : platform === "ios" ? "جهاز iPhone / iPad" : "تطبيق مراس");
   return { deviceId, deviceLabel: label, platform, userAgent };
+}
+
+export function browserDeviceCookie(request: Request, deviceId: string) {
+  const secure = process.env.NODE_ENV === "production" || process.env.SESSION_COOKIE_SECURE === "true" || new URL(request.url).protocol === "https:";
+  return `${BROWSER_DEVICE_COOKIE}=${encodeURIComponent(deviceId)}; Path=/; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Max-Age=34560000`;
 }
 
 export type SessionUser = {
@@ -158,13 +159,18 @@ export async function getSessionUserFromHeaders(requestHeaders: Headers): Promis
     const db = getDb();
     const tokenHash = await sha256(token);
     const now = new Date().toISOString();
-    const [row] = await db.select({ user: users, sessionId: authSessions.id, lastSeenAt: authSessions.lastSeenAt }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).where(and(
+    const [row] = await db.select({ user: users, sessionId: authSessions.id, deviceId: authSessions.deviceId, lastSeenAt: authSessions.lastSeenAt }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).where(and(
       eq(authSessions.tokenHash, tokenHash),
       isNull(authSessions.revokedAt),
       gt(authSessions.expiresAt, now),
       eq(users.status, "active"),
     )).limit(1);
     if (!row) return null;
+    if (row.user.role === "student") {
+      if (!row.deviceId) return null;
+      const [enrollment] = await db.select({ id: authDevices.id }).from(authDevices).where(and(eq(authDevices.userId, row.user.id), eq(authDevices.deviceId, row.deviceId), isNull(authDevices.revokedAt))).limit(1);
+      if (!enrollment) return null;
+    }
     const lastSeen = new Date(row.lastSeenAt || 0).getTime();
     if (!Number.isFinite(lastSeen) || Date.now() - lastSeen > 5 * 60_000) {
       await db.update(authSessions).set({ lastSeenAt: now }).where(eq(authSessions.id, row.sessionId)).catch(() => undefined);
@@ -186,12 +192,11 @@ export function getSessionUser(request: Request) {
 export async function createSession(userId: number, request: Request, remember = true) {
   const db = getDb();
   const now = new Date().toISOString();
-  const device = await deviceIdentity(request);
+  const device = await sessionDeviceIdentity(request);
   const token = randomToken();
   const tokenHash = await sha256(token);
   const maxAge = remember ? 60 * 60 * 24 * 30 : 60 * 60 * 12;
   const expiresAt = new Date(Date.now() + maxAge * 1000).toISOString();
-  const studentLimit = await getStudentDeviceLimit();
 
   // Lock per account while counting/inserting sessions so concurrent logins cannot exceed the device limit.
   await db.transaction(async (tx) => {
@@ -199,14 +204,10 @@ export async function createSession(userId: number, request: Request, remember =
     const [account] = await tx.select({ role: users.role }).from(users).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!account) throw new Error("account_not_found");
 
-    // A fresh login from the same physical browser/app replaces the old session instead of consuming another slot.
+    // Durable slots are checked before replacing a session. Logout, expiry and
+    // password changes never delete enrollment or free an approved device slot.
+    if (account.role === "student") await enrollStudentDeviceTx(tx, userId, device, now);
     await tx.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, userId), eq(authSessions.deviceId, device.deviceId), isNull(authSessions.revokedAt)));
-
-    if (account.role === "student") {
-      const active = await tx.select({ id: authSessions.id, deviceId: authSessions.deviceId }).from(authSessions).where(and(eq(authSessions.userId, userId), isNull(authSessions.revokedAt), gt(authSessions.expiresAt, now)));
-      const devices = new Set(active.map((row) => row.deviceId || `legacy:${row.id}`));
-      if (devices.size >= studentLimit) throw new DeviceLimitError(studentLimit);
-    }
 
     await tx.insert(authSessions).values({
       userId,
@@ -226,6 +227,7 @@ export async function createSession(userId: number, request: Request, remember =
     token,
     expiresAt,
     deviceId: device.deviceId,
+    deviceCookie: browserDeviceCookie(request, device.deviceId),
     cookie: `${SESSION_COOKIE}=${encodeURIComponent(token)}; Path=/; HttpOnly;${secure ? " Secure;" : ""} SameSite=Lax; Max-Age=${maxAge}`,
   };
 }
