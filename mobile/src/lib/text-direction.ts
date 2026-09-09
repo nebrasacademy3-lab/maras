@@ -9,5 +9,6 @@ export function directionForText(value: string, fallback: TextDirection): TextDi
   if (arabicIndex < 0 && latinIndex < 0) return fallback;
   if (arabicIndex < 0) return "ltr";
   if (latinIndex < 0) return "rtl";
-  return arabicIndex < latinIndex ? "rtl" : "ltr";
+  // Course codes and product names often precede Arabic prose; keep the paragraph RTL.
+  return "rtl";
 }

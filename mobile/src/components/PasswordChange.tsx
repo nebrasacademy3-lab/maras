@@ -1,9 +1,9 @@
 import React, { useEffect, useState } from "react";
 import { StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
-import { AppButton, Card, Field } from "@/src/components/ui";
+import { PasswordField, PasswordRequirements, VerificationCodeField, passwordRequirements } from "@/src/components/AuthPanel";
+import { AppButton, Card } from "@/src/components/ui";
 import { api, ApiError, jsonBody } from "@/src/lib/api";
-import { normalizeEmailCode } from "@/src/lib/account-access";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 
@@ -28,7 +28,7 @@ export function PasswordChange() {
     finally { setBusy(null); }
   };
   const confirm = async () => {
-    if (busy || code.length !== 6 || password !== confirmation) return;
+    if (busy || code.length !== 6 || !passwordRequirements(password).every((item) => item.met) || password !== confirmation) return;
     setBusy("confirm"); setError(""); setMessage("");
     try {
       await api("/api/profile/password", { method: "POST", body: jsonBody({ action: "confirm", code, newPassword: password }) });
@@ -42,14 +42,15 @@ export function PasswordChange() {
     <Text style={[styles.email, { color: colors.primary }]}>{user?.email}</Text>
     <AppButton title={cooldown ? `إعادة إرسال الرمز بعد ${cooldown} ثانية` : sent ? "إعادة إرسال رمز التأكيد" : "إرسال رمز التأكيد إلى بريدي"} variant="soft" disabled={Boolean(busy) || cooldown > 0} loading={busy === "send"} onPress={() => void send()} />
     {sent ? <View style={styles.form}>
-      <Field label="رمز تأكيد تغيير كلمة المرور" value={code} onChangeText={(value) => setCode(normalizeEmailCode(value))} inputDirection="ltr" keyboardType="number-pad" maxLength={6} textContentType="oneTimeCode" autoComplete="one-time-code" />
-      <Field label="كلمة المرور الجديدة" value={password} onChangeText={setPassword} inputDirection="ltr" secureTextEntry autoComplete="new-password" placeholder="10 أحرف، رقم ورمز خاص" />
-      <Field label="تأكيد كلمة المرور الجديدة" value={confirmation} onChangeText={setConfirmation} inputDirection="ltr" secureTextEntry autoComplete="new-password" />
-      <AppButton title="تأكيد وحفظ كلمة المرور" disabled={Boolean(busy) || code.length !== 6 || password.length < 10 || password !== confirmation} loading={busy === "confirm"} onPress={() => void confirm()} />
+      <VerificationCodeField value={code} onChangeText={setCode} editable={!busy} />
+      <PasswordField label="كلمة المرور الجديدة" value={password} onChangeText={setPassword} autoComplete="new-password" textContentType="newPassword" placeholder="اختر كلمة مرور قوية" editable={!busy} />
+      <PasswordRequirements password={password} />
+      <PasswordField label="تأكيد كلمة المرور الجديدة" value={confirmation} onChangeText={setConfirmation} autoComplete="new-password" textContentType="newPassword" error={confirmation && confirmation !== password ? "كلمتا المرور غير متطابقتين" : undefined} editable={!busy} />
+      <AppButton title="تأكيد وحفظ كلمة المرور" disabled={Boolean(busy) || code.length !== 6 || !passwordRequirements(password).every((item) => item.met) || password !== confirmation} loading={busy === "confirm"} onPress={() => void confirm()} />
     </View> : null}
     {message ? <Text style={[styles.copy, { color: colors.success }]}>{message}</Text> : null}
     {error ? <Text accessibilityRole="alert" style={[styles.copy, { color: colors.danger }]}>{error}</Text> : null}
   </Card>;
 }
 
-const styles = StyleSheet.create({ card: { marginTop: 16, gap: 12 }, title: { fontSize: 18, fontWeight: "900" }, copy: { fontSize: 12, lineHeight: 22 }, email: { fontSize: 13, writingDirection: "ltr", textAlign: "center" }, form: { marginTop: 6 } });
+const styles = StyleSheet.create({ card: { marginTop: 16, gap: 14, padding: 22, borderRadius: 24 }, title: { fontSize: 18, fontWeight: "900" }, copy: { fontSize: 12, lineHeight: 22 }, email: { fontSize: 13, writingDirection: "ltr", textAlign: "center" }, form: { marginTop: 6 } });

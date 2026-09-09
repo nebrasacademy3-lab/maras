@@ -1,7 +1,8 @@
-import { asc, desc, eq, sql } from "drizzle-orm";
+import { readBoundedJsonObject } from "@/lib/request-body";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
-import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
+import { finiteNumber, cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { deleteObject } from "@/lib/storage";
 import { deleteStoredMultipartFiles, parseStoredMultipart, type StoredMultipartFile } from "@/lib/multipart-upload";
@@ -120,7 +121,7 @@ export async function POST(request: Request) {
       });
       values = parsed.fields;
       files = parsed.files;
-    } else values = await request.json() as Record<string, unknown>;
+    } else values = await readBoundedJsonObject(request, 32 * 1024);
   } catch (error) { return jsonError(error instanceof Error ? error.message : "بيانات الدعم غير صالحة", multipart ? 413 : 400); }
   const discardFiles = () => deleteStoredMultipartFiles(files);
   const fileScans = new Map<string, Awaited<ReturnType<typeof scanStoredFile>>>();
@@ -130,7 +131,8 @@ export async function POST(request: Request) {
     if (result.status === "quarantined") { await discardFiles(); return jsonError("رُفض أحد المرفقات بعد الفحص الأمني", 422); }
   }
 
-  const ticketId = Math.floor(Number(values.ticketId));
+  const ticketId = values.ticketId == null || values.ticketId === "" ? 0 : finiteNumber(values.ticketId);
+  if (!Number.isSafeInteger(ticketId) || ticketId < 0) { await discardFiles(); return jsonError("معرّف التذكرة غير صالح"); }
   const body = cleanText(values.message ?? values.body, 4000);
   if (ticketId) {
     const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
@@ -138,7 +140,8 @@ export async function POST(request: Request) {
     if (!isManager(current) && ticket.userEmail !== current.email) { await discardFiles(); return jsonError("غير مصرح", 403); }
     if (!body && !files.length) { await discardFiles(); return jsonError("اكتب رسالة أو أرفق ملفًا"); }
     const internal = isManager(current) && (values.internal === true || values.internal === "true");
-    const requestedReplyToId = Math.floor(Number(values.replyToId));
+    const requestedReplyToId = values.replyToId == null || values.replyToId === "" ? 0 : finiteNumber(values.replyToId);
+    if (!Number.isSafeInteger(requestedReplyToId) || requestedReplyToId < 0) { await discardFiles(); return jsonError("معرّف الرسالة غير صالح"); }
     let replyToId: number | null = null;
     if (requestedReplyToId > 0) {
       const [target] = await db.select({ id: supportReplies.id, ticketId: supportReplies.ticketId, internal: supportReplies.internal }).from(supportReplies).where(eq(supportReplies.id, requestedReplyToId)).limit(1);
@@ -182,7 +185,7 @@ export async function POST(request: Request) {
   const priorityValue = cleanText(values.priority, 80);
   const priority = priorityValue === "عالية" ? "high" : priorityValue.includes("عاجل") ? "urgent" : ["low", "normal", "high", "urgent"].includes(priorityValue) ? priorityValue : "normal";
   const title = cleanText(values.title, 180);
-  const contactChannel = ["in_app", "email", "whatsapp"].includes(String(values.contactChannel)) ? String(values.contactChannel) : "in_app";
+  const contactChannel = ["in_app", "email", "whatsapp"].includes(cleanText(values.contactChannel, 20)) ? cleanText(values.contactChannel, 20) : "in_app";
   if (!category || title.length < 3 || (!body && !files.length) || (body && body.length < 3)) { await discardFiles(); return jsonError("أضف عنوانًا ورسالة أو مرفقًا للمحادثة"); }
   const now = new Date().toISOString();
   const ticketNumber = `SP-${crypto.randomUUID().replace(/-/g, "").slice(0, 12).toUpperCase()}`;
@@ -213,12 +216,15 @@ export async function GET(request: Request) {
     : current
       ? await db.select().from(supportTickets).where(eq(supportTickets.userEmail, current.email)).orderBy(desc(supportTickets.updatedAt)).limit(100)
       : [];
-  const ids = new Set(tickets.map((ticket) => ticket.id));
-  const allReplies = manager
-    ? await db.select().from(supportReplies).orderBy(asc(supportReplies.createdAt), asc(supportReplies.id)).limit(3000)
-    : (await db.select().from(supportReplies).where(eq(supportReplies.internal, false)).orderBy(asc(supportReplies.createdAt), asc(supportReplies.id)).limit(2000)).filter((reply) => ids.has(reply.ticketId));
-  const replies = allReplies.filter((reply) => ids.has(reply.ticketId));
-  const files = (await db.select().from(supportReplyFiles).orderBy(asc(supportReplyFiles.createdAt), asc(supportReplyFiles.id)).limit(5000)).filter((file) => ids.has(file.ticketId));
+  const ids = tickets.map((ticket) => ticket.id);
+  const replies = ids.length ? await db.select().from(supportReplies).where(manager
+    ? inArray(supportReplies.ticketId, ids)
+    : and(inArray(supportReplies.ticketId, ids), eq(supportReplies.internal, false)))
+    .orderBy(desc(supportReplies.createdAt), desc(supportReplies.id)).limit(3000) : [];
+  const replyIds = replies.map((reply) => reply.id);
+  const files = replyIds.length ? await db.select().from(supportReplyFiles)
+    .where(and(inArray(supportReplyFiles.ticketId, ids), inArray(supportReplyFiles.replyId, replyIds)))
+    .orderBy(asc(supportReplyFiles.createdAt), asc(supportReplyFiles.id)).limit(5000) : [];
   return Response.json({ ok: true, tickets: tickets.map((ticket) => ({ ...ticket, replies: normalizedReplies(ticket, replies, files) })) }, { headers: { "cache-control": "no-store" } });
 }
 
@@ -230,9 +236,9 @@ export async function DELETE(request: Request) {
   const actor = current?.email || "admin-api-token";
   if (!await checkRateLimit("support-delete", `${actor}:${clientIp(request)}`, 10, 60 * 60)) return jsonError("طلبات حذف كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
-  const ticketId = Math.floor(Number(payload.ticketId));
-  if (!ticketId) return jsonError("معرّف التذكرة غير صالح");
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات غير صالحة"); }
+  const ticketId = finiteNumber(payload.ticketId);
+  if (!Number.isSafeInteger(ticketId) || ticketId <= 0) return jsonError("معرّف التذكرة غير صالح");
   const db = getDb();
   const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
@@ -252,18 +258,18 @@ export async function PATCH(request: Request) {
   const current = await getSessionUser(request);
   if (!current) return jsonError("سجّل الدخول أولًا", 401);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
-  const ticketId = Math.floor(Number(payload.ticketId));
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات غير صالحة"); }
+  const ticketId = finiteNumber(payload.ticketId);
   const action = cleanText(payload.action, 20);
-  if (!ticketId || !["reopen", "close", "rate"].includes(action)) return jsonError("إجراء التذكرة غير صالح");
+  if (!Number.isSafeInteger(ticketId) || ticketId <= 0 || !["reopen", "close", "rate"].includes(action)) return jsonError("إجراء التذكرة غير صالح");
   const db = getDb();
   const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
   if (!isManager(current) && ticket.userEmail !== current.email) return jsonError("غير مصرح", 403);
   if (action === "rate") {
     if (ticket.userEmail !== current.email || !["resolved", "closed"].includes(ticket.status)) return jsonError("يمكن تقييم تذكرة مغلقة تخص حسابك فقط", 403);
-    const rating = Math.floor(Number(payload.rating));
-    if (rating < 1 || rating > 5) return jsonError("التقييم يجب أن يكون من 1 إلى 5");
+    const rating = finiteNumber(payload.rating);
+    if (!Number.isInteger(rating) || rating < 1 || rating > 5) return jsonError("التقييم يجب أن يكون من 1 إلى 5");
     const comment = cleanText(payload.comment, 800) || null;
     await db.update(supportTickets).set({ satisfactionRating: rating, satisfactionComment: comment, updatedAt: new Date().toISOString() }).where(eq(supportTickets.id, ticketId));
     return Response.json({ ok: true, rating }, { headers: { "cache-control": "no-store" } });

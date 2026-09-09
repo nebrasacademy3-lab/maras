@@ -1,74 +1,86 @@
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import { Linking } from "react-native";
+
+const INTERNAL_ORIGIN = "https://mobile.meras.invalid";
 
 export function safeInternalPath(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
   if (!trimmed.startsWith("/") || trimmed.startsWith("//") || /^\/[\\]/.test(trimmed)) return null;
   if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed)) return null;
-  if (/[\u0000-\u001f\s]/.test(trimmed)) return null;
+  if (/[\u0000-\u001f\u007f\s]/.test(trimmed)) return null;
   return trimmed;
 }
 
+function routeSegment(value: string): string | null {
+  try {
+    const decoded = decodeURIComponent(value);
+    return decoded && decoded !== "." && decoded !== ".." && !/[\/\\%?#\u0000-\u001f\u007f\s]/.test(decoded) ? decoded : null;
+  } catch { return null; }
+}
+
+export function parseInternalLink(value: unknown): URL | null {
+  const path = safeInternalPath(value);
+  if (!path) return null;
+  // Validate before URL normalizes dot segments, and before Expo decodes route parameters again.
+  const pathname = path.split(/[?#]/, 1)[0] || "/";
+  if (pathname.split("/").slice(1).some((segment) => segment && !routeSegment(segment))) return null;
+  try {
+    const url = new URL(path, INTERNAL_ORIGIN);
+    return url.origin === INTERNAL_ORIGIN && !url.username && !url.password ? url : null;
+  } catch { return null; }
+}
+
+export function safeExternalLink(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password ? url.toString() : null; }
+  catch { return null; }
+}
+
+/** One web-to-app mapping for notifications and assistant actions. */
+export function resolveMobileRoute(value: unknown): Href | null {
+  const url = parseInternalLink(value);
+  if (!url) return null;
+  const path = url.pathname.replace(/\/$/, "") || "/";
+  const query = url.searchParams;
+  if (path === "/study-tools" || path.startsWith("/study-tools/")) {
+    const conversationId = query.get("conversation")?.trim();
+    const quizId = query.get("quiz")?.trim();
+    if (conversationId && /^[A-Za-z0-9_-]{1,120}$/.test(conversationId)) return { pathname: "/ai/conversation/[id]", params: { id: conversationId } };
+    if (quizId && /^[A-Za-z0-9_-]{1,120}$/.test(quizId)) return { pathname: "/ai/quiz/[id]", params: { id: quizId } };
+    return "/(tabs)/ai";
+  }
+  if (path === "/") return "/(tabs)";
+  if (path === "/tracks" || path === "/learning-tracks" || path.startsWith("/tracks/") || path.startsWith("/learning-tracks/")) return "/tracks";
+  const routes = [
+    { prefix: "/r/", pathname: "/r/[code]", param: "code" },
+    { prefix: "/learn/", pathname: "/learn/[slug]", param: "slug" },
+    { prefix: "/courses/", pathname: "/course/[slug]", param: "slug" },
+    { prefix: "/course/", pathname: "/course/[slug]", param: "slug" },
+    { prefix: "/universities/", pathname: "/university/[slug]", param: "slug" },
+    { prefix: "/university/", pathname: "/university/[slug]", param: "slug" },
+  ] as const;
+  for (const route of routes) {
+    if (!path.startsWith(route.prefix)) continue;
+    const segment = routeSegment(path.slice(route.prefix.length));
+    return segment ? { pathname: route.pathname, params: { [route.param]: segment } } as Href : null;
+  }
+  if (path === "/dashboard") {
+    const views: Record<string, Href> = { notifications: "/notifications", account: "/profile", requests: "/requests", orders: "/orders", courses: "/(tabs)/learning" };
+    return views[query.get("view") || ""] || "/(tabs)";
+  }
+  const simple: Record<string, Href> = {
+    "/courses": "/(tabs)/courses", "/universities": "/(tabs)/universities", "/learn": "/(tabs)/learning",
+    "/request-course": "/requests", "/login": "/(auth)/login", "/register": "/(auth)/register",
+  };
+  if (simple[path]) return (simple[path] + url.search) as Href;
+  if (["/contact", "/support", "/requests", "/notifications", "/referrals", "/cart", "/favorites", "/orders", "/profile", "/security", "/admin", "/supervisor", "/forgot-password", "/verify-email", "/complete-profile", "/onboarding", "/assistant", "/(tabs)/account", "/(tabs)/learning", "/(tabs)/courses", "/(tabs)/universities", "/(tabs)/ai"].includes(path)) return (path + url.search) as Href;
+  return null;
+}
+
 export function openNotificationRoute(actionUrl: unknown) {
-  if (typeof actionUrl !== "string" || !actionUrl) return;
-  if (actionUrl.startsWith("https://")) {
-    void Linking.openURL(actionUrl);
-    return;
-  }
-  if (!actionUrl.startsWith("/") || actionUrl.startsWith("//")) return;
-  const [path = "", query = ""] = actionUrl.split("?", 2);
-  if (path === "/study-tools" || path.startsWith("/study-tools")) {
-    const params = new URLSearchParams(query);
-    const conversationId = params.get("conversation")?.trim();
-    const quizId = params.get("quiz")?.trim();
-    if (conversationId && /^[A-Za-z0-9_-]{1,120}$/.test(conversationId)) router.push({ pathname: "/ai/conversation/[id]", params: { id: conversationId } });
-    else if (quizId && /^[A-Za-z0-9_-]{1,120}$/.test(quizId)) router.push({ pathname: "/ai/quiz/[id]", params: { id: quizId } });
-    else router.push("/(tabs)/ai");
-    return;
-  }
-  if (path === "/") {
-    router.push("/(tabs)");
-    return;
-  }
-  if (path === "/tracks" || path === "/learning-tracks" || path.startsWith("/tracks/") || path.startsWith("/learning-tracks/")) {
-    router.push("/tracks");
-    return;
-  }
-  if (path.startsWith("/r/")) {
-    const code = decodeURIComponent(path.slice("/r/".length)).trim();
-    if (code) router.push({ pathname: "/r/[code]", params: { code } });
-    return;
-  }
-  if (path.startsWith("/learn/")) {
-    const slug = decodeURIComponent(path.slice("/learn/".length));
-    if (slug) router.push({ pathname: "/learn/[slug]", params: { slug } });
-    return;
-  }
-  if (path.startsWith("/courses/")) {
-    const slug = decodeURIComponent(path.slice("/courses/".length));
-    if (slug) router.push({ pathname: "/course/[slug]", params: { slug } });
-    return;
-  }
-  if (path === "/courses") router.push("/(tabs)/courses");
-  else if (path === "/universities") router.push("/(tabs)/universities");
-  else if (path === "/contact") router.push("/contact");
-  else if (path === "/support") router.push("/support");
-  else if (path === "/request-course" || path === "/requests") router.push("/requests");
-  else if (path === "/notifications") router.push("/notifications");
-  else if (path === "/referrals") router.push("/referrals");
-  else if (path === "/cart") router.push("/cart");
-  else if (path === "/favorites") router.push("/favorites");
-  else if (path === "/orders") router.push("/orders");
-  else if (path === "/admin") router.push("/admin");
-  else if (path === "/supervisor") router.push("/supervisor");
-  else if (path === "/dashboard") {
-    const view = new URLSearchParams(query).get("view");
-    if (view === "notifications") router.push("/notifications");
-    else if (view === "account") router.push("/profile");
-    else if (view === "requests") router.push("/requests");
-    else if (view === "orders") router.push("/orders");
-    else if (view === "courses") router.push("/(tabs)/learning");
-    else router.push("/(tabs)");
-  }
+  const external = safeExternalLink(actionUrl);
+  if (external) { void Linking.openURL(external).catch(() => undefined); return; }
+  const route = resolveMobileRoute(actionUrl);
+  if (route) router.push(route);
 }

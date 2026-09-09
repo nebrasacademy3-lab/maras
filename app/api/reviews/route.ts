@@ -1,7 +1,8 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, inArray, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, courseReviews, lessonProgress, users } from "@/db/schema";
-import { cleanText, jsonError } from "@/lib/api";
+import { finiteNumber, cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { activeCourseAccessWhere } from "@/lib/course-access";
 import { getCourseCatalog } from "@/lib/catalog-store";
@@ -29,11 +30,11 @@ export async function POST(request: Request) {
   if (!user) return jsonError("سجّل الدخول لكتابة تقييم", 401);
   if (!await checkRateLimit("review", user.email, 8, 60 * 60)) return jsonError("محاولات كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات التقييم غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات التقييم غير صالحة"); }
   const courseSlug = cleanText(payload.courseSlug, 80);
-  const rating = Math.floor(Number(payload.rating));
+  const rating = finiteNumber(payload.rating);
   const body = cleanText(payload.body, 1200);
-  if (!await getCourseCatalog(courseSlug) || rating < 1 || rating > 5 || body.length < 10) return jsonError("اختر تقييمًا من 1 إلى 5 واكتب رأيًا مفيدًا");
+  if (!await getCourseCatalog(courseSlug) || !Number.isInteger(rating) || rating < 1 || rating > 5 || body.length < 10) return jsonError("اختر تقييمًا من 1 إلى 5 واكتب رأيًا مفيدًا");
   const db = getDb();
   const now = new Date().toISOString();
   const [access] = await db.select().from(courseAccess).where(activeCourseAccessWhere(user.email, courseSlug, now)).limit(1);

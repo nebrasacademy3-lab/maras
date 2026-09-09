@@ -23,14 +23,47 @@ export function seoUrl(path = "/") {
   return new URL(path, seoSiteOrigin()).toString();
 }
 export const seoSegment = (value: string) => encodeURIComponent(value);
-export function seoDescription(value: string) { return value.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180); }
+const DESCRIPTION_ENTITIES: Record<string, string> = {
+  amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ", ensp: " ", emsp: " ", thinsp: " ",
+  zwnj: "", zwj: "", lrm: "", rlm: "", shy: "", ndash: "–", mdash: "—", hellip: "…", bull: "·",
+};
+
+// Catalog copy may be pasted from rich text. Keep search snippets readable in
+// plain text, including encoded markup and invisible bidirectional controls.
+export function seoDescription(value: string, maxLength = 180) {
+  const decoded = value.replace(/&(#x[\da-f]+|#\d+|[a-z]+);/gi, (entity, key: string) => {
+    if (!key.startsWith("#")) return DESCRIPTION_ENTITIES[key.toLowerCase()] ?? entity;
+    const point = Number.parseInt(key.slice(/^#x/i.test(key) ? 2 : 1), /^#x/i.test(key) ? 16 : 10);
+    return point > 0 && point <= 0x10ffff && !(point >= 0xd800 && point <= 0xdfff) ? String.fromCodePoint(point) : " ";
+  });
+  const copy = decoded.normalize("NFKC")
+    .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, " ")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/!?\[([^\]]+)\]\([^)]*\)/g, "$1")
+    .replace(/[*_`~]+/g, "")
+    .replace(/[\p{Cc}\u200b-\u200f\u202a-\u202e\u2060-\u2069\ufeff]/gu, " ")
+    .replace(/\s+/g, " ").trim();
+  const characters = Array.from(copy);
+  if (characters.length <= maxLength) return copy;
+  const cut = characters.slice(0, Math.max(1, maxLength - 1)).join("");
+  const boundary = cut.lastIndexOf(" ");
+  return (boundary >= maxLength * 0.6 ? cut.slice(0, boundary) : cut).replace(/[\s،,;؛:—–-]+$/, "") + "…";
+}
+
+export function courseSeoDescription(course: Course) {
+  const title = seoDescription(course.title, 65);
+  const university = seoDescription(course.university || "", 55);
+  const summary = seoDescription(course.description, 90);
+  const hasPreview = course.units?.some((unit) => unit.lessons.some((lesson) => lesson.free && lesson.ready));
+  return seoDescription(`شرح ${title}${university ? ` لطلاب ${university}` : ""}.${hasPreview ? " جرّب درسًا مجانيًا قبل الاشتراك." : " استعرض الوحدات والدروس."}${summary ? ` ${summary}` : ""}`);
+}
 export function publicPageMetadata(path: string, title: string, description: string, options: { noindex?: boolean; image?: string } = {}): Metadata {
-  const canonical = seoUrl(path), copy = seoDescription(description), image = options.image || "/og.png";
+  const canonical = seoUrl(path), copy = seoDescription(description), cleanTitle = seoDescription(title, 120), image = options.image || "/og.png";
   return {
-    title, description: copy, alternates: { canonical },
+    title: cleanTitle, description: copy, alternates: { canonical },
     robots: { index: searchIndexingEnabled() && !options.noindex, follow: true, googleBot: { index: searchIndexingEnabled() && !options.noindex, follow: true, "max-image-preview": "large", "max-snippet": -1, "max-video-preview": -1 } },
-    openGraph: { type: "website", locale: "ar_SA", siteName: "مراس العلم", title, description: copy, url: canonical, images: [image] },
-    twitter: { card: "summary_large_image", title, description: copy, images: [image] },
+    openGraph: { type: "website", locale: "ar_SA", siteName: "مراس العلم", title: cleanTitle, description: copy, url: canonical, images: [image] },
+    twitter: { card: "summary_large_image", title: cleanTitle, description: copy, images: [image] },
   };
 }
 export function catalogHasFilters(params: SeoSearchParams) {
@@ -60,7 +93,7 @@ export function courseStructuredData(course: Course) {
   return { "@context": "https://schema.org", "@graph": [
     {
       "@type": "Course", "@id": seoUrl(path + "#course"), name: course.title,
-      ...(course.titleEn ? { alternateName: course.titleEn } : {}), description: course.description,
+      ...(course.titleEn ? { alternateName: course.titleEn } : {}), description: courseSeoDescription(course),
       url: seoUrl(path), inLanguage: "ar-SA", ...(course.code ? { courseCode: course.code } : {}),
       provider: { "@type": "Organization", "@id": seoUrl("/#organization"), name: "مراس العلم", url: seoUrl("/") },
       // A waitlist is not a purchasable preorder.

@@ -45,7 +45,7 @@ test("all three real templates render current-domain branded HTML and preserve l
   for (const kind of kinds) {
     const { html, variables } = await s.prepareSecurityEmail(contentFor(kind));
     assert.match(html, /<html[^>]+lang="ar"[^>]+dir="rtl"/);
-    assert.ok(html.includes(`${origin}/brand/logo-light-hq.png`));
+    assert.ok(html.includes(`${origin}/brand/mark-light.png`));
     assert.ok(html.includes(`${origin}/email-assets/x.png`));
     assert.ok(html.includes("https://x.com/our_saved_account"));
     assert.ok(html.includes("https://instagram.com/our_saved_account"));
@@ -113,7 +113,7 @@ test("development sends all three templates with local actions and public HTTPS 
       const security = kind === "reset-password" ? { kind, resetUrl: `${local}/reset-password?token=${token}` } : { kind, code: "012345" };
       const prepared = await s.prepareSecurityEmail(security);
       assert.equal(prepared.allowHostedTemplate, false);
-      assert.equal(prepared.variables.LOGO_URL, `${origin}/brand/logo-light-hq.png`);
+      assert.equal(prepared.variables.LOGO_URL, `${origin}/brand/mark-light.png`);
       assert.ok(prepared.variables.SOCIAL_1.includes(`${origin}/email-assets/x.png`));
       assert.ok(prepared.html.includes(`href="${local}/`));
       assert.doesNotMatch(prepared.html, /src="http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])/);

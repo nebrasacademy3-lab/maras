@@ -75,12 +75,12 @@ export function Screen({ children, scroll = true, padded = true, keyboard = fals
   const reveals = useScrollReveals(viewport);
   useFocusEffect(useCallback(() => {
     if (reduceMotion) entrance.setValue(1);
-    else { entrance.setValue(0); Animated.timing(entrance, { toValue: 1, duration: 480, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); }
+    else { entrance.setValue(0); Animated.timing(entrance, { toValue: 1, duration: 320, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); }
     reveals.check();
     return () => entrance.stopAnimation();
   }, [entrance, reduceMotion, reveals]));
   const footer = showFooter ? <MobileFooter /> : null;
-  const animatedContent = <Animated.View style={[styles.screenContent, { direction, opacity: entrance, transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [14, 0] }) }] }]}>{children}{footer}</Animated.View>;
+  const animatedContent = <Animated.View style={[styles.screenContent, { direction, opacity: entrance.interpolate({ inputRange: [0, 1], outputRange: [.92, 1] }), transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>{children}{footer}</Animated.View>;
   const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} onScroll={reveals.check} scrollEventThrottle={64} onContentSizeChange={reveals.check} style={{ direction }} contentContainerStyle={[styles.scroll, padded && styles.padded, { direction }, style]}>{animatedContent}</ScrollView> : <View style={[styles.flex, padded && styles.padded, { direction }, style]}>{animatedContent}</View>;
   const measuredContent = <View ref={viewport} collapsable={false} onLayout={reveals.check} style={styles.flex}>{content}</View>;
   return <ScrollRevealContext.Provider value={scroll ? reveals : null}><SafeAreaView edges={["top", "left", "right"]} style={[styles.flex, { backgroundColor: colors.background, direction }]}>{keyboard ? <KeyboardAvoidingView style={[styles.flex, { direction }]} behavior={Platform.OS === "ios" ? "padding" : "height"}>{measuredContent}</KeyboardAvoidingView> : measuredContent}</SafeAreaView></ScrollRevealContext.Provider>;
@@ -93,12 +93,13 @@ export function FadeIn({ children, delay = 0, style }: { children: React.ReactNo
   const view = useRef<View>(null);
   useEffect(() => {
     if (reduceMotion) { value.setValue(1); return; }
-    const reveal = () => Animated.timing(value, { toValue: 1, delay: Math.min(240, Math.max(0, delay)), duration: 560, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
+    const reveal = () => Animated.timing(value, { toValue: 1, delay: Math.min(240, Math.max(0, delay)), duration: 420, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start();
     const unregister = reveals?.register(view, reveal);
     if (!reveals) reveal();
     return () => { unregister?.(); value.stopAnimation(); };
   }, [delay, reduceMotion, value, reveals]);
-  return <Animated.View ref={view} collapsable={false} onLayout={reveals?.check} style={[style, { opacity: value, transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [22, 0] }) }, { scale: value.interpolate({ inputRange: [0, 1], outputRange: [.985, 1] }) }] }]}>{children}</Animated.View>;
+  // Content stays readable if native measurement is delayed or unavailable.
+  return <Animated.View ref={view} collapsable={false} onLayout={reveals?.check} style={[style, { opacity: value.interpolate({ inputRange: [0, 1], outputRange: [.8, 1] }), transform: [{ translateY: value.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }] }]}>{children}</Animated.View>;
 }
 
 export function AppButton({ title, onPress, icon, variant = "primary", disabled = false, loading = false, full = true }: { title: string; onPress?: () => void; icon?: React.ComponentProps<typeof Ionicons>["name"]; variant?: "primary" | "soft" | "ghost" | "danger"; disabled?: boolean; loading?: boolean; full?: boolean }) {
@@ -107,14 +108,15 @@ export function AppButton({ title, onPress, icon, variant = "primary", disabled 
   const reduceMotion = useReduceMotion();
   const contentColor = variant === "primary" || variant === "danger" ? "#FFFFFF" : colors.primary;
   const background = variant === "primary" ? colors.primary : variant === "danger" ? colors.danger : variant === "soft" ? colors.surfaceAlt : "transparent";
-  return <Pressable accessibilityRole="button" disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { direction, flexDirection: rowDirection, backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, opacity: disabled ? .45 : pressed ? .8 : 1, transform: [{ scale: pressed && !reduceMotion ? .97 : 1 }] }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { direction, flexDirection: rowDirection, backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, opacity: disabled ? .45 : pressed ? .8 : 1, transform: [{ scale: pressed && !reduceMotion ? .97 : 1 }] }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
 }
 
 export function Field({ label, error, icon, trailing, inputDirection = "natural", ...props }: TextInputProps & { label: string; error?: string; icon?: React.ComponentProps<typeof Ionicons>["name"]; trailing?: React.ReactNode; inputDirection?: "natural"|"ltr" }) {
   const { colors } = useTheme();
-  const { direction, textAlign } = useLanguage();
+  const { direction, textAlign, t } = useLanguage();
+  const [focused, setFocused] = useState(false);
   const ltr = inputDirection === "ltr";
-  return <View style={[styles.fieldWrap, { direction }]}><Text style={[styles.label, { color: colors.text, textAlign }]}>{label}</Text><View style={[styles.inputWrap, { direction, backgroundColor: colors.surface, borderColor: error ? colors.danger : colors.border }]}>{icon && <Ionicons name={icon} size={19} color={colors.textSoft} />}<TextInput {...props} placeholderTextColor={colors.textSoft} selectionColor={colors.primary} style={[styles.input, ltr && styles.inputLtr, { color: colors.text }, props.style]} />{trailing ? <View style={styles.trailing}>{trailing}</View> : null}</View>{error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}</View>;
+  return <View style={[styles.fieldWrap, { direction }]}><Text style={[styles.label, { color: colors.text, textAlign }]}>{label}</Text><View style={[styles.inputWrap, { direction, backgroundColor: colors.surface, borderColor: error ? colors.danger : focused ? colors.primary : colors.border, opacity: props.editable === false ? .6 : 1 }]}>{icon && <Ionicons name={icon} size={19} color={colors.textSoft} />}<TextInput {...props} accessibilityLabel={props.accessibilityLabel || t(label)} onFocus={(event) => { setFocused(true); props.onFocus?.(event); }} onBlur={(event) => { setFocused(false); props.onBlur?.(event); }} placeholderTextColor={colors.textSoft} selectionColor={colors.primary} style={[styles.input, ltr && styles.inputLtr, { color: colors.text }, props.style]} />{trailing ? <View style={styles.trailing}>{trailing}</View> : null}</View>{error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}</View>;
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
@@ -153,7 +155,7 @@ export function HeroGradient({ children }: { children: React.ReactNode }) {
 const styles = StyleSheet.create({
   flex: { flex: 1, minWidth: 0 }, screenContent: { flexGrow: 1, width: "100%", maxWidth: 1160, alignSelf: "center" }, scroll: { flexGrow: 1, paddingBottom: 120 }, padded: { paddingHorizontal: metrics.screen },
   button: { minHeight: 50, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }, buttonFull: { width: "100%" }, buttonText: { fontSize: 14, lineHeight: 22, fontWeight: "800", flexShrink: 1, textAlign: "center" },
-  fieldWrap: { gap: 7, marginBottom: 14 }, label: { fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, inputWrap: { minHeight: 52, borderWidth: 1, borderRadius: 15, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 9 }, input: { flex: 1, minHeight: 50, fontSize: 14 }, trailing: { flexShrink: 0, alignItems: "center", justifyContent: "center" }, inputLtr: { writingDirection: "ltr", textAlign: "left" }, error: { fontSize: 11, textAlign: "right" },
+  fieldWrap: { gap: 7, marginBottom: 14 }, label: { fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, inputWrap: { minHeight: 56, borderWidth: 1, borderRadius: 15, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 9 }, input: { flex: 1, minWidth: 0, minHeight: 54, paddingVertical: 12, fontSize: 15 }, trailing: { flexShrink: 0, alignItems: "center", justifyContent: "center" }, inputLtr: { writingDirection: "ltr", textAlign: "left" }, error: { fontSize: 11, textAlign: "right" },
   card: { borderRadius: metrics.radius, borderWidth: 1, padding: 16, shadowColor: "#061A42", shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
   sectionHead: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 12, marginTop: 24, marginBottom: 12 }, sectionTitle: { fontSize: 21, fontWeight: "900", textAlign: "right", writingDirection: "rtl" }, sectionSub: { fontSize: 11, lineHeight: 18, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
   search: { minHeight: 52, borderWidth: 1, borderRadius: 17, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 9 }, searchInput: { flex: 1, minHeight: 50, fontSize: 14, writingDirection: "rtl" },

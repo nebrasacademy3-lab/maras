@@ -49,31 +49,34 @@ async function getAssistantPrograms(catalog: Pick<LiveAssistantCatalog, "institu
   try {
     const db = getDb();
     const [specialties, links] = await Promise.all([db.select().from(catalogSpecialties), db.select().from(institutionSpecialties)]);
-    const publishedLinks = links.filter((link) => link.status === "published");
+    const visibleInstitutions = new Set(catalog.institutions.map((institution) => institution.slug));
+    const publishedLinks = links.filter((link) => link.status === "published" && visibleInstitutions.has(link.institutionSlug));
     const dynamic = specialties.filter((row) => row.status === "published").flatMap((row) => {
       const institutionSlugs = publishedLinks.filter((link) => link.specialtySlug === row.slug).map((link) => link.institutionSlug);
       return institutionSlugs.length ? [{ slug: row.slug, name: row.name, description: clipped(row.description), faculty: row.faculty || undefined, degree: row.degree || undefined, institutionSlugs }] : [];
     });
     return mergePrograms([...dynamic, ...catalog.courses.map((course) => ({ name: course.specialty, institutionSlugs: [course.universitySlug] }))]);
   } catch {
-    return fallbackPrograms(catalog);
+    return mergePrograms(catalog.courses.map((course) => ({ name: course.specialty, institutionSlugs: [course.universitySlug] })));
   }
 }
 
 export async function getAssistantLiveCatalog(): Promise<LiveAssistantCatalog> {
   const [institutions, courses] = await Promise.all([getInstitutionsCatalog(), getCoursesCatalog()]);
-  const programs = await getAssistantPrograms({ institutions, courses });
-  return { institutions, courses, programs };
+  const visible = new Set(institutions.map((institution) => institution.slug));
+  const visibleCourses = courses.filter((course) => visible.has(course.universitySlug));
+  const programs = await getAssistantPrograms({ institutions, courses: visibleCourses });
+  return { institutions, courses: visibleCourses, programs };
 }
 
 async function getAssistantSettings(settings: PublicSettings): Promise<AssistantSetting[]> {
   const meta = SETTING_META as Record<string, { label: string; category: string; isPublic: boolean }>;
   const values = new Map<string, AssistantSetting>();
-  for (const [key, value] of Object.entries(settings)) values.set(key, { key, value: clipped(value), label: meta[key]?.label || key.replace(/_/g, " "), category: meta[key]?.category || "general" });
+  for (const [key, value] of Object.entries(settings)) if (meta[key]?.isPublic !== false) values.set(key, { key, value: clipped(value), label: meta[key]?.label || key.replace(/_/g, " "), category: meta[key]?.category || "general" });
   if (process.env.DATABASE_URL) {
     try {
       const rows = await getDb().select({ key: platformSettings.key, value: platformSettings.value, category: platformSettings.category }).from(platformSettings).where(eq(platformSettings.isPublic, true));
-      for (const row of rows) values.set(row.key, { key: row.key, value: clipped(row.value), label: meta[row.key]?.label || row.key.replace(/_/g, " "), category: row.category });
+      for (const row of rows) if (meta[row.key]?.isPublic !== false) values.set(row.key, { key: row.key, value: clipped(row.value), label: meta[row.key]?.label || row.key.replace(/_/g, " "), category: row.category });
     } catch { /* Typed public settings remain available. */ }
   }
   return [...values.values()].filter((row) => row.value).slice(0, 100);
@@ -104,7 +107,8 @@ export function buildAssistantSearchDocuments(catalog: LiveAssistantCatalog, set
     });
   }
   for (const course of catalog.courses) {
-    const freeLessons = course.units.flatMap((unit) => unit.lessons).filter((lesson) => lesson.free).length;
+    if (!institutionBySlug.has(course.universitySlug)) continue;
+    const freeLessons = course.units.flatMap((unit) => unit.lessons).filter((lesson) => lesson.free && lesson.ready === true).length;
     documents.push({
       id: `course:${course.slug}`,
       type: "course",
@@ -112,7 +116,7 @@ export function buildAssistantSearchDocuments(catalog: LiveAssistantCatalog, set
       aliases: [course.titleEn, course.code || "", course.slug].filter(Boolean),
       keywords: ["مادة", "مقرر", "course", "subject", course.university, course.specialty, course.instructor],
       href: `/courses/${course.slug}`,
-      content: `المادة=${course.title}; الاسم الإنجليزي=${course.titleEn || "غير منشور"}; الرمز=${course.code || "غير منشور"}; الجامعة=${course.university}; التخصص=${course.specialty}; السعر=${course.price} SAR; مدة الوصول=${course.access}; المدة=${course.duration}; الدروس=${course.lessons}; الدروس المجانية=${freeLessons}; الجاهزية=${course.availableForPurchase === false ? "غير مفتوحة للشراء" : "مفتوحة بحسب صلاحية الحساب"}; الوصف=${clipped(course.description)}.`,
+      content: `المادة=${course.title}; الاسم الإنجليزي=${course.titleEn || "غير منشور"}; الرمز=${course.code || "غير منشور"}; الجامعة=${course.university}; التخصص=${course.specialty}; السعر=${course.price} SAR; مدة الوصول=${course.access}; المدة=${course.duration}; الدروس=${course.lessons}; الدروس المجانية=${freeLessons}; الجاهزية=${course.availableForPurchase === true ? "مفتوحة بحسب صلاحية الحساب" : "غير مفتوحة للشراء"}; الوصف=${clipped(course.description)}.`,
     });
     course.units.forEach((unit, unitIndex) => {
       documents.push({
@@ -131,7 +135,7 @@ export function buildAssistantSearchDocuments(catalog: LiveAssistantCatalog, set
         aliases: [`${course.title} ${lesson.title}`, `${course.titleEn} ${lesson.title}`],
         keywords: ["درس", "محاضرة", "فيديو", "lesson", "lecture", "video", course.title, course.code || "", unit.title],
         href: `/courses/${course.slug}`,
-        content: `الدرس=${lesson.title}; المادة=${course.title}; الوحدة=${unit.title}; المدة=${lesson.duration}; تجريبي مجاني=${lesson.free ? "نعم" : "لا"}; الفيديو جاهز=${lesson.ready === false ? "لا" : "نعم"}; الوصف=${clipped(lesson.description) || "غير منشور"}.`,
+        content: `الدرس=${lesson.title}; المادة=${course.title}; الوحدة=${unit.title}; المدة=${lesson.duration}; تجريبي مجاني=${lesson.free ? "نعم" : "لا"}; الفيديو جاهز=${lesson.ready === true ? "نعم" : "لا"}; الوصف=${clipped(lesson.description) || "غير منشور"}.`,
       }));
     });
   }
@@ -163,6 +167,11 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     settings.social_instagram ? `Instagram=${settings.social_instagram}` : "",
     settings.social_tiktok ? `TikTok=${settings.social_tiktok}` : "",
     settings.social_youtube ? `YouTube=${settings.social_youtube}` : "",
+    settings.social_telegram ? `Telegram=${settings.social_telegram}` : "",
+    settings.social_linkedin ? `LinkedIn=${settings.social_linkedin}` : "",
+    settings.social_facebook ? `Facebook=${settings.social_facebook}` : "",
+    settings.social_snapchat ? `Snapchat=${settings.social_snapchat}` : "",
+    settings.social_threads ? `Threads=${settings.social_threads}` : "",
   ].filter(Boolean).join("، ") || "لا توجد روابط اجتماعية منشورة حاليًا";
   let privateContext = "";
   if (user) {

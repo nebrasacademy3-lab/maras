@@ -1,10 +1,13 @@
 "use client";
+import { authRequest } from "@/lib/auth-request";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Mail, RefreshCw, ShieldCheck } from "lucide-react";
 import { safeAccountReturnTo } from "@/lib/account-readiness";
 import styles from "./verify-email-form.module.css";
+import ui from "./security-form.module.css";
+import { VerificationCodeInput } from "./verification-code-input";
 
 type Result = { error?: string; next?: string; emailVerified?: boolean; alreadyVerified?: boolean; deliveryConfigured?: boolean; cooldownSeconds?: number; retryAfterSeconds?: number; expiresInSeconds?: number; codeSent?: boolean };
 async function readResult(response: Response): Promise<Result> {
@@ -19,6 +22,7 @@ function continueAccount(next = "/dashboard") {
   const returnTo = safeAccountReturnTo(new URLSearchParams(window.location.search).get("return_to") || saved);
   if (next === "/complete-profile" || next === "/onboarding") {
     try { sessionStorage.setItem("meras_return_to", returnTo); } catch { /* URL carries the return path too. */ }
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Email confirmation changes account readiness; reload server guards and cached client account state.
     window.location.assign(`${next}?return_to=${encodeURIComponent(returnTo)}`);
   } else {
     try { sessionStorage.removeItem("meras_return_to"); } catch { /* Optional cache. */ }
@@ -37,22 +41,23 @@ export function VerifyEmailForm({ email }: { email: string }) {
   const alive = useRef(true);
 
   const send = useCallback(async () => {
-    setBusy("sending"); setError("");
+    setBusy("sending"); setError(""); setNotice("");
     try {
-      const result = await readResult(await fetch("/api/auth/email-verification", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "send" }) }));
+      const result = await readResult(await authRequest("/api/auth/email-verification", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "send" }) }));
       if (!alive.current) return;
       if (result.alreadyVerified) { continueAccount(result.next); return; }
+      setCode("");
       setCooldown(result.retryAfterSeconds || 60);
       setNotice("أرسلنا رمزًا من 6 أرقام إلى بريدك. تحقق أيضًا من البريد غير المرغوب فيه.");
       input.current?.focus();
-    } catch (caught) { if (alive.current) setError(caught instanceof Error ? caught.message : "تعذر إرسال الرمز"); }
+    } catch (caught) { if (alive.current) setError(caught instanceof Error && !["TypeError", "TimeoutError", "AbortError"].includes(caught.name) ? caught.message : "تعذر إرسال الرمز"); }
     finally { if (alive.current) setBusy(""); }
   }, []);
 
   useEffect(() => {
     alive.current = true;
     const controller = new AbortController();
-    void fetch("/api/auth/email-verification", { credentials: "same-origin", cache: "no-store", signal: controller.signal }).then(readResult).then(async result => {
+    void authRequest("/api/auth/email-verification", { credentials: "same-origin", cache: "no-store", signal: controller.signal }).then(readResult).then(async result => {
       if (controller.signal.aborted) return;
       if (result.emailVerified) { continueAccount(result.next); return; }
       setConfigured(result.deliveryConfigured !== false);
@@ -60,7 +65,7 @@ export function VerifyEmailForm({ email }: { email: string }) {
       if (result.deliveryConfigured === false) { setError("إرسال البريد غير متاح حاليًا. يمكنك التصفح والتواصل مع الدعم، وسيبقى الشراء متاحًا بعد تأكيد بريدك."); setBusy(""); }
       else if (!result.codeSent && !result.cooldownSeconds) await send();
       else { setNotice("أدخل آخر رمز أُرسل إلى بريدك. تأكيد البريد مطلوب مرة واحدة فقط."); setBusy(""); }
-    }).catch(caught => { if (!controller.signal.aborted) { setError(caught instanceof Error ? caught.message : "تعذر تحميل حالة البريد"); setBusy(""); } });
+    }).catch(caught => { if (!controller.signal.aborted) { setError(caught instanceof Error && !["TypeError", "TimeoutError", "AbortError"].includes(caught.name) ? caught.message : "تعذر تحميل حالة البريد"); setBusy(""); } });
     return () => { alive.current = false; controller.abort(); };
   }, [send]);
   useEffect(() => {
@@ -74,15 +79,15 @@ export function VerifyEmailForm({ email }: { email: string }) {
     if (busy) return;
     setBusy("verifying"); setError("");
     try {
-      const result = await readResult(await fetch("/api/auth/email-verification", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "verify", code }) }));
+      const result = await readResult(await authRequest("/api/auth/email-verification", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "verify", code }) }));
       if (alive.current) continueAccount(result.next);
-    } catch (caught) { if (alive.current) { setError(caught instanceof Error ? caught.message : "تعذر تأكيد البريد"); setBusy(""); } }
+    } catch (caught) { if (alive.current) { setError(caught instanceof Error && !["TypeError", "TimeoutError", "AbortError"].includes(caught.name) ? caught.message : "تعذر تأكيد البريد"); setBusy(""); } }
   }
 
-  return <div className={styles.panel} dir="rtl"><span className={styles.icon}><Mail size={30} /></span><div className="auth-heading"><span>خطوة واحدة لحساب موثوق</span><h1>أكّد بريدك الإلكتروني</h1><p>نؤكد ملكية بريدك مرة واحدة لحماية حسابك ومشترياتك، وليس قبل كل عملية شراء.</p></div><strong className={styles.email} dir="ltr">{email}</strong>
-    <form className="auth-form" onSubmit={verify} aria-busy={Boolean(busy)}><label className="form-label" htmlFor="email-code">رمز التحقق<input ref={input} id="email-code" className={styles.code} inputMode="numeric" autoComplete="one-time-code" dir="ltr" maxLength={6} minLength={6} required pattern="[0-9٠-٩۰-۹]{6}" value={code} onChange={event => setCode(event.target.value.replace(/[^0-9٠-٩۰-۹]/g, "").slice(0, 6))} placeholder="000000" /></label>
-      {notice && <p className={styles.notice} role="status"><CheckCircle2 size={17} />{notice}</p>}{error && <p className="form-error" role="alert">{error}</p>}
-      <button className="button button-primary auth-submit" disabled={Boolean(busy) || code.length !== 6}>{busy === "verifying" ? "جارٍ التأكيد…" : <>تأكيد البريد والمتابعة <ArrowLeft size={17} /></>}</button>
-      <button className="button button-soft" type="button" disabled={Boolean(busy) || cooldown > 0 || !configured} onClick={() => void send()}><RefreshCw size={15} />{busy === "sending" ? "جارٍ الإرسال…" : cooldown ? `إعادة الإرسال بعد ${cooldown} ثانية` : "إرسال رمز جديد"}</button>
-    </form><p className={styles.security}><ShieldCheck size={16} />الرمز صالح 10 دقائق ولمرة واحدة. لا تشاركه مع أحد.</p><Link className={styles.browse} href="/courses">متابعة تصفح المواد</Link></div>;
+  return <div className={ui.panel} dir="rtl"><span className={ui.icon}><Mail size={29} /></span><div className={ui.heading}><span className={ui.eyebrow}>خطوة أخيرة، وتبدأ رحلتك</span><h1>بريدك هو مفتاح حسابك</h1><p>أدخل الرمز المرسل إلى بريدك لتأكيد ملكيته وحماية حسابك ومشترياتك.</p></div><div className={styles.email}><Mail size={18} aria-hidden="true" /><span dir="ltr">{email}</span></div>
+    <form className={ui.form} onSubmit={verify} aria-busy={Boolean(busy)}><label className={ui.field} htmlFor="email-code">رمز التحقق<VerificationCodeInput id="email-code" inputRef={input} value={code} onChange={value => { setCode(value); setError(""); }} invalid={Boolean(error) && code.length > 0} disabled={busy === "verifying"} /></label><p id="email-code-hint" className={ui.hint}>ستة أرقام، من اليسار إلى اليمين. يمكنك لصق الرمز كاملًا.</p>
+      {notice && <p className={ui.success} role="status"><CheckCircle2 size={17} />{notice}</p>}{error && <p className={ui.error} role="alert">{error}</p>}
+      <div className={ui.actions}><button className={`button button-primary ${ui.submit}`} disabled={Boolean(busy) || code.length !== 6}>{busy === "verifying" ? "جارٍ التأكيد…" : <>تأكيد البريد والمتابعة <ArrowLeft size={17} /></>}</button>
+      <button className={`button button-soft ${ui.submit}`} type="button" disabled={Boolean(busy) || cooldown > 0 || !configured} onClick={() => void send()}><RefreshCw size={15} />{busy === "sending" ? "جارٍ الإرسال…" : busy === "loading" ? "جارٍ تجهيز التحقق…" : cooldown ? `إعادة الإرسال بعد ${cooldown} ثانية` : "إرسال رمز جديد"}</button></div>
+    </form><p className={ui.note}><ShieldCheck size={18} />الرمز صالح 10 دقائق ولمرة واحدة. تأكيد البريد مطلوب مرة واحدة لحسابك.</p><details className={styles.help}><summary>لم تصلني الرسالة</summary><p>تحقق من مجلد الرسائل غير المرغوب فيها، وتأكد من البريد الموضح أعلاه. إذا احتجت المساعدة، <Link href="/contact">تواصل مع فريق مراس</Link>.</p></details><Link className={ui.link} href="/courses">متابعة تصفح المواد</Link></div>;
 }

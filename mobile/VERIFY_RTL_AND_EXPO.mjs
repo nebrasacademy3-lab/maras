@@ -1,43 +1,7 @@
-import fs from 'node:fs';
-import path from 'node:path';
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
-const root = process.cwd();
-const read = (p) => fs.readFileSync(path.join(root, p), 'utf8');
-const pkg = JSON.parse(read('package.json'));
-const lock = JSON.parse(read('package-lock.json'));
-const checks = [];
-const check = (name, ok) => { checks.push([name, Boolean(ok)]); };
-
-check('expo-asset is a direct SDK 57 dependency', pkg.dependencies?.['expo-asset'] === '~57.0.15');
-check('package-lock root contains expo-asset', lock.packages?.['']?.dependencies?.['expo-asset'] === '~57.0.15');
-check('package-lock resolves expo-asset 57.0.15', lock.packages?.['node_modules/expo-asset']?.version === '57.0.15');
-check('LanguageProvider applies native RTL + logical root direction', /forceRTL\(rtl\)/.test(read('src/providers/LanguageProvider.tsx')) && /direction: value\.direction/.test(read('src/providers/LanguageProvider.tsx')));
-check('Screen propagates direction into SafeArea/ScrollView', /contentContainerStyle=.*direction/.test(read('src/components/ui.tsx')) && /backgroundColor: colors\.background, direction/.test(read('src/components/ui.tsx')));
-check('ScaledText resolves mixed Arabic/English direction from content', /directionForText\(textFromNode\(children, t\)/.test(read('src/components/ScaledText.tsx')) && /contentDirection === "rtl" \? "right" : "left"/.test(read('src/components/ScaledText.tsx')));
-check('ScaledTextInput owns field alignment and technical LTR', /requestedTextAlign === "center"/.test(read('src/components/ScaledTextInput.tsx')) && /directionForText\(currentText/.test(read('src/components/ScaledTextInput.tsx')) && /contentDirection === "rtl" \? "right" : "left"/.test(read('src/components/ScaledTextInput.tsx')));
-check('Login layout is direction-aware', /rowDirection/.test(read('app/(auth)/login.tsx')) && /alignSelf: "flex-start"/.test(read('app/(auth)/login.tsx')));
-check('Register layout is direction-aware', /flexDirection: rowDirection/.test(read('app/(auth)/register.tsx')));
-check('Tabs scene is direction-aware and translated', /sceneStyle: \{ direction \}/.test(read('app/(tabs)/_layout.tsx')) && /title: t\("الرئيسية"\)/.test(read('app/(tabs)/_layout.tsx')));
-check('No TextInput is hard-forced to textAlign="right"', !scan(/textAlign="right"/));
-check('No view is hard-forced to direction: "ltr"', !scan(/direction:\s*"ltr"/));
-check('Preview build points to the official backend domain', JSON.parse(read('eas.json')).build.preview.env.EXPO_PUBLIC_API_URL === 'https://marasalelm.com');
-
-function scan(regex) {
-  for (const base of ['app', 'src']) {
-    const stack = [path.join(root, base)];
-    while (stack.length) {
-      const dir = stack.pop();
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const full = path.join(dir, entry.name);
-        if (entry.isDirectory()) stack.push(full);
-        else if (/\.tsx?$/.test(entry.name) && regex.test(fs.readFileSync(full, 'utf8'))) return full;
-      }
-    }
-  }
-  return null;
-}
-
-for (const [name, ok] of checks) console.log(`${ok ? '✓' : '✗'} ${name}`);
-const passed = checks.filter(([, ok]) => ok).length;
-console.log(`\n${passed}/${checks.length} checks passed`);
-if (passed !== checks.length) process.exit(1);
+// Run behavior regressions rather than relying on obsolete source-code patterns.
+const result = spawnSync(process.execPath, ["--test","--test-name-pattern=Arabic|code cells|one-time|Expo Go|native builds|scroll|motion|floating|native channels","tests/account-responsive-behavior.test.mjs","tests/runtime-regressions.test.mjs","tests/social-motion-behavior.test.mjs"], { cwd: fileURLToPath(new URL(".", import.meta.url)), stdio: "inherit" });
+if (result.error) console.error(result.error.message);
+process.exit(result.status ?? 1);

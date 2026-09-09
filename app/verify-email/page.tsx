@@ -16,5 +16,5 @@ export default async function VerifyEmailPage({ searchParams }: { searchParams: 
     const next = accountNext(user);
     redirect(next === "/dashboard" ? (returnTo.startsWith("/verify-email") ? "/dashboard" : returnTo) : `${next}?return_to=${encodeURIComponent(returnTo)}`);
   }
-  return <AuthShell mode="register"><VerifyEmailForm email={user.email} /></AuthShell>;
+  return <AuthShell mode="verify"><VerifyEmailForm email={user.email} /></AuthShell>;
 }

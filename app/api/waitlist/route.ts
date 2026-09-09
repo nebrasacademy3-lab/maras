@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { analyticsEvents, courseWaitlist } from "@/db/schema";
@@ -25,7 +26,7 @@ export async function POST(request: Request) {
   if (!user) return jsonError("سجّل الدخول ليصلك إشعار عند إطلاق المادة", 401);
   if (!await checkRateLimit("waitlist-write", `user:${user.id}`, 20, 60)) return jsonError("محاولات كثيرة. حاول بعد دقيقة.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("الطلب غير صالح"); }
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("الطلب غير صالح"); }
   const { courseSlug, course } = await courseFromPayload(payload);
   if (!course) return jsonError("المادة غير موجودة أو غير منشورة", 404);
   if (course.availableForPurchase) return jsonError("المادة متاحة الآن ويمكنك الاشتراك مباشرة", 409);
@@ -43,7 +44,7 @@ export async function DELETE(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("الطلب غير صالح"); }
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("الطلب غير صالح"); }
   const courseSlug = cleanText(payload.courseSlug, 120).replace(/[^A-Za-z0-9_-]/g, "");
   if (!courseSlug) return jsonError("المادة مطلوبة");
   await getDb().update(courseWaitlist).set({ status: "cancelled", updatedAt: new Date().toISOString() }).where(and(eq(courseWaitlist.userEmail, user.email), eq(courseWaitlist.courseSlug, courseSlug)));

@@ -198,8 +198,9 @@ export function HomeGateway({
             <br />
             <em>{firstName ? "نكملها خطوة أبعد؟" : "ويكبر الطموح."}<svg viewBox="0 0 560 20" aria-hidden="true" preserveAspectRatio="none"><path d="M5 13 Q250 -5 555 9" /></svg></em>
           </h1>
-          <p>مواد جامعتك بشرح يقرّب البعيد، وأدوات تجعل للمذاكرة معنى جديدًا.<br className={styles.desktopBreak} /> من أول سؤال إلى لحظة الفهم؛ هذه مساحتك في مراس.</p>
+          <p>شروحات مقررات جامعية، تبدأ من جامعتك وتصل بك إلى فهم أعمق.<br className={styles.desktopBreak} /> جرّب الشرح المتاح، رتّب مراجعتك، وأكمل من حيث توقفت.</p>
 
+          <div className={styles.heroActions}><Link href="/courses">اكتشف مادتك <ArrowLeft size={17} /></Link><Link href="/how-it-works"><Play size={15} /> كيف تبدأ مع مراس؟</Link></div>
           <div className={styles.intentShell}>
             <div className={styles.intentTabs} role="tablist" aria-label="اختر ما تريد إنجازه">
               {tabs.map(({ id, label, icon: Icon }) => (

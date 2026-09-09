@@ -98,7 +98,7 @@ test("successful reset email carries the opaque one-time link while database sto
   assert.ok(link);
   const opaque = link[1]; assert.match(opaque, /^[A-Za-z0-9_-]{43}$/);
   assert.ok(email.html.includes(`https://meras.example/reset-password?token=${opaque}`));
-  assert.ok(email.html.includes("https://meras.example/brand/logo-light-hq.png"));
+  assert.ok(email.html.includes("https://meras.example/brand/mark-light.png"));
   assert.ok(email.html.includes("https://x.com/real_test_account"));
   assert.doesNotMatch(email.html, /\{\{\{|marase\.up\.railway\.app/);
   assert.equal(email.template, undefined);

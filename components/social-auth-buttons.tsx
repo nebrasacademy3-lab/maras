@@ -41,6 +41,7 @@ export function SocialAuthButtons() {
     if (returnTo) query.set("return_to", returnTo);
     const referral = params.get("ref");
     if (referral && /^[A-Za-z0-9_-]{3,64}$/.test(referral)) query.set("ref", referral);
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- OAuth start sets cookies and redirects the top-level document to an external identity provider.
     window.location.assign(`/api/auth/oauth/${provider}/start?${query}`);
   }
   if (!providers.google && !providers.apple && !error) return null;

@@ -65,7 +65,7 @@ test("same-origin fullscreen stays allowed while document capture and picture-in
 
 test("only public email artwork and the explicit email logo permit cross-origin embedding", async () => {
   const headersFor = await configuration();
-  for (const path of ["/email-assets/x.png", "/email-assets/whatsapp.png", "/brand/logo-light-hq.png"]) {
+  for (const path of ["/email-assets/x.png", "/email-assets/whatsapp.png", "/brand/logo-light-hq.png", "/brand/mark-light.png", "/brand/app-icon.png"]) {
     const headers = headersFor(path);
     assert.equal(headers.get("cross-origin-resource-policy"), "cross-origin", path);
     assert.equal(headers.get("access-control-allow-origin"), "*", path);

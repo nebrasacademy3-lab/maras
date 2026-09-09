@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { getCoursesCatalog } from "@/lib/catalog-store";
@@ -9,7 +10,7 @@ export async function POST(request: Request) {
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
   if (!await checkRateLimit("coupon-quote", `user:${user.id}`, 60, 60)) return jsonError("محاولات كوبون كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; }
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); }
   catch { return jsonError("بيانات غير صالحة"); }
   const requestedSlugs = Array.isArray(payload.courseSlugs) ? payload.courseSlugs.map((slug) => cleanText(slug, 120)).filter(Boolean).slice(0, 30) : [cleanText(payload.courseSlug, 120)].filter(Boolean);
   const courses = await getCoursesCatalog();

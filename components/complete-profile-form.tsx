@@ -24,6 +24,7 @@ export function CompleteProfileForm({ initial, institutions }: { initial: { full
       const returnTo = safeAccountReturnTo(new URLSearchParams(window.location.search).get("return_to") || stored);
       if (data.next === "/verify-email" || data.next === "/onboarding") {
         try { sessionStorage.setItem("meras_return_to", returnTo); } catch { /* URL retains the next step. */ }
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Profile completion changes account readiness; reload server guards and client account state together.
         window.location.assign(`${data.next}?return_to=${encodeURIComponent(returnTo)}`);
       } else {
         try { sessionStorage.removeItem("meras_return_to"); } catch { /* Optional storage. */ }

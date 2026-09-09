@@ -1,6 +1,6 @@
 import type { SessionUser } from "@/lib/auth";
 import type { AssistantAction, AssistantIntent, AssistantReply } from "@/lib/assistant-knowledge";
-import type { PublicSettings } from "@/lib/platform-settings";
+import { whatsappHref, type PublicSettings } from "@/lib/platform-settings";
 
 type HistoryItem = { role: "user" | "assistant"; text: string };
 type ChatResponse = { choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }> };
@@ -12,40 +12,63 @@ const INTERNAL_ROUTES = [
 ];
 
 function safeInternalHref(href: string, user: SessionUser | null) {
-  if (!href.startsWith("/") || href.startsWith("//") || href.includes("\\")) return false;
-  const path = href.split(/[?#]/)[0];
-  if (!INTERNAL_ROUTES.some((route) => path === route || path.startsWith(`${route}/`))) return false;
-  if (path.startsWith("/admin") && user?.role !== "admin") return false;
-  if (path.startsWith("/supervisor") && !user?.role?.match(/admin|supervisor/)) return false;
-  return true;
+  if (!href.startsWith("/") || href.startsWith("//") || href.includes("\\") || /\s/u.test(href)) return false;
+  try {
+    // Authorize the path the browser actually opens, after URL normalization.
+    // Encoded separators and double encoding must never bypass a role check.
+    const url = new URL(href, "https://assistant.internal");
+    if (url.origin !== "https://assistant.internal" || /%(?:2f|5c|25|00)/i.test(url.pathname)) return false;
+    const path = decodeURIComponent(url.pathname);
+    if (path.includes("\\") || path.includes("//") || /\p{Cc}/u.test(path)) return false;
+    if (!INTERNAL_ROUTES.some((route) => path === route || (route !== "/" && path.startsWith(`${route}/`)))) return false;
+    if (path.startsWith("/admin") && user?.role !== "admin") return false;
+    if (path.startsWith("/supervisor") && user?.role !== "admin" && user?.role !== "supervisor") return false;
+    const canonicalPath = (path.replace(/\/+$/, "") || "/").split("/").map((segment) => encodeURIComponent(segment)).join("/");
+    return `${canonicalPath}${url.search}${url.hash}`;
+  } catch { return false; }
 }
 
-function allowedExternalOrigins(settings: PublicSettings) {
-  const values = [settings.social_x, settings.social_instagram, settings.social_tiktok, settings.social_youtube, settings.social_telegram, settings.social_linkedin, settings.social_facebook, settings.social_snapchat, settings.social_threads];
-  const origins = new Set<string>(["https://wa.me"]);
+function publishedExternalLinks(settings: PublicSettings) {
+  const values = [settings.social_x, settings.social_instagram, settings.social_tiktok, settings.social_youtube, settings.social_telegram, settings.social_linkedin, settings.social_facebook, settings.social_snapchat, settings.social_threads, whatsappHref(settings)];
+  const links = new Set<string>();
   for (const value of values) {
-    try { if (value) origins.add(new URL(value).origin); } catch { /* Invalid optional value is ignored. */ }
+    try {
+      if (!value) continue;
+      const url = new URL(value);
+      if (url.protocol !== "https:" || url.username || url.password) continue;
+      url.hash = "";
+      links.add(url.toString());
+    } catch { /* Invalid optional value is ignored. */ }
   }
-  return origins;
+  return links;
 }
 
-function sanitizeActions(value: unknown, user: SessionUser | null, settings: PublicSettings): AssistantAction[] {
+export function sanitizeAssistantActions(value: unknown, user: SessionUser | null, settings: PublicSettings): AssistantAction[] {
   if (!Array.isArray(value)) return [];
-  const externalOrigins = allowedExternalOrigins(settings);
-  return value.flatMap((item) => {
+  const publishedLinks = publishedExternalLinks(settings);
+  const seen = new Set<string>();
+  return value.slice(0, 20).flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const row = item as Record<string, unknown>;
     const label = typeof row.label === "string" ? row.label.trim().slice(0, 45) : "";
     const href = typeof row.href === "string" ? row.href.trim().slice(0, 500) : "";
-    if (!label || !href) return [];
-    if (safeInternalHref(href, user)) return [{ label, href }];
+    if (!label || !href || seen.has(href)) return [];
+    const internalHref = safeInternalHref(href, user);
+    if (internalHref) {
+      if (seen.has(internalHref)) return [];
+      seen.add(internalHref);
+      return [{ label, href: internalHref }];
+    }
     try {
       const url = new URL(href);
-      return url.protocol === "https:" && externalOrigins.has(url.origin) ? [{ label, href: url.toString() }] : [];
+      if (url.protocol !== "https:" || url.username || url.password) return [];
+      url.hash = "";
+      if (!publishedLinks.has(url.toString())) return [];
+      seen.add(href);
+      return [{ label, href: url.toString() }];
     } catch { return []; }
   }).slice(0, 4);
 }
-
 function textContent(value: ChatResponse["choices"]) {
   const content = value?.[0]?.message?.content;
   if (typeof content === "string") return content.trim();
@@ -61,7 +84,7 @@ function parseReply(raw: string, user: SessionUser | null, settings: PublicSetti
     const suggestions = Array.isArray(value.suggestions)
       ? value.suggestions.filter((item): item is string => typeof item === "string").map((item) => item.trim().slice(0, 80)).filter(Boolean).slice(0, 4)
       : undefined;
-    return { answer, actions: sanitizeActions(value.actions, user, settings), suggestions };
+    return { answer, actions: sanitizeAssistantActions(value.actions, user, settings), suggestions };
   } catch { return null; }
 }
 

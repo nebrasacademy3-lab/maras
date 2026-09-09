@@ -7,6 +7,7 @@ import "./campaigns.css";
 import "./brand-premium.css";
 import "./admin-premium.css";
 import "./motion.css";
+import "./navigation.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DeferredEnhancements } from "@/components/deferred-enhancements";
 import { AnnouncementCampaign } from "@/components/announcement-campaign";

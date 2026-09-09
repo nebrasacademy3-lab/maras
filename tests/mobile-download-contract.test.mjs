@@ -24,7 +24,14 @@ test("protected mobile downloads support Expo Web and privileged request routes"
   assert.match(proxy, /range,x-meras-client/);
   assert.match(proxy, /x-meras-duration-seconds/);
   assert.match(proxy, /parsed\.protocol === "http:" \|\| parsed\.protocol === "https:"/);
-  assert.equal(JSON.parse(packageJson).dependencies["expo-sharing"], "~57.0.16");
+  const dependencies = JSON.parse(packageJson).dependencies;
+  const sharingVersion = dependencies["expo-sharing"];
+  const expoMajor = dependencies.expo.match(/\d+/)?.[0];
+  assert.equal(sharingVersion.match(/\d+/)?.[0], expoMajor, "expo-sharing must target the app's Expo SDK major");
+  const lock = JSON.parse(await read("mobile/package-lock.json"));
+  assert.equal(lock.packages[""].dependencies["expo-sharing"], sharingVersion, "manifest and lock agree without freezing a patch version");
+  assert.equal(lock.packages["node_modules/expo-sharing"].version.split(".")[0], expoMajor);
+  assert.match(downloads, /import\("expo-sharing"\)/);
 });
 
 test("download names preserve a normal extension without splitting Unicode", async () => {

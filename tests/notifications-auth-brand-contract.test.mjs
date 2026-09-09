@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { loadMobileRouting } from "./mobile-routing-harness.mjs";
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 
@@ -106,7 +107,12 @@ test("notification deep links and account navigation cover referrals and Meras t
   assert.match(routing, /path === "\/study-tools"/);
   assert.match(routing, /\/ai\/conversation\/\[id\]/);
   assert.match(routing, /\/ai\/quiz\/\[id\]/);
-  assert.match(routing, /path === "\/referrals"/);
+  const { openNotificationRoute, pushed } = await loadMobileRouting();
+  openNotificationRoute("/referrals#rewards");
+  openNotificationRoute("/study-tools?quiz=quiz-123#result");
+  assert.equal(pushed[0], "/referrals");
+  assert.equal(pushed[1].pathname, "/ai/quiz/[id]");
+  assert.equal(pushed[1].params.id, "quiz-123");
   assert.match(account, /title: "أدوات مراس"/);
   assert.match(account, /title: "الإحالات والهدايا"/);
   assert.match(webHeader, /href: "\/study-tools".+mobileOnly: true/);

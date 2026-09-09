@@ -2,9 +2,11 @@
 
 import { Check, Heart, LoaderCircle, ShoppingBag } from "lucide-react";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ensureCommerceLoaded, setCart, setFavorite, useCommerceState } from "./commerce-state";
 
 export function CourseActions({ courseSlug, compact = false, purchasable = true }: { courseSlug: string; compact?: boolean; purchasable?: boolean }) {
+  const router = useRouter();
   const { cartSlugs, favoriteSlugs, loaded } = useCommerceState();
   const [busy, setBusy] = useState<"cart" | "favorite" | "">("");
   const [message, setMessage] = useState("");
@@ -22,7 +24,7 @@ export function CourseActions({ courseSlug, compact = false, purchasable = true 
       void response;
       setMessage(kind === "cart" ? (active ? "أضيفت إلى السلة" : "أزيلت من السلة") : (active ? "أضيفت إلى المفضلة" : "أزيلت من المفضلة"));
     } catch (error) {
-      if (error instanceof Error && error.message.includes("401")) window.location.assign(`/login?return_to=${encodeURIComponent(window.location.pathname)}`);
+      if (error instanceof Error && error.message.includes("401")) router.push(`/login?return_to=${encodeURIComponent(window.location.pathname)}`);
       else setMessage(error instanceof Error ? error.message : "حاول مرة أخرى");
     } finally { setBusy(""); }
   }

@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { getDb } from "@/db";
 import { and, desc, eq } from "drizzle-orm";
 import { courseAccess, lessonsDb, videoAssets, videoRenditions } from "@/db/schema";
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
   const secret = process.env.VIDEO_SIGNING_SECRET?.trim();
   if (!secret || secret.length < 24) return jsonError("بث الفيديو الخاص غير مفعّل بعد", 503);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الجلسة غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات الجلسة غير صالحة"); }
   const courseSlug = cleanText(payload.courseSlug, 120);
   const lessonId = cleanText(payload.lessonId, 120);
   const viewer = await getSessionUser(request);

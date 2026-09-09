@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { publicPageMetadata } from "@/lib/seo";
 import Link from "next/link";
-import { ArrowLeft, Clock3, ExternalLink, Headphones, Mail, MessageCircle, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Clock3, ExternalLink, Headphones, Mail, MessageCircle, Send, ShieldCheck } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getPublicSettings, whatsappHref } from "@/lib/platform-settings";
@@ -13,6 +13,7 @@ export const metadata: Metadata = publicPageMetadata("/contact", "تواصل م�
 export default async function ContactPage() {
   const settings = await getPublicSettings();
   const whatsapp = whatsappHref(settings);
+  const telegram = normalizedSocialLinks(settings).find((link) => link.id === "telegram");
   const social = normalizedSocialLinks(settings).filter((link) => link.id !== "whatsapp");
   return (
     <main>
@@ -28,6 +29,7 @@ export default async function ContactPage() {
           <div className="contact-channel-grid">
             {whatsapp ? <article className="contact-channel-card contact-channel-primary"><div className="contact-channel-icon"><MessageCircle size={25} /></div><div><span>الأسرع عادةً</span><h2>واتساب مراس</h2><p>محادثة مباشرة للاستفسارات العامة والتوجيه السريع.</p></div><a className="button button-primary" href={whatsapp} target="_blank" rel="noreferrer">ابدأ المحادثة <ExternalLink size={15} /></a></article> : null}
             {settings.support_email ? <article className="contact-channel-card"><div className="contact-channel-icon email"><Mail size={25} /></div><div><span>للاستفسارات المفصلة</span><h2>البريد الإلكتروني</h2><p>{settings.support_email}</p></div><a className="button button-soft" href={`mailto:${settings.support_email}`}>أرسل رسالة <ArrowLeft size={15} /></a></article> : <article className="contact-channel-card"><div className="contact-channel-icon email"><Mail size={25} /></div><div><span>متابعة محفوظة</span><h2>تذكرة الدعم</h2><p>قدّم طلبك وتابع الرد من حسابك.</p></div><Link className="button button-soft" href="/support">فتح الدعم <ArrowLeft size={15} /></Link></article>}
+            {telegram ? <article className="contact-channel-card"><div className="contact-channel-icon"><Send size={25} /></div><div><span>قناتنا الرسمية</span><h2>تيليجرام مراس</h2><p>تابع الإعلانات والمواد الجديدة، وابقَ على اتصال بمراس.</p></div><a className="button button-soft" href={telegram.url} target="_blank" rel="noopener noreferrer">افتح تيليجرام <ExternalLink size={15} /></a></article> : null}
           </div>
           <div className="contact-content-grid">
             {social.length ? <section className="contact-social-panel"><div className="section-heading"><div><span className="eyebrow">تابع جديد مراس</span><h2>كن على اتصال دائم</h2></div><ShieldCheck size={22} /></div><p>تابعنا لمعرفة المواد الجديدة، الإعلانات، النصائح الجامعية، والفرص التعليمية القادمة.</p><SocialLinks settings={settings} className="social-channel-grid" labels includeWhatsapp={false} /></section> : null}

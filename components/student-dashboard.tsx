@@ -3,6 +3,8 @@ import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { currentDashboardView, dashboardHref } from "@/lib/dashboard-navigation";
 import { ArrowLeft, Bell, BookOpen, Bot, CheckCircle2, FileUp, Gift, Heart, Laptop, LayoutDashboard, LifeBuoy, LoaderCircle, LogOut, Paperclip, Play, Receipt, RefreshCw, Settings, ShoppingCart, Smartphone, Sparkles, Trash2, TrendingUp, UserRound } from "lucide-react";
 import type { Institution } from "@/lib/data";
 import { ACADEMIC_LEVELS } from "@/lib/academic-levels";
@@ -10,6 +12,7 @@ import { useAcademicPrograms } from "@/components/use-academic-programs";
 import { AppearanceSettings } from "@/components/theme-provider";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import { signOutWeb } from "@/components/web-logout";
+import { authRequest } from "@/lib/auth-request";
 import { EmailPasswordChange } from "@/components/email-password-change";
 
 export type DashboardUser = { id:number; fullName:string; email:string; phone:string; universitySlug:string; specialty:string; academicLevel?:string; emailVerified?:boolean };
@@ -39,8 +42,13 @@ const serviceLinks = [
   { href:"/cart", label:"السلة", icon:ShoppingCart },
 ];
 
-export function StudentDashboard({ initialView = "overview", returnOrder = "", notice = "", user, owned, expired, orders, requests, notices, tickets, institutions, recommended }: { initialView?:string; returnOrder?:string; notice?:string; user:DashboardUser; owned:DashboardCourse[]; expired:DashboardCourse[]; orders:DashboardOrder[]; requests:DashboardRequest[]; notices:DashboardNotice[]; tickets:DashboardTicket[]; institutions:Institution[]; recommended:DashboardRecommendation[] }) {
-  const [active, setActive] = useState(initialView);
+export function StudentDashboard({ returnOrder = "", notice = "", user, owned, expired, orders, requests, notices, tickets, institutions, recommended }: { initialView?:string; returnOrder?:string; notice?:string; user:DashboardUser; owned:DashboardCourse[]; expired:DashboardCourse[]; orders:DashboardOrder[]; requests:DashboardRequest[]; notices:DashboardNotice[]; tickets:DashboardTicket[]; institutions:Institution[]; recommended:DashboardRecommendation[] }) {
+  const searchParams = useSearchParams();
+  const active = currentDashboardView(searchParams.toString());
+  const setActive = (view: string) => {
+    const href = dashboardHref(view, searchParams.toString());
+    if (href !== window.location.pathname + window.location.search) window.history.pushState(null, "", href);
+  };
   const [dismissedNotice, setDismissedNotice] = useState(false);
   const [live, setLive] = useState({ user, owned, expired, orders, requests, notices, tickets, institutions, recommended });
   const [noticeRows, setNoticeRows] = useState(notices);
@@ -148,7 +156,7 @@ export function StudentDashboard({ initialView = "overview", returnOrder = "", n
   else if (active === "support") content = <Support rows={live.tickets} />;
   else content = <Account user={live.user} institutions={live.institutions} />;
   const logout = () => { void signOutWeb("/"); };
-  return <div className="student-app"><aside className="student-sidebar"><div className="student-profile-mini"><div>{live.user.fullName[0]}</div><span><strong>{live.user.fullName}</strong><small>{institution?.name || "مراس العلم"}</small></span></div><nav>{nav.map((item) => { const Icon=item.icon; return <button key={item.id} className={active===item.id?"active":""} onClick={() => setActive(item.id)}><Icon size={18} />{item.label}{item.id==="notifications"&&unread>0&&<i>{unread}</i>}</button>; })}<span className="student-nav-group">خدمات</span>{serviceLinks.map((item)=>{const Icon=item.icon;return <Link key={item.href} href={item.href}><Icon size={18} />{item.label}</Link>;})}</nav><div className="student-sidebar-help"><LifeBuoy size={21} /><strong>تحتاج مساعدة؟</strong><small>فريق مراس معك</small><button onClick={() => setActive("support")}>تواصل معنا</button></div><button className="student-logout" onClick={logout}><LogOut size={17} /> تسجيل الخروج</button></aside><div className="student-content"><div className="student-mobile-tabs">{nav.slice(0,5).map((item)=>{const Icon=item.icon;return <button key={item.id} onClick={()=>setActive(item.id)} className={active===item.id?"active":""}><Icon size={18}/><span>{item.label}</span></button>;})}</div>{notice&&!dismissedNotice&&<div className="dashboard-inline-notice" role="status"><span>{notice}</span><button type="button" onClick={()=>setDismissedNotice(true)} aria-label="إخفاء">×</button></div>}{content}</div></div>;
+  return <div className="student-app"><aside className="student-sidebar" aria-label="مساحة الطالب"><div className="student-profile-mini"><div>{live.user.fullName[0]}</div><span><strong>{live.user.fullName}</strong><small>{institution?.name || "مراس العلم"}</small></span></div><nav aria-label="أقسام لوحة الطالب">{nav.map((item) => { const Icon=item.icon; return <button type="button" key={item.id} aria-current={active===item.id?"page":undefined} className={active===item.id?"active":""} onClick={() => setActive(item.id)}><Icon size={18} />{item.label}{item.id==="notifications"&&unread>0&&<i>{unread}</i>}</button>; })}<span className="student-nav-group">خدمات</span>{serviceLinks.map((item)=>{const Icon=item.icon;return <Link key={item.href} href={item.href}><Icon size={18} />{item.label}</Link>;})}</nav><div className="student-sidebar-help"><LifeBuoy size={21} /><strong>تحتاج مساعدة؟</strong><small>فريق مراس معك</small><button onClick={() => setActive("support")}>تواصل معنا</button></div><button className="student-logout" onClick={logout}><LogOut size={17} /> تسجيل الخروج</button></aside><div className="student-content"><div className="student-mobile-tabs" role="navigation" aria-label="أقسام لوحة الطالب">{nav.map((item)=>{const Icon=item.icon;return <button type="button" key={item.id} aria-current={active===item.id?"page":undefined} onClick={()=>setActive(item.id)} className={active===item.id?"active":""}><Icon size={18}/><span>{item.label}</span></button>;})}</div>{notice&&!dismissedNotice&&<div className="dashboard-inline-notice" role="status"><span>{notice}</span><button type="button" onClick={()=>setDismissedNotice(true)} aria-label="إخفاء">×</button></div>}{content}</div></div>;
 }
 
 function DashboardTitle({ eyebrow,title,description,action }: {eyebrow?:string;title:string;description?:string;action?:React.ReactNode}) { return <div className="dashboard-title"><div>{eyebrow&&<span>{eyebrow}</span>}<h1>{title}</h1>{description&&<p>{description}</p>}</div>{action}</div>; }
@@ -207,7 +215,7 @@ function Account({user,institutions}:{user:DashboardUser;institutions:Institutio
   const save = async (event:React.FormEvent<HTMLFormElement>) => {
     event.preventDefault(); setSaving(true); setMessage("");
     try {
-      const response = await fetch("/api/profile", { method:"PATCH", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(form), signal:AbortSignal.timeout(20_000) });
+      const response = await authRequest("/api/profile", { method:"PATCH", credentials:"same-origin", headers:{"content-type":"application/json"}, body:JSON.stringify(form) });
       const result = await response.json() as {error?:string};
       if (!response.ok) throw new Error(result.error || "تعذر الحفظ");
       setMessage("تم حفظ بياناتك بنجاح");
@@ -224,7 +232,7 @@ function SecurityCard() {
   useEffect(()=>{ const timer=window.setTimeout(()=>void loadSessions(),0); return()=>window.clearTimeout(timer); },[loadSessions]);
   const revoke=async(session:SessionRow)=>{ setBusy(`session-${session.id}`); try{ const response=await fetch("/api/profile/sessions",{method:"DELETE",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({id:session.id})}); const result=await response.json() as {error?:string}; if(!response.ok)throw new Error(result.error||"تعذر تسجيل خروج الجهاز"); await loadSessions(); }catch(caught){ setSessionsError(caught instanceof Error?caught.message:"تعذر تسجيل خروج الجهاز"); } finally{ setBusy(""); } };
   const deleteAccount=async(event:React.FormEvent<HTMLFormElement>)=>{ event.preventDefault(); const data=new FormData(event.currentTarget); setBusy("delete"); setDeleteMessage(""); try{ const response=await fetch("/api/mobile/account",{method:"DELETE",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({password:data.get("password"),confirmation:data.get("confirmation")})}); const result=await response.json() as {error?:string}; if(!response.ok)throw new Error(result.error||"تعذر حذف الحساب"); await signOutWeb("/"); }catch(caught){ setDeleteMessage(caught instanceof Error?caught.message:"تعذر حذف الحساب"); setBusy(""); } };
-  return <section className="dashboard-panel security-card"><UserRound size={27}/><h2>الأمان والأجهزة</h2><p>الجلسة الحالية محمية بملف تعريف HttpOnly. يمكنك تغيير كلمة المرور وإدارة الأجهزة المتصلة بحسابك من هنا.</p>
+  return <section className="dashboard-panel security-card"><UserRound size={27}/><h2>الأمان والأجهزة</h2><p>تحكم في أمان حسابك، غيّر كلمة المرور، وسجّل خروج الأجهزة التي لم تعد تستخدمها.</p>
     <EmailPasswordChange onChanged={() => void loadSessions()} />
     <div className="security-sessions"><h3><Laptop size={16}/> الأجهزة المتصلة</h3>{sessions===null?<small>جارٍ تحميل الأجهزة...</small>:sessions.length?<ul>{sessions.map((session)=><li key={session.id}><i>{session.platform==="mobile"?<Smartphone size={15}/>:<Laptop size={15}/>}</i><span><strong>{session.deviceLabel}{session.current?" · هذا الجهاز":""}</strong><small>{session.platform==="mobile"?"التطبيق":"الويب"} · آخر نشاط {new Date(session.lastSeenAt).toLocaleString("ar-SA")}</small></span>{!session.current&&<button type="button" disabled={Boolean(busy)} onClick={()=>void revoke(session)}>{busy===`session-${session.id}`?"...":"تسجيل الخروج"}</button>}</li>)}</ul>:<small>لا توجد أجهزة أخرى متصلة.</small>}{sessionsError&&<p className="form-error">{sessionsError}</p>}<small className="security-hint">حد الأجهزة يشمل الويب والتطبيق معًا؛ سجّل الخروج من جهاز قديم إذا تعذر عليك الدخول من جهاز جديد.</small></div>
     <button className="danger" onClick={()=>void signOutWeb("/")}>تسجيل الخروج</button>

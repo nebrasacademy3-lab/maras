@@ -1,3 +1,40 @@
 "use client";
-import{useState}from"react";import Link from"next/link";import{ArrowLeft,CheckCircle2,Eye,EyeOff,LockKeyhole}from"lucide-react";
-export function ResetPasswordForm({token}:{token:string}){const[password,setPassword]=useState("");const[show,setShow]=useState(false);const[loading,setLoading]=useState(false);const[error,setError]=useState("");const[done,setDone]=useState(false);const submit=async(event:React.FormEvent<HTMLFormElement>)=>{event.preventDefault();setLoading(true);setError("");const response=await fetch("/api/auth/reset-password",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({token,password})});const data=await response.json() as {error?:string};if(!response.ok){setError(data.error||"تعذر تغيير كلمة المرور");setLoading(false);return;}setDone(true);};if(done)return <div className="welcome-step"><div className="welcome-check"><CheckCircle2 size={38}/></div><span>تم التحديث</span><h1>كلمة المرور جاهزة</h1><p>تم إغلاق الجلسات السابقة. سجّل الدخول بكلمة المرور الجديدة.</p><Link href="/login" className="button button-primary">تسجيل الدخول <ArrowLeft size={17}/></Link></div>;return <form className="auth-form" onSubmit={submit}><div className="auth-heading"><span>رابط آمن ومؤقت</span><h1>عيّن كلمة مرور جديدة</h1><p>استخدم 10 أحرف على الأقل مع رقم ورمز خاص.</p></div><label className="form-label">كلمة المرور الجديدة<div className="input-with-icon"><LockKeyhole size={18}/><input required minLength={10} maxLength={128} autoComplete="new-password" value={password} onChange={(event)=>setPassword(event.target.value)} type={show?"text":"password"}/><button type="button" onClick={()=>setShow(!show)}>{show?<EyeOff size={18}/>:<Eye size={18}/>}</button></div></label>{error&&<p className="form-error">{error}</p>}<button className="button button-primary auth-submit" disabled={loading}>{loading?"جارٍ التحديث...":"تعيين كلمة المرور"}</button></form>;}
+import { authRequest } from "@/lib/auth-request";
+
+import { useState } from "react";
+import Link from "next/link";
+import { ArrowLeft, CheckCircle2, KeyRound, ShieldCheck } from "lucide-react";
+import { PasswordFields } from "./password-fields";
+import { passwordRequirements } from "@/lib/auth-input";
+import styles from "./security-form.module.css";
+
+export function ResetPasswordForm({ token }: { token: string }) {
+  const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const validToken = /^[A-Za-z0-9_-]{32,256}$/.test(token);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (loading) return;
+    setError("");
+    if (password !== confirmation) { setError("تأكيد كلمة المرور غير متطابق."); return; }
+    if (!passwordRequirements(password).every(item => item.met)) { setError("أكمل متطلبات كلمة المرور الموضحة أدناه."); return; }
+    setLoading(true);
+    try {
+      const response = await authRequest("/api/auth/reset-password", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ token, password }) });
+      const data = await response.json().catch(() => ({})) as { error?: string };
+      if (!response.ok) throw new Error(data.error || "تعذر تحديث كلمة المرور. جرّب طلب رابط جديد.");
+      setPassword(""); setConfirmation(""); setDone(true);
+      // The consumed one-time secret no longer needs to remain in browser history.
+      window.history.replaceState(null, "", window.location.pathname);
+    } catch (caught) { setError(caught instanceof Error && !["TypeError", "TimeoutError", "AbortError"].includes(caught.name) ? caught.message : "تعذر الاتصال. تحقق من اتصالك وحاول مرة أخرى."); }
+    finally { setLoading(false); }
+  }
+
+  if (!validToken && !done) return <div className={styles.panel} dir="rtl"><span className={styles.icon}><KeyRound size={27} /></span><div className={styles.heading}><span className={styles.eyebrow}>نحتاج رابط الاستعادة</span><h1>افتح الرابط من بريدك</h1><p>هذا الرابط غير مكتمل. اطلب رسالة جديدة لبدء استعادة حسابك بأمان.</p></div><Link href="/forgot-password" className={`button button-primary ${styles.submit}`}>طلب رابط جديد <ArrowLeft size={17} /></Link><Link href="/login" className={styles.link}>العودة لتسجيل الدخول</Link></div>;
+  if (done) return <div className={styles.panel} dir="rtl" role="status"><span className={styles.icon}><CheckCircle2 size={29} /></span><div className={styles.heading}><span className={styles.eyebrow}>تم التحديث بنجاح</span><h1>أهلًا بعودتك إلى مراس</h1><p>حُفظت كلمة المرور الجديدة وأُغلقت الجلسات السابقة. يمكنك الآن تسجيل الدخول ومتابعة موادك.</p></div><Link href="/login?reset=success" className={`button button-primary ${styles.submit}`}>تسجيل الدخول <ArrowLeft size={17} /></Link></div>;
+  return <div className={styles.panel} dir="rtl"><span className={styles.icon}><KeyRound size={27} /></span><div className={styles.heading}><span className={styles.eyebrow}>الخطوة الأخيرة لاستعادة حسابك</span><h1>كلمة مرور جديدة، بداية مطمئنة</h1><p>اختر كلمة مرور مميزة لا تستخدمها في حساب آخر، ثم أكّدها للمتابعة.</p></div><form className={styles.form} onSubmit={submit} aria-busy={loading}><PasswordFields password={password} confirmation={confirmation} onPasswordChange={setPassword} onConfirmationChange={setConfirmation} />{error && <p className={styles.error} role="alert">{error}</p>}<button className={`button button-primary ${styles.submit}`} disabled={loading}>{loading ? "جارٍ تحديث كلمة المرور…" : <>حفظ كلمة المرور الجديدة <ArrowLeft size={17} /></>}</button></form><p className={styles.note}><ShieldCheck size={18} />عند الحفظ، تنتهي الجلسات السابقة لحماية حسابك.</p><Link href="/forgot-password" className={styles.link}>انتهت صلاحية الرابط؟ اطلب رابطًا جديدًا</Link></div>;
+}

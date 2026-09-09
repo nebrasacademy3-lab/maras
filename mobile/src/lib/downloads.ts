@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
-import { absoluteUrl, ApiError, getApiToken } from "@/src/lib/api";
+import { apiRequestUrl, ApiError, getApiToken } from "@/src/lib/api";
 
 export type ProtectedDownloadResult = {
   action: "opened" | "saved" | "shared" | "stored" | "cancelled";
@@ -38,7 +38,7 @@ function authHeaders(): Record<string, string> {
 }
 
 async function downloadInBrowser(path: string, fileName: string): Promise<ProtectedDownloadResult> {
-  const response = await fetch(absoluteUrl(path), { credentials: "include", headers: authHeaders() });
+  const response = await fetch(apiRequestUrl(path).toString(), { credentials: "include", headers: authHeaders() });
   if (!response.ok) {
     let message = `تعذر تنزيل الملف من الخادم (HTTP ${response.status}).`;
     try {
@@ -86,6 +86,7 @@ export async function downloadProtectedFile({
   saveToFiles = false,
   openAfterDownload = true,
 }: ProtectedDownloadOptions): Promise<ProtectedDownloadResult> {
+  apiRequestUrl(path);
   const safeName = safeFileName(fileName);
   if (Platform.OS === "web") return downloadInBrowser(path, safeName);
   let androidDirectoryUri: string | null = null;
@@ -102,7 +103,7 @@ export async function downloadProtectedFile({
   await FileSystem.makeDirectoryAsync(downloadDirectory, { intermediates: true }).catch(() => undefined);
 
   const result = await FileSystem.downloadAsync(
-    absoluteUrl(path),
+    apiRequestUrl(path).toString(),
     `${downloadDirectory}${encodeURIComponent(safeName)}`,
     { headers: authHeaders() },
   );

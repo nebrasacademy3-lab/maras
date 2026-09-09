@@ -1,8 +1,9 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, desc, eq, inArray, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseRequestFiles, courseRequests, supervisorAssignments, users } from "@/db/schema";
 import { checkRateLimit, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
-import { cleanText, jsonError } from "@/lib/api";
+import { finiteNumber, cleanText, jsonError } from "@/lib/api";
 import { createAndSendNotification } from "@/lib/notifications";
 
 const allowedStatuses=new Set(["assigned","reviewing","planned","producing","available","declined"]);
@@ -18,7 +19,7 @@ export async function GET(request:Request){
 
 export async function PATCH(request:Request){
   if(!sameOriginRequest(request))return jsonError("تعذر التحقق من مصدر الطلب",403);const user=await getSessionUser(request);if(!roleAllowed(user,["supervisor","admin"]))return jsonError("غير مصرح",403);if(!await checkRateLimit("supervisor-request-write",`user:${user!.id}`,120,60))return jsonError("تحديثات كثيرة. حاول بعد قليل.",429);
-  let payload:Record<string,unknown>;try{payload=await request.json() as Record<string,unknown>;}catch{return jsonError("بيانات غير صالحة");}const id=Math.floor(Number(payload.id));const status=cleanText(payload.status,30);if(!id||!allowedStatuses.has(status))return jsonError("الحالة غير صالحة");
+  let payload:Record<string,unknown>;try{payload=await readBoundedJsonObject(request, 32 * 1024);}catch{return jsonError("بيانات غير صالحة");}const id=finiteNumber(payload.id);const status=cleanText(payload.status,30);if(!Number.isSafeInteger(id)||id<=0||!allowedStatuses.has(status))return jsonError("الحالة غير صالحة");
   const db=getDb();const [row]=await db.select().from(courseRequests).where(eq(courseRequests.id,id)).limit(1);if(!row)return jsonError("الطلب غير موجود",404);if(user!.role!=="admin"&&row.assignedSupervisorId&&row.assignedSupervisorId!==user!.id)return jsonError("الطلب مسند لمشرف آخر",403);if(user!.role!=="admin"&&!row.assignedSupervisorId){const scopes=await db.select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId,user!.id),eq(supervisorAssignments.active,true)));if(!scopes.some((scope)=>(!scope.institutionSlug||scope.institutionSlug===row.universitySlug)&&(!scope.specialty||scope.specialty===row.specialty)))return jsonError("هذا الطلب خارج نطاق إشرافك",403);}
   const assignedSupervisorId=row.assignedSupervisorId||user!.id;const now=new Date().toISOString();await db.update(courseRequests).set({status,assignedSupervisorId,updatedAt:now}).where(eq(courseRequests.id,id));
   try{if(row.userId){const [student]=await db.select({email:users.email}).from(users).where(eq(users.id,row.userId)).limit(1);if(student){const title="تحديث طلب المادة";const body=`أصبحت حالة «${row.courseName}»: ${statusLabel(status)}.`;await createAndSendNotification({values:{userEmail:student.email,audience:"student",title,body,actionUrl:"/dashboard?view=requests"},target:{userEmail:student.email},data:{route:"/requests"}});}}}catch{/* The saved status remains the source of truth. */}

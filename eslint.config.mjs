@@ -9,6 +9,7 @@ const eslintConfig = defineConfig([
   globalIgnores([
     // Default ignores of eslint-config-next:
     ".next/**",
+    ".sites-runtime/**", // Package manager cache, not application source.
     "out/**",
     "build/**",
     "outputs/**", // Generated QA screenshots, fixtures, and downloaded browser engines.

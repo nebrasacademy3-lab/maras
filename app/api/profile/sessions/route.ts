@@ -1,7 +1,8 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, desc, eq, gt, isNull } from "drizzle-orm";
 import { getDb } from "@/db";
 import { authSessions, pushDevices } from "@/db/schema";
-import { jsonError } from "@/lib/api";
+import { finiteNumber, jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, hashOpaqueToken, requestSessionToken, sameOriginRequest } from "@/lib/auth";
 import { isNativeAppRequest } from "@/lib/mobile-api";
 
@@ -29,9 +30,9 @@ export async function DELETE(request: Request) {
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
   if (!await checkRateLimit("revoke-own-session", `user:${user.id}`, 20, 60)) return jsonError("محاولات كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
-  const id = Math.floor(Number(payload.id));
-  if (!id) return jsonError("معرّف الجلسة غير صالح");
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات غير صالحة"); }
+  const id = finiteNumber(payload.id);
+  if (!Number.isSafeInteger(id) || id <= 0) return jsonError("معرّف الجلسة غير صالح");
   const currentHash = await currentSessionHash(request);
   const db = getDb();
   const [target] = await db.select({ id: authSessions.id, deviceId: authSessions.deviceId, tokenHash: authSessions.tokenHash, revokedAt: authSessions.revokedAt }).from(authSessions).where(and(eq(authSessions.id, id), eq(authSessions.userId, user.id))).limit(1);

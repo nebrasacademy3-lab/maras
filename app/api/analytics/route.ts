@@ -2,6 +2,7 @@ import { getDb } from "@/db";
 import { analyticsEvents } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 
 const allowedEvents = new Set([
   "page_view",
@@ -57,10 +58,11 @@ function safeMetadata(value: unknown) {
 
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر حدث القياس", 403);
+  if (!await checkRateLimit("analytics-ip", clientIp(request), 600, 60)) return jsonError("أحداث كثيرة خلال وقت قصير", 429);
   const user = await getSessionUser(request);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; }
-  catch { return jsonError("بيانات حدث القياس غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request); }
+  catch (error) { return jsonError("بيانات حدث القياس غير صالحة", error instanceof RequestBodyTooLargeError ? 413 : 400); }
 
   const event = cleanText(payload.event, 80);
   if (!allowedEvents.has(event)) return jsonError("حدث القياس غير مدعوم");

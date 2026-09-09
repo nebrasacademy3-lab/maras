@@ -12,13 +12,14 @@ import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AppButton, Card, LoadingState, Screen, useReduceMotion } from "@/src/components/ui";
-import { absoluteUrl, api, ApiError, getApiToken, jsonBody } from "@/src/lib/api";
+import { apiRequestUrl, api, ApiError, getApiToken, jsonBody } from "@/src/lib/api";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import type { Catalog } from "@/src/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createCaptureLease, inlinePlayerHeight, playerBackAction, playerStageLayout } from "@/src/lib/player-layout";
+import { playbackSnapshot, progressFromSnapshot } from "@/src/lib/playback-progress";
 
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
 const qualities = ["تلقائي", "الأصلية"] as const;
@@ -73,6 +74,8 @@ export default function LessonPlayer() {
   const videoRef = useRef<VideoView>(null);
   const seeking = useRef(false);
   const watermark = useRef(new Animated.Value(0)).current;
+  // Keep a separate JS snapshot per lesson: native disposal can run before effect cleanup.
+  const progress = useMemo(() => ({ courseSlug, lessonId, snapshot: playbackSnapshot(0, 0), ready: false }), [courseSlug, lessonId]);
 
   const player = useVideoPlayer(null, (instance) => {
     instance.loop = false;
@@ -103,7 +106,7 @@ export default function LessonPlayer() {
     : ({ pathname: "/learn/[slug]", params: { slug: courseSlug || "" } } as const), [courseSlug, origin]);
 
   const releaseVideo = useCallback(() => {
-    try { player.pause(); void player.replaceAsync(null).catch(() => undefined); } catch { /* Player may already be released. */ }
+    try { player.pause(); } catch { /* useVideoPlayer owns disposal and may already have released it. */ }
   }, [player]);
 
   const leavePlayer = useCallback(() => {
@@ -162,14 +165,6 @@ export default function LessonPlayer() {
   }, [watermark, reduceMotion]);
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      if (!seeking.current) setTime(player.currentTime || 0);
-      setDuration(player.duration || 0);
-    }, 400);
-    return () => clearInterval(timer);
-  }, [player]);
-
-  useEffect(() => {
     let cancelled = false;
     void (async () => {
       try { player.pause(); } catch { /* The previous source may not be mounted yet. */ }
@@ -218,9 +213,9 @@ export default function LessonPlayer() {
           lessonId: lessonId || "",
           resumeAt,
           source: {
-            uri: absoluteUrl(session.streamUrl),
+            uri: apiRequestUrl(session.streamUrl).toString(),
             headers,
-            contentType: session.adaptive ? "hls" : "progressive",
+            contentType: session.adaptive && apiRequestUrl(session.streamUrl).pathname.endsWith(".m3u8") ? "hls" : "progressive",
             useCaching: false,
             metadata: { title: selectedLesson.title, artist: "مراس العلم" },
           },
@@ -239,7 +234,21 @@ export default function LessonPlayer() {
     let cancelled = false;
     let applied = false;
     let acceptingStatus = false;
+    let sourceLoaded = false;
     let statusSubscription: { remove: () => void } | null = null;
+    const sourceSubscription = player.addListener("sourceLoad", (event) => {
+      const loadedUri = typeof event.videoSource === "string" ? event.videoSource : typeof event.videoSource === "object" ? event.videoSource?.uri : undefined;
+      if (cancelled || loadedUri !== preparedPlayback.source.uri) return;
+      sourceLoaded = true;
+      progress.snapshot = playbackSnapshot(preparedPlayback.resumeAt, event.duration);
+      progress.ready = true;
+      setDuration(progress.snapshot.duration);
+    });
+    const timeSubscription = player.addListener("timeUpdate", (event) => {
+      if (cancelled || !sourceLoaded) return;
+      progress.snapshot = playbackSnapshot(event.currentTime, progress.snapshot.duration);
+      if (!seeking.current) setTime(progress.snapshot.currentTime);
+    });
     const applyResumeAndPlay = () => {
       if (cancelled || applied) return;
       applied = true;
@@ -265,6 +274,7 @@ export default function LessonPlayer() {
       acceptingStatus = true;
       const replacement = player.replaceAsync(preparedPlayback.source);
       void replacement.then(() => {
+        if (cancelled) return;
         if (player.status === "readyToPlay") applyResumeAndPlay();
       }).catch((reason) => {
         if (!cancelled) setError(reason instanceof Error ? reason.message : "تعذر تشغيل الدرس");
@@ -274,23 +284,28 @@ export default function LessonPlayer() {
       cancelled = true;
       cancelAnimationFrame(frame);
       statusSubscription?.remove();
+      sourceSubscription.remove();
+      timeSubscription.remove();
     };
-  }, [loading, player, preparedPlayback, captureReady]);
+  }, [loading, player, preparedPlayback, captureReady, progress]);
 
   useEffect(() => {
-    if (!user || !courseSlug || !lessonId || loading || preparedPlayback?.courseSlug !== courseSlug || preparedPlayback.lessonId !== lessonId) return;
-    const save = () => api("/api/progress", {
+    if (!user?.id || !courseSlug || !lessonId || loading || preparedPlayback?.courseSlug !== courseSlug || preparedPlayback.lessonId !== lessonId) return;
+    const save = () => {
+      if (!progress.ready) return;
+      return api("/api/progress", {
       method: "POST",
       body: jsonBody({
         courseSlug,
         lessonId,
-        watchedSeconds: Math.floor(player.currentTime || 0),
-        completed: player.duration > 0 && player.currentTime / player.duration >= 0.9,
+        ...progressFromSnapshot(progress.snapshot),
       }),
     }).catch(() => undefined);
+    };
     const timer = setInterval(save, 15_000);
-    return () => { clearInterval(timer); void save(); };
-  }, [courseSlug, lessonId, loading, player, preparedPlayback, user]);
+    const background = AppState.addEventListener("change", (state) => { if (state !== "active") void save(); });
+    return () => { clearInterval(timer); background.remove(); void save(); };
+  }, [courseSlug, lessonId, loading, preparedPlayback, progress, user?.id]);
 
   const seek = (seconds: number) => {
     player.currentTime = Math.max(0, Math.min(player.duration || 0, player.currentTime + seconds));

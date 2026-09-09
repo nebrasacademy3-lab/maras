@@ -1,3 +1,5 @@
+import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, supervisorAssignments, users } from "@/db/schema";
@@ -48,8 +50,15 @@ export async function POST(request: Request) {
   const identity = machineAuthorized ? `machine:${clientIp(request)}` : `user:${session!.id}`;
   if (!await checkRateLimit("admin-staff", identity, 20, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
 
+  if (!machineAuthorized && session) {
+    try { await requireAdminStepUp(request, session); }
+    catch (error) {
+      if (error instanceof AdminMfaError) return Response.json({ ok: false, code: error.code, error: error.message }, { status: error.status, headers: { "cache-control": "no-store" } });
+      throw error;
+    }
+  }
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات غير صالحة"); }
   const email = cleanText(payload.email, 180).toLowerCase();
   const fullName = cleanText(payload.fullName, 120);
   const rawPhone = normalizePhone(payload.phone);

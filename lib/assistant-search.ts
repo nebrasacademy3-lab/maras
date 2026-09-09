@@ -165,3 +165,19 @@ export function retrieveAssistantDocuments(question: string, documents: Assistan
     .sort((left, right) => right.score - left.score || left.document.title.localeCompare(right.document.title, "ar"))
     .slice(0, Math.max(1, Math.min(30, limit)));
 }
+
+function isAssistantFollowup(question: string) {
+  const text = normalizeAssistantText(question).replace(/^(طيب|تمام|وطيب)\s+/, "");
+  if (text.length > 100) return false;
+  if (/^(?:ما الدروس الموجوده|ما الوحدات الموجوده|ما المحتويات|what lessons are included|what units are included|how do i buy it)$/.test(text)) return true;
+  return /^(?:و?كم (?:سعرها|سعره|مدتها|مدته|تكلفتها|تكلفته|درس فيها)|(?:وهل|هل) (?:هي|هو|فيها|فيه|لها|له)(?:\s|$)|(?:ومتي|متي) (?:تفتح|تبدا)|(?:وكيف|كيف) (?:اشتريها|اشتريه|اشترك فيها|اشترك فيه|افتحها|افتحه)|(?:وش|ايش) (?:فيها|فيه|سعرها|سعره)|(?:سعرها|سعره|مدتها|مدته|مجانيه|مجاني|رابطها|رابطه))/.test(text)
+    || /^(?:(?:and )?(?:how much(?: does (?:it|this|that) cost| is (?:it|this|that))?|how long(?: is (?:it|this|that)| does (?:it|this|that) (?:last|take))?)(?:\s+please)?$|(?:and )?(?:is|does|can|will) (?:it|this|that)\b|(?:and )?(?:its|the) (?:price|duration|link)|what about (?:it|its|the price)\b)/.test(text);
+}
+
+// Resolve short follow-ups from user messages only. A generated assistant answer
+// is never promoted into a catalog fact, and a new explicit topic stands alone.
+export function resolveAssistantQuestion(question: string, history: Array<{ role: "user" | "assistant"; text: string }>) {
+  if (!isAssistantFollowup(question)) return question;
+  const previous = history.slice(-8).reverse().find((item) => item.role === "user" && item.text !== question && item.text.trim().length >= 8 && !isAssistantFollowup(item.text));
+  return previous ? `${previous.text.slice(0, 500)}\n${question}` : question;
+}

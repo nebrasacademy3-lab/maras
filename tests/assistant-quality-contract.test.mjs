@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { loadMobileRouting } from "./mobile-routing-harness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const read = (relative) => readFile(join(here, "..", relative), "utf8");
@@ -54,10 +55,15 @@ test("lesson-specific questions outrank a simultaneous course match", () => {
   assert.match(knowledge, /if \(matchedCourse && !preferLesson\)/);
 });
 
-test("web and Expo expose the same answer actions and suggestions", () => {
+test("web and Expo expose the same answer actions and suggestions", async () => {
   assert.match(web, /message\.suggestions/);
   assert.match(web, /message\.actions/);
   assert.match(mobile, /reply\.suggestions/);
   assert.match(mobile, /reply\.actions/);
-  assert.match(mobile, /mobileRoute/);
+  assert.match(mobile, /const route = resolveMobileRoute\(href\)/);
+  const { resolveMobileRoute } = await loadMobileRouting();
+  const course = resolveMobileRoute("/courses/math#preview");
+  assert.equal(course.pathname, "/course/[slug]");
+  assert.equal(course.params.slug, "math");
+  assert.equal(resolveMobileRoute("/dashboard?view=orders#latest"), "/orders");
 });

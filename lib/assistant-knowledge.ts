@@ -151,9 +151,34 @@ function detectedLesson(text: string, rows: Course[]) {
   return findBestAssistantMatch(text, lessons, (item) => [item.lesson.title], 0.77);
 }
 
-export function answerAssistant(rawQuestion: string, user: SessionUser | null, publicSettings: PublicSettings = { ...PUBLIC_SETTING_DEFAULTS }, liveCatalog?: LiveAssistantCatalog): AssistantReply {
+function courseAnswer(course: Course, language: AssistantLanguage, question: string): AssistantReply {
+  const text = normalizeAssistantText(question);
+  const english = language === "en";
+  const title = english ? course.titleEn || course.title : course.title;
+  const href = `/courses/${encodeURIComponent(course.slug)}`;
+  const lessons = course.units.flatMap((unit) => unit.lessons);
+  const previews = lessons.filter((lesson) => lesson.free && lesson.ready === true);
+  const actions = [action(english ? "Open course" : "فتح صفحة المادة", href), action(english ? "Similar courses" : "تصفح مواد مشابهة", `/courses?q=${encodeURIComponent(course.title)}`)];
+  const suggestions = english ? ["Does it have a free preview?", "What lessons are included?", "How do I buy it?"] : ["هل فيها درس مجاني؟", "ما الدروس الموجودة؟", "كيف أشتريها؟"];
+  if (/مجاني|تجريبي|معاينه|\bfree\b|\bpreview\b/.test(text)) {
+    const answer = previews.length
+      ? english ? `${title} has ${previews.length} ready free preview(s): ${previews.slice(0, 4).map((lesson) => lesson.title).join(", ")}. Open the preview to try the teaching style before purchasing.` : `نعم، في ${title} ${previews.length} من الدروس التجريبية المجانية الجاهزة: ${previews.slice(0, 4).map((lesson) => lesson.title).join("، ")}. افتح المعاينة لتجربة الشرح قبل الاشتراك.`
+      : english ? `The current catalog does not show a ready free preview for ${title}. You can review its published units and lessons on the course page.` : `لا يظهر في الكتالوج الحالي درس تجريبي مجاني جاهز لمادة ${title}. يمكنك استعراض الوحدات والدروس المنشورة في صفحة المادة.`;
+    return { answer, actions: [action(english ? "View preview" : "معاينة المادة", `${href}#preview`), ...actions.slice(1)], suggestions };
+  }
+  if (/الدروس|دروسها|الوحدات|وحداتها|محتوي|محتويات|\blessons\b|\bunits\b|\bcurriculum\b|\bsyllabus\b/.test(text)) {
+    const outline = course.units.slice(0, 6).map((unit, index) => `${index + 1}. ${unit.title}: ${unit.lessons.slice(0, 4).map((lesson) => lesson.title).join(english ? ", " : "، ")}${unit.lessons.length > 4 ? "…" : ""}`).join("\n");
+    const answer = english ? `${title} currently lists ${course.units.length} units and ${lessons.length} lessons.\n${outline || "No unit details are published yet."}\nOpen the course page for the complete current outline.` : `تضم ${title} حاليًا ${course.units.length} وحدات و${lessons.length} درسًا منشورًا:\n${outline || "تفاصيل الوحدات لم تُنشر بعد."}\nافتح صفحة المادة للاطلاع على الخطة الحالية كاملة.`;
+    return { answer, actions, suggestions };
+  }
+  const answer = english
+    ? `${title} is a published course for ${course.university}, major ${course.specialty}.\n• Current price: SAR ${course.price}.\n• Lessons: ${course.lessons}; total duration: ${course.duration}.\n• Access period: ${course.access || "check the course page"}.\n${course.availableForPurchase === true ? "Review the current course details and any free preview before checkout. Access starts after the server confirms payment." : "The course is not open for purchase in the current catalog."}`
+    : `${title} مادة منشورة لجهة ${course.university} ضمن تخصص ${course.specialty}.\n• السعر الحالي: ${course.price} ر.س.\n• الدروس: ${course.lessons}؛ المدة الإجمالية: ${course.duration}.\n• مدة الوصول: ${course.access || "راجع صفحة المادة"}.\n${course.availableForPurchase === true ? "راجع تفاصيل المادة والمعاينة قبل الشراء. تُفعّل صلاحية المشاهدة بعد تأكيد الدفع من الخادم." : "المادة ليست مفتوحة للشراء في الكتالوج الحالي."}`;
+  return { answer, actions, suggestions };
+}
+export function answerAssistant(rawQuestion: string, user: SessionUser | null, publicSettings: PublicSettings = { ...PUBLIC_SETTING_DEFAULTS }, liveCatalog?: LiveAssistantCatalog, languageOverride?: AssistantLanguage): AssistantReply {
   const text = normalizeAssistantText(rawQuestion);
-  const language = detectAssistantLanguage(rawQuestion);
+  const language = languageOverride || detectAssistantLanguage(rawQuestion);
   const institutions = liveCatalog ? liveCatalog.institutions : bundledInstitutions;
   const courses = liveCatalog ? liveCatalog.courses : bundledCourses;
   const programs = assistantPrograms(courses, liveCatalog?.programs);
@@ -178,13 +203,7 @@ export function answerAssistant(rawQuestion: string, user: SessionUser | null, p
     suggestions: ["ما لقيت مادتي", "كيف أجرب درسًا؟", "كيف أحمي حسابي؟"],
   };
 
-  if (matchedCourse && !preferLesson) return {
-    answer: language === "en"
-      ? `${matchedCourse.titleEn || matchedCourse.title} is a published course for ${matchedCourse.university}, major ${matchedCourse.specialty}. The live catalog currently shows ${matchedCourse.lessons} lessons, ${matchedCourse.duration} total duration, and a price of SAR ${matchedCourse.price}.${matchedCourse.availableForPurchase === false ? " It is not open for purchase yet because no ready lesson is available." : " Verify the description, access period, and any free preview on the course page before checkout."}`
-      : `${matchedCourse.title} مادة منشورة لجهة ${matchedCourse.university} ضمن تخصص ${matchedCourse.specialty}. يعرض الكتالوج الحالي ${matchedCourse.lessons} درسًا بمدة إجمالية ${matchedCourse.duration} وسعر ${matchedCourse.price} ر.س.${matchedCourse.availableForPurchase === false ? " المادة ليست مفتوحة للشراء بعد لعدم وجود درس جاهز للمشاهدة." : " راجع الوصف ومدة الوصول والدرس المجاني — إن وجد — في صفحة المادة قبل الشراء."}`,
-    actions: [action(language === "en" ? "Open course" : "فتح صفحة المادة", `/courses/${matchedCourse.slug}`), action(language === "en" ? "Similar courses" : "تصفح مواد مشابهة", `/courses?q=${encodeURIComponent(matchedCourse.title)}`)],
-    suggestions: language === "en" ? ["Does it have a free preview?", "What lessons are included?", "How do I buy it?"] : ["هل فيها درس مجاني؟", "ما الدروس الموجودة؟", "كيف أشتريها؟"],
-  };
+  if (matchedCourse && !preferLesson) return courseAnswer(matchedCourse, language, rawQuestion.split("\n").at(-1) || rawQuestion);
 
   if (lessonMatch) {
     const { course, unit, lesson } = lessonMatch.row;

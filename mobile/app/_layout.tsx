@@ -11,9 +11,9 @@ import { useLanguage } from "@/src/providers/LanguageProvider";
 
 function Runtime() {
   const { dark } = useTheme();
-  const { isRTL } = useLanguage();
+  const { isRTL, direction } = useLanguage();
   usePushNotifications();
-  return <><StatusBar style={dark ? "light" : "dark"} /><AnnouncementCampaign /><Stack screenOptions={{ headerShown: false, animation: isRTL ? "slide_from_left" : "slide_from_right", contentStyle: { backgroundColor: dark ? "#050B18" : "#F7F9FD" } }} /><AssistantFab /></>;
+  return <><StatusBar style={dark ? "light" : "dark"} /><AnnouncementCampaign /><Stack screenOptions={{ headerShown: false, animation: isRTL ? "slide_from_left" : "slide_from_right", contentStyle: { direction, backgroundColor: dark ? "#050B18" : "#F7F9FD" } }} /><AssistantFab /></>;
 }
 
 export default function RootLayout() { return <AppProviders><Runtime /></AppProviders>; }

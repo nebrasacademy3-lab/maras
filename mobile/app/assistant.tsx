@@ -8,6 +8,7 @@ import { BrandMark } from "@/src/components/Brand";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { absoluteUrl, api, ApiError, jsonBody } from "@/src/lib/api";
+import { parseInternalLink, resolveMobileRoute, safeExternalLink } from "@/src/lib/notification-routing";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
@@ -28,35 +29,6 @@ const initialMessage = (isRTL: boolean): Message => isRTL ? {
 
 const isArabicText = (value: string) => (value.match(/[\u0600-\u06ff]/g) || []).length >= (value.match(/[a-z]/gi) || []).length;
 
-function mobileRoute(href: string) {
-  if (/^https:\/\//.test(href)) return href;
-  const path = href.split(/[?#]/)[0] || "/";
-  const query = new URLSearchParams(href.split("?")[1] || "");
-  if (path === "/request-course" || query.get("view") === "requests") return "/requests";
-  if (path === "/support") return "/support";
-  if (path === "/contact") return "/contact";
-  if (path === "/cart") return "/cart";
-  if (path === "/favorites") return "/favorites";
-  if (path === "/dashboard") {
-    const view = query.get("view");
-    if (view === "notifications") return "/notifications";
-    if (view === "account") return "/profile";
-    if (view === "requests") return "/requests";
-    if (view === "orders") return "/(tabs)/account";
-    return "/(tabs)/learning";
-  }
-  if (path === "/courses") return "/(tabs)/courses";
-  if (path.startsWith("/courses/")) return path.replace("/courses/", "/course/");
-  if (path.startsWith("/learn/")) return path.replace("/learn/", "/course/");
-  if (path === "/universities") return "/(tabs)/universities";
-  if (path.startsWith("/universities/")) return path.replace("/universities/", "/university/");
-  if (["/login", "/register"].includes(path)) return `/(auth)${path}`;
-  if (path === "/forgot-password") return "/forgot-password";
-  if (["/admin", "/supervisor", "/notifications"].includes(path)) return path;
-  if (["/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility", "/how-it-works"].includes(path)) return absoluteUrl(path);
-  if (path === "/") return "/(tabs)";
-  return "/support";
-}
 
 export default function Assistant() {
   const { colors, dark } = useTheme();
@@ -107,9 +79,16 @@ export default function Assistant() {
   }, [history, input, isRTL, scrollToBottom, sending]);
 
   const openAction = async (href: string) => {
-    const route = mobileRoute(href);
-    if (/^https:\/\//.test(route)) await Linking.openURL(route);
-    else router.push(route as never);
+    const route = resolveMobileRoute(href);
+    if (route) { router.push(route); return; }
+    const external = safeExternalLink(href);
+    const internal = parseInternalLink(href);
+    const policy = internal && ["/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility", "/how-it-works"].includes(internal.pathname)
+      ? absoluteUrl(internal.pathname + internal.search + internal.hash) : null;
+    if (external || policy) {
+      try { await Linking.openURL(external || policy!); }
+      catch { setMessages((rows) => [...rows, { id: "link-" + Date.now(), role: "assistant", text: isRTL ? "تعذر فتح الرابط. حاول مرة أخرى أو تواصل مع الدعم." : "Could not open this link. Try again or contact Support." }]); }
+    }
   };
 
   const renderMessage = ({ item }: { item: Message }) => {

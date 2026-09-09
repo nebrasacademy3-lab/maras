@@ -85,10 +85,10 @@ const nextConfig: NextConfig = {
           { key: "Cache-Control", value: "public, max-age=86400, stale-while-revalidate=604800" },
         ],
       },
-      {
-        source: "/brand/logo-light-hq.png",
+      ...["/brand/logo-light-hq.png", "/brand/mark-light.png", "/brand/app-icon.png"].map((source) => ({
+        source,
         headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }, { key: "Access-Control-Allow-Origin", value: "*" }],
-      },
+      })),
       ...privatePageRoots.map((root) => ({ source: `/${root}/:path*`, headers: privateResponseHeaders })),
       ...privateApiRoots.map((root) => ({ source: `/api/${root}/:path*`, headers: privateResponseHeaders })),
       ...privateMobileRoots.map((root) => ({ source: `/api/mobile/${root}/:path*`, headers: privateResponseHeaders })),

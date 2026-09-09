@@ -19,7 +19,7 @@ import { getCourseCatalog, getCoursesCatalog } from "@/lib/catalog-store";
 import { activeCourseAccessWhere } from "@/lib/course-access";
 import { listActiveCourseBundles } from "@/lib/course-bundles";
 import { currentUser } from "@/lib/server-auth";
-import { courseStructuredData, jsonLd, publicPageMetadata, seoSegment } from "@/lib/seo";
+import { courseSeoDescription, courseStructuredData, jsonLd, publicPageMetadata, seoSegment } from "@/lib/seo";
 
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ access?: string; status?: string }> };
 export const dynamic = "force-dynamic";
@@ -27,8 +27,7 @@ export function generateStaticParams() { return staticCourses.map((course) => ({
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const course = await getCourseCatalog((await params).slug);
   if (!course) notFound();
-  const hasPreview = course.units.some((unit) => unit.lessons.some((lesson) => lesson.free && lesson.ready));
-  const description = `${course.description}${hasPreview ? " شاهد درسًا تجريبيًا مجانيًا قبل الاشتراك." : " استعرض خطة المادة والوحدات والدروس المتاحة."}`;
+  const description = courseSeoDescription(course);
   const image = course.coverImage || "/og.png";
   return publicPageMetadata(`/courses/${seoSegment(course.slug)}`, `${course.title} — ${course.university}`, description, { image });
 }

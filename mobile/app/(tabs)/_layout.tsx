@@ -1,7 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import React from "react";
-import { Platform, type ColorValue } from "react-native";
+import { useWindowDimensions, type ColorValue } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 
@@ -11,25 +12,33 @@ function icon(name: React.ComponentProps<typeof Ionicons>["name"]) {
 export default function TabsLayout() {
   const { colors } = useTheme();
   const { direction, t } = useLanguage();
+  const { width } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const barWidth = Math.min(700, width - Math.max(insets.left + insets.right, 0) - 16);
   return <Tabs screenOptions={{
     headerShown: false,
     sceneStyle: { direction },
     tabBarHideOnKeyboard: true,
+    tabBarLabelPosition: "below-icon",
+    tabBarActiveBackgroundColor: colors.surfaceAlt,
     tabBarActiveTintColor: colors.primary,
     tabBarInactiveTintColor: colors.textSoft,
     tabBarStyle: {
       direction,
       position: "absolute",
       alignSelf: "center",
-      width: Platform.OS === "web" ? 650 : undefined,
+      width: barWidth,
+      left: (width - barWidth) / 2,
+      right: undefined,
       maxWidth: "98%",
-      bottom: Platform.OS === "ios" ? 14 : 10,
+      bottom: Math.max(insets.bottom, 8),
       backgroundColor: colors.tab,
       borderTopColor: "transparent",
       borderColor: colors.border,
       borderWidth: 1,
       borderRadius: 22,
-      height: Platform.OS === "ios" ? 78 : 68,
+      height: 68,
+      paddingBottom: 7,
       paddingTop: 7,
       shadowColor: "#061A42",
       shadowOpacity: .13,
@@ -38,13 +47,13 @@ export default function TabsLayout() {
       elevation: 10,
     },
     tabBarItemStyle: { borderRadius: 15, marginHorizontal: 1 },
-    tabBarLabelStyle: { fontSize: 8, fontWeight: "800", paddingBottom: Platform.OS === "ios" ? 0 : 7 },
+    tabBarLabelStyle: { fontSize: width < 360 ? 9 : 10, lineHeight: 16, fontWeight: "800", paddingBottom: 0 },
   }}>
     <Tabs.Screen name="index" options={{ title: t("الرئيسية"), tabBarIcon: icon("home-outline") }} />
     <Tabs.Screen name="universities" options={{ title: t("الجامعات"), tabBarIcon: icon("school-outline") }} />
     <Tabs.Screen name="courses" options={{ title: t("المواد"), tabBarIcon: icon("library-outline") }} />
     <Tabs.Screen name="learning" options={{ title: t("موادي"), tabBarIcon: icon("play-circle-outline") }} />
-    <Tabs.Screen name="ai" options={{ title: "أدوات مراس", tabBarIcon: icon("sparkles-outline") }} />
+    <Tabs.Screen name="ai" options={{ title: t("أدوات مراس"), tabBarIcon: icon("sparkles-outline") }} />
     <Tabs.Screen name="account" options={{ title: t("حسابي"), tabBarIcon: icon("person-circle-outline") }} />
   </Tabs>;
 }

@@ -3,6 +3,7 @@ import { SearchableSelect } from "@/components/searchable-select";
 
 import { useMemo, useState, useEffect } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, CheckCircle2, Eye, EyeOff, GraduationCap, LockKeyhole, Mail, Phone, ShieldCheck, Sparkles, UserRound } from "lucide-react";
 import { SiteHeader } from "./site-header";
 import type { Institution } from "@/lib/data";
@@ -11,6 +12,7 @@ import { ACADEMIC_LEVELS } from "@/lib/academic-levels";
 import { webDeviceHeaders } from "@/lib/client-device";
 import { safeAccountReturnTo } from "@/lib/account-readiness";
 import { SocialAuthButtons } from "@/components/social-auth-buttons";
+import styles from "./auth-shell.module.css";
 
 function safeReturnTo() {
   if (typeof window === "undefined") return "";
@@ -136,8 +138,18 @@ export function RegisterForm({ institutions }: { institutions: Institution[] }) 
   </form>;
 }
 
-export function AuthShell({ children, mode }: { children: React.ReactNode; mode: "login" | "register" }) {
-  return <main className="auth-page"><SiteHeader /><div className="auth-grid"><section className="auth-panel">{children}</section><aside className="auth-visual"><div className="auth-visual-glow" /><div className="auth-visual-content"><span className="auth-visual-badge"><Sparkles size={15} /> تعلّم بثقة</span><h2>{mode === "login" ? "كل تقدمك محفوظ، وكأنك ما توقفت." : "حساب واحد لكل رحلتك الجامعية."}</h2><p>{mode === "login" ? "ارجع إلى آخر ثانية شاهدتها، وكمّل دروسك من أي جهاز." : "موادك ومشترياتك وطلبات المحتوى وفواتيرك مرتبطة بملفك الدراسي."}</p><div className="auth-proof-card"><div className="auth-proof-art">∑<i><PlayCircleIcon /></i></div><div><small>تكمل الآن</small><strong>الهياكل المتقطعة</strong><span>68% مكتمل</span><div><i /></div></div></div><ul><li><CheckCircle2 size={17} /> محتوى مرتبط بجامعتك وتخصصك</li><li><CheckCircle2 size={17} /> دفع آمن وتفعيل تلقائي</li><li><CheckCircle2 size={17} /> مشغل خاص وتقدم محفوظ</li></ul></div><p className="auth-quote">“شرح واضح، تجربة مرتبة، ودرس مجاني قبل الاشتراك.”</p></aside></div></main>;
+export function AuthShell({ children, mode }: { children: React.ReactNode; mode: "login" | "register" | "verify" | "recovery" }) {
+  const security = mode === "verify" || mode === "recovery";
+  const steps = security ? [
+    { icon: Mail, title: "بريد يخصّك وحدك", description: "تصل رسائل الأمان إلى البريد المرتبط بحسابك." },
+    { icon: ShieldCheck, title: "خطوات واضحة وآمنة", description: "رمز أو رابط مؤقت لتأكيد ملكيتك وحماية حسابك." },
+    { icon: GraduationCap, title: "عد إلى ما تحب تعلّمه", description: "تجد موادك ومشترياتك في حسابك بعد تسجيل الدخول." },
+  ] : [
+    { icon: GraduationCap, title: "ابدأ من موادك", description: "اكتشف الشروحات المرتبطة بجامعتك وتخصصك." },
+    { icon: CheckCircle2, title: "جرّب الشرح أولًا", description: "شاهد الدرس التجريبي قبل اختيار المادة المناسبة." },
+    { icon: Sparkles, title: "تقدّم على راحتك", description: "تابع دروسك وملاحظاتك من الموقع أو التطبيق." },
+  ];
+  return <main className={`auth-page ${styles.page}`}><SiteHeader /><div className={`auth-grid ${styles.grid}`}><section className={`auth-panel ${styles.panel}`}>{children}</section><aside className={styles.visual}><span className={styles.badge}><Sparkles size={15} />{security ? "أمان حسابك يبدأ من هنا" : "مساحة لخطوتك القادمة"}</span><h2>{security ? "حسابك محفوظ. ورحلتك تستمر." : mode === "login" ? "أهلًا بعودتك. كمّل من حيث وصلت." : "رحلتك الجامعية، في مكان واحد."}</h2><p>{security ? "نرتّب لك خطوات التحقق والاستعادة، لتعود إلى تعلّمك بوضوح وطمأنينة." : "شرح يفهم احتياجك، ومواد أقرب إلى دراستك. خذ الخطوة الأولى، واجعل وقتك للدراسة أبسط."}</p><ol className={styles.journey}>{steps.map(({ icon: Icon, title, description }) => <li key={title}><i><Icon size={21} /></i><div><strong>{title}</strong><small>{description}</small></div></li>)}</ol><div className={styles.trust}><ShieldCheck size={19} />مراس العلم · معك في كل خطوة</div></aside></div></main>;
 }
 
 async function readAuthResponse(response: Response): Promise<{ error?: string; next?: string }> {
@@ -149,8 +161,8 @@ async function readAuthResponse(response: Response): Promise<{ error?: string; n
   }
 }
 
-function PlayCircleIcon() { return <span>▶</span>; }
 
-function PreserveAuthLink({path,children}:{path:string;children:React.ReactNode}) {
-  return <Link href={path} onClick={(event)=>{const returnTo=safeReturnTo();if(returnTo){event.preventDefault();window.location.assign(`${path}?return_to=${encodeURIComponent(returnTo)}`);}}}>{children}</Link>;
+function PreserveAuthLink({path,children}:{path:"/login" | "/register";children:React.ReactNode}) {
+  const router = useRouter();
+  return <Link href={path} onClick={(event)=>{const returnTo=safeReturnTo();if(returnTo){event.preventDefault();router.push(`${path}?return_to=${encodeURIComponent(returnTo)}`);}}}>{children}</Link>;
 }

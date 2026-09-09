@@ -47,10 +47,20 @@ export function absoluteUrl(path?: string | null) {
   return `${API_URL}${path.startsWith("/") ? path : `/${path}`}`;
 }
 
+/** Never forward session, device or administrative credentials to another origin. */
+export function apiRequestUrl(path: string) {
+  const url = new URL(absoluteUrl(path));
+  if (url.protocol !== "https:" || url.origin !== new URL(API_URL).origin || url.username || url.password) {
+    throw new ApiError("عنوان الخدمة غير موثوق.", 400);
+  }
+  return url;
+}
+
 export type ApiRequestInit = RequestInit & { timeoutMs?: number };
 
 export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
-  if (!STORE_COMMERCE_ENABLED && new URL(absoluteUrl(path)).pathname === "/api/checkout") {
+  const url = apiRequestUrl(path);
+  if (!STORE_COMMERCE_ENABLED && url.pathname === "/api/checkout") {
     throw new ApiError("نسخة المتجر مخصصة لمشاهدة الاشتراكات الحالية ولا تنفذ شراء المحتوى الرقمي داخل التطبيق.", 403);
   }
   const { timeoutMs = 15_000, ...requestInit } = init;
@@ -64,19 +74,20 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
     headers.set("x-meras-platform", deviceIdentity.platform);
   }
   if (sessionToken) headers.set("authorization", `Bearer ${sessionToken}`);
-  if (adminStepUpToken && new URL(absoluteUrl(path)).pathname.startsWith("/api/admin/")) headers.set("x-meras-admin-stepup", adminStepUpToken);
+  if (adminStepUpToken && url.pathname.startsWith("/api/admin/")) headers.set("x-meras-admin-stepup", adminStepUpToken);
   if (requestInit.body && !(requestInit.body instanceof FormData) && !headers.has("content-type")) headers.set("content-type", "application/json");
   const controller = new AbortController();
   const safeTimeout = Math.max(1_000, Math.min(15 * 60_000, Math.floor(timeoutMs)));
   const timeout = setTimeout(() => controller.abort(), safeTimeout);
   const externalSignal = requestInit.signal;
-  if (externalSignal?.aborted) controller.abort();
-  else if (externalSignal) externalSignal.addEventListener("abort", () => controller.abort(), { once: true });
+  const abort = () => controller.abort();
+  if (externalSignal?.aborted) abort();
+  else externalSignal?.addEventListener("abort", abort, { once: true });
   try {
-    const response = await fetch(absoluteUrl(path), { credentials: Platform.OS === "web" ? "include" : "omit", ...requestInit, headers, signal: controller.signal });
+    const response = await fetch(url.toString(), { credentials: Platform.OS === "web" ? "include" : "omit", ...requestInit, headers, signal: controller.signal });
     const text = await response.text();
     let payload: unknown = {};
-    try { payload = text ? JSON.parse(text) : {}; } catch { payload = {}; }
+    try { payload = text ? JSON.parse(text) : {}; } catch { if (response.ok) throw new ApiError("استجابة الخدمة غير مكتملة. حاول مرة أخرى.", 502); }
     if (!response.ok) {
       const error = payload && typeof payload === "object" && "error" in payload
         ? String((payload as { error: unknown }).error)
@@ -92,6 +103,7 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
     throw new ApiError(`تعذر الاتصال بخدمة مراس${detail}. حاول مرة أخرى.`, 0);
   } finally {
     clearTimeout(timeout);
+    externalSignal?.removeEventListener("abort", abort);
   }
 }
 
@@ -100,9 +112,11 @@ export type ApiUploadOptions = { timeoutMs?: number; signal?: AbortSignal; onPro
 
 export function apiUpload<T>(path: string, body: FormData | Blob, options: ApiUploadOptions = {}): Promise<T> {
   return new Promise((resolve, reject) => {
+    const url = apiRequestUrl(path);
+    if (options.signal?.aborted) { reject(new ApiError("تم إلغاء الرفع.", 499)); return; }
     const xhr = new XMLHttpRequest();
     const startedAt = Date.now();
-    xhr.open("POST", absoluteUrl(path), true);
+    xhr.open("POST", url.toString(), true);
     xhr.withCredentials = Platform.OS === "web";
     xhr.timeout = Math.max(15_000, Math.min(options.timeoutMs || 15 * 60_000, 30 * 60_000));
     xhr.setRequestHeader("accept", "application/json");
@@ -114,10 +128,9 @@ export function apiUpload<T>(path: string, body: FormData | Blob, options: ApiUp
       xhr.setRequestHeader("x-meras-platform", deviceIdentity.platform);
     }
     if (sessionToken) xhr.setRequestHeader("authorization", `Bearer ${sessionToken}`);
-    if (adminStepUpToken && new URL(absoluteUrl(path)).pathname.startsWith("/api/admin/")) xhr.setRequestHeader("x-meras-admin-stepup", adminStepUpToken);
+    if (adminStepUpToken && url.pathname.startsWith("/api/admin/")) xhr.setRequestHeader("x-meras-admin-stepup", adminStepUpToken);
     const abort = () => xhr.abort();
-    if (options.signal?.aborted) abort();
-    else options.signal?.addEventListener("abort", abort, { once: true });
+    options.signal?.addEventListener("abort", abort, { once: true });
     xhr.upload.onprogress = (event) => {
       const total = event.lengthComputable ? event.total : 0;
       const elapsedSeconds = Math.max((Date.now() - startedAt) / 1000, 0.1);

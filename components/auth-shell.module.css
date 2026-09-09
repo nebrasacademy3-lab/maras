@@ -1,0 +1,26 @@
+.page > .grid { width: min(1280px, 100%); min-height: calc(100svh - 100px); margin: 0 auto; padding: 38px 28px 56px; gap: clamp(30px, 5vw, 76px); grid-template-columns: minmax(0, 1fr) minmax(0, .87fr); align-items: start; }
+.page > .grid > .panel { display: block; min-width: 0; padding: clamp(24px, 3vw, 42px); border: 1px solid var(--line); border-radius: 28px; background: var(--surface); box-shadow: 0 18px 55px color-mix(in srgb, var(--primary-dark) 5%, transparent); }
+.panel::before { display: none; }
+.panel :global(.auth-form) { width: 100%; }
+.panel :global(.auth-heading h1) { font-size: clamp(26px, 3vw, 36px); line-height: 1.5; }
+.panel :global(.auth-heading p) { font-size: 14px; line-height: 1.95; }
+.panel :global(.form-label) { margin-top: 18px; font-size: 13px; }
+.panel :global(.input-with-icon input) { font-size: 16px; }
+.panel :global(.input-with-icon button) { display: grid; place-items: center; min-width: 40px; min-height: 44px; }
+.panel :global(.auth-submit) { min-height: 53px; margin-top: 20px; }
+.panel :global(.auth-options), .panel :global(.auth-switch) { font-size: 13px; }
+.visual { position: sticky; top: 110px; display: grid; gap: 28px; min-width: 0; padding: 38px 0; color: var(--text); text-align: start; }
+.badge { display: inline-flex; align-items: center; gap: 8px; width: fit-content; padding: 8px 12px; border: 1px solid var(--line); border-radius: 99px; background: var(--surface); color: var(--primary); font-size: 12px; font-weight: 700; }
+.visual h2 { max-width: 450px; margin: 0; color: var(--text); font-size: clamp(32px, 3.3vw, 48px); line-height: 1.5; letter-spacing: -.035em; }
+.visual > p { margin: 0; color: var(--text-soft); font-size: 15px; line-height: 2; }
+.journey { display: grid; gap: 0; margin: 0; padding: 0; list-style: none; }
+.journey li { position: relative; display: grid; grid-template-columns: 46px minmax(0, 1fr); align-items: start; gap: 16px; padding-bottom: 24px; }
+.journey li:not(:last-child)::after { content: ""; position: absolute; inset-inline-start: 22px; top: 50px; bottom: 5px; width: 1px; background: var(--line); }
+.journey i { display: grid; place-items: center; width: 46px; height: 46px; border: 1px solid var(--line); border-radius: 15px; color: var(--primary); background: var(--surface); font-style: normal; }
+.journey strong { display: block; margin: 2px 0 4px; font-size: 15px; }
+.journey small { display: block; color: var(--text-soft); font-size: 13px; line-height: 1.9; }
+.trust { display: flex; align-items: center; gap: 10px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
+.trust svg { color: var(--primary); flex-shrink: 0; }
+@media (max-width: 1000px) { .page > .grid { max-width: 680px; grid-template-columns: minmax(0, 1fr); min-height: auto; gap: 0; } .visual { display: none; } }
+@media (max-width: 600px) { .page > .grid { padding: 22px 14px 36px; } .page > .grid > .panel { padding: 24px 20px; border-radius: 22px; } }
+@media (max-width: 360px) { .page > .grid { padding-inline: 10px; } .page > .grid > .panel { padding-inline: 16px; } }

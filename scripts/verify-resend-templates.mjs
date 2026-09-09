@@ -31,7 +31,7 @@ try {
       const page = await browser.newPage({ viewport: { width, height: 1000 } });
       await page.route("**/*", route => {
         const url = new URL(route.request().url());
-        if (url.origin === origin && (url.pathname === "/brand/logo-light-hq.png" || /^\/email-assets\/[a-z]+\.png$/.test(url.pathname))) return route.fulfill({ contentType: "image/png", body: fs.readFileSync(path.join(root, "public", url.pathname.slice(1))) });
+        if (url.origin === origin && (url.pathname === "/brand/mark-light.png" || /^\/email-assets\/[a-z]+\.png$/.test(url.pathname))) return route.fulfill({ contentType: "image/png", body: fs.readFileSync(path.join(root, "public", url.pathname.slice(1))) });
         return route.abort();
       });
       let html = renderSecurityEmail(source, securityEmailVariables(content, withSocials ? settings : {}, origin));

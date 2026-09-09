@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { analyticsEvents, cartItems, courseAccess } from "@/db/schema";
@@ -30,7 +31,7 @@ export async function POST(request: Request) {
   if (!user) return jsonError("سجّل الدخول لإضافة المواد إلى السلة", 401);
   if (!await checkRateLimit("cart-write", `user:${user.id}`, 120, 60)) return jsonError("تحديثات كثيرة للسلة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات السلة غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات السلة غير صالحة"); }
   const db = getDb();
   if (payload.clear === true) {
     await db.delete(cartItems).where(eq(cartItems.userEmail, user.email));

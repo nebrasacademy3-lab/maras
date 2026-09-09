@@ -1,0 +1,64 @@
+/* One measured header offset keeps menus and student navigation inside the viewport. */
+:root { --site-header-height: 76px; --navigation-offset: calc(var(--site-header-height) + var(--announcement-bar-height, 0px)); }
+html { scroll-padding-block-start: calc(var(--navigation-offset) + 20px); }
+.site-header { position: sticky; top: var(--announcement-bar-height, 0px); }
+.site-header .mobile-nav { max-height: calc(100dvh - var(--navigation-offset)); overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+.site-header .account-utilities-menu > div { max-height: calc(100dvh - var(--navigation-offset) - 16px); overflow-y: auto; overscroll-behavior-y: contain; }
+.desktop-nav > a, .mobile-nav-link { position: relative; }
+.navigation-pending { width: 10px; height: 10px; flex: none; border: 2px solid currentColor; border-inline-end-color: transparent; border-radius: 50%; animation: navigationSpin .7s linear infinite; }
+@keyframes navigationSpin { to { rotate: 360deg; } }
+.student-app { grid-template-columns: 250px minmax(0,1fr); }
+.student-sidebar { top: var(--navigation-offset); height: calc(100vh - var(--navigation-offset)); height: calc(100dvh - var(--navigation-offset)); min-height: 0; overflow-y: auto; overscroll-behavior-y: contain; scrollbar-width: thin; scrollbar-color: var(--line) transparent; padding-bottom: max(18px, env(safe-area-inset-bottom)); }
+.student-sidebar > * { flex-shrink: 0; }
+.student-sidebar nav { padding-bottom: 20px; }
+.student-sidebar nav button { min-height: 46px; height: auto; padding-block: 10px; text-align: start; line-height: 1.6; font-size: calc(12px * var(--font-scale,1)); }
+.student-sidebar nav a { min-height: 46px; height: auto; padding-block: 10px; line-height: 1.6; font-size: calc(12px * var(--font-scale,1)); }
+.student-sidebar nav svg { flex: none; }
+.student-sidebar nav button.active { background: color-mix(in srgb,var(--primary) 9%,var(--surface)); box-shadow: inset -3px 0 var(--primary); }
+.student-sidebar :is(a,button):focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.student-profile-mini span { min-width: 0; overflow-wrap: anywhere; }
+.student-profile-mini strong { font-size: calc(13px * var(--font-scale,1)); line-height: 1.8; }
+.student-profile-mini small { font-size: calc(10px * var(--font-scale,1)); }
+.student-sidebar-help { margin-top: auto; }
+.student-sidebar-help small, .student-sidebar-help button, .student-logout { font-size: calc(12px * var(--font-scale,1)); }
+.student-content { min-width: 0; }
+.student-content :is(h1,h2,h3,p,strong) { overflow-wrap: anywhere; }
+.student-content .dashboard-title { padding-bottom: 22px; border-bottom: 1px solid var(--line); }
+.student-content .dashboard-title p { max-width: 65ch; font-size: calc(14px * var(--font-scale,1)); line-height: 1.9; }
+.student-content .dashboard-title h1 { font-size: clamp(25px,3vw,36px); line-height: 1.6; }
+.student-content .dashboard-panel { border-radius: 20px; padding: clamp(16px,2vw,26px); }
+.student-content .dashboard-stat-grid article { min-width: 0; padding: 18px 14px; border-radius: 18px; }
+.student-content .dashboard-stat-grid small { font-size: calc(11px * var(--font-scale,1)); line-height: 1.7; }
+.student-content .dashboard-stat-grid strong { font-size: calc(24px * var(--font-scale,1)); }
+.student-content .dashboard-tabs { overflow-x: auto; gap: 8px; padding-block: 4px; }
+.student-content .dashboard-tabs button { min-height: 42px; flex: none; font-size: calc(12px * var(--font-scale,1)); }
+.dashboard-loading { min-height: 55vh; display: grid; place-content: center; justify-items: center; gap: 12px; padding: 30px; color: var(--text); background: var(--bg); text-align: center; }
+.dashboard-loading p { margin: 0; color: var(--text-soft); }
+.dashboard-loading .navigation-pending { width: 28px; height: 28px; color: var(--primary); }
+@media(max-width:1000px) { .student-app { grid-template-columns: 210px minmax(0,1fr); } .student-content { padding-inline: 20px; } }
+@media(max-width:700px) {
+  :root { --site-header-height: 67px; }
+  .student-app { display: block; }
+  .student-content { padding: 18px 14px 60px; }
+  .student-mobile-tabs { top: var(--navigation-offset); margin: -18px -14px 24px; padding: 8px 14px; scrollbar-width: thin; scroll-snap-type: inline proximity; }
+  .student-mobile-tabs button { min-width: 84px; min-height: 54px; padding: 8px; font-size: calc(11px * var(--font-scale,1)); line-height: 1.6; scroll-snap-align: start; white-space: nowrap; flex-shrink: 0; }
+  .student-mobile-tabs button:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+  .student-content .dashboard-stat-grid { gap: 8px; }
+  .student-content .dashboard-stat-grid article { padding: 12px; }
+}
+@media(prefers-reduced-motion:reduce) { .navigation-pending { animation: none; border-inline-end-color: currentColor; opacity: .65; } }
+
+@media(max-width:1250px) { .site-header-app .desktop-nav { display: none; } .site-header-app .mobile-menu-button { display: grid; } }
+
+.student-content .account-grid { grid-template-columns: minmax(0,1.1fr) minmax(0,.9fr); align-items: start; }
+.student-content .account-form label { min-width: 0; gap: 9px; font-size: calc(13px * var(--font-scale,1)); line-height: 1.8; color: var(--text-soft); }
+.student-content .account-form :is(input,select) { min-width: 0; width: 100%; min-height: 50px; padding: 12px 14px; border-radius: 12px; font-size: calc(16px * var(--font-scale,1)); line-height: 1.6; }
+.student-content .account-form input:disabled { opacity: .75; cursor: not-allowed; }
+.student-content :is(.auth-success,.form-error) { font-size: calc(13px * var(--font-scale,1)); line-height: 1.9; }
+.student-content .security-card > h2 { font-size: calc(21px * var(--font-scale,1)); }
+.student-content .security-card > p { font-size: calc(13px * var(--font-scale,1)); line-height: 1.9; }
+.student-content .security-sessions :is(small,strong), .student-content .security-hint { font-size: calc(12px * var(--font-scale,1)); line-height: 1.8; }
+.student-content .panel-head p, .student-content .panel-empty-copy, .student-content .dashboard-empty-state p { font-size: calc(13px * var(--font-scale,1)); line-height: 1.9; }
+.student-content .owned-courses-grid article h3 { font-size: calc(18px * var(--font-scale,1)); line-height: 1.7; }
+.student-content .owned-courses-grid article p, .student-content .owned-courses-grid article small { font-size: calc(12px * var(--font-scale,1)); line-height: 1.8; }
+@media(max-width:1100px) { .student-content .account-grid { grid-template-columns: minmax(0,1fr); } }

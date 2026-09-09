@@ -16,6 +16,7 @@ function textFromNode(node: React.ReactNode, t: (value: string) => string): stri
   if (typeof node === "string") return t(node);
   if (typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map((item) => textFromNode(item, t)).join("");
+  if (React.isValidElement<{ children?: React.ReactNode }>(node)) return textFromNode(node.props.children, t);
   return "";
 }
 
@@ -36,7 +37,8 @@ export function ScaledText({ style, children, ...props }: TextProps) {
     fontSize: baseFontSize * fontScale,
     ...(typeof flattened?.lineHeight === "number" ? { lineHeight: flattened.lineHeight * fontScale } : {}),
     writingDirection: contentDirection,
-    textAlign: centered ? "center" : justified ? "justify" : contentDirection === "rtl" ? "right" : "left",
+    direction: contentDirection,
+    textAlign: centered ? "center" : justified ? "justify" : (forceLtr ? "left" : isRTL ? "right" : "left"),
   };
 
   return <NativeText {...props} style={[style, scaledStyle]}>{translatedChildren}</NativeText>;

@@ -2,9 +2,10 @@ import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { analyticsEvents, courseAccess, lessonProgress, lessonsDb } from "@/db/schema";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
-import { cleanText, jsonError } from "@/lib/api";
+import { finiteNumber, cleanText, jsonError } from "@/lib/api";
 import { activeCourseAccessWhere } from "@/lib/course-access";
 import { getCourseCatalog } from "@/lib/catalog-store";
+import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
   if (!userEmail) return jsonError("سجّل الدخول لحفظ التقدم", 401);
   if (!courseSlug) return jsonError("المادة مطلوبة");
   const rows = await getDb().select().from(lessonProgress).where(and(eq(lessonProgress.userEmail, userEmail), eq(lessonProgress.courseSlug, courseSlug)));
-  return Response.json({ ok: true, progress: rows });
+  return Response.json({ ok: true, progress: rows }, { headers: { "cache-control": "no-store" } });
 }
 
 export async function POST(request: Request) {
@@ -22,10 +23,11 @@ export async function POST(request: Request) {
   if (!user) return jsonError("سجّل الدخول لحفظ التقدم", 401);
   if (!await checkRateLimit("lesson-progress", `user:${user.id}`, 180, 60)) return jsonError("تحديثات كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات التقدم غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request); } catch (error) { return jsonError("بيانات التقدم غير صالحة", error instanceof RequestBodyTooLargeError ? 413 : 400); }
   const courseSlug = cleanText(payload.courseSlug, 120);
   const lessonId = cleanText(payload.lessonId, 120);
-  const watchedSeconds = Math.max(0, Math.min(86_400, Math.floor(Number(payload.watchedSeconds) || 0)));
+  if (payload.watchedSeconds !== undefined && !Number.isFinite(finiteNumber(payload.watchedSeconds))) return jsonError("وقت المشاهدة غير صالح");
+  const watchedSeconds = Math.max(0, Math.min(86_400, Math.floor(finiteNumber(payload.watchedSeconds) || 0)));
   const course = await getCourseCatalog(courseSlug);
   const lesson = course?.units.flatMap((unit) => unit.lessons).find((item) => item.id === lessonId);
   if (!course || !lesson) return jsonError("تعذر مطابقة المادة أو الدرس");
@@ -60,5 +62,5 @@ export async function POST(request: Request) {
     if (explicitlyCompleted && !existingLesson[0]?.completed) await tx.insert(analyticsEvents).values({ event: "lesson_complete", userEmail: user.email, courseSlug, metadataJson: JSON.stringify({ lessonId, watchedSeconds, manual }), createdAt: now });
     return row;
   });
-  return Response.json({ ok: true, savedAt: now, progress: saved });
+  return Response.json({ ok: true, savedAt: now, progress: saved }, { headers: { "cache-control": "no-store" } });
 }

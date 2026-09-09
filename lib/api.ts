@@ -25,6 +25,13 @@ export function cleanText(value: unknown, max = 500) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+// JSON objects can shadow toString/valueOf. Coerce only primitive numeric input.
+export function finiteNumber(value: unknown, fallback = Number.NaN) {
+  if (typeof value !== "number" && typeof value !== "string") return fallback;
+  if (typeof value === "string" && !value.trim()) return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
 export function normalizePhone(value: unknown) {
   return cleanText(value, 20).replace(/[^0-9+]/g, "");
 }

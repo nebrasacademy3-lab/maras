@@ -1,3 +1,4 @@
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, platformSettings } from "@/db/schema";
@@ -39,7 +40,7 @@ export async function POST(request: Request) {
   }
   if (!await checkRateLimit("compliance-update", `admin:${user.id}`, 120, 60)) return jsonError("تحديثات كثيرة خلال وقت قصير", 429);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات الامتثال غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات الامتثال غير صالحة"); }
   const key = cleanText(payload.key, 80).replace(/[^a-z_]/g, "");
   const item = complianceCatalog.find((candidate) => candidate.key === key);
   if (!item) return jsonError("بند الامتثال غير موجود", 404);

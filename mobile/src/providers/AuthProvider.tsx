@@ -1,6 +1,6 @@
 import * as SecureStore from "expo-secure-store";
 import { useQueryClient } from "@tanstack/react-query";
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { api, ApiError, jsonBody, setApiToken } from "@/src/lib/api";
 import type { SessionUser } from "@/src/types";
@@ -58,20 +58,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SessionUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const sessionGeneration = useRef(0);
   const refresh = useCallback(async () => {
+    const generation = sessionGeneration.current;
     try {
       const response = await api<{ ok: true; user: SessionUser }>("/api/auth/me");
+      if (generation !== sessionGeneration.current) return null;
       setUser(response.user);
       return response.user;
     } catch (reason) {
+      if (generation !== sessionGeneration.current) return null;
       if (reason instanceof ApiError && reason.status === 401) {
+        sessionGeneration.current++;
+        queryClient.clear();
         setUser(null);
         await clearPersistedToken();
         setToken(null);
       }
       return null;
     }
-  }, []);
+  }, [queryClient]);
   useEffect(() => {
     void (async () => {
       try {
@@ -82,8 +88,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     })();
   }, [refresh]);
   const accept = useCallback(async (response: AuthResponse) => {
+    sessionGeneration.current++;
+    await queryClient.cancelQueries();
+    queryClient.clear();
     await persistToken(response.token); setToken(response.token); setUser(response.user); return response;
-  }, []);
+  }, [queryClient]);
   const login = useCallback(async (value: Credentials) => accept(await api<AuthResponse>("/api/mobile/auth/login", { method: "POST", body: jsonBody(value) })), [accept]);
   const register = useCallback(async (value: Registration) => accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) })), [accept]);
   const socialLogin = useCallback(async (provider: SocialProvider, referralCode?: string) => {
@@ -93,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return accept(await api<AuthResponse>("/api/auth/oauth/exchange", { method: "POST", body: jsonBody(exchange) }));
   }, [accept]);
   const logout = useCallback(async () => {
+    sessionGeneration.current++;
     // Start revocation while the bearer token is still attached, then clear local state immediately.
     const remote = api("/api/mobile/auth/logout", { method: "POST", timeoutMs: 2_000 }).then(() => true).catch(() => false);
     setUser(null);

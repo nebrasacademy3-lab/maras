@@ -29,7 +29,7 @@ export function CourseBundleOffers({ bundles, currentSlug }: { bundles: BundleOf
       for (const course of bundle.courses) await setCart(course.slug, true);
       router.push(`/cart?bundle=${encodeURIComponent(bundle.slug)}`);
     } catch (error) {
-      if (error instanceof Error && error.message.includes("401")) { window.location.assign(`/login?return_to=${encodeURIComponent(`/courses/${currentSlug}`)}`); return; }
+      if (error instanceof Error && error.message.includes("401")) { router.push(`/login?return_to=${encodeURIComponent(`/courses/${currentSlug}`)}`); return; }
       setMessage(error instanceof Error ? error.message : "تعذر إضافة الباقة إلى السلة");
     } finally { setBusy(""); }
   };

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type CSSProperties, type ElementType } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   Bell,
@@ -43,6 +44,7 @@ function launchLabel(value: string | null) {
 }
 
 export function HomeUpcomingTracks({ tracks }: { tracks: PublicLearningTrack[] }) {
+  const router = useRouter();
   const [activeSlugs, setActiveSlugs] = useState<Set<string>>(() => new Set());
   const [counts, setCounts] = useState<Record<string, number>>(() => Object.fromEntries(tracks.map((track) => [track.slug, track.interestCount])));
   const [busySlug, setBusySlug] = useState("");
@@ -77,7 +79,7 @@ export function HomeUpcomingTracks({ tracks }: { tracks: PublicLearningTrack[] }
       });
       const payload = await response.json() as { active?: boolean; interestCount?: number; message?: string; error?: string };
       if (response.status === 401) {
-        window.location.assign("/login?return_to=" + encodeURIComponent("/#coming-soon"));
+        router.push("/login?return_to=" + encodeURIComponent("/#coming-soon"));
         return;
       }
       if (!response.ok) throw new Error(payload.error || "تعذر حفظ اختيارك");

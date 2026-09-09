@@ -17,15 +17,18 @@ export function ScaledTextInput({ style, placeholder, secureTextEntry, keyboardT
     ["email-address", "url", "phone-pad", "numeric", "number-pad", "decimal-pad"].includes(String(keyboardType || ""))
   );
   const translatedPlaceholder = placeholder ? t(placeholder) : placeholder;
-  const currentText = String(props.value ?? props.defaultValue ?? translatedPlaceholder ?? "");
+  const value = String(props.value ?? props.defaultValue ?? "");
+  const currentText = value || translatedPlaceholder || "";
   const contentDirection = forceLtr
     ? "ltr"
     : directionForText(currentText, isRTL ? "rtl" : "ltr");
+  const alignment: "center" | "left" | "right" = requestedTextAlign === "center" || flattened?.textAlign === "center" ? "center" : value && forceLtr ? "left" : isRTL ? "right" : "left";
   const scaledStyle: TextStyle = {
     fontSize: baseFontSize * fontScale,
     ...(typeof flattened?.lineHeight === "number" ? { lineHeight: flattened.lineHeight * fontScale } : {}),
     writingDirection: contentDirection,
-    textAlign: requestedTextAlign === "center" ? "center" : contentDirection === "rtl" ? "right" : "left",
+    direction: isRTL ? "rtl" : "ltr",
+    textAlign: alignment,
   };
-  return <NativeTextInput {...props} secureTextEntry={secureTextEntry} keyboardType={keyboardType} placeholder={translatedPlaceholder} style={[style, scaledStyle]} />;
+  return <NativeTextInput {...props} secureTextEntry={secureTextEntry} keyboardType={keyboardType} textAlign={alignment} placeholder={translatedPlaceholder} style={[style, scaledStyle]} />;
 }

@@ -3,9 +3,9 @@
 import dynamic from "next/dynamic";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import { MotionOrchestrator } from "./motion-orchestrator";
 
 const DeferredAssistant = dynamic(() => import("@/components/meras-assistant").then((module) => module.MerasAssistant), { ssr: false });
-const DeferredMotion = dynamic(() => import("@/components/motion-orchestrator").then((module) => module.MotionOrchestrator), { ssr: false });
 
 export function DeferredEnhancements() {
   const pathname = usePathname();
@@ -20,5 +20,5 @@ export function DeferredEnhancements() {
     return () => clearTimeout(timeout);
   }, []);
   const isAdmin = pathname === "/admin" || pathname.startsWith("/admin/");
-  return ready ? <><DeferredMotion />{!isAdmin && <DeferredAssistant />}</> : null;
+  return <><MotionOrchestrator />{ready && !isAdmin && <DeferredAssistant />}</>;
 }
