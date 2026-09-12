@@ -1,0 +1,16 @@
+{
+  "testedAt": "2026-09-12T18:49:03.730Z",
+  "databaseEncoding": "UTF8",
+  "freshThrough0028": true,
+  "upgradeThrough0029": true,
+  "tables": 82,
+  "legacyCleanRequeued": [
+    "course_request_files",
+    "support_reply_files",
+    "course_resources",
+    "ai_files"
+  ],
+  "quarantinePreserved": true,
+  "aiReadyChangedToPendingScan": true,
+  "production": false
+}

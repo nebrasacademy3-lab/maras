@@ -10,7 +10,8 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
-export default async function FinancePage() {
+export default async function FinancePage({ searchParams }: { searchParams: Promise<{ search?: string }> }) {
   const user = await requireRole("/admin/finance", ["admin"]);
-  return <FinanceCenter adminName={user.fullName} />;
+  const query = await searchParams;
+  return <FinanceCenter adminName={user.fullName} initialSearch={typeof query.search === "string" ? query.search.slice(0, 160) : ""} />;
 }

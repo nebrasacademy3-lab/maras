@@ -1,11 +1,11 @@
-import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { catalogCourses, catalogInstitutions, catalogSpecialties, courseAccess, courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, videoAssets } from "@/db/schema";
 import { courses as staticCourses, institutions as staticInstitutions, type Course, type Institution, type InstitutionType } from "@/lib/data";
 import { getVerifiedInstitutionPrograms } from "@/lib/official-programs";
 import { withCatalogSource } from "@/lib/catalog-sources";
 import type { AcademicProgram } from "@/lib/academic-data";
-import { normalizeAccessDurationDays } from "@/lib/course-access";
+import { activeAccessCondition, normalizeAccessDurationDays } from "@/lib/course-access";
 
 const themes: Record<string, string> = {
   "blue-violet": "from-blue-700 to-violet-600",
@@ -161,7 +161,7 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
     db.select().from(catalogSpecialties),
     getInstitutionsCatalog(true),
     db.select().from(courseReviews).where(eq(courseReviews.status, "published")),
-    db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(and(isNull(courseAccess.revokedAt), isNull(courseAccess.suspendedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, new Date().toISOString())))),
+    db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(activeAccessCondition()),
     db.select({ institutionSlug: institutionSpecialties.institutionSlug, specialtySlug: institutionSpecialties.specialtySlug, status: institutionSpecialties.status }).from(institutionSpecialties),
     db.select({ lessonId: videoAssets.lessonId }).from(videoAssets).where(eq(videoAssets.status, "ready")),
   ]);

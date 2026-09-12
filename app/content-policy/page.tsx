@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { publicPageMetadata } from "@/lib/seo";
+import { staticPublicPageMetadata } from "@/lib/seo-settings";
 import { PolicyPage } from "@/components/policy-page";
 
-export const metadata: Metadata = publicPageMetadata("/content-policy", "حقوق وسياسة المحتوى", "تعرف على ملكية المحتوى التعليمي في مراس العلم، وضوابط الاستخدام الشخصي، وآلية تقديم بلاغات حقوق المحتوى.");
+export function generateMetadata(): Promise<Metadata> { return staticPublicPageMetadata("/content-policy"); }
 export default function ContentPolicyPage() { return <PolicyPage title="حقوق وسياسة المحتوى" intro="توضح هذه السياسة ملكية المحتوى التعليمي، وضوابط استخدامه، وآلية التعامل مع البلاغات." sections={[
   { title: "ملكية المواد", body: "الفيديوهات والملفات الأصلية مملوكة لمراس أو للمدرّسين والجهات المرخِّصة لها، ولا يعني الاشتراك انتقال الملكية للمستخدم." },
   { title: "الاستخدام المسموح", body: "يُسمح بالمشاهدة الشخصية داخل الحساب خلال مدة الصلاحية، وباستخدام الأجهزة والجلسات المسموح بها فقط." },

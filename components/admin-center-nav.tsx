@@ -8,6 +8,7 @@ import styles from "./admin-center-nav.module.css";
 
 export const ADMIN_CENTERS: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }> = [
   { href: "/admin", label: "لوحة الإدارة", icon: LayoutDashboard, description: "الكتالوج والطلاب والطلبات والدعم" },
+  { href: "/admin/purchases", label: "مشتريات التطبيقات", icon: CircleDollarSign, description: "منتجات المتاجر والمزامنة والاسترداد" },
   { href: "/admin/finance", label: "المركز المالي", icon: CircleDollarSign, description: "الإيراد والاستردادات والتسويات" },
   { href: "/admin/operations", label: "التشغيل والتحليلات", icon: Activity, description: "الطوابير والأتمتة والامتثال" },
   { href: "/admin/bundles", label: "الباقات والعروض", icon: PackageOpen, description: "عروض مركبة بتسعير محكوم" },
@@ -16,6 +17,8 @@ export const ADMIN_CENTERS: ReadonlyArray<{ href: string; label: string; icon: L
   { href: "/admin/referrals", label: "الإحالات والهدايا", icon: Gift, description: "المستويات والكوبونات والمراجعة" },
   { href: "/admin/partners", label: "الشركاء والاعتمادات", icon: Handshake, description: "الشعارات والموافقات وحالة النشر" },
   { href: "/admin/ai", label: "أدوات مراس", icon: Bot, description: "المفاتيح والخدمات والاشتراكات" },
+  { href: "/admin/seo", label: "البحث والذكاء الاصطناعي", icon: Search, description: "جاهزية الفهرسة ومعاينة العناوين والأوصاف" },
+  { href: "/admin/files", label: "فحص الملفات", icon: FileStack, description: "حالة الفحص والحجر وإعادة المحاولة" },
   { href: "/admin/security", label: "أمان الحساب", icon: LockKeyhole, description: "المصادقة الإضافية والتحقق الإداري" },
 ];
 

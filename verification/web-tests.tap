@@ -1,0 +1,2381 @@
+TAP version 13
+# Subtest: admin deletion uses a fixed entity whitelist
+ok 1 - admin deletion uses a fixed entity whitelist
+  ---
+  duration_ms: 5.6571
+  type: 'test'
+  ...
+# Subtest: destructive deletion requires the exact Arabic confirmation
+ok 2 - destructive deletion requires the exact Arabic confirmation
+  ---
+  duration_ms: 0.3992
+  type: 'test'
+  ...
+# Subtest: financial and audit records are protected from deletion
+ok 3 - financial and audit records are protected from deletion
+  ---
+  duration_ms: 0.4157
+  type: 'test'
+  ...
+# Subtest: account safety and storage cleanup contracts are present
+ok 4 - account safety and storage cleanup contracts are present
+  ---
+  duration_ms: 0.4622
+  type: 'test'
+  ...
+# Subtest: admin save accepts modern dotted key, encrypts it, and returns/audits masked data only
+ok 5 - admin save accepts modern dotted key, encrypts it, and returns/audits masked data only
+  ---
+  duration_ms: 271.0645
+  type: 'test'
+  ...
+# Subtest: models/ service settings round-trip through actual config reader without falling back
+ok 6 - models/ service settings round-trip through actual config reader without falling back
+  ---
+  duration_ms: 207.2069
+  type: 'test'
+  ...
+# Subtest: key storage configuration errors retain precise sanitized code instead of blaming a valid key
+ok 7 - key storage configuration errors retain precise sanitized code instead of blaming a valid key
+  ---
+  duration_ms: 136.526
+  type: 'test'
+  ...
+# Subtest: provider checks require permission, administrative step-up and their own rate limit before accessing Google
+ok 8 - provider checks require permission, administrative step-up and their own rate limit before accessing Google
+  ---
+  duration_ms: 399.1522
+  type: 'test'
+  ...
+# Subtest: saved-key generation checks use decrypted key internally and recover old error status without exposing it
+ok 9 - saved-key generation checks use decrypted key internally and recover old error status without exposing it
+  ---
+  duration_ms: 79.2756
+  type: 'test'
+  ...
+# Subtest: diagnostic errors expose safe category/retry delay; metadata success never claims generation
+ok 10 - diagnostic errors expose safe category/retry delay; metadata success never claims generation
+  ---
+  duration_ms: 157.8409
+  type: 'test'
+  ...
+# Subtest: extensions preserve lifetime and add time after the current end
+ok 11 - extensions preserve lifetime and add time after the current end
+  ---
+  duration_ms: 5.7248
+  type: 'test'
+  ...
+# Subtest: the paginated APIs clamp malformed and hostile page input
+ok 12 - the paginated APIs clamp malformed and hostile page input
+  ---
+  duration_ms: 1.9477
+  type: 'test'
+  ...
+# Subtest: sensitive user changes reject generic machine tokens and missing step-up
+ok 13 - sensitive user changes reject generic machine tokens and missing step-up
+  ---
+  duration_ms: 821.0715
+  type: 'test'
+  ...
+# Subtest: concurrent demotions cannot remove the final active administrator
+ok 14 - concurrent demotions cannot remove the final active administrator
+  ---
+  duration_ms: 224.4098
+  type: 'test'
+  ...
+# Subtest: manual paid grants fulfill once and conflicting retry payload is rejected
+ok 15 - manual paid grants fulfill once and conflicting retry payload is rejected
+  ---
+  duration_ms: 226.3847
+  type: 'test'
+  ...
+# Subtest: repeated paid fulfillment cannot extend a duplicate purchase twice or shorten admin extension
+ok 16 - repeated paid fulfillment cannot extend a duplicate purchase twice or shorten admin extension
+  ---
+  duration_ms: 2.9284
+  type: 'test'
+  ...
+# Subtest: staff changes revoke the changed employee sessions and audit password resets without storing credentials
+ok 17 - staff changes revoke the changed employee sessions and audit password resets without storing credentials
+  ---
+  duration_ms: 57.5588
+  type: 'test'
+  ...
+# Subtest: RBAC reads the existing role tables and keeps the admin fallback finite
+ok 18 - RBAC reads the existing role tables and keeps the admin fallback finite
+  ---
+  duration_ms: 2.1196
+  type: 'test'
+  ...
+# Subtest: financial, compliance, notification, and deletion routes enforce permissions
+ok 19 - financial, compliance, notification, and deletion routes enforce permissions
+  ---
+  duration_ms: 0.693
+  type: 'test'
+  ...
+# Subtest: TOTP storage is encrypted, replay protected, and step-up is bound to the login session
+ok 20 - TOTP storage is encrypted, replay protected, and step-up is bound to the login session
+  ---
+  duration_ms: 0.3577
+  type: 'test'
+  ...
+# Subtest: MFA API supports setup, activation, short step-up, and disable without returning stored secrets
+ok 21 - MFA API supports setup, activation, short step-up, and disable without returning stored secrets
+  ---
+  duration_ms: 0.5629
+  type: 'test'
+  ...
+# Subtest: native administration carries a session-bound step-up token without persisting it
+ok 22 - native administration carries a session-bound step-up token without persisting it
+  ---
+  duration_ms: 0.3375
+  type: 'test'
+  ...
+# Subtest: TOTP follows the RFC vector and AES-GCM rejects tampering
+ok 23 - TOTP follows the RFC vector and AES-GCM rejects tampering
+  ---
+  duration_ms: 4772.6864
+  type: 'test'
+  ...
+# Subtest: admin step-up remains valid for one hour, expires at its boundary, and binds web/native sessions
+ok 24 - admin step-up remains valid for one hour, expires at its boundary, and binds web/native sessions
+  ---
+  duration_ms: 368.7515
+  type: 'test'
+  ...
+# Subtest: web appearance preferences provide palettes, font scale, and early hydration
+ok 25 - web appearance preferences provide palettes, font scale, and early hydration
+  ---
+  duration_ms: 26.4141
+  type: 'test'
+  ...
+# Subtest: Expo appearance preferences are persisted and mounted for all roles
+ok 26 - Expo appearance preferences are persisted and mounted for all roles
+  ---
+  duration_ms: 14.999
+  type: 'test'
+  ...
+# Subtest: assistant understands a broad Arabic intent vocabulary and has detailed fallbacks
+ok 27 - assistant understands a broad Arabic intent vocabulary and has detailed fallbacks
+  ---
+  duration_ms: 4.5842
+  type: 'test'
+  ...
+# Subtest: model responses are instructed to be structured, detailed, and safe
+ok 28 - model responses are instructed to be structured, detailed, and safe
+  ---
+  duration_ms: 0.9396
+  type: 'test'
+  ...
+# Subtest: private support context is scoped to the current user's tickets
+ok 29 - private support context is scoped to the current user's tickets
+  ---
+  duration_ms: 0.5074
+  type: 'test'
+  ...
+# Subtest: live retrieval stays ahead of bounded, active account context
+ok 30 - live retrieval stays ahead of bounded, active account context
+  ---
+  duration_ms: 7.4696
+  type: 'test'
+  ...
+# Subtest: lesson-specific questions outrank a simultaneous course match
+ok 31 - lesson-specific questions outrank a simultaneous course match
+  ---
+  duration_ms: 0.6954
+  type: 'test'
+  ...
+# Subtest: web and Expo expose the same answer actions and suggestions
+ok 32 - web and Expo expose the same answer actions and suggestions
+  ---
+  duration_ms: 85.5842
+  type: 'test'
+  ...
+# Subtest: Arabic and English followups use the last explicit user topic without trusting generated replies
+ok 33 - Arabic and English followups use the last explicit user topic without trusting generated replies
+  ---
+  duration_ms: 17.9725
+  type: 'test'
+  ...
+# Subtest: assistant links authorize normalized paths and reject encoded role bypasses
+ok 34 - assistant links authorize normalized paths and reject encoded role bypasses
+  ---
+  duration_ms: 5.5343
+  type: 'test'
+  ...
+# Subtest: assistant external links point only to published accounts, never another account on an allowed social host
+ok 35 - assistant external links point only to published accounts, never another account on an allowed social host
+  ---
+  duration_ms: 1.0094
+  type: 'test'
+  ...
+# Subtest: live assistant catalog hides unpublished institutions and their courses
+ok 36 - live assistant catalog hides unpublished institutions and their courses
+  ---
+  duration_ms: 410.6016
+  type: 'test'
+  ...
+# Subtest: assistant rejects invalid JSON objects and oversized requests before data or provider access
+ok 37 - assistant rejects invalid JSON objects and oversized requests before data or provider access
+  ---
+  duration_ms: 150.4666
+  type: 'test'
+  ...
+# Subtest: search descriptions decode pasted rich text and remove direction controls without joining Arabic words
+ok 38 - search descriptions decode pasted rich text and remove direction controls without joining Arabic words
+  ---
+  duration_ms: 7.247
+  type: 'test'
+  ...
+# Subtest: progress and analytics reject malformed and oversized bodies without reaching persistence
+ok 39 - progress and analytics reject malformed and oversized bodies without reaching persistence
+  ---
+  duration_ms: 122.2012
+  type: 'test'
+  ...
+# Subtest: rotating anonymous analytics IDs cannot bypass the IP rate limit
+ok 40 - rotating anonymous analytics IDs cannot bypass the IP rate limit
+  ---
+  duration_ms: 61.2794
+  type: 'test'
+  ...
+# Subtest: live public settings include Telegram while explicitly private settings stay out of assistant context
+ok 41 - live public settings include Telegram while explicitly private settings stay out of assistant context
+  ---
+  duration_ms: 279.6091
+  type: 'test'
+  ...
+# Subtest: fallback answers live followups with actual preview and curriculum details in the newest question language
+ok 42 - fallback answers live followups with actual preview and curriculum details in the newest question language
+  ---
+  duration_ms: 1006.2796
+  type: 'test'
+  ...
+# Subtest: assistant returns canonical internal routes that web and mobile interpret identically
+ok 43 - assistant returns canonical internal routes that web and mobile interpret identically
+  ---
+  duration_ms: 1.7265
+  type: 'test'
+  ...
+# Subtest: course savings badge is placed in the upper-left cover corner
+ok 44 - course savings badge is placed in the upper-left cover corner
+  ---
+  duration_ms: 3.6799
+  type: 'test'
+  ...
+# Subtest: auth pages use the site header and provide field guidance
+ok 45 - auth pages use the site header and provide field guidance
+  ---
+  duration_ms: 0.8437
+  type: 'test'
+  ...
+# Subtest: logout, expired sessions and password-reset-style revocation never free either student device
+ok 46 - logout, expired sessions and password-reset-style revocation never free either student device
+  ---
+  duration_ms: 264.3
+  type: 'test'
+  ...
+# Subtest: three concurrent first logins atomically reserve at most two durable slots
+ok 47 - three concurrent first logins atomically reserve at most two durable slots
+  ---
+  duration_ms: 126.9227
+  type: 'test'
+  ...
+# Subtest: the same enrolled device can sign in concurrently without taking additional slots; staff retain exemption
+ok 48 - the same enrolled device can sign in concurrently without taking additional slots; staff retain exemption
+  ---
+  duration_ms: 122.8834
+  type: 'test'
+  ...
+# Subtest: browser identity uses a durable HttpOnly cookie and never collapses identical user agents
+ok 49 - browser identity uses a durable HttpOnly cookie and never collapses identical user agents
+  ---
+  duration_ms: 89.8284
+  type: 'test'
+  ...
+# Subtest: administrator replacement revokes only the chosen device, records reason and blocks its future enrollment
+ok 50 - administrator replacement revokes only the chosen device, records reason and blocks its future enrollment
+  ---
+  duration_ms: 100.2859
+  type: 'test'
+  ...
+# Subtest: student session revocation cannot unregister an approved device or admit a third one
+ok 51 - student session revocation cannot unregister an approved device or admit a third one
+  ---
+  duration_ms: 215.5865
+  type: 'test'
+  ...
+# Subtest: device replacement API requires administrator role, step-up and a reason before writes
+ok 52 - device replacement API requires administrator role, step-up and a reason before writes
+  ---
+  duration_ms: 116.1976
+  type: 'test'
+  ...
+# Subtest: migration preserves retained first-device history across logout and invalidates unapproved legacy sessions
+ok 53 - migration preserves retained first-device history across logout and invalidates unapproved legacy sessions
+  ---
+  duration_ms: 50.2366
+  type: 'test'
+  ...
+# Subtest: OTP accepts Latin, Arabic and Persian keyboards and pasted separators without losing leading zero
+ok 54 - OTP accepts Latin, Arabic and Persian keyboards and pasted separators without losing leading zero
+  ---
+  duration_ms: 1.983
+  type: 'test'
+  ...
+# Subtest: visible password requirements match server length, number and symbol policy
+ok 55 - visible password requirements match server length, number and symbol policy
+  ---
+  duration_ms: 2.7147
+  type: 'test'
+  ...
+# Subtest: coupon service validates active windows and preserves course scope
+ok 56 - coupon service validates active windows and preserves course scope
+  ---
+  duration_ms: 150.7193
+  type: 'test'
+  ...
+# Subtest: web and Expo footers consume the same live public settings
+ok 57 - web and Expo footers consume the same live public settings
+  ---
+  duration_ms: 12.8094
+  type: 'test'
+  ...
+# Subtest: voice recording chooses a supported audio container including Safari MP4
+ok 58 - voice recording chooses a supported audio container including Safari MP4
+  ---
+  duration_ms: 185.5343
+  type: 'test'
+  ...
+# Subtest: microphone permission resolving after navigation releases tracks without creating a recording
+ok 59 - microphone permission resolving after navigation releases tracks without creating a recording
+  ---
+  duration_ms: 31.8154
+  type: 'test'
+  ...
+# Subtest: normal recording produces MIME-correct file and releases microphone
+ok 60 - normal recording produces MIME-correct file and releases microphone
+  ---
+  duration_ms: 26.7397
+  type: 'test'
+  ...
+# Subtest: navigation disposes microphone without appending a file to another ticket
+ok 61 - navigation disposes microphone without appending a file to another ticket
+  ---
+  duration_ms: 25.9244
+  type: 'test'
+  ...
+# Subtest: an upload cancelled before starting does not create or send a network request
+ok 62 - an upload cancelled before starting does not create or send a network request
+  ---
+  duration_ms: 58.6286
+  type: 'test'
+  ...
+# Subtest: course-request downloads and file lists reject unrelated supervisors as well as students
+ok 63 - course-request downloads and file lists reject unrelated supervisors as well as students
+  ---
+  duration_ms: 287.0902
+  type: 'test'
+  ...
+# Subtest: refund parsing rejects hostile JSON objects without invoking coercion
+ok 64 - refund parsing rejects hostile JSON objects without invoking coercion
+  ---
+  duration_ms: 3.9845
+  type: 'test'
+  ...
+# Subtest: AI charge callbacks preserve refund and captured states against older statuses
+ok 65 - AI charge callbacks preserve refund and captured states against older statuses
+  ---
+  duration_ms: 554.9864
+  type: 'test'
+  ...
+# Subtest: two concurrent AI purchases add two consecutive subscription months
+ok 66 - two concurrent AI purchases add two consecutive subscription months
+  ---
+  duration_ms: 191.7664
+  type: 'test'
+  ...
+# Subtest: separate confirmed AI refunds accumulate once per provider refund id
+ok 67 - separate confirmed AI refunds accumulate once per provider refund id
+  ---
+  duration_ms: 111.6885
+  type: 'test'
+  ...
+# Subtest: replayed course fulfillment preserves administrator suspensions and revocations
+ok 68 - replayed course fulfillment preserves administrator suspensions and revocations
+  ---
+  duration_ms: 56.4702
+  type: 'test'
+  ...
+# Subtest: course charge callbacks cannot erase partial refunds and reject sub-halala underpayments
+ok 69 - course charge callbacks cannot erase partial refunds and reject sub-halala underpayments
+  ---
+  duration_ms: 222.9435
+  type: 'test'
+  ...
+# Subtest: generated catalog identifiers are deterministic and valid
+ok 70 - generated catalog identifiers are deterministic and valid
+  ---
+  duration_ms: 5.7992
+  type: 'test'
+  ...
+# Subtest: source contracts preserve automatic IDs and optional descriptions
+ok 71 - source contracts preserve automatic IDs and optional descriptions
+  ---
+  duration_ms: 21.3187
+  type: 'test'
+  ...
+# Subtest: cover endpoints enforce admin origin, HTTPS links, magic bytes, and size limits
+ok 72 - cover endpoints enforce admin origin, HTTPS links, magic bytes, and size limits
+  ---
+  duration_ms: 5.616
+  type: 'test'
+  ...
+# Subtest: real search route response is consumable by the dialog without a universities/institutions mismatch
+ok 73 - real search route response is consumable by the dialog without a universities/institutions mismatch
+  ---
+  duration_ms: 8.5112
+  type: 'test'
+  ...
+# Subtest: Arabic variants, multiword search, course codes and Arabic digits match consistently
+ok 74 - Arabic variants, multiword search, course codes and Arabic digits match consistently
+  ---
+  duration_ms: 5.5621
+  type: 'test'
+  ...
+# Subtest: invalid or partial search bodies fail safely and malformed rows cannot form navigation links
+ok 75 - invalid or partial search bodies fail safely and malformed rows cannot form navigation links
+  ---
+  duration_ms: 0.6277
+  type: 'test'
+  ...
+# Subtest: native share cancellation never becomes a copied/shared event
+ok 76 - native share cancellation never becomes a copied/shared event
+  ---
+  duration_ms: 26.1555
+  type: 'test'
+  ...
+# Subtest: clipboard denial falls back without an unhandled rejection and restores focus
+ok 77 - clipboard denial falls back without an unhandled rejection and restores focus
+  ---
+  duration_ms: 11.2045
+  type: 'test'
+  ...
+# Subtest: purchase readiness prioritizes email then complete academic profile for every role
+ok 78 - purchase readiness prioritizes email then complete academic profile for every role
+  ---
+  duration_ms: 1.9221
+  type: 'test'
+  ...
+# Subtest: verified complete account may purchase repeatedly without another verification transition
+ok 79 - verified complete account may purchase repeatedly without another verification transition
+  ---
+  duration_ms: 0.3519
+  type: 'test'
+  ...
+# Subtest: both course and AI checkout reject unverified/incomplete account before parsing, mutation or provider
+ok 80 - both course and AI checkout reject unverified/incomplete account before parsing, mutation or provider
+  ---
+  duration_ms: 592.1183
+  type: 'test'
+  ...
+# Subtest: both checkout routes admit verified complete accounts repeatedly and reuse existing checkout without OTP
+ok 81 - both checkout routes admit verified complete accounts repeatedly and reuse existing checkout without OTP
+  ---
+  duration_ms: 73.5711
+  type: 'test'
+  ...
+# Subtest: checkout endpoints reject anonymous or invalid-origin requests without account/provider access
+ok 82 - checkout endpoints reject anonymous or invalid-origin requests without account/provider access
+  ---
+  duration_ms: 135.8465
+  type: 'test'
+  ...
+# Subtest: return paths reject authority tricks, backslashes/control bytes and API destinations
+ok 83 - return paths reject authority tricks, backslashes/control bytes and API destinations
+  ---
+  duration_ms: 1.9294
+  type: 'test'
+  ...
+# Subtest: course: delayed provider success preserves webhook paid while attaching gateway metadata
+ok 84 - course: delayed provider success preserves webhook paid while attaching gateway metadata
+  ---
+  duration_ms: 347.168
+  type: 'test'
+  ...
+# Subtest: course: delayed rejected cannot overwrite paid or release its coupon
+ok 85 - course: delayed rejected cannot overwrite paid or release its coupon
+  ---
+  duration_ms: 144.2824
+  type: 'test'
+  ...
+# Subtest: course: delayed timeout cannot overwrite paid or release its coupon
+ok 86 - course: delayed timeout cannot overwrite paid or release its coupon
+  ---
+  duration_ms: 86.7455
+  type: 'test'
+  ...
+# Subtest: course: delayed malformed cannot overwrite paid or release its coupon
+ok 87 - course: delayed malformed cannot overwrite paid or release its coupon
+  ---
+  duration_ms: 100.2069
+  type: 'test'
+  ...
+# Subtest: course: delayed provider success preserves webhook refunded while attaching gateway metadata
+ok 88 - course: delayed provider success preserves webhook refunded while attaching gateway metadata
+  ---
+  duration_ms: 83.6317
+  type: 'test'
+  ...
+# Subtest: course: delayed rejected cannot overwrite refunded or release its coupon
+ok 89 - course: delayed rejected cannot overwrite refunded or release its coupon
+  ---
+  duration_ms: 68.6691
+  type: 'test'
+  ...
+# Subtest: course: delayed timeout cannot overwrite refunded or release its coupon
+ok 90 - course: delayed timeout cannot overwrite refunded or release its coupon
+  ---
+  duration_ms: 57.481
+  type: 'test'
+  ...
+# Subtest: course: delayed malformed cannot overwrite refunded or release its coupon
+ok 91 - course: delayed malformed cannot overwrite refunded or release its coupon
+  ---
+  duration_ms: 53.0591
+  type: 'test'
+  ...
+# Subtest: course: delayed provider success preserves webhook partially_refunded while attaching gateway metadata
+ok 92 - course: delayed provider success preserves webhook partially_refunded while attaching gateway metadata
+  ---
+  duration_ms: 64.6684
+  type: 'test'
+  ...
+# Subtest: course: delayed rejected cannot overwrite partially_refunded or release its coupon
+ok 93 - course: delayed rejected cannot overwrite partially_refunded or release its coupon
+  ---
+  duration_ms: 63.3708
+  type: 'test'
+  ...
+# Subtest: course: delayed timeout cannot overwrite partially_refunded or release its coupon
+ok 94 - course: delayed timeout cannot overwrite partially_refunded or release its coupon
+  ---
+  duration_ms: 53.6071
+  type: 'test'
+  ...
+# Subtest: course: delayed malformed cannot overwrite partially_refunded or release its coupon
+ok 95 - course: delayed malformed cannot overwrite partially_refunded or release its coupon
+  ---
+  duration_ms: 43.645
+  type: 'test'
+  ...
+# Subtest: course: delayed provider success preserves webhook payment_review while attaching gateway metadata
+ok 96 - course: delayed provider success preserves webhook payment_review while attaching gateway metadata
+  ---
+  duration_ms: 46.1754
+  type: 'test'
+  ...
+# Subtest: course: delayed rejected cannot overwrite payment_review or release its coupon
+ok 97 - course: delayed rejected cannot overwrite payment_review or release its coupon
+  ---
+  duration_ms: 41.4934
+  type: 'test'
+  ...
+# Subtest: course: delayed timeout cannot overwrite payment_review or release its coupon
+ok 98 - course: delayed timeout cannot overwrite payment_review or release its coupon
+  ---
+  duration_ms: 51.2025
+  type: 'test'
+  ...
+# Subtest: course: delayed malformed cannot overwrite payment_review or release its coupon
+ok 99 - course: delayed malformed cannot overwrite payment_review or release its coupon
+  ---
+  duration_ms: 34.37
+  type: 'test'
+  ...
+# Subtest: course: untouched pending order still advances, reconciles, or fails correctly
+ok 100 - course: untouched pending order still advances, reconciles, or fails correctly
+  ---
+  duration_ms: 110.4838
+  type: 'test'
+  ...
+# Subtest: ai: delayed provider success preserves webhook paid while attaching gateway metadata
+ok 101 - ai: delayed provider success preserves webhook paid while attaching gateway metadata
+  ---
+  duration_ms: 21.5456
+  type: 'test'
+  ...
+# Subtest: ai: delayed rejected cannot overwrite paid or release its coupon
+ok 102 - ai: delayed rejected cannot overwrite paid or release its coupon
+  ---
+  duration_ms: 18.0744
+  type: 'test'
+  ...
+# Subtest: ai: delayed timeout cannot overwrite paid or release its coupon
+ok 103 - ai: delayed timeout cannot overwrite paid or release its coupon
+  ---
+  duration_ms: 24.0188
+  type: 'test'
+  ...
+# Subtest: ai: delayed malformed cannot overwrite paid or release its coupon
+ok 104 - ai: delayed malformed cannot overwrite paid or release its coupon
+  ---
+  duration_ms: 17.374
+  type: 'test'
+  ...
+# Subtest: ai: delayed provider success preserves webhook refunded while attaching gateway metadata
+ok 105 - ai: delayed provider success preserves webhook refunded while attaching gateway metadata
+  ---
+  duration_ms: 17.4408
+  type: 'test'
+  ...
+# Subtest: ai: delayed rejected cannot overwrite refunded or release its coupon
+ok 106 - ai: delayed rejected cannot overwrite refunded or release its coupon
+  ---
+  duration_ms: 17.3935
+  type: 'test'
+  ...
+# Subtest: ai: delayed timeout cannot overwrite refunded or release its coupon
+ok 107 - ai: delayed timeout cannot overwrite refunded or release its coupon
+  ---
+  duration_ms: 17.0895
+  type: 'test'
+  ...
+# Subtest: ai: delayed malformed cannot overwrite refunded or release its coupon
+ok 108 - ai: delayed malformed cannot overwrite refunded or release its coupon
+  ---
+  duration_ms: 23.5615
+  type: 'test'
+  ...
+# Subtest: ai: delayed provider success preserves webhook partially_refunded while attaching gateway metadata
+ok 109 - ai: delayed provider success preserves webhook partially_refunded while attaching gateway metadata
+  ---
+  duration_ms: 14.9992
+  type: 'test'
+  ...
+# Subtest: ai: delayed rejected cannot overwrite partially_refunded or release its coupon
+ok 110 - ai: delayed rejected cannot overwrite partially_refunded or release its coupon
+  ---
+  duration_ms: 14.598
+  type: 'test'
+  ...
+# Subtest: ai: delayed timeout cannot overwrite partially_refunded or release its coupon
+ok 111 - ai: delayed timeout cannot overwrite partially_refunded or release its coupon
+  ---
+  duration_ms: 15.0417
+  type: 'test'
+  ...
+# Subtest: ai: delayed malformed cannot overwrite partially_refunded or release its coupon
+ok 112 - ai: delayed malformed cannot overwrite partially_refunded or release its coupon
+  ---
+  duration_ms: 15.2264
+  type: 'test'
+  ...
+# Subtest: ai: delayed provider success preserves webhook payment_review while attaching gateway metadata
+ok 113 - ai: delayed provider success preserves webhook payment_review while attaching gateway metadata
+  ---
+  duration_ms: 20.4594
+  type: 'test'
+  ...
+# Subtest: ai: delayed rejected cannot overwrite payment_review or release its coupon
+ok 114 - ai: delayed rejected cannot overwrite payment_review or release its coupon
+  ---
+  duration_ms: 15.847
+  type: 'test'
+  ...
+# Subtest: ai: delayed timeout cannot overwrite payment_review or release its coupon
+ok 115 - ai: delayed timeout cannot overwrite payment_review or release its coupon
+  ---
+  duration_ms: 15.0491
+  type: 'test'
+  ...
+# Subtest: ai: delayed malformed cannot overwrite payment_review or release its coupon
+ok 116 - ai: delayed malformed cannot overwrite payment_review or release its coupon
+  ---
+  duration_ms: 18.6763
+  type: 'test'
+  ...
+# Subtest: ai: untouched pending order still advances, reconciles, or fails correctly
+ok 117 - ai: untouched pending order still advances, reconciles, or fails correctly
+  ---
+  duration_ms: 50.0382
+  type: 'test'
+  ...
+# Subtest: assistant is excluded from web and Expo admin surfaces
+ok 118 - assistant is excluded from web and Expo admin surfaces
+  ---
+  duration_ms: 14.8819
+  type: 'test'
+  ...
+# Subtest: commerce controls use server-backed state and live badges
+ok 119 - commerce controls use server-backed state and live badges
+  ---
+  duration_ms: 5.2976
+  type: 'test'
+  ...
+# Subtest: auth headers expose the requested desktop and mobile layout
+ok 120 - auth headers expose the requested desktop and mobile layout
+  ---
+  duration_ms: 5.5805
+  type: 'test'
+  ...
+# Subtest: bundle pricing is calculated in minor units and always leaves a payable amount
+ok 121 - bundle pricing is calculated in minor units and always leaves a payable amount
+  ---
+  duration_ms: 1.7441
+  type: 'test'
+  ...
+# Subtest: allocated item discounts reconcile exactly to the order discount
+ok 122 - allocated item discounts reconcile exactly to the order discount
+  ---
+  duration_ms: 0.4914
+  type: 'test'
+  ...
+# Subtest: public bundles expose only active exact multi-course quotes
+ok 123 - public bundles expose only active exact multi-course quotes
+  ---
+  duration_ms: 9.9278
+  type: 'test'
+  ...
+# Subtest: admin bundle CRUD is protected, validated, and audited transactionally
+ok 124 - admin bundle CRUD is protected, validated, and audited transactionally
+  ---
+  duration_ms: 1.7978
+  type: 'test'
+  ...
+# Subtest: bundle management is available in both web and native administration
+ok 125 - bundle management is available in both web and native administration
+  ---
+  duration_ms: 3.7558
+  type: 'test'
+  ...
+# Subtest: checkout trusts only a server bundle quote and persists reconcilable minor fields
+ok 126 - checkout trusts only a server bundle quote and persists reconcilable minor fields
+  ---
+  duration_ms: 1.7664
+  type: 'test'
+  ...
+# Subtest: bundle buying is visible in web/direct carts but remains gated from reader builds
+ok 127 - bundle buying is visible in web/direct carts but remains gated from reader builds
+  ---
+  duration_ms: 3.7558
+  type: 'test'
+  ...
+# Subtest: course requests stream attachments with aggregate, file, and count limits
+ok 128 - course requests stream attachments with aggregate, file, and count limits
+  ---
+  duration_ms: 1.497
+  type: 'test'
+  ...
+# Subtest: admin request preparation persists the selected course and sends a direct material route
+ok 129 - admin request preparation persists the selected course and sends a direct material route
+  ---
+  duration_ms: 0.4858
+  type: 'test'
+  ...
+# Subtest: empty server errors, malformed JSON and connection failures render a review error without an unhandled rejection
+ok 130 - empty server errors, malformed JSON and connection failures render a review error without an unhandled rejection
+  ---
+  duration_ms: 294.5692
+  type: 'test'
+  ...
+# Subtest: a review request completed after navigation cannot change the abandoned component state
+ok 131 - a review request completed after navigation cannot change the abandoned component state
+  ---
+  duration_ms: 49.0608
+  type: 'test'
+  ...
+# Subtest: review submission preserves the form when the server returns an empty error or the connection fails
+ok 132 - review submission preserves the form when the server returns an empty error or the connection fails
+  ---
+  duration_ms: 58.6654
+  type: 'test'
+  ...
+# Subtest: only the selected dashboard section is active in the header
+ok 133 - only the selected dashboard section is active in the header
+  ---
+  duration_ms: 5.4472
+  type: 'test'
+  ...
+# Subtest: each dashboard section survives URL round trips and unknown views fall back safely
+ok 134 - each dashboard section survives URL round trips and unknown views fall back safely
+  ---
+  duration_ms: 0.8528
+  type: 'test'
+  ...
+# Subtest: payment return opens orders and leaving it removes stale payment routing
+ok 135 - payment return opens orders and leaving it removes stale payment routing
+  ---
+  duration_ms: 0.4564
+  type: 'test'
+  ...
+# Subtest: navigation matches route boundaries and does not mark FAQ as the homepage
+ok 136 - navigation matches route boundaries and does not mark FAQ as the homepage
+  ---
+  duration_ms: 0.2629
+  type: 'test'
+  ...
+# Subtest: web layout applies global RTL while preserving natural LTR fields
+ok 137 - web layout applies global RTL while preserving natural LTR fields
+  ---
+  duration_ms: 16.6371
+  type: 'test'
+  ...
+# Subtest: email OTP is six zero-padded digits; only salted HMAC is stored and output omits code
+ok 138 - email OTP is six zero-padded digits; only salted HMAC is stored and output omits code
+  ---
+  duration_ms: 227.2232
+  type: 'test'
+  ...
+# Subtest: changing a password selects its own branded email kind with the generated zero-padded code
+ok 139 - changing a password selects its own branded email kind with the generated zero-padded code
+  ---
+  duration_ms: 67.7512
+  type: 'test'
+  ...
+# Subtest: OTP salt and HMAC bind user, email and purpose, reject malformed hashes and weak secrets
+ok 140 - OTP salt and HMAC bind user, email and purpose, reject malformed hashes and weak secrets
+  ---
+  duration_ms: 59.1974
+  type: 'test'
+  ...
+# Subtest: Arabic and Persian OTP digits normalize without admitting malformed non-six-digit codes
+ok 141 - Arabic and Persian OTP digits normalize without admitting malformed non-six-digit codes
+  ---
+  duration_ms: 65.4156
+  type: 'test'
+  ...
+# Subtest: wrong attempts persist after rejected promise and the fifth invalidates even the correct code
+ok 142 - wrong attempts persist after rejected promise and the fifth invalidates even the correct code
+  ---
+  duration_ms: 49.6705
+  type: 'test'
+  ...
+# Subtest: OTP rejects other users, changed email, another purpose, expiry and malformed expiration
+ok 143 - OTP rejects other users, changed email, another purpose, expiry and malformed expiration
+  ---
+  duration_ms: 37.6328
+  type: 'test'
+  ...
+# Subtest: OTP consumption is single-use under concurrent attempts and rolls back if protected mutation fails
+ok 144 - OTP consumption is single-use under concurrent attempts and rolls back if protected mutation fails
+  ---
+  duration_ms: 67.1911
+  type: 'test'
+  ...
+# Subtest: resending enforces cooldown, then replaces the prior code; automatic requests reuse active code
+ok 145 - resending enforces cooldown, then replaces the prior code; automatic requests reuse active code
+  ---
+  duration_ms: 32.2713
+  type: 'test'
+  ...
+# Subtest: delivery failure invalidates the challenge; unsent and disabled-user codes cannot be consumed
+ok 146 - delivery failure invalidates the challenge; unsent and disabled-user codes cannot be consumed
+  ---
+  duration_ms: 39.0005
+  type: 'test'
+  ...
+# Subtest: confirmed account remains confirmed; API ignores stale code submissions without resend or mutation
+ok 147 - confirmed account remains confirmed; API ignores stale code submissions without resend or mutation
+  ---
+  duration_ms: 45.2042
+  type: 'test'
+  ...
+# Subtest: verification API stores one-time timestamp and never exposes HMAC/code in response
+ok 148 - verification API stores one-time timestamp and never exposes HMAC/code in response
+  ---
+  duration_ms: 50.2133
+  type: 'test'
+  ...
+# Subtest: password API rejects legacy current-password and missing/wrong-purpose email codes
+ok 149 - password API rejects legacy current-password and missing/wrong-purpose email codes
+  ---
+  duration_ms: 56.7274
+  type: 'test'
+  ...
+# Subtest: password API valid email code updates password, revokes other sessions/reset links/push and rejects replay
+ok 150 - password API valid email code updates password, revokes other sessions/reset links/push and rejects replay
+  ---
+  duration_ms: 46.9009
+  type: 'test'
+  ...
+# Subtest: verification/password APIs reject unauthenticated and cross-site requests before protected work
+ok 151 - verification/password APIs reject unauthenticated and cross-site requests before protected work
+  ---
+  duration_ms: 74.4087
+  type: 'test'
+  ...
+# Subtest: email reset of a pre-created unverified account removes creator password, OTPs and every old session
+ok 152 - email reset of a pre-created unverified account removes creator password, OTPs and every old session
+  ---
+  duration_ms: 35.3775
+  type: 'test'
+  ...
+# Subtest: Expo Web origin is trusted consistently by CORS and CSRF validation
+ok 153 - Expo Web origin is trusted consistently by CORS and CSRF validation
+  ---
+  duration_ms: 14.699
+  type: 'test'
+  ...
+# Subtest: files remain pending without an authenticated scanner, including development
+ok 154 - files remain pending without an authenticated scanner, including development
+  ---
+  duration_ms: 146.5816
+  type: 'test'
+  ...
+# Subtest: only consistent complete ClamAV verdicts bound to identical bytes release a file
+ok 155 - only consistent complete ClamAV verdicts bound to identical bytes release a file
+  ---
+  duration_ms: 38.8133
+  type: 'test'
+  ...
+# Subtest: scan request follows no redirects, binds digest, and rejects oversized or corrupt storage
+ok 156 - scan request follows no redirects, binds digest, and rejects oversized or corrupt storage
+  ---
+  duration_ms: 96.5323
+  type: 'test'
+  ...
+# Subtest: authenticated HTTP adapter verifies digest and size before invoking engine
+ok 157 - authenticated HTTP adapter verifies digest and size before invoking engine
+  ---
+  duration_ms: 95.9237
+  type: 'test'
+  ...
+# Subtest: ClamAV client sends framed INSTREAM bytes and rejects inconclusive daemon results
+ok 158 - ClamAV client sends framed INSTREAM bytes and rejects inconclusive daemon results
+  ---
+  duration_ms: 21.1399
+  type: 'test'
+  ...
+# Subtest: scan retry delay backs off with a bounded ceiling
+ok 159 - scan retry delay backs off with a bounded ceiling
+  ---
+  duration_ms: 40.5747
+  type: 'test'
+  ...
+# Subtest: full refunds are capped at the captured order total
+ok 160 - full refunds are capped at the captured order total
+  ---
+  duration_ms: 2.9539
+  type: 'test'
+  ...
+# Subtest: partial refunds are de-duplicated by provider refund id
+ok 161 - partial refunds are de-duplicated by provider refund id
+  ---
+  duration_ms: 1.2032
+  type: 'test'
+  ...
+# Subtest: official Tap refund webhook objects are summed by refund id
+ok 162 - official Tap refund webhook objects are summed by refund id
+  ---
+  duration_ms: 0.3786
+  type: 'test'
+  ...
+# Subtest: repeated cumulative refund snapshots use the greatest confirmed amount
+ok 163 - repeated cumulative refund snapshots use the greatest confirmed amount
+  ---
+  duration_ms: 0.9546
+  type: 'test'
+  ...
+# Subtest: a partial-refund signal without an amount is flagged instead of guessed
+ok 164 - a partial-refund signal without an amount is flagged instead of guessed
+  ---
+  duration_ms: 0.4365
+  type: 'test'
+  ...
+# Subtest: financial metrics calculate in minor units and exclude unpaid orders
+ok 165 - financial metrics calculate in minor units and exclude unpaid orders
+  ---
+  duration_ms: 0.5791
+  type: 'test'
+  ...
+# Subtest: CSV cells neutralize spreadsheet formulas
+ok 166 - CSV cells neutralize spreadsheet formulas
+  ---
+  duration_ms: 0.353
+  type: 'test'
+  ...
+# Subtest: finance API and UI expose complete filters, details, review queues, and CSV
+ok 167 - finance API and UI expose complete filters, details, review queues, and CSV
+  ---
+  duration_ms: 12.989
+  type: 'test'
+  ...
+# Subtest: settlement amounts are parsed exactly in currency minor units
+ok 168 - settlement amounts are parsed exactly in currency minor units
+  ---
+  duration_ms: 1.9275
+  type: 'test'
+  ...
+# Subtest: settlement matching fails closed on identifier, capture, gross, and arithmetic mismatches
+ok 169 - settlement matching fails closed on identifier, capture, gross, and arithmetic mismatches
+  ---
+  duration_ms: 0.6326
+  type: 'test'
+  ...
+# Subtest: settlement API requires finance permissions and step-up before importing
+ok 170 - settlement API requires finance permissions and step-up before importing
+  ---
+  duration_ms: 9.2849
+  type: 'test'
+  ...
+# Subtest: finance governance explains mismatches and exposes refund-aware statements
+ok 171 - finance governance explains mismatches and exposes refund-aware statements
+  ---
+  duration_ms: 1.9397
+  type: 'test'
+  ...
+# Subtest: web font scale is text-only and never zooms the page
+ok 172 - web font scale is text-only and never zooms the page
+  ---
+  duration_ms: 3.0135
+  type: 'test'
+  ...
+# Subtest: mobile font scale is applied through text style only
+ok 173 - mobile font scale is applied through text style only
+  ---
+  duration_ms: 0.5906
+  type: 'test'
+  ...
+# Subtest: forgot password with email disabled returns safe guidance without lookup, token or attempted delivery
+ok 174 - forgot password with email disabled returns safe guidance without lookup, token or attempted delivery
+  ---
+  duration_ms: 165.12
+  type: 'test'
+  ...
+# Subtest: unknown, inactive and active accounts produce identical public response and headers
+ok 175 - unknown, inactive and active accounts produce identical public response and headers
+  ---
+  duration_ms: 174.7945
+  type: 'test'
+  ...
+# Subtest: successful reset email carries the opaque one-time link while database stores only its hash for15minutes
+ok 176 - successful reset email carries the opaque one-time link while database stores only its hash for15minutes
+  ---
+  duration_ms: 56.1086
+  type: 'test'
+  ...
+# Subtest: Resend network, error response and malformed success each invalidate token and never expose provider error
+ok 177 - Resend network, error response and malformed success each invalidate token and never expose provider error
+  ---
+  duration_ms: 183.0233
+  type: 'test'
+  ...
+# Subtest: forgot password origin, email validation and rate limits reject before issuing tokens
+ok 178 - forgot password origin, email validation and rate limits reject before issuing tokens
+  ---
+  duration_ms: 92.5997
+  type: 'test'
+  ...
+# Subtest: modern dotted auth keys survive validation, authenticated encryption and all environment formats
+ok 179 - modern dotted auth keys survive validation, authenticated encryption and all environment formats
+  ---
+  duration_ms: 5.835
+  type: 'test'
+  ...
+# Subtest: model identifiers normalize resources without allowing a URL, query, escaped slash or path traversal
+ok 180 - model identifiers normalize resources without allowing a URL, query, escaped slash or path traversal
+  ---
+  duration_ms: 0.3906
+  type: 'test'
+  ...
+# Subtest: credentials use only Google's header on a fixed endpoint and redirects are forbidden
+ok 181 - credentials use only Google's header on a fixed endpoint and redirects are forbidden
+  ---
+  duration_ms: 89.0632
+  type: 'test'
+  ...
+# Subtest: error classifications separate valid-key permission, model, quota and billing failures without raw provider data
+ok 182 - error classifications separate valid-key permission, model, quota and billing failures without raw provider data
+  ---
+  duration_ms: 2.5416
+  type: 'test'
+  ...
+# Subtest: model discovery follows bounded pages and returns only generateContent-capable normalized models
+ok 183 - model discovery follows bounded pages and returns only generateContent-capable normalized models
+  ---
+  duration_ms: 64.7913
+  type: 'test'
+  ...
+# Subtest: metadata checks do not generate; explicit generation test sends only a bounded generic prompt
+ok 184 - metadata checks do not generate; explicit generation test sends only a bounded generic prompt
+  ---
+  duration_ms: 29.7722
+  type: 'test'
+  ...
+# Subtest: malformed provider responses and thought-only/safety/token-limit outputs produce useful safe failures
+ok 185 - malformed provider responses and thought-only/safety/token-limit outputs produce useful safe failures
+  ---
+  duration_ms: 127.114
+  type: 'test'
+  ...
+# Subtest: 403 rotates to the next key without disabling credentials; request model is normalized
+ok 186 - 403 rotates to the next key without disabling credentials; request model is normalized
+  ---
+  duration_ms: 99.2615
+  type: 'test'
+  ...
+# Subtest: invalid-key signals disable only that key while model failures do not rotate or disable the pool
+ok 187 - invalid-key signals disable only that key while model failures do not rotate or disable the pool
+  ---
+  duration_ms: 107.5566
+  type: 'test'
+  ...
+# Subtest: corrupt encrypted key reports configuration failure instead of generic provider outage
+ok 188 - corrupt encrypted key reports configuration failure instead of generic provider outage
+  ---
+  duration_ms: 21.9828
+  type: 'test'
+  ...
+# Subtest: runtime service diagnostic uses actual generation helpers with stored service config
+ok 189 - runtime service diagnostic uses actual generation helpers with stored service config
+  ---
+  duration_ms: 86.1841
+  type: 'test'
+  ...
+# Subtest: waitlist is persisted, lifecycle-notified, and converted after payment
+ok 190 - waitlist is persisted, lifecycle-notified, and converted after payment
+  ---
+  duration_ms: 18.9461
+  type: 'test'
+  ...
+# Subtest: bundle, refund and settlement governance are server-side
+ok 191 - bundle, refund and settlement governance are server-side
+  ---
+  duration_ms: 5.2622
+  type: 'test'
+  ...
+# Subtest: attachments fail closed until a production malware scan succeeds
+ok 192 - attachments fail closed until a production malware scan succeeds
+  ---
+  duration_ms: 3.0482
+  type: 'test'
+  ...
+# Subtest: operations center exposes funnel, cohorts, SLA and automation queues
+ok 193 - operations center exposes funnel, cohorts, SLA and automation queues
+  ---
+  duration_ms: 3.0403
+  type: 'test'
+  ...
+# Subtest: invoice is printable and protected by account ownership
+ok 194 - invoice is printable and protected by account ownership
+  ---
+  duration_ms: 3.2535
+  type: 'test'
+  ...
+# Subtest: the homepage uses the focused premium experience without the blocking intro
+ok 195 - the homepage uses the focused premium experience without the blocking intro
+  ---
+  duration_ms: 13.5673
+  type: 'test'
+  ...
+# Subtest: the hero search is lightweight, semantic, and keyboard accessible
+ok 196 - the hero search is lightweight, semantic, and keyboard accessible
+  ---
+  duration_ms: 2.4415
+  type: 'test'
+  ...
+# Subtest: the homepage animation system is responsive and respects reduced motion
+ok 197 - the homepage animation system is responsive and respects reduced motion
+  ---
+  duration_ms: 6.1137
+  type: 'test'
+  ...
+# Subtest: initial bootstrap creates only a fresh normalized admin and audits without the password
+ok 198 - initial bootstrap creates only a fresh normalized admin and audits without the password
+  ---
+  duration_ms: 125.1978
+  type: 'test'
+  ...
+# Subtest: an existing admin including a suspended admin permanently closes bootstrap
+ok 199 - an existing admin including a suspended admin permanently closes bootstrap
+  ---
+  duration_ms: 18.8335
+  type: 'test'
+  ...
+# Subtest: bootstrap refuses promoting an existing student account
+ok 200 - bootstrap refuses promoting an existing student account
+  ---
+  duration_ms: 17.54
+  type: 'test'
+  ...
+# Subtest: an audit failure rolls back creation and releases the connection
+ok 201 - an audit failure rolls back creation and releases the connection
+  ---
+  duration_ms: 18.5478
+  type: 'test'
+  ...
+# Subtest: weak passwords cannot reach the database
+ok 202 - weak passwords cannot reach the database
+  ---
+  duration_ms: 16.8265
+  type: 'test'
+  ...
+# Subtest: more than 2000 unavailable waits cannot starve an eligible course launch
+ok 203 - more than 2000 unavailable waits cannot starve an eligible course launch
+  ---
+  duration_ms: 173.7396
+  type: 'test'
+  ...
+# Subtest: cancellation, payment conversion and a newer enrollment win over a stale launch snapshot
+ok 204 - cancellation, payment conversion and a newer enrollment win over a stale launch snapshot
+  ---
+  duration_ms: 173.3581
+  type: 'test'
+  ...
+# Subtest: launch delivery is deduplicated per enrollment and supports explicit rejoining
+ok 205 - launch delivery is deduplicated per enrollment and supports explicit rejoining
+  ---
+  duration_ms: 37.1398
+  type: 'test'
+  ...
+# Subtest: scheduler uses one connection and always releases/discards its session lock
+ok 206 - scheduler uses one connection and always releases/discards its session lock
+  ---
+  duration_ms: 104.1067
+  type: 'test'
+  ...
+# Subtest: Gemini keys are server-only and encrypted with authenticated encryption
+ok 207 - Gemini keys are server-only and encrypted with authenticated encryption
+  ---
+  duration_ms: 3.514
+  type: 'test'
+  ...
+# Subtest: Gemini rotation never leaks keys and has bounded failover
+ok 208 - Gemini rotation never leaks keys and has bounded failover
+  ---
+  duration_ms: 2.8115
+  type: 'test'
+  ...
+# Subtest: AI files accept only safe faithfully supported types
+ok 209 - AI files accept only safe faithfully supported types
+  ---
+  duration_ms: 1.1433
+  type: 'test'
+  ...
+# Subtest: upload enforces entitlement hard size quota concurrency and provider scan
+ok 210 - upload enforces entitlement hard size quota concurrency and provider scan
+  ---
+  duration_ms: 2.2635
+  type: 'test'
+  ...
+# Subtest: provider failures have billable semantics and expiring leases
+ok 211 - provider failures have billable semantics and expiring leases
+  ---
+  duration_ms: 3.8578
+  type: 'test'
+  ...
+# Subtest: conversation PATCH and DELETE are authenticated same-origin and limited
+ok 212 - conversation PATCH and DELETE are authenticated same-origin and limited
+  ---
+  duration_ms: 1.182
+  type: 'test'
+  ...
+# Subtest: AI checkout uses server price and idempotency
+ok 213 - AI checkout uses server price and idempotency
+  ---
+  duration_ms: 1.1305
+  type: 'test'
+  ...
+# Subtest: Tap state machine cannot resurrect refunded AI access
+ok 214 - Tap state machine cannot resurrect refunded AI access
+  ---
+  duration_ms: 4.7431
+  type: 'test'
+  ...
+# Subtest: student and admin web pages implement the stable contract
+ok 215 - student and admin web pages implement the stable contract
+  ---
+  duration_ms: 3.4576
+  type: 'test'
+  ...
+# Subtest: mobile exposes AI status history actions quiz and deep links
+ok 216 - mobile exposes AI status history actions quiz and deep links
+  ---
+  duration_ms: 511.0944
+  type: 'test'
+  ...
+# Subtest: AI environment variables are documented without live keys
+ok 217 - AI environment variables are documented without live keys
+  ---
+  duration_ms: 4.3908
+  type: 'test'
+  ...
+# Subtest: protected mobile downloads support Expo Web and privileged request routes
+ok 218 - protected mobile downloads support Expo Web and privileged request routes
+  ---
+  duration_ms: 20.6479
+  type: 'test'
+  ...
+# Subtest: download names preserve a normal extension without splitting Unicode
+ok 219 - download names preserve a normal extension without splitting Unicode
+  ---
+  duration_ms: 3.0796
+  type: 'test'
+  ...
+# Subtest: institution-wide courses stay inside the student's university on mobile
+ok 220 - institution-wide courses stay inside the student's university on mobile
+  ---
+  duration_ms: 1.9335
+  type: 'test'
+  ...
+# Subtest: mobile learning room lists and securely downloads course resources
+ok 221 - mobile learning room lists and securely downloads course resources
+  ---
+  duration_ms: 2.5991
+  type: 'test'
+  ...
+# Subtest: public partners API exposes only the already-filtered bounded projection
+ok 222 - public partners API exposes only the already-filtered bounded projection
+  ---
+  duration_ms: 12.9531
+  type: 'test'
+  ...
+# Subtest: mobile home hides an empty partner rail and bounds cached logo rendering
+ok 223 - mobile home hides an empty partner rail and bounds cached logo rendering
+  ---
+  duration_ms: 3.1189
+  type: 'test'
+  ...
+# Subtest: mobile administration controls payment marketing and incomplete social data stays hidden
+ok 224 - mobile administration controls payment marketing and incomplete social data stays hidden
+  ---
+  duration_ms: 7.3075
+  type: 'test'
+  ...
+# Subtest: scroll reveals have perceptible finite durations and a bounded stagger
+ok 225 - scroll reveals have perceptible finite durations and a bounded stagger
+  ---
+  duration_ms: 2.8474
+  type: 'test'
+  ...
+# Subtest: reveal keyframes do not persist a containing block or animate dimensions
+ok 226 - reveal keyframes do not persist a containing block or animate dimensions
+  ---
+  duration_ms: 0.4919
+  type: 'test'
+  ...
+# Subtest: unsupported observers degrade to visible, working content
+ok 227 - unsupported observers degrade to visible, working content
+  ---
+  duration_ms: 0.6284
+  type: 'test'
+  ...
+# Subtest: scroll targeting uses semantic home hooks and excludes media, dialogs, and the assistant
+ok 228 - scroll targeting uses semantic home hooks and excludes media, dialogs, and the assistant
+  ---
+  duration_ms: 0.472
+  type: 'test'
+  ...
+# Subtest: preference changes, focused elements, removals, and navigation have explicit cleanup
+ok 229 - preference changes, focused elements, removals, and navigation have explicit cleanup
+  ---
+  duration_ms: 0.3752
+  type: 'test'
+  ...
+# Subtest: first-paint hero motion is independent of deferred JS and respects reduced motion
+ok 230 - first-paint hero motion is independent of deferred JS and respects reduced motion
+  ---
+  duration_ms: 5.214
+  type: 'test'
+  ...
+# Subtest: notification read state has one per-user source of truth across inbox and dashboard
+ok 231 - notification read state has one per-user source of truth across inbox and dashboard
+  ---
+  duration_ms: 13.2653
+  type: 'test'
+  ...
+# Subtest: logout revokes server credentials and clears user-specific client caches
+ok 232 - logout revokes server credentials and clears user-specific client caches
+  ---
+  duration_ms: 3.0492
+  type: 'test'
+  ...
+# Subtest: brand lockup and public campaign stay visually stable in both themes
+ok 233 - brand lockup and public campaign stay visually stable in both themes
+  ---
+  duration_ms: 8.8766
+  type: 'test'
+  ...
+# Subtest: notification deep links and account navigation cover referrals and Meras tools artifacts
+ok 234 - notification deep links and account navigation cover referrals and Meras tools artifacts
+  ---
+  duration_ms: 136.9119
+  type: 'test'
+  ...
+# Subtest: OAuth accepts a genuine signed claim and normalizes its email
+ok 235 - OAuth accepts a genuine signed claim and normalizes its email
+  ---
+  duration_ms: 15.8263
+  type: 'test'
+  ...
+# Subtest: OAuth rejects forged signature, wrong issuer/audience/nonce and expired tokens
+ok 236 - OAuth rejects forged signature, wrong issuer/audience/nonce and expired tokens
+  ---
+  duration_ms: 171.986
+  type: 'test'
+  ...
+# Subtest: Apple requires its own issuer and client audience; its verified-email string is handled
+ok 237 - Apple requires its own issuer and client audience; its verified-email string is handled
+  ---
+  duration_ms: 5.2438
+  type: 'test'
+  ...
+# Subtest: OAuth authorization has PKCE and nonce; Apple uses form_post without secrets in the URL
+ok 238 - OAuth authorization has PKCE and nonce; Apple uses form_post without secrets in the URL
+  ---
+  duration_ms: 1.4931
+  type: 'test'
+  ...
+# Subtest: OAuth mobile destination is exact and configuration failure stays closed
+ok 239 - OAuth mobile destination is exact and configuration failure stays closed
+  ---
+  duration_ms: 0.6349
+  type: 'test'
+  ...
+# Subtest: state consumption requires the original browser, expires, and is single use under races
+ok 240 - state consumption requires the original browser, expires, and is single use under races
+  ---
+  duration_ms: 171.0787
+  type: 'test'
+  ...
+# Subtest: OAuth never links on email collision or logs in a disabled identity
+ok 241 - OAuth never links on email collision or logs in a disabled identity
+  ---
+  duration_ms: 140.7757
+  type: 'test'
+  ...
+# Subtest: new OAuth identity is a student, requires platform OTP and retains referral
+ok 242 - new OAuth identity is a student, requires platform OTP and retains referral
+  ---
+  duration_ms: 35.3549
+  type: 'test'
+  ...
+# Subtest: existing OAuth identity retains verified email even when provider email changes
+ok 243 - existing OAuth identity retains verified email even when provider email changes
+  ---
+  duration_ms: 36.3692
+  type: 'test'
+  ...
+# Subtest: mobile handoff rejects wrong verifier then redeems once; session is returned only in JSON
+ok 244 - mobile handoff rejects wrong verifier then redeems once; session is returned only in JSON
+  ---
+  duration_ms: 49.7072
+  type: 'test'
+  ...
+# Subtest: web callback routes unverified identity to OTP, sets cookie, and does not expose tokens
+ok 245 - web callback routes unverified identity to OTP, sets cookie, and does not expose tokens
+  ---
+  duration_ms: 39.8841
+  type: 'test'
+  ...
+# Subtest: mobile callback produces only opaque handoff and never a browser/app session
+ok 246 - mobile callback produces only opaque handoff and never a browser/app session
+  ---
+  duration_ms: 34.0309
+  type: 'test'
+  ...
+# Subtest: native bootstrap creates Secure HttpOnly Apple binding in browser; forged destinations fail
+ok 247 - native bootstrap creates Secure HttpOnly Apple binding in browser; forged destinations fail
+  ---
+  duration_ms: 39.4594
+  type: 'test'
+  ...
+# Subtest: Apple POST callback retains the enrolled browser identity from bound state without its Lax cookie
+ok 248 - Apple POST callback retains the enrolled browser identity from bound state without its Lax cookie
+  ---
+  duration_ms: 50.9879
+  type: 'test'
+  ...
+# Subtest: OAuth reports the durable device limit without releasing enrollment or returning a token
+ok 249 - OAuth reports the durable device limit without releasing enrollment or returning a token
+  ---
+  duration_ms: 28.0105
+  type: 'test'
+  ...
+# Subtest: web OAuth bootstrap persists the prepared browser identity in its bound state
+ok 250 - web OAuth bootstrap persists the prepared browser identity in its bound state
+  ---
+  duration_ms: 34.3974
+  type: 'test'
+  ...
+# Subtest: a successful password reset revokes every older link and session for only that account
+ok 251 - a successful password reset revokes every older link and session for only that account
+  ---
+  duration_ms: 155.5448
+  type: 'test'
+  ...
+# Subtest: expired and unknown reset links never mutate an account
+ok 252 - expired and unknown reset links never mutate an account
+  ---
+  duration_ms: 23.9257
+  type: 'test'
+  ...
+# Subtest: checkout has abuse protection, atomic order creation, and an upstream timeout
+ok 253 - checkout has abuse protection, atomic order creation, and an upstream timeout
+  ---
+  duration_ms: 1.679
+  type: 'test'
+  ...
+# Subtest: checkout serializes matching carts and gives Tap a bounded redirect lifetime
+ok 254 - checkout serializes matching carts and gives Tap a bounded redirect lifetime
+  ---
+  duration_ms: 0.5681
+  type: 'test'
+  ...
+# Subtest: published courses require at least one ready lesson before cart or payment
+ok 255 - published courses require at least one ready lesson before cart or payment
+  ---
+  duration_ms: 0.3467
+  type: 'test'
+  ...
+# Subtest: video upload requires detected container bytes and refreshes catalog state
+ok 256 - video upload requires detected container bytes and refreshes catalog state
+  ---
+  duration_ms: 0.2186
+  type: 'test'
+  ...
+# Subtest: self-account deletion is student-only, transactional, and cleans support objects
+ok 257 - self-account deletion is student-only, transactional, and cleans support objects
+  ---
+  duration_ms: 0.2503
+  type: 'test'
+  ...
+# Subtest: health endpoint does not expose database exception details
+ok 258 - health endpoint does not expose database exception details
+  ---
+  duration_ms: 0.2685
+  type: 'test'
+  ...
+# Subtest: push device writes have per-user rate limiting
+ok 259 - push device writes have per-user rate limiting
+  ---
+  duration_ms: 0.3515
+  type: 'test'
+  ...
+# Subtest: public logos derive a safe content type from the stored extension
+ok 260 - public logos derive a safe content type from the stored extension
+  ---
+  duration_ms: 0.1872
+  type: 'test'
+  ...
+# Subtest: player geometry cannot inherit transitions from global motion preferences
+ok 261 - player geometry cannot inherit transitions from global motion preferences
+  ---
+  duration_ms: 9.27
+  type: 'test'
+  ...
+# Subtest: viewport fullscreen uses the existing connected surface in the top layer
+ok 262 - viewport fullscreen uses the existing connected surface in the top layer
+  ---
+  duration_ms: 1.6615
+  type: 'test'
+  ...
+# Subtest: closing restores body, document, nested scroll and exact inline priorities once
+ok 263 - closing restores body, document, nested scroll and exact inline priorities once
+  ---
+  duration_ms: 19.5153
+  type: 'test'
+  ...
+# Subtest: legacy fallback escapes transform, containment and will-change and restores them
+ok 264 - legacy fallback escapes transform, containment and will-change and restores them
+  ---
+  duration_ms: 0.7206
+  type: 'test'
+  ...
+# Subtest: a throwing popover implementation safely falls back without hiding the player
+ok 265 - a throwing popover implementation safely falls back without hiding the player
+  ---
+  duration_ms: 0.4064
+  type: 'test'
+  ...
+# Subtest: visual viewport dimensions update after orientation and toolbar changes
+ok 266 - visual viewport dimensions update after orientation and toolbar changes
+  ---
+  duration_ms: 0.3532
+  type: 'test'
+  ...
+# Subtest: native fullscreen uses the screen viewport rather than page zoom offsets
+ok 267 - native fullscreen uses the screen viewport rather than page zoom offsets
+  ---
+  duration_ms: 0.3289
+  type: 'test'
+  ...
+# Subtest: pre-entry scroll snapshot restores native fullscreen layout shifts and keeps smooth preference
+ok 268 - pre-entry scroll snapshot restores native fullscreen layout shifts and keeps smooth preference
+  ---
+  duration_ms: 0.3959
+  type: 'test'
+  ...
+# Subtest: standard and WebKit full screen target the complete shell, never a native video-only UI
+ok 269 - standard and WebKit full screen target the complete shell, never a native video-only UI
+  ---
+  duration_ms: 2.1731
+  type: 'test'
+  ...
+# Subtest: CI gates web and mobile production quality
+ok 270 - CI gates web and mobile production quality
+  ---
+  duration_ms: 12.6605
+  type: 'test'
+  ...
+# Subtest: health readiness reports bounded service states without returning secrets
+ok 271 - health readiness reports bounded service states without returning secrets
+  ---
+  duration_ms: 2.2056
+  type: 'test'
+  ...
+# Subtest: scheduled notification dispatch has an independent machine credential
+ok 272 - scheduled notification dispatch has an independent machine credential
+  ---
+  duration_ms: 10.1467
+  type: 'test'
+  ...
+# Subtest: every API request receives a safe correlation identifier
+ok 273 - every API request receives a safe correlation identifier
+  ---
+  duration_ms: 2.237
+  type: 'test'
+  ...
+# Subtest: store builds cannot expose or call Tap checkout while direct builds retain it
+ok 274 - store builds cannot expose or call Tap checkout while direct builds retain it
+  ---
+  duration_ms: 3.6495
+  type: 'test'
+  ...
+# Subtest: settings coalesce concurrent reads and cache the public projection
+ok 275 - settings coalesce concurrent reads and cache the public projection
+  ---
+  duration_ms: 130.1323
+  type: 'test'
+  ...
+# Subtest: a stale in-flight settings read cannot overwrite a freshly invalidated cache
+ok 276 - a stale in-flight settings read cannot overwrite a freshly invalidated cache
+  ---
+  duration_ms: 45.0588
+  type: 'test'
+  ...
+# Subtest: settling an invalidated request does not clear the newer request being shared
+ok 277 - settling an invalidated request does not clear the newer request being shared
+  ---
+  duration_ms: 36.8667
+  type: 'test'
+  ...
+# Subtest: public settings exclude unknown, private and credential-shaped database keys
+ok 278 - public settings exclude unknown, private and credential-shaped database keys
+  ---
+  duration_ms: 28.7479
+  type: 'test'
+  ...
+# Subtest: failed settings reads use defaults without poisoning the next successful read
+ok 279 - failed settings reads use defaults without poisoning the next successful read
+  ---
+  duration_ms: 33.4401
+  type: 'test'
+  ...
+# Subtest: public payment capabilities fail closed and never expose credential values
+ok 280 - public payment capabilities fail closed and never expose credential values
+  ---
+  duration_ms: 25.1901
+  type: 'test'
+  ...
+# Subtest: the previous built-in first-platform copy upgrades while custom administrator wording survives
+ok 281 - the previous built-in first-platform copy upgrades while custom administrator wording survives
+  ---
+  duration_ms: 92.4134
+  type: 'test'
+  ...
+# Subtest: referral migration enforces ownership, idempotency, and anti-abuse invariants
+ok 282 - referral migration enforces ownership, idempotency, and anti-abuse invariants
+  ---
+  duration_ms: 15.209
+  type: 'test'
+  ...
+# Subtest: web and mobile registration accept referrals inside the account transaction
+ok 283 - web and mobile registration accept referrals inside the account transaction
+  ---
+  duration_ms: 3.8737
+  type: 'test'
+  ...
+# Subtest: student referral API is a complete mobile page contract with automatic rewards
+ok 284 - student referral API is a complete mobile page contract with automatic rewards
+  ---
+  duration_ms: 2.2821
+  type: 'test'
+  ...
+# Subtest: admin API controls settings, tiers, gifts, review, revocation, and reconciliation
+ok 285 - admin API controls settings, tiers, gifts, review, revocation, and reconciliation
+  ---
+  duration_ms: 3.8208
+  type: 'test'
+  ...
+# Subtest: owned coupons are verified and reserved atomically before checkout
+ok 286 - owned coupons are verified and reserved atomically before checkout
+  ---
+  duration_ms: 3.8319
+  type: 'test'
+  ...
+# Subtest: full refunds atomically downgrade first-paid referrals and recalculate unused rewards
+ok 287 - full refunds atomically downgrade first-paid referrals and recalculate unused rewards
+  ---
+  duration_ms: 2.2102
+  type: 'test'
+  ...
+# Subtest: web student and admin referral experiences are dedicated RTL surfaces
+ok 288 - web student and admin referral experiences are dedicated RTL surfaces
+  ---
+  duration_ms: 2.1329
+  type: 'test'
+  ...
+# Subtest: refund amounts accept exact positive halalas and reject ambiguous values
+ok 289 - refund amounts accept exact positive halalas and reject ambiguous values
+  ---
+  duration_ms: 1.6181
+  type: 'test'
+  ...
+# Subtest: Tap refund statuses distinguish terminal failure from ambiguous pending
+ok 290 - Tap refund statuses distinguish terminal failure from ambiguous pending
+  ---
+  duration_ms: 0.2945
+  type: 'test'
+  ...
+# Subtest: confirmed Tap refunds are counted in integer halalas once per refund id
+ok 291 - confirmed Tap refunds are counted in integer halalas once per refund id
+  ---
+  duration_ms: 1.3624
+  type: 'test'
+  ...
+# Subtest: admin refunds enforce financial permission, step-up, maker-checker, reservation, and send claim
+ok 292 - admin refunds enforce financial permission, step-up, maker-checker, reservation, and send claim
+  ---
+  duration_ms: 1.0599
+  type: 'test'
+  ...
+# Subtest: Tap refund webhook binds early callbacks and reconciles exact minor-unit totals
+ok 293 - Tap refund webhook binds early callbacks and reconciles exact minor-unit totals
+  ---
+  duration_ms: 0.3579
+  type: 'test'
+  ...
+# Subtest: credit notes are serialized and allocate the invoice tax without exceeding it
+ok 294 - credit notes are serialized and allocate the invoice tax without exceeding it
+  ---
+  duration_ms: 0.3651
+  type: 'test'
+  ...
+# Subtest: request limits count received bytes and cancel oversized chunked or misleading bodies
+ok 295 - request limits count received bytes and cancel oversized chunked or misleading bodies
+  ---
+  duration_ms: 527.4509
+  type: 'test'
+  ...
+# Subtest: bounded form uploads retain fields and files while rejecting oversized multipart data
+ok 296 - bounded form uploads retain fields and files while rejecting oversized multipart data
+  ---
+  duration_ms: 449.9246
+  type: 'test'
+  ...
+# Subtest: account JSON rejects null, arrays, broken JSON and bodies larger than the limit
+ok 297 - account JSON rejects null, arrays, broken JSON and bodies larger than the limit
+  ---
+  duration_ms: 474.6429
+  type: 'test'
+  ...
+# Subtest: malformed session and referral cookies fail closed and production logout clears a secure cookie
+ok 298 - malformed session and referral cookies fail closed and production logout clears a secure cookie
+  ---
+  duration_ms: 2086.0074
+  type: 'test'
+  ...
+# Subtest: interrupted multipart uploads reject cleanly and remove completed and partial files
+ok 299 - interrupted multipart uploads reject cleanly and remove completed and partial files
+  ---
+  duration_ms: 634.7898
+  type: 'test'
+  ...
+# Subtest: private account and administrative pages override public referrer and cache defaults
+ok 300 - private account and administrative pages override public referrer and cache defaults
+  ---
+  duration_ms: 146.0443
+  type: 'test'
+  ...
+# Subtest: private web and native APIs include no-store on top-level and nested paths
+ok 301 - private web and native APIs include no-store on top-level and nested paths
+  ---
+  duration_ms: 33.2618
+  type: 'test'
+  ...
+# Subtest: public catalog, assets and media do not inherit private namespace rules
+ok 302 - public catalog, assets and media do not inherit private namespace rules
+  ---
+  duration_ms: 31.1184
+  type: 'test'
+  ...
+# Subtest: same-origin fullscreen stays allowed while document capture and picture-in-picture are disabled
+ok 303 - same-origin fullscreen stays allowed while document capture and picture-in-picture are disabled
+  ---
+  duration_ms: 15.5506
+  type: 'test'
+  ...
+# Subtest: only public email artwork and the explicit email logo permit cross-origin embedding
+ok 304 - only public email artwork and the explicit email logo permit cross-origin embedding
+  ---
+  duration_ms: 31.0372
+  type: 'test'
+  ...
+# Subtest: public caching has one unambiguous rule and no rule repeats a header key
+ok 305 - public caching has one unambiguous rule and no rule repeats a header key
+  ---
+  duration_ms: 22.4017
+  type: 'test'
+  ...
+# Subtest: CSP blocks inline event attributes without blocking React bootstrap, HLS or Tap
+ok 306 - CSP blocks inline event attributes without blocking React bootstrap, HLS or Tap
+  ---
+  duration_ms: 15.8091
+  type: 'test'
+  ...
+# Subtest: localhost development retains evaluator support without relaxing event attributes
+ok 307 - localhost development retains evaluator support without relaxing event attributes
+  ---
+  duration_ms: 23.9577
+  type: 'test'
+  ...
+# Subtest: canonical uses the configured origin, encodes route segments and rejects foreign paths
+ok 308 - canonical uses the configured origin, encodes route segments and rejects foreign paths
+  ---
+  duration_ms: 7.2947
+  type: 'test'
+  ...
+# Subtest: development, unconfigured, disabled and malformed deployment origins fail closed for indexing
+ok 309 - development, unconfigured, disabled and malformed deployment origins fail closed for indexing
+  ---
+  duration_ms: 363.8028
+  type: 'test'
+  ...
+# Subtest: production domain defaults and explicit origins remain consistent after domain migration
+ok 310 - production domain defaults and explicit origins remain consistent after domain migration
+  ---
+  duration_ms: 75.1004
+  type: 'test'
+  ...
+# Subtest: filtered and sorted catalog URLs noindex while tracking-only canonical copies remain eligible
+ok 311 - filtered and sorted catalog URLs noindex while tracking-only canonical copies remain eligible
+  ---
+  duration_ms: 1.4185
+  type: 'test'
+  ...
+# Subtest: JSON-LD escapes script-breaking user content without altering parsed data
+ok 312 - JSON-LD escapes script-breaking user content without altering parsed data
+  ---
+  duration_ms: 2.9234
+  type: 'test'
+  ...
+# Subtest: structured course data includes only genuine available offers and valid published ratings
+ok 313 - structured course data includes only genuine available offers and valid published ratings
+  ---
+  duration_ms: 6.5889
+  type: 'test'
+  ...
+# Subtest: verification accepts only an optional Google meta token, never HTML or a URL
+ok 314 - verification accepts only an optional Google meta token, never HTML or a URL
+  ---
+  duration_ms: 104.1146
+  type: 'test'
+  ...
+# Subtest: sitemap uses unique public canonical URLs and truthful modification times only
+ok 315 - sitemap uses unique public canonical URLs and truthful modification times only
+  ---
+  duration_ms: 4.266
+  type: 'test'
+  ...
+# Subtest: sitemap includes a genuine specialty with only common courses, never empty or hidden specialties
+ok 316 - sitemap includes a genuine specialty with only common courses, never empty or hidden specialties
+  ---
+  duration_ms: 1.4848
+  type: 'test'
+  ...
+# Subtest: robots permits reading noindex HTML and public image assets, and staging disallows all
+ok 317 - robots permits reading noindex HTML and public image assets, and staging disallows all
+  ---
+  duration_ms: 13.3094
+  type: 'test'
+  ...
+# Subtest: robots observes runtime indexing changes without a build-time response cache
+ok 318 - robots observes runtime indexing changes without a build-time response cache
+  ---
+  duration_ms: 38.5955
+  type: 'test'
+  ...
+# Subtest: sitemap route does not read database or publish demo URLs when indexing disabled
+ok 319 - sitemap route does not read database or publish demo URLs when indexing disabled
+  ---
+  duration_ms: 7.5946
+  type: 'test'
+  ...
+# Subtest: sitemap reads the runtime indexing flag without waiting for ISR
+ok 320 - sitemap reads the runtime indexing flag without waiting for ISR
+  ---
+  duration_ms: 33.4395
+  type: 'test'
+  ...
+# Subtest: specialty metadata returns 404 for invented slugs despite shared courses and allows real program links
+ok 321 - specialty metadata returns 404 for invented slugs despite shared courses and allows real program links
+  ---
+  duration_ms: 49.247
+  type: 'test'
+  ...
+# Subtest: both catalog metadata functions apply real query noindex and clean canonicals
+ok 322 - both catalog metadata functions apply real query noindex and clean canonicals
+  ---
+  duration_ms: 22.566
+  type: 'test'
+  ...
+# Subtest: private routes and future admin descendants retain noindex metadata
+ok 323 - private routes and future admin descendants retain noindex metadata
+  ---
+  duration_ms: 36.6302
+  type: 'test'
+  ...
+# Subtest: specialty source requires both published relationship and published specialty, independent of course membership
+ok 324 - specialty source requires both published relationship and published specialty, independent of course membership
+  ---
+  duration_ms: 14.7053
+  type: 'test'
+  ...
+# Subtest: demo catalog never invents a specialty slug or duplicate university-specialty page
+ok 325 - demo catalog never invents a specialty slug or duplicate university-specialty page
+  ---
+  duration_ms: 15.712
+  type: 'test'
+  ...
+# Subtest: public inventory and sitemap include only bundles whose complete membership remains purchasable and visible
+ok 326 - public inventory and sitemap include only bundles whose complete membership remains purchasable and visible
+  ---
+  duration_ms: 41.3153
+  type: 'test'
+  ...
+# Subtest: metadata overrides accept plain text only and preserve canonical, privacy and deployment indexing controls
+ok 327 - metadata overrides accept plain text only and preserve canonical, privacy and deployment indexing controls
+  ---
+  duration_ms: 36.571
+  type: 'test'
+  ...
+# Subtest: IndexNow rejects private, foreign, query and encoded traversal URLs and never sends while queuing
+ok 328 - IndexNow rejects private, foreign, query and encoded traversal URLs and never sends while queuing
+  ---
+  duration_ms: 117.685
+  type: 'test'
+  ...
+# Subtest: IndexNow dispatch retains failed URLs with backoff and deletes only a successful batch
+ok 329 - IndexNow dispatch retains failed URLs with backoff and deletes only a successful batch
+  ---
+  duration_ms: 216.6855
+  type: 'test'
+  ...
+# Subtest: SEO API refuses anonymous, students, service tokens and cross-origin edits before persistence
+ok 330 - SEO API refuses anonymous, students, service tokens and cross-origin edits before persistence
+  ---
+  duration_ms: 123.2102
+  type: 'test'
+  ...
+# Subtest: SEO API rejects oversized, malformed, unpublished and conflicting edits without changing a row
+ok 331 - SEO API rejects oversized, malformed, unpublished and conflicting edits without changing a row
+  ---
+  duration_ms: 72.8442
+  type: 'test'
+  ...
+# Subtest: public bundle detail responds with not-found for inactive or unknown bundles
+ok 332 - public bundle detail responds with not-found for inactive or unknown bundles
+  ---
+  duration_ms: 37.541
+  type: 'test'
+  ...
+# Subtest: FAQ answers and live bundle membership exist in server HTML before browser JavaScript
+ok 333 - FAQ answers and live bundle membership exist in server HTML before browser JavaScript
+  ---
+  duration_ms: 110.7376
+  type: 'test'
+  ...
+# Subtest: structured identity uses published optional details and excludes invalid or duplicated links
+ok 334 - structured identity uses published optional details and excludes invalid or duplicated links
+  ---
+  duration_ms: 1.7124
+  type: 'test'
+  ...
+# Subtest: real production HTTP preserves canonical, crawl, query and private metadata contracts
+    # Subtest: home and public catalog have one correct canonical and indexable metadata
+    ok 1 - home and public catalog have one correct canonical and indexable metadata
+      ---
+      duration_ms: 306.9126
+      type: 'test'
+      ...
+    # Subtest: filter URLs do not create indexable duplicates
+    ok 2 - filter URLs do not create indexable duplicates
+      ---
+      duration_ms: 86.5166
+      type: 'test'
+      ...
+    # Subtest: authentication and private redirects never become searchable
+    ok 3 - authentication and private redirects never become searchable
+      ---
+      duration_ms: 224.8912
+      type: 'test'
+      ...
+    # Subtest: runtime robots and sitemap immediately expose the right absolute origin
+    ok 4 - runtime robots and sitemap immediately expose the right absolute origin
+      ---
+      duration_ms: 103.1802
+      type: 'test'
+      ...
+    1..4
+ok 335 - real production HTTP preserves canonical, crawl, query and private metadata contracts
+  ---
+  duration_ms: 17556.5065
+  type: 'test'
+  ...
+# Subtest: reviewed student and staff mutations reject null, arrays and excessive JSON before database mutations
+ok 336 - reviewed student and staff mutations reject null, arrays and excessive JSON before database mutations
+  ---
+  duration_ms: 494.298
+  type: 'test'
+  ...
+# Subtest: support attachment download enforces reply visibility and ownership before reading storage
+ok 337 - support attachment download enforces reply visibility and ownership before reading storage
+  ---
+  duration_ms: 58.8274
+  type: 'test'
+  ...
+# Subtest: staff privilege changes cannot bypass the configured administrator step-up
+ok 338 - staff privilege changes cannot bypass the configured administrator step-up
+  ---
+  duration_ms: 32.8711
+  type: 'test'
+  ...
+# Subtest: supervisor writes are rate limited separately from reads before parsing or saving
+ok 339 - supervisor writes are rate limited separately from reads before parsing or saving
+  ---
+  duration_ms: 23.1376
+  type: 'test'
+  ...
+# Subtest: numeric request fields never invoke object coercion and reject invalid IDs, ratings and times
+ok 340 - numeric request fields never invoke object coercion and reject invalid IDs, ratings and times
+  ---
+  duration_ms: 311.2083
+  type: 'test'
+  ...
+# Subtest: the separately authenticated staff machine integration does not require browser MFA
+ok 341 - the separately authenticated staff machine integration does not require browser MFA
+  ---
+  duration_ms: 16.0838
+  type: 'test'
+  ...
+# Subtest: production server serves public web/mobile contracts and reports database health
+ok 342 - production server serves public web/mobile contracts and reports database health
+  ---
+  duration_ms: 4894.6374
+  type: 'test'
+  ...
+# Subtest: all ten configured channels have a single ordered public representation
+ok 343 - all ten configured channels have a single ordered public representation
+  ---
+  duration_ms: 1.6217
+  type: 'test'
+  ...
+# Subtest: only administrator configured and valid social accounts are published
+ok 344 - only administrator configured and valid social accounts are published
+  ---
+  duration_ms: 0.5717
+  type: 'test'
+  ...
+# Subtest: social URLs reject schemes, credentials, deceptive hosts, ports and control characters
+ok 345 - social URLs reject schemes, credentials, deceptive hosts, ports and control characters
+  ---
+  duration_ms: 0.4321
+  type: 'test'
+  ...
+# Subtest: Saudi and international WhatsApp numbers normalize safely including Arabic digits
+ok 346 - Saudi and international WhatsApp numbers normalize safely including Arabic digits
+  ---
+  duration_ms: 0.7577
+  type: 'test'
+  ...
+# Subtest: web footer and contact use normalized channels with safe external links
+ok 347 - web footer and contact use normalized channels with safe external links
+  ---
+  duration_ms: 1.2548
+  type: 'test'
+  ...
+# Subtest: student 360 API is admin-only and returns every operational domain
+ok 348 - student 360 API is admin-only and returns every operational domain
+  ---
+  duration_ms: 9.6921
+  type: 'test'
+  ...
+# Subtest: student 360 page requires an administrator and keeps profiles out of search
+ok 349 - student 360 page requires an administrator and keeps profiles out of search
+  ---
+  duration_ms: 1.4666
+  type: 'test'
+  ...
+# Subtest: student profile renders every 360 section and safely encodes its API request
+ok 350 - student profile renders every 360 section and safely encodes its API request
+  ---
+  duration_ms: 2.3406
+  type: 'test'
+  ...
+# Subtest: admin dashboard links students and the two administration centers
+ok 351 - admin dashboard links students and the two administration centers
+  ---
+  duration_ms: 3.9869
+  type: 'test'
+  ...
+# Subtest: support API protects ticket ownership and manager-only closure/deletion
+ok 352 - support API protects ticket ownership and manager-only closure/deletion
+  ---
+  duration_ms: 10.1146
+  type: 'test'
+  ...
+# Subtest: web and Expo support surfaces open a selected conversation from cards
+ok 353 - web and Expo support surfaces open a selected conversation from cards
+  ---
+  duration_ms: 4.2196
+  type: 'test'
+  ...
+# Subtest: sync endpoint enforces origin, session, and bounded hot-path limiting
+ok 354 - sync endpoint enforces origin, session, and bounded hot-path limiting
+  ---
+  duration_ms: 10.4064
+  type: 'test'
+  ...
+# Subtest: sync response is version-only and exposes scoped channels
+ok 355 - sync response is version-only and exposes scoped channels
+  ---
+  duration_ms: 1.6443
+  type: 'test'
+  ...
+# Subtest: web sync prefers server-sent events with adaptive polling fallback
+ok 356 - web sync prefers server-sent events with adaptive polling fallback
+  ---
+  duration_ms: 1.9351
+  type: 'test'
+  ...
+# Subtest: Expo sync provider is foreground-only and invalidates query channels
+ok 357 - Expo sync provider is foreground-only and invalidates query channels
+  ---
+  duration_ms: 1.1131
+  type: 'test'
+  ...
+# Subtest: admin centers subscribe to realtime sync and the newer tables emit the admin channel
+ok 358 - admin centers subscribe to realtime sync and the newer tables emit the admin channel
+  ---
+  duration_ms: 7.2929
+  type: 'test'
+  ...
+# Subtest: all three real templates render current-domain branded HTML and preserve leading zero codes
+ok 359 - all three real templates render current-domain branded HTML and preserve leading zero codes
+  ---
+  duration_ms: 63.0954
+  type: 'test'
+  ...
+# Subtest: verification and password-change codes reject malformed length, markup and non-Latin digits
+ok 360 - verification and password-change codes reject malformed length, markup and non-Latin digits
+  ---
+  duration_ms: 1.6479
+  type: 'test'
+  ...
+# Subtest: reset links require the configured origin, exact route and one sufficiently strong token only
+ok 361 - reset links require the configured origin, exact route and one sufficiently strong token only
+  ---
+  duration_ms: 1.1493
+  type: 'test'
+  ...
+# Subtest: local HTTP is explicitly opt-in and limited to exact loopback hosts
+ok 362 - local HTTP is explicitly opt-in and limited to exact loopback hosts
+  ---
+  duration_ms: 0.8001
+  type: 'test'
+  ...
+# Subtest: development sends all three templates with local actions and public HTTPS images even with hosted IDs
+ok 363 - development sends all three templates with local actions and public HTTPS images even with hosted IDs
+  ---
+  duration_ms: 142.6438
+  type: 'test'
+  ...
+# Subtest: production HTTP misconfiguration fails closed before sending codes or reset links
+ok 364 - production HTTP misconfiguration fails closed before sending codes or reset links
+  ---
+  duration_ms: 66.3792
+  type: 'test'
+  ...
+# Subtest: forgot-password uses the same canonical resolver instead of request Host including missing APP_URL
+ok 365 - forgot-password uses the same canonical resolver instead of request Host including missing APP_URL
+  ---
+  duration_ms: 80.1701
+  type: 'test'
+  ...
+# Subtest: only saved valid platform accounts appear, with safe URL attributes and no invented accounts
+ok 366 - only saved valid platform accounts appear, with safe URL attributes and no invented accounts
+  ---
+  duration_ms: 2.6867
+  type: 'test'
+  ...
+# Subtest: future channel labels are escaped in title and alt without allowing raw injected markup
+ok 367 - future channel labels are escaped in title and alt without allowing raw injected markup
+  ---
+  duration_ms: 25.9364
+  type: 'test'
+  ...
+# Subtest: renderer caches only template files and rereads added, changed and removed social settings for each message
+ok 368 - renderer caches only template files and rereads added, changed and removed social settings for each message
+  ---
+  duration_ms: 25.5206
+  type: 'test'
+  ...
+# Subtest: default sender posts both the real branded HTML and plain-text fallback for all three security kinds
+ok 369 - default sender posts both the real branded HTML and plain-text fallback for all three security kinds
+  ---
+  duration_ms: 30.822
+  type: 'test'
+  ...
+# Subtest: optional hosted IDs choose template-only payloads and include freshly saved account variables
+ok 370 - optional hosted IDs choose template-only payloads and include freshly saved account variables
+  ---
+  duration_ms: 24.8434
+  type: 'test'
+  ...
+# Subtest: oversized safely escaped social variables fall back to direct HTML instead of exceeding hosted template limits
+ok 371 - oversized safely escaped social variables fall back to direct HTML instead of exceeding hosted template limits
+  ---
+  duration_ms: 26.8458
+  type: 'test'
+  ...
+# Subtest: delivery errors are sanitized for provider failures, malformed successes and invalid hosted identifiers
+ok 372 - delivery errors are sanitized for provider failures, malformed successes and invalid hosted identifiers
+  ---
+  duration_ms: 314.4559
+  type: 'test'
+  ...
+# Subtest: missing template variables fail closed and rendering substitutes once without executing account text
+ok 373 - missing template variables fail closed and rendering substitutes once without executing account text
+  ---
+  duration_ms: 0.8409
+  type: 'test'
+  ...
+# Subtest: Docker runtime and Next API tracing include each of the three real email template files
+ok 374 - Docker runtime and Next API tracing include each of the three real email template files
+  ---
+  duration_ms: 117.2369
+  type: 'test'
+  ...
+# Subtest: closing the same support ticket remounts its composer and cancels pending microphone ownership
+ok 375 - closing the same support ticket remounts its composer and cancels pending microphone ownership
+  ---
+  duration_ms: 316.7244
+  type: 'test'
+  ...
+# Subtest: pending support upload protects text, files and removal controls and preserves draft after failure
+ok 376 - pending support upload protects text, files and removal controls and preserves draft after failure
+  ---
+  duration_ms: 182.037
+  type: 'test'
+  ...
+# Subtest: successful sharing releases UI before tracking finishes and aborts tracking on navigation
+ok 377 - successful sharing releases UI before tracking finishes and aborts tracking on navigation
+  ---
+  duration_ms: 185.5958
+  type: 'test'
+  ...
+# Subtest: cancelled sharing sends no tracking request or false success
+ok 378 - cancelled sharing sends no tracking request or false success
+  ---
+  duration_ms: 157.2813
+  type: 'test'
+  ...
+# Subtest: device refresh ignores delayed older responses and email changes remount private state
+ok 379 - device refresh ignores delayed older responses and email changes remount private state
+  ---
+  duration_ms: 204.7089
+  type: 'test'
+  ...
+# Subtest: content viewing policy is enforced again for every protected stream request
+ok 380 - content viewing policy is enforced again for every protected stream request
+  ---
+  duration_ms: 16.4047
+  type: 'test'
+  ...
+# Subtest: timestamped notes remain account scoped and seekable on web and native
+ok 381 - timestamped notes remain account scoped and seekable on web and native
+  ---
+  duration_ms: 10.4307
+  type: 'test'
+  ...
+# Subtest: native fullscreen retains custom controls, capture protection, and rotation
+ok 382 - native fullscreen retains custom controls, capture protection, and rotation
+  ---
+  duration_ms: 2.4869
+  type: 'test'
+  ...
+# Subtest: web fullscreen retains controls and supports rotating the complete player
+ok 383 - web fullscreen retains controls and supports rotating the complete player
+  ---
+  duration_ms: 2.7857
+  type: 'test'
+  ...
+# Subtest: video uploads update duration with browser metadata and server fallback
+ok 384 - video uploads update duration with browser metadata and server fallback
+  ---
+  duration_ms: 4.8442
+  type: 'test'
+  ...
+# Subtest: adaptive video schema tracks processing jobs and private renditions
+ok 385 - adaptive video schema tracks processing jobs and private renditions
+  ---
+  duration_ms: 16.0112
+  type: 'test'
+  ...
+# Subtest: storage uses private S3-compatible signing with a local fallback
+ok 386 - storage uses private S3-compatible signing with a local fallback
+  ---
+  duration_ms: 2.5401
+  type: 'test'
+  ...
+# Subtest: worker creates HLS renditions without making the original unavailable
+ok 387 - worker creates HLS renditions without making the original unavailable
+  ---
+  duration_ms: 2.7403
+  type: 'test'
+  ...
+# Subtest: signed HLS delivery rewrites child URLs and keeps source fallback
+ok 388 - signed HLS delivery rewrites child URLs and keeps source fallback
+  ---
+  duration_ms: 234.6083
+  type: 'test'
+  ...
+# Subtest: web player preserves the entire video frame instead of cropping it
+ok 389 - web player preserves the entire video frame instead of cropping it
+  ---
+  duration_ms: 28.1083
+  type: 'test'
+  ...
+# Subtest: signed video URLs remain playable by native/browser media range requests
+ok 390 - signed video URLs remain playable by native/browser media range requests
+  ---
+  duration_ms: 3.4183
+  type: 'test'
+  ...
+# Subtest: Expo web CORS includes device identity headers used by the mobile client
+ok 391 - Expo web CORS includes device identity headers used by the mobile client
+  ---
+  duration_ms: 2.8825
+  type: 'test'
+  ...
+1..391
+# tests 395
+# suites 0
+# pass 395
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 102437.6939

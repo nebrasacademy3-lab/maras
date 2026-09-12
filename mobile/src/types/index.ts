@@ -95,7 +95,7 @@ export type CourseResourcesResponse = {
   resources: CourseResource[];
 };
 export type ProgressRow = { id: number; courseSlug: string; lessonId: string; watchedSeconds: number; completed: boolean; updatedAt: string };
-export type OwnedCourse = Course & { progress: number; currentLessonId: string | null; expiresAt: string | null; accessState: "active" | "expired" | "suspended" };
+export type OwnedCourse = Course & { progress: number; currentLessonId: string | null; expiresAt: string | null; accessState: "active" | "expired" | "suspended" | "scheduled" };
 export type CourseRequest = { id: number; courseName: string; university: string; specialty: string; status: string; attachmentsCount: number; createdAt: string; notes?: string };
 export type Order = { orderNumber: string; courseSlug: string; courseTitle: string; total: number; currency: string; status: string; createdAt: string };
 export type Invoice = { id: number; invoiceNumber: string; orderNumber: string; total: number; taxAmount: number; currency: string; issuedAt: string; pdfObjectKey: string | null; status?: string; voidedAt?: string | null };

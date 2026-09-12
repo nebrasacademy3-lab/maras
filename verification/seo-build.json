@@ -1,0 +1,12 @@
+{
+  "checkedAt": "2026-09-12T19:26:47.488Z",
+  "result": "passed",
+  "framework": "Next.js 16.3.4",
+  "environment": "Local synthetic production build; reserved canonical maras-qa.example; real production must set its own NEXT_PUBLIC_SITE_URL",
+  "stages": {
+    "compileSeconds": 15.4,
+    "typeScriptSeconds": 60,
+    "staticGenerationSeconds": 2.3,
+    "staticGenerationCount": 180
+  }
+}

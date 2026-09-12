@@ -1,0 +1,84 @@
+{
+  "checkedAt": "2026-09-12T19:22:43.340Z",
+  "environment": "Synthetic loopback QA at 127.0.0.1:3100; desktop and responsive viewport checks",
+  "browser": {
+    "engine": "Chromium",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/152.0.0.0 Safari/537.36",
+    "automation": "Playwright CLI 0.1.19",
+    "notTested": [
+      "Firefox",
+      "WebKit",
+      "Safari on real iPhone",
+      "Android native browser or emulator in this report"
+    ]
+  },
+  "checks": [
+    {
+      "path": "/tools",
+      "viewport": {
+        "desktop": [
+          1440,
+          1000
+        ],
+        "mobile": [
+          390,
+          844
+        ]
+      },
+      "mobilePageScrollWidth": 390,
+      "result": "passed; visible tool descriptions, limits and actual subscription price; no horizontal page overflow"
+    },
+    {
+      "path": "/admin/seo",
+      "action": "Filter /tools, open preview, edit title and description, save via UI, fetch actual public HTML, restore defaults via UI",
+      "result": "passed; public title and description reflected saved values, default title restored before production audits"
+    },
+    {
+      "path": "/admin/students/qa-student-a%40example.test",
+      "mobileViewport": [
+        390,
+        844
+      ],
+      "mobilePageScrollWidth": 390,
+      "visibleSections": 12,
+      "action": "Open direct student-profile edit form; verify controls and responsive layout",
+      "result": "passed; synthetic 525 orders visible in summary; controls fit mobile viewport"
+    },
+    {
+      "path": "/admin/courses/qa-admin-roster",
+      "mobileViewport": [
+        390,
+        844
+      ],
+      "mobilePageScrollWidth": 390,
+      "action": "Open subscribers and select availability waitlist",
+      "result": "passed;1active and55waitlist summary, direct student360 links and roster controls present"
+    },
+    {
+      "path": "/bundles/qa-science",
+      "environment": "production build",
+      "action": "Inspect two member courses, individual prices100/80 SAR, bundle150 SAR and add-to-cart button; this step did not submit checkout",
+      "browserLoadEventEndMs": 416,
+      "consoleErrors": 0,
+      "consoleWarnings": 0,
+      "result": "passed"
+    }
+  ],
+  "screenshots": [
+    "verification/current-screenshots/seo-tools-desktop.png",
+    "verification/current-screenshots/seo-tools-mobile.png",
+    "verification/current-screenshots/seo-tools-production-desktop.png",
+    "verification/current-screenshots/seo-bundle-production-desktop.png",
+    "verification/current-screenshots/seo-admin-desktop.png",
+    "verification/current-screenshots/admin-student-desktop.png",
+    "verification/current-screenshots/admin-student-mobile.png",
+    "verification/current-screenshots/admin-student-edit-mobile.png",
+    "verification/current-screenshots/admin-roster-desktop.png",
+    "verification/current-screenshots/admin-roster-mobile.png"
+  ],
+  "limitations": [
+    "Synthetic fixture courses contain readiness metadata; screenshots do not verify video playback.",
+    "Responsive viewport QA is not a native Android/iOS device test.",
+    "No search-engine ownership account, production crawl, real AI citation or recommendation was verified."
+  ]
+}

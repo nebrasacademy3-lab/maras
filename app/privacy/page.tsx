@@ -1,3 +1,4 @@
+import { staticPublicPageMetadata } from "@/lib/seo-settings";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -18,18 +19,7 @@ import styles from "../legal.module.css";
 const EFFECTIVE_DATE = "05 سبتمبر 2026";
 const DOCUMENT_VERSION = "1.0";
 
-export const metadata: Metadata = {
-  title: "سياسة الخصوصية",
-  description: "سياسة خصوصية منصة مراس العلم: البيانات التي تُجمع، وأغراض معالجتها، ومدة الاحتفاظ بها، وحقوق المستخدم وطرق التواصل والشكوى.",
-  alternates: { canonical: "/privacy" },
-  openGraph: {
-    title: "سياسة الخصوصية | مراس العلم",
-    description: "تعرف على كيفية تعامل مراس العلم مع البيانات الشخصية وحقوق المستخدم.",
-    url: "/privacy",
-    locale: "ar_SA",
-    type: "article",
-  },
-};
+export function generateMetadata(): Promise<Metadata> { return staticPublicPageMetadata("/privacy"); }
 
 export default async function PrivacyPage() {
   const settings = await getPublicSettings();

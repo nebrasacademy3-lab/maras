@@ -1,0 +1,169 @@
+{
+  "checkedAt": "2026-09-12T19:31:02.008Z",
+  "environment": {
+    "productionData": false,
+    "externalPayments": false,
+    "externalMessages": false,
+    "published": false,
+    "runtime": "v22.19.0",
+    "host": "Windows; loopback PostgreSQL and ClamAV; synthetic data"
+  },
+  "webTests": {
+    "total": 395,
+    "passed": 395,
+    "failed": 0,
+    "skipped": 0
+  },
+  "mobileTests": {
+    "total": 70,
+    "passed": 70,
+    "failed": 0,
+    "skipped": 0
+  },
+  "lint": {
+    "web": "passed",
+    "mobile": "passed"
+  },
+  "typecheck": {
+    "web": "passed (final Next build and standalone check)",
+    "mobile": "passed"
+  },
+  "build": {
+    "web": "passed; Next16.3.4; 180generated routes",
+    "androidJavaScriptHermes": "passed",
+    "iosJavaScriptHermes": "passed",
+    "nativeAndroidDevice": "not run; SDK/emulator absent",
+    "nativeIosDevice": "not run; macOS/device absent"
+  },
+  "liveAdminChecks": 15,
+  "pageRoleChecks": {
+    "total": 111,
+    "passed": 111,
+    "failed": 0
+  },
+  "storeChecks": {
+    "passed": 9,
+    "provider": "synthetic verified responses; actual local PostgreSQL"
+  },
+  "initialAdminChecks": {
+    "passed": 5,
+    "includedInWebTotal": true
+  },
+  "malware": {
+    "engine": "ClamAV1.4.6",
+    "realSignatures": true,
+    "liveUploadDownload": "passed",
+    "queuedFiles": 3
+  },
+  "databaseMigration": {
+    "fresh": true,
+    "upgrade": true,
+    "through": "0029",
+    "tables": 82
+  },
+  "seo": {
+    "templates": 18,
+    "scores": [
+      {
+        "path": "/",
+        "score": 100
+      },
+      {
+        "path": "/courses",
+        "score": 100
+      },
+      {
+        "path": "/universities",
+        "score": 100
+      },
+      {
+        "path": "/courses/qa-physics",
+        "score": 100
+      },
+      {
+        "path": "/universities/qa-university",
+        "score": 100
+      },
+      {
+        "path": "/universities/qa-university/specialties/qa-science",
+        "score": 100
+      },
+      {
+        "path": "/bundles",
+        "score": 100
+      },
+      {
+        "path": "/bundles/qa-science",
+        "score": 100
+      },
+      {
+        "path": "/tools",
+        "score": 100
+      },
+      {
+        "path": "/about",
+        "score": 100
+      },
+      {
+        "path": "/faq",
+        "score": 100
+      },
+      {
+        "path": "/how-it-works",
+        "score": 100
+      },
+      {
+        "path": "/contact",
+        "score": 100
+      },
+      {
+        "path": "/terms",
+        "score": 100
+      },
+      {
+        "path": "/privacy",
+        "score": 100
+      },
+      {
+        "path": "/refund-policy",
+        "score": 100
+      },
+      {
+        "path": "/content-policy",
+        "score": 100
+      },
+      {
+        "path": "/accessibility",
+        "score": 100
+      }
+    ],
+    "warnings": [],
+    "lighthouseSettings": {
+      "onlyCategories": [
+        "seo"
+      ],
+      "networkQuietThresholdMs": 0,
+      "pauseAfterLoadMs": 1000,
+      "cpuQuietThresholdMs": 1000
+    },
+    "sitemapChecked": 112,
+    "sitemapPassed": 112
+  },
+  "productionDependencyAudit": {
+    "webVulnerabilities": 0,
+    "mobileVulnerabilities": 0,
+    "scope": "npm audit --omit=dev at verification time; not a comprehensive security guarantee"
+  },
+  "pending": [
+    "Actual Android/iOS devices and signed store builds",
+    "RevenueCat and Apple/Google sandbox purchases/refunds with actual products",
+    "Real Gemini credentials, quota and billing",
+    "Push/email and other external provider delivery",
+    "Two-purchase refund plus refund-reversal scenario: requested execution denied before start; not rerun",
+    "Docker Compose execution",
+    "Search Console/Bing/IndexNow and actual indexing/citations/conversions",
+    "Firefox/WebKit full browser journeys",
+    "Comparable production performance/load testing and independent penetration testing",
+    "Every remaining legacy-admin button/action and failure-mode journey"
+  ]
+}

@@ -14,6 +14,7 @@ import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-b
 import { normalizeGeminiModel } from "@/lib/gemini-config";
 import { GeminiProviderError, geminiErrorMessage } from "@/lib/gemini-errors";
 import { listGeminiModels, testGeminiConnection } from "@/lib/gemini-provider";
+import { generateAiChat, generateFileArtifact, generateFileQuiz } from "@/lib/ai-generation";
 
 export const dynamic = "force-dynamic";
 
@@ -39,8 +40,10 @@ async function audit(request: Request, actor: string, action: string, entityType
 
 function keyPayload(row: typeof aiApiKeys.$inferSelect) {
   let masked = "مفتاح مشفر";
-  try { masked = maskAiKey(decryptAiApiKey(row.encryptedKey)); } catch { masked = "تعذر فك المفتاح"; }
-  return { id: row.id, label: row.label, projectLabel: row.projectLabel, maskedKey: masked, fingerprint: row.fingerprint.slice(0, 12), priority: row.priority, status: row.status, cooldownUntil: row.cooldownUntil, consecutiveFailures: row.consecutiveFailures, lastUsedAt: row.lastUsedAt, lastSuccessAt: row.lastSuccessAt, lastErrorCode: row.lastErrorCode, lastErrorMessage: geminiErrorMessage(row.lastErrorCode), createdAt: row.createdAt, updatedAt: row.updatedAt };
+  let decryptable = true;
+  let decryptionError = "";
+  try { masked = maskAiKey(decryptAiApiKey(row.encryptedKey)); } catch (error) { masked = "تعذر فك المفتاح"; decryptable = false; decryptionError = error instanceof AiPlatformError ? error.message : "تحقق من مفتاح تشفير الخدمة ثم أعد حفظ المفتاح."; }
+  return { decryptable, decryptionError, id: row.id, label: row.label, projectLabel: row.projectLabel, maskedKey: masked, fingerprint: row.fingerprint.slice(0, 12), priority: row.priority, status: row.status, cooldownUntil: row.cooldownUntil, consecutiveFailures: row.consecutiveFailures, lastUsedAt: row.lastUsedAt, lastSuccessAt: row.lastSuccessAt, lastErrorCode: row.lastErrorCode, lastErrorMessage: geminiErrorMessage(row.lastErrorCode), createdAt: row.createdAt, updatedAt: row.updatedAt };
 }
 
 export async function GET(request: Request) {
@@ -83,6 +86,21 @@ export async function POST(request: Request) {
     const db = getDb();
     const now = new Date().toISOString();
     try {
+      if (action === "testRuntime") {
+        if (!await checkRateLimit("admin-ai-provider-check", "user:" + guarded.user.id, 5, 60)) return jsonError("انتظر دقيقة قبل تكرار الاختبار", 429);
+        if (!isAiService(payload.service)) return jsonError("حدد الأداة المطلوب اختبارها");
+        const config = (await getAiServiceSettings())[payload.service];
+        if (!config.enabled) return jsonError("الخدمة متوقفة في الإعدادات", 409, "AI_SERVICE_DISABLED");
+        const fixture = { config, bytes: Buffer.from("Water freezes at 0 degrees Celsius at standard atmospheric pressure. Water consists of hydrogen and oxygen.", "utf8"), contentType: "text/plain", originalName: "meras-diagnostic.txt" };
+        try {
+          const result = payload.service === "chat" ? await generateAiChat({ config, history: [], question: "أجب بكلمة جاهز فقط." }) : payload.service === "quiz" ? (await generateFileQuiz({ ...fixture, questionCount: 1, language: "العربية" })).result : await generateFileArtifact({ ...fixture, action: payload.service, targetLanguage: "العربية" });
+          await audit(request, guarded.user.email, "test", "ai_runtime", payload.service, null, { ok: true, model: result.model, keyId: result.keyId });
+          return Response.json({ ok: true, generationVerified: true, runtimeVerified: true, service: payload.service, selectedModel: result.model, keyId: result.keyId, message: "نجح الاختبار بإعدادات الأداة المحفوظة ومسار التدوير الفعلي. لم تستخدم ملفات طلاب." }, { headers: { "cache-control": "no-store" } });
+        } catch (error) {
+          await audit(request, guarded.user.email, "test", "ai_runtime", payload.service, null, { ok: false, code: error instanceof AiPlatformError ? error.code : "AI_RUNTIME_FAILED" });
+          throw error;
+        }
+      }
       if (["listModels", "testConnection", "testGeneration"].includes(action)) {
         if (!await checkRateLimit("admin-ai-provider-check", "user:" + guarded.user.id, 5, 60)) return jsonError("انتظر دقيقة قبل تكرار فحص الاتصال.", 429, "AI_DIAGNOSTIC_RATE_LIMITED");
         let apiKey = "";
@@ -137,6 +155,16 @@ export async function POST(request: Request) {
         const [row] = await db.insert(aiServiceSettings).values(values).onConflictDoUpdate({ target: aiServiceSettings.service, set: values }).returning();
         await audit(request, guarded.user.email, "update", "ai_service_setting", payload.service, before, row);
         return Response.json({ ok: true, setting: row }, { headers: { "cache-control": "no-store" } });
+      }
+      if (action === "replaceKey") {
+        const id = Number(payload.id);
+        const apiKey = validGeminiApiKey(payload.apiKey);
+        if (!Number.isSafeInteger(id) || id < 1 || !apiKey) return jsonError("حدد المفتاح والصق قيمته كاملة", 400, "AI_KEY_INVALID");
+        const [before] = await db.select().from(aiApiKeys).where(eq(aiApiKeys.id, id)).limit(1);
+        if (!before) return jsonError("المفتاح غير موجود", 404);
+        const [row] = await db.update(aiApiKeys).set({ encryptedKey: encryptAiApiKey(apiKey), fingerprint: aiKeyFingerprint(apiKey), status: "active", cooldownUntil: null, consecutiveFailures: 0, lastErrorCode: null, lastSuccessAt: null, updatedAt: now }).where(eq(aiApiKeys.id, id)).returning();
+        await audit(request, guarded.user.email, "replace", "ai_api_key", String(id), keyPayload(before), keyPayload(row));
+        return Response.json({ ok: true, key: keyPayload(row) }, { headers: { "cache-control": "no-store" } });
       }
       if (action === "addKey") {
         const apiKey = validGeminiApiKey(payload.apiKey);

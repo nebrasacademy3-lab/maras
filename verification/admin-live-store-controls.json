@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-09-12T18:53:50.094Z",
+  "environment": "local PostgreSQL and HTTP, synthetic store ledger",
+  "checks": [
+    {
+      "name": "refunded Tap baseline with independent store right can be paused and resumed",
+      "status": "passed"
+    },
+    {
+      "name": "extending paused store access uses the store expiry and preserves the pause and purchase ledger",
+      "status": "passed"
+    },
+    {
+      "name": "administratively blocked store rights cannot be restored by pause resume or extension",
+      "status": "passed"
+    }
+  ]
+}

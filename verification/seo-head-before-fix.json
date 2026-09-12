@@ -1,0 +1,38 @@
+{
+  "checkedAt": "2026-09-12T19:17:54.666Z",
+  "browser": "HeadlessChrome/152.0.0.0 Win32",
+  "observation": "Before global blocking metadata: normal navigation loaded documents but metadata remained only in body on some requests even after a 10 second head-readiness wait.",
+  "pages": [
+    {
+      "path": "/universities",
+      "loadEventEndMs": 393.1,
+      "headDescriptionAtLoad": true,
+      "headDescriptionWithin10Seconds": true
+    },
+    {
+      "path": "/about",
+      "loadEventEndMs": 154.2,
+      "headDescriptionAtLoad": false,
+      "headDescriptionWithin10Seconds": false,
+      "bodyDescription": true
+    },
+    {
+      "path": "/contact",
+      "loadEventEndMs": 118,
+      "headDescriptionAtLoad": true,
+      "headDescriptionWithin10Seconds": true
+    },
+    {
+      "path": "/refund-policy",
+      "loadEventEndMs": 155.5,
+      "headDescriptionAtLoad": false,
+      "headDescriptionWithin10Seconds": false,
+      "bodyDescription": true
+    }
+  ],
+  "rawAboutHtml": {
+    "bodyPosition": 2823,
+    "descriptionPosition": 11373,
+    "descriptionInHead": false
+  }
+}

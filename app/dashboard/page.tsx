@@ -1,3 +1,4 @@
+import { effectiveAccessRows } from "@/lib/course-access";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
@@ -18,7 +19,7 @@ export default async function DashboardPage({ searchParams }:{ searchParams:Prom
   const now = new Date().toISOString();
   const visibleNotifications=and(or(eq(notificationsDb.userEmail,user.email),and(isNull(notificationsDb.userEmail),or(eq(notificationsDb.audience,user.role),eq(notificationsDb.audience,"public")))),or(eq(notificationsDb.presentation,"inbox"),eq(notificationsDb.presentation,"all")),or(isNull(notificationsDb.startsAt),lte(notificationsDb.startsAt,now)),or(isNull(notificationsDb.expiresAt),gt(notificationsDb.expiresAt,now)));
   const [accessRows, progressRows, orderRows, requestRows, noticeRows, ticketRows, catalogCourses, institutions, recommendedRows] = await Promise.all([
-    db.select().from(courseAccess).where(eq(courseAccess.userEmail, user.email)),
+    db.select().from(courseAccess).where(eq(courseAccess.userEmail, user.email)).then(rows => effectiveAccessRows(rows)),
     db.select().from(lessonProgress).where(eq(lessonProgress.userEmail,user.email)),
     db.select().from(orders).where(eq(orders.customerEmail,user.email)).orderBy(desc(orders.createdAt)).limit(50),
     db.select().from(courseRequests).where(eq(courseRequests.userId,user.id)).orderBy(desc(courseRequests.createdAt)).limit(50),
@@ -35,7 +36,7 @@ export default async function DashboardPage({ searchParams }:{ searchParams:Prom
     const course=courseMap.get(access.courseSlug); if(!course)return [];
     const lessons=course.units.flatMap((unit)=>unit.lessons).filter((lesson)=>lesson.ready); const lessonIds=new Set(lessons.map((lesson)=>lesson.id)); const progress=progressRows.filter((row)=>row.courseSlug===course.slug&&lessonIds.has(row.lessonId)); const completed=progress.filter((row)=>row.completed).length;
     const percent=lessons.length?Math.round(completed/lessons.length*100):0; const currentProgress=[...progress].sort((a,b)=>b.watchedSeconds-a.watchedSeconds)[0]; const current=lessons.find((lesson)=>lesson.id===currentProgress?.lessonId)?.title||lessons[0]?.title||"ستظهر الدروس المتاحة هنا";
-    const accessState = access.suspendedAt ? "suspended" as const : access.expiresAt && Date.parse(access.expiresAt) <= Date.parse(now) ? "expired" as const : "active" as const;
+    const accessState = access.suspendedAt ? "suspended" as const : Date.parse(access.startsAt) > Date.parse(now) ? "scheduled" as const : access.expiresAt && Date.parse(access.expiresAt) <= Date.parse(now) ? "expired" as const : "active" as const;
     return [{slug:course.slug,title:course.title,university:course.university,color:course.color,icon:course.icon,progress:percent,current,remaining:access.expiresAt?`حتى ${new Date(access.expiresAt).toLocaleDateString("ar-SA")}`:course.access,accessState,expiresAt:access.expiresAt}];
   });
   const owned = allCourses.filter((course) => course.accessState === "active");

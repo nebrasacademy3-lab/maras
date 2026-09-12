@@ -1,4 +1,4 @@
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
 import type { getDb } from "@/db";
 import { analyticsEvents, cartItems, courseAccess, courseAccessEvents, courseWaitlist, invoices, notificationsDb, orders } from "@/db/schema";
 import { accessExpiryIso, normalizeAccessDurationDays } from "@/lib/course-access";
@@ -8,7 +8,7 @@ type Db = ReturnType<typeof getDb>;
 type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
 type OrderRow = typeof orders.$inferSelect;
 
-export type FulfillmentItem = { courseSlug: string; accessDurationDays: number | null };
+export type FulfillmentItem = { courseSlug: string; accessDurationDays: number | null; expiresAt?: string | null };
 export type FulfillmentNotice = { id: number; title: string; body: string; route: string };
 
 export type FulfillmentOptions = {
@@ -16,6 +16,7 @@ export type FulfillmentOptions = {
   actorEmail: string;
   now: string;
   extendDuplicates?: boolean;
+  accessSource?: "tap" | "admin_payment";
 };
 
 // Shared "order became paid" transition used by the Tap webhook and by the
@@ -28,23 +29,29 @@ export async function fulfillPaidOrderTx(tx: Tx, current: OrderRow, purchaseItem
   const newlyPaid = changed.length > 0;
   const startsAt = current.paidAt || now;
 
-  for (const item of purchaseItems) {
+  // Stable ordering prevents deadlocks between multi-course purchases.
+  for (const item of [...purchaseItems].sort((a, b) => a.courseSlug.localeCompare(b.courseSlug))) {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${current.customerEmail}:${item.courseSlug}`}))`);
     const durationDays = normalizeAccessDurationDays(item.accessDurationDays);
-    const expiresAt = accessExpiryIso(durationDays, new Date(startsAt));
+    const expiresAt = item.expiresAt === undefined ? accessExpiryIso(durationDays, new Date(startsAt)) : item.expiresAt;
     const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, current.customerEmail), eq(courseAccess.courseSlug, item.courseSlug))).limit(1);
     let accessId = existing?.id;
-    const activeElsewhere = Boolean(existing && !existing.revokedAt && existing.orderNumber !== current.orderNumber && (!existing.expiresAt || Date.parse(existing.expiresAt) > Date.now()));
-    const administrativelyStopped = existing?.orderNumber === current.orderNumber && Boolean(existing.revokedAt || existing.suspendedAt);
-    const canRepair = !administrativelyStopped && (!existing || existing.orderNumber === current.orderNumber || Boolean(existing.revokedAt) || Boolean(existing.expiresAt && Date.parse(existing.expiresAt) <= Date.now()));
+    const activeElsewhere = Boolean(existing && existing.source !== "revenuecat" && !existing.revokedAt && existing.orderNumber !== current.orderNumber && (!existing.expiresAt || Date.parse(existing.expiresAt) > Date.parse(now)));
+    const administrativelyStopped = Boolean(existing?.suspendedAt) || (existing?.orderNumber === current.orderNumber && Boolean(existing.revokedAt));
+    const canRepair = !administrativelyStopped && (!existing || existing.source === "revenuecat" || existing.orderNumber === current.orderNumber || Boolean(existing.revokedAt) || Boolean(existing.expiresAt && Date.parse(existing.expiresAt) <= Date.parse(now)));
     if (!existing) {
-      const [created] = await tx.insert(courseAccess).values({ userEmail: current.customerEmail, courseSlug: item.courseSlug, source: "tap", orderNumber: current.orderNumber, startsAt, expiresAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now }).returning({ id: courseAccess.id });
+      const [created] = await tx.insert(courseAccess).values({ userEmail: current.customerEmail, courseSlug: item.courseSlug, source: options.accessSource || "tap", orderNumber: current.orderNumber, startsAt, expiresAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now }).returning({ id: courseAccess.id });
       accessId = created?.id;
     } else if (canRepair) {
-      await tx.update(courseAccess).set({ source: "tap", orderNumber: current.orderNumber, startsAt, expiresAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now }).where(eq(courseAccess.id, existing.id));
-    } else if (activeElsewhere && options.extendDuplicates) {
+      // Reconciliation may repair access but must preserve a later administrative extension.
+      const repairedExpiry = existing.orderNumber === current.orderNumber && !existing.revokedAt
+        ? !existing.expiresAt ? null : expiresAt && Date.parse(existing.expiresAt) > Date.parse(expiresAt) ? existing.expiresAt : expiresAt
+        : expiresAt;
+      await tx.update(courseAccess).set({ source: options.accessSource || "tap", orderNumber: current.orderNumber, startsAt, expiresAt: repairedExpiry, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now }).where(eq(courseAccess.id, existing.id));
+    } else if (!administrativelyStopped && activeElsewhere && options.extendDuplicates && newlyPaid) {
       const base = existing!.expiresAt && Date.parse(existing!.expiresAt) > Date.parse(startsAt) ? new Date(existing!.expiresAt) : new Date(startsAt);
       const extendedExpiry = existing!.expiresAt ? accessExpiryIso(durationDays, base) : null;
-      await tx.update(courseAccess).set({ expiresAt: extendedExpiry, suspendedAt: null, suspensionReason: null, updatedAt: now }).where(eq(courseAccess.id, existing!.id));
+      await tx.update(courseAccess).set({ expiresAt: extendedExpiry, updatedAt: now }).where(eq(courseAccess.id, existing!.id));
       await tx.insert(courseAccessEvents).values({ eventKey: `order:${current.orderNumber}:extend:${item.courseSlug}`, accessId, userEmail: current.customerEmail, courseSlug: item.courseSlug, action: "purchase_extended", actorEmail, orderNumber: current.orderNumber, beforeJson: JSON.stringify({ expiresAt: existing!.expiresAt, orderNumber: existing!.orderNumber }), afterJson: JSON.stringify({ expiresAt: extendedExpiry, durationDays }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
     }
     if (canRepair) await tx.insert(courseAccessEvents).values({ eventKey: `order:${current.orderNumber}:grant:${item.courseSlug}`, accessId, userEmail: current.customerEmail, courseSlug: item.courseSlug, action: newlyPaid ? "purchase_granted" : "purchase_reconciled", actorEmail, orderNumber: current.orderNumber, afterJson: JSON.stringify({ startsAt, expiresAt, durationDays }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });

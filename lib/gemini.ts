@@ -32,11 +32,13 @@ function rawFingerprint(apiKey: string) {
 async function keyCandidates() {
   const now = Date.now();
   let databaseRows: Array<typeof aiApiKeys.$inferSelect> = [];
-  try { databaseRows = await getDb().select().from(aiApiKeys).where(eq(aiApiKeys.status, "active")).orderBy(asc(aiApiKeys.priority), asc(aiApiKeys.lastUsedAt)); } catch { /* Environment keys can operate during a staged database rollout. */ }
+  let storeUnavailable = false;
+  let decryptionFailures = 0;
+  try { databaseRows = await getDb().select().from(aiApiKeys).where(eq(aiApiKeys.status, "active")).orderBy(asc(aiApiKeys.priority), asc(aiApiKeys.lastUsedAt)); } catch { storeUnavailable = true; }
   const database: KeyCandidate[] = databaseRows.flatMap((row) => {
     if (row.cooldownUntil && Date.parse(row.cooldownUntil) > now) return [];
     try { return [{ id: row.id, apiKey: decryptAiApiKey(row.encryptedKey), fingerprint: row.fingerprint, priority: row.priority, lastUsedAt: row.lastUsedAt, source: "database" as const }]; }
-    catch { return []; }
+    catch { decryptionFailures += 1; return []; }
   });
   const environment: KeyCandidate[] = geminiEnvironmentKeys().flatMap((apiKey, index) => {
     const fingerprint = rawFingerprint(apiKey);
@@ -46,6 +48,8 @@ async function keyCandidates() {
   });
   const unique = new Map<string, KeyCandidate>();
   for (const candidate of [...database, ...environment]) if (!unique.has(candidate.fingerprint)) unique.set(candidate.fingerprint, candidate);
+  if (!unique.size && decryptionFailures) throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر فك مفاتيح الخدمة المحفوظة. راجع إعداد تشفير المفاتيح في الخادم من إدارة أدوات مراس.", 503);
+  if (!unique.size && storeUnavailable) throw new AiPlatformError("AI_KEY_STORE_UNAVAILABLE", "تعذر تحميل مفاتيح الخدمة من قاعدة البيانات. حاول بعد قليل.", 503);
   return [...unique.values()].sort((left, right) => left.priority - right.priority || Date.parse(left.lastUsedAt || "1970-01-01") - Date.parse(right.lastUsedAt || "1970-01-01"));
 }
 
@@ -108,10 +112,12 @@ export async function generateGeminiContent(input: {
       generationConfig.responseSchema = input.responseSchema;
     }
     let payload: Record<string, unknown>;
+    let output: ReturnType<typeof geminiTextResponse>;
     try {
       payload = await requestGemini({ apiKey: candidate.apiKey, model, generation: {
         systemInstruction: { parts: [{ text: input.systemInstruction }] }, contents: input.contents, generationConfig,
       }, timeoutMs: Math.min(attemptTimeoutMs, remainingMs) });
+      output = geminiTextResponse(payload);
     } catch (error) {
       if (!(error instanceof GeminiProviderError)) throw error;
       lastError = error;
@@ -119,7 +125,6 @@ export async function generateGeminiContent(input: {
       if (error.retryable) continue;
       throw error;
     }
-    const output = geminiTextResponse(payload);
     await markSuccess(candidate);
     const usage = payload.usageMetadata && typeof payload.usageMetadata === "object" ? payload.usageMetadata as Record<string, unknown> : {};
     return {

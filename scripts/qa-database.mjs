@@ -1,0 +1,14 @@
+import EmbeddedPostgres from "embedded-postgres";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { randomBytes } from "node:crypto";
+const directory = resolve(".data/qa-postgres");
+mkdirSync(".data",{recursive:true});
+const password = randomBytes(24).toString("hex");
+const pg = new EmbeddedPostgres({ databaseDir:directory,user:"maras_qa",password,port:55439,persistent:false,authMethod:"scram-sha-256",initdbFlags:["--encoding=UTF8","--locale=C"],postgresFlags:["-c","listen_addresses=127.0.0.1"],onLog:()=>{},onError:()=>{} });
+if (existsSync(directory+"/PG_VERSION")) throw new Error("QA directory already exists; use the current instance or a fresh QA path.");
+await pg.initialise(); await pg.start(); await pg.createDatabase("maras_qa");
+writeFileSync(".data/qa-database.json",JSON.stringify({url:"postgresql://maras_qa:"+password+"@127.0.0.1:55439/maras_qa"}));
+console.log("Synthetic PostgreSQL ready on loopback port 55439");
+for(const signal of ["SIGINT","SIGTERM"]) process.on(signal,async()=>{await pg.stop();process.exit(0)});
+setInterval(()=>{},30000);

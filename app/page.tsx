@@ -17,10 +17,10 @@ import { getPublicReviews } from "@/lib/public-reviews";
 import { getPublicSettings, PUBLIC_SETTING_DEFAULTS } from "@/lib/platform-settings";
 import type { Course } from "@/lib/data";
 import styles from "./home.module.css";
-import { publicPageMetadata } from "@/lib/seo";
+import { staticPublicPageMetadata } from "@/lib/seo-settings";
 
 export const revalidate = 60;
-export const metadata: Metadata = publicPageMetadata("/", "شروحات المقررات الجامعية في السعودية", "استكشف شروحات المقررات حسب الجامعة والتخصص، وشاهد المعاينات المجانية المتاحة، وواصل تعلمك وملفاتك من حساب واحد في مراس العلم.");
+export function generateMetadata(): Promise<Metadata> { return staticPublicPageMetadata("/"); }
 const priceFormatter = new Intl.NumberFormat("ar-SA", { maximumFractionDigits: 0 });
 function hasReadyPreview(course: Course) { return course.units.some((unit) => unit.lessons.some((lesson) => lesson.free && lesson.ready)); }
 function uniqueCourses(courses: Course[]) { const seen = new Set<string>(); return courses.filter((course) => { if (seen.has(course.slug)) return false; seen.add(course.slug); return true; }); }

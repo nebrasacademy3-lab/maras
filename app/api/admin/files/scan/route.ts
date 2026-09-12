@@ -1,45 +1,47 @@
-import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseRequestFiles, courseResources, supportReplyFiles } from "@/db/schema";
+import { auditLogs } from "@/db/schema";
 import { isScheduledTaskRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
-import { scanColumns, scanStoredFile } from "@/lib/file-security";
+import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
+import { fileScanOverview, retryFileScan, runFileScanBatch, type ScanSource } from "@/lib/file-scan-queue";
 import { observeRequest } from "@/lib/observability";
+import { readBoundedJsonObject } from "@/lib/request-body";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(request: Request) {
+  const user = await getSessionUser(request);
+  if (!roleAllowed(user, ["admin"])) return jsonError("غير مصرح بعرض فحص المرفقات", 403);
+  if (!await checkRateLimit("file-scan-read", "user:" + user!.id, 60, 60)) return jsonError("طلبات كثيرة، حاول بعد قليل", 429);
+  return Response.json({ ok: true, ...await fileScanOverview() }, { headers: { "cache-control": "no-store" } });
+}
 
 export async function POST(request: Request) {
   return observeRequest(request, "files.scan", async () => {
     const machine = isScheduledTaskRequest(request);
     const user = machine ? null : await getSessionUser(request);
     if (!machine && (!roleAllowed(user, ["admin"]) || !sameOriginRequest(request))) return jsonError("غير مصرح بتشغيل فحص المرفقات", 403);
-    const identity = machine ? `machine:${clientIp(request)}` : `user:${user!.id}`;
-    if (!await checkRateLimit("file-scan", identity, 4, 60)) return jsonError("تم تشغيل الفحص مؤخرًا", 429);
-    const db = getDb();
-    const [requests, support, resources] = await Promise.all([
-      db.select().from(courseRequestFiles).where(eq(courseRequestFiles.scanStatus, "pending")).orderBy(asc(courseRequestFiles.createdAt)).limit(30),
-      db.select().from(supportReplyFiles).where(eq(supportReplyFiles.scanStatus, "pending")).orderBy(asc(supportReplyFiles.createdAt)).limit(30),
-      db.select().from(courseResources).where(eq(courseResources.scanStatus, "pending")).orderBy(asc(courseResources.createdAt)).limit(30),
-    ]);
-    const summary = { scanned: 0, clean: 0, quarantined: 0, pending: 0 };
-    for (const row of requests) {
-      const result = await scanStoredFile(row);
-      await db.update(courseRequestFiles).set(scanColumns(result)).where(eq(courseRequestFiles.id, row.id));
-      summary.scanned += 1; summary[result.status] += 1;
+    const identity = machine ? "machine:" + clientIp(request) : "user:" + user!.id;
+    if (!await checkRateLimit("file-scan", identity, 8, 60)) return jsonError("تم تشغيل الفحص مؤخرًا", 429);
+    if (user) {
+      try { await requireAdminStepUp(request, user); }
+      catch (error) { return error instanceof AdminMfaError ? jsonError(error.message, error.status, error.code) : jsonError("مطلوب تحقق إداري إضافي", 403); }
     }
-    for (const row of support) {
-      const result = await scanStoredFile(row);
-      await db.update(supportReplyFiles).set(scanColumns(result)).where(eq(supportReplyFiles.id, row.id));
-      summary.scanned += 1; summary[result.status] += 1;
+    let payload: Record<string, unknown> = {};
+    if (request.body) {
+      try { payload = await readBoundedJsonObject(request, 4096); } catch { return jsonError("بيانات غير صالحة"); }
     }
-    for (const row of resources) {
-      const result = await scanStoredFile(row);
-      await db.update(courseResources).set({
-        ...scanColumns(result),
-        studentVisible: result.status === "clean" ? row.studentVisible : false,
-        status: result.status === "quarantined" ? "archived" : row.status,
-        updatedAt: new Date().toISOString(),
-      }).where(eq(courseResources.id, row.id));
-      summary.scanned += 1; summary[result.status] += 1;
+    if (payload.action === "retry") {
+      const source = payload.source as ScanSource;
+      const id = Number(payload.id);
+      if (!["request", "support", "resource", "ai"].includes(source) || !Number.isSafeInteger(id) || id < 1) return jsonError("حدد ملفًا صالحًا");
+      const queued = await retryFileScan(source, id);
+      if (!queued) return jsonError("الملف غير موجود أو لا ينتظر الفحص", 409);
+      await getDb().insert(auditLogs).values({ actorEmail: user?.email || "scheduled-task", action: "retry_scan", entityType: source + "_file", entityId: String(id), ipAddress: clientIp(request) });
+      return Response.json({ ok: true, queued: true }, { headers: { "cache-control": "no-store" } });
     }
+    if (payload.action && payload.action !== "run") return jsonError("إجراء غير معروف");
+    const summary = await runFileScanBatch(1);
     return Response.json({ ok: true, summary, completedAt: new Date().toISOString() }, { headers: { "cache-control": "no-store" } });
   });
 }

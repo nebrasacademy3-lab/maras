@@ -1,0 +1,273 @@
+{
+  "checkedAt": "2026-09-12T19:24:24.397Z",
+  "environment": "loopback production build with synthetic database; no external search submissions",
+  "pages": [
+    {
+      "path": "/",
+      "status": 200,
+      "title": "شروحات المقررات الجامعية في السعودية",
+      "descriptionLength": 125,
+      "canonical": "https://maras-qa.example",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    },
+    {
+      "path": "/courses",
+      "status": 200,
+      "title": "شروحات المواد الجامعية | مراس العلم",
+      "descriptionLength": 125,
+      "canonical": "https://maras-qa.example/courses",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    },
+    {
+      "path": "/universities",
+      "status": 200,
+      "title": "دليل الجامعات والكليات السعودية وشروحات المواد | مراس العلم",
+      "descriptionLength": 107,
+      "canonical": "https://maras-qa.example/universities",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    },
+    {
+      "path": "/courses/qa-physics",
+      "status": 200,
+      "title": "الفيزياء التجريبية — جامعة الاختبار التجريبية | مراس العلم",
+      "descriptionLength": 168,
+      "canonical": "https://maras-qa.example/courses/qa-physics",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 2
+    },
+    {
+      "path": "/universities/qa-university",
+      "status": 200,
+      "title": "مواد وشروحات جامعة الاختبار التجريبية | مراس العلم",
+      "descriptionLength": 77,
+      "canonical": "https://maras-qa.example/universities/qa-university",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 2
+    },
+    {
+      "path": "/universities/qa-university/specialties/qa-science",
+      "status": 200,
+      "title": "علوم الاختبار في جامعة الاختبار التجريبية | مراس العلم",
+      "descriptionLength": 114,
+      "canonical": "https://maras-qa.example/universities/qa-university/specialties/qa-science",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 2
+    },
+    {
+      "path": "/bundles",
+      "status": 200,
+      "title": "باقات المواد الجامعية | مراس العلم",
+      "descriptionLength": 105,
+      "canonical": "https://maras-qa.example/bundles",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 3
+    },
+    {
+      "path": "/bundles/qa-science",
+      "status": 200,
+      "title": "باقة العلوم التجريبية | مراس العلم",
+      "descriptionLength": 101,
+      "canonical": "https://maras-qa.example/bundles/qa-science",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 3
+    },
+    {
+      "path": "/tools",
+      "status": 200,
+      "title": "أدوات مراس للمذاكرة بالذكاء الاصطناعي | مراس العلم",
+      "descriptionLength": 134,
+      "canonical": "https://maras-qa.example/tools",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 2
+    },
+    {
+      "path": "/about",
+      "status": 200,
+      "title": "عن مراس العلم | مراس العلم",
+      "descriptionLength": 117,
+      "canonical": "https://maras-qa.example/about",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 2
+    },
+    {
+      "path": "/faq",
+      "status": 200,
+      "title": "الأسئلة الشائعة عن مراس العلم | مراس العلم",
+      "descriptionLength": 110,
+      "canonical": "https://maras-qa.example/faq",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 3
+    },
+    {
+      "path": "/how-it-works",
+      "status": 200,
+      "title": "كيف تعمل مراس؟ | مراس العلم",
+      "descriptionLength": 98,
+      "canonical": "https://maras-qa.example/how-it-works",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    },
+    {
+      "path": "/contact",
+      "status": 200,
+      "title": "تواصل معنا | مراس العلم",
+      "descriptionLength": 87,
+      "canonical": "https://maras-qa.example/contact",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    },
+    {
+      "path": "/terms",
+      "status": 200,
+      "title": "الشروط والأحكام | مراس العلم",
+      "descriptionLength": 103,
+      "canonical": "https://maras-qa.example/terms",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    },
+    {
+      "path": "/privacy",
+      "status": 200,
+      "title": "سياسة الخصوصية | مراس العلم",
+      "descriptionLength": 123,
+      "canonical": "https://maras-qa.example/privacy",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    },
+    {
+      "path": "/refund-policy",
+      "status": 200,
+      "title": "سياسة الاسترداد | مراس العلم",
+      "descriptionLength": 99,
+      "canonical": "https://maras-qa.example/refund-policy",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    },
+    {
+      "path": "/content-policy",
+      "status": 200,
+      "title": "حقوق وسياسة المحتوى | مراس العلم",
+      "descriptionLength": 104,
+      "canonical": "https://maras-qa.example/content-policy",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    },
+    {
+      "path": "/accessibility",
+      "status": 200,
+      "title": "إمكانية الوصول | مراس العلم",
+      "descriptionLength": 107,
+      "canonical": "https://maras-qa.example/accessibility",
+      "robots": "index, follow",
+      "h1Count": 1,
+      "structuredDataBlocks": 1
+    }
+  ],
+  "robots": [
+    {
+      "bot": "Googlebot",
+      "status": 200,
+      "publicAllowed": true,
+      "apiExcluded": true,
+      "headMetadataPages": [
+        "/tools",
+        "/universities",
+        "/about",
+        "/refund-policy"
+      ]
+    },
+    {
+      "bot": "bingbot",
+      "status": 200,
+      "publicAllowed": true,
+      "apiExcluded": true,
+      "headMetadataPages": [
+        "/tools",
+        "/universities",
+        "/about",
+        "/refund-policy"
+      ]
+    },
+    {
+      "bot": "OAI-SearchBot",
+      "status": 200,
+      "publicAllowed": true,
+      "apiExcluded": true,
+      "headMetadataPages": [
+        "/tools",
+        "/universities",
+        "/about",
+        "/refund-policy"
+      ]
+    },
+    {
+      "bot": "PerplexityBot",
+      "status": 200,
+      "publicAllowed": true,
+      "apiExcluded": true,
+      "headMetadataPages": [
+        "/tools",
+        "/universities",
+        "/about",
+        "/refund-policy"
+      ]
+    },
+    {
+      "bot": "GPTBot",
+      "status": 200,
+      "publicAllowed": true,
+      "apiExcluded": true,
+      "headMetadataPages": [
+        "/tools",
+        "/universities",
+        "/about",
+        "/refund-policy"
+      ]
+    }
+  ],
+  "privatePaths": [
+    {
+      "path": "/admin/seo",
+      "status": 307,
+      "noindex": true
+    },
+    {
+      "path": "/study-tools",
+      "status": 307,
+      "noindex": true
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "noindex": true
+    },
+    {
+      "path": "/courses?search=qa",
+      "status": 200,
+      "noindex": true
+    }
+  ],
+  "sitemapUrls": 112,
+  "temporarySeoEditRestored": true,
+  "indexNowDisabled": true
+}

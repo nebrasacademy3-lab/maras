@@ -1,3 +1,4 @@
+import { staticPublicPageMetadata } from "@/lib/seo-settings";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -19,18 +20,7 @@ import styles from "../legal.module.css";
 const EFFECTIVE_DATE = "05 سبتمبر 2026";
 const DOCUMENT_VERSION = "1.0";
 
-export const metadata: Metadata = {
-  title: "الشروط والأحكام",
-  description: "الشروط المنظمة لاستخدام منصة مراس العلم والحسابات وشراء المحتوى التعليمي والدفع وحقوق المحتوى والشكاوى.",
-  alternates: { canonical: "/terms" },
-  openGraph: {
-    title: "الشروط والأحكام | مراس العلم",
-    description: "الشروط المنظمة للحساب والشراء والوصول إلى المحتوى في مراس العلم.",
-    url: "/terms",
-    locale: "ar_SA",
-    type: "article",
-  },
-};
+export function generateMetadata(): Promise<Metadata> { return staticPublicPageMetadata("/terms"); }
 
 export default async function TermsPage() {
   const settings = await getPublicSettings();

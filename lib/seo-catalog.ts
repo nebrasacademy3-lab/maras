@@ -5,6 +5,8 @@ import { getDb } from "@/db";
 import { catalogSpecialties, institutionSpecialties } from "@/db/schema";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 import type { Course } from "@/lib/data";
+import { listActiveCourseBundles } from "@/lib/course-bundles";
+import { buildSeoPages } from "@/lib/seo-pages";
 
 export type PublicSpecialty = { institutionSlug: string; slug: string; name: string; description: string; updatedAt?: string };
 export const getPublicSpecialtyCatalog = cache(async (): Promise<PublicSpecialty[]> => {
@@ -25,4 +27,16 @@ export const getPublicSpecialtyCatalog = cache(async (): Promise<PublicSpecialty
 });
 export function coursesForSpecialty(courses: Course[], specialty: PublicSpecialty) {
   return courses.filter(course => course.universitySlug === specialty.institutionSlug && (course.audienceScope === "institution" || course.specialtySlug === specialty.slug));
+}
+
+export const getPublicBundleCatalog = cache(async () => {
+  if (!process.env.DATABASE_URL) return [];
+  const [bundles, institutions, courses] = await Promise.all([listActiveCourseBundles(), getInstitutionsCatalog(), getCoursesCatalog()]);
+  const visible = new Set(institutions.map((item) => item.slug));
+  const purchasable = new Set(courses.filter((course) => visible.has(course.universitySlug) && course.availableForPurchase).map((course) => course.slug));
+  return bundles.filter((bundle) => bundle.courseSlugs.length >= 2 && bundle.courseSlugs.every((slug) => purchasable.has(slug)));
+});
+export async function getPublicSeoPages() {
+  const [courses, institutions, specialties, bundles] = await Promise.all([getCoursesCatalog(), getInstitutionsCatalog(), getPublicSpecialtyCatalog(), getPublicBundleCatalog()]);
+  return buildSeoPages(courses, institutions, specialties, bundles);
 }

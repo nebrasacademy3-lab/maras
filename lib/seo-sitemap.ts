@@ -1,12 +1,13 @@
 import type { MetadataRoute } from "next";
 import type { Course, Institution } from "@/lib/data";
 import type { PublicSpecialty } from "@/lib/seo-catalog";
+import type { PublicCourseBundle } from "@/lib/course-bundles";
 import { seoSegment, seoUrl, validModifiedDate } from "@/lib/seo";
 
-export function buildPublicSitemap(courses: Course[], institutions: Institution[], specialties: PublicSpecialty[]): MetadataRoute.Sitemap {
+export function buildPublicSitemap(courses: Course[], institutions: Institution[], specialties: PublicSpecialty[], bundles: PublicCourseBundle[] = []): MetadataRoute.Sitemap {
   const visible = new Set(institutions.map((item) => item.slug));
   const published = courses.filter((course) => visible.has(course.universitySlug));
-  const paths = ["/", "/universities", "/courses", "/how-it-works", "/contact", "/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility"];
+  const paths = ["/", "/universities", "/courses", "/bundles", "/tools", "/about", "/faq", "/how-it-works", "/contact", "/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility"];
   const entries: MetadataRoute.Sitemap = paths.map((path) => ({ url: seoUrl(path) }));
   for (const institution of institutions) entries.push({ url: seoUrl(`/universities/${seoSegment(institution.slug)}`) });
   for (const course of published) {
@@ -20,6 +21,11 @@ export function buildPublicSitemap(courses: Course[], institutions: Institution[
     const dates = [specialty.updatedAt, ...rows.map((course) => course.updatedAt)].map(validModifiedDate).filter((date): date is Date => Boolean(date));
     const lastModified = dates.length ? new Date(Math.max(...dates.map((date) => date.getTime()))) : undefined;
     entries.push({ url: seoUrl(`/universities/${seoSegment(specialty.institutionSlug)}/specialties/${seoSegment(specialty.slug)}`), ...(lastModified ? { lastModified } : {}) });
+  }
+  for (const bundle of bundles) {
+    if (bundle.courseSlugs.length < 2 || !bundle.courseSlugs.every((slug) => published.some((course) => course.slug === slug && course.availableForPurchase))) continue;
+    // A quote has no content-update timestamp; never substitute the request time.
+    entries.push({ url: seoUrl(`/bundles/${seoSegment(bundle.slug)}`) });
   }
   return [...new Map(entries.map((entry) => [entry.url, entry])).values()];
 }

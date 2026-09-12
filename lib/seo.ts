@@ -73,12 +73,19 @@ export function googleSiteVerification() {
   const value = process.env.GOOGLE_SITE_VERIFICATION?.trim() || "";
   return /^[A-Za-z0-9_-]{10,256}$/.test(value) ? value : undefined;
 }
+export function bingSiteVerification() {
+  const value = process.env.BING_SITE_VERIFICATION?.trim() || "";
+  return /^[a-f0-9]{32}$/i.test(value) ? value : undefined;
+}
 export function jsonLd(value: unknown) {
   return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 }
-export function siteStructuredData() {
+export function siteStructuredData(details: { legalName?: string; description?: string; sameAs?: string[] } = {}) {
+  const sameAs = [...new Set(details.sameAs || [])].filter((value) => {
+    try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password; } catch { return false; }
+  });
   return { "@context": "https://schema.org", "@graph": [
-    { "@type": "Organization", "@id": seoUrl("/#organization"), name: "مراس العلم", url: seoUrl("/"), logo: seoUrl("/brand/mark-official.png") },
+    { "@type": "Organization", "@id": seoUrl("/#organization"), name: "مراس العلم", url: seoUrl("/"), logo: seoUrl("/brand/mark-official.png"), ...(details.legalName?.trim() ? { legalName: seoDescription(details.legalName, 160) } : {}), ...(details.description?.trim() ? { description: seoDescription(details.description) } : {}), ...(sameAs.length ? { sameAs } : {}) },
     { "@type": "WebSite", "@id": seoUrl("/#website"), name: "مراس العلم", url: seoUrl("/"), inLanguage: "ar-SA", publisher: { "@id": seoUrl("/#organization") } },
   ] };
 }

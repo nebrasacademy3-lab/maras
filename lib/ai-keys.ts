@@ -42,16 +42,18 @@ export function encryptAiApiKey(apiKey: string) {
 }
 
 export function decryptAiApiKey(value: string) {
-  const [version, encodedIv, encodedCiphertext, encodedTag] = value.split(".");
-  if (version !== "v1" || !encodedIv || !encodedCiphertext || !encodedTag) throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر قراءة مفتاح مزود الخدمة المحفوظ.", 500);
+  const parts = value.split(".");
+  const [version, encodedIv, encodedCiphertext, encodedTag] = parts;
+  if (parts.length !== 4 || version !== "v1" || !encodedIv || !encodedCiphertext || !encodedTag) throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر فك المفتاح المحفوظ. تحقق من ثبات AI_KEYS_ENCRYPTION_KEY بين نسخ الخادم أو أعد حفظ المفتاح.", 500);
   try {
+    if (Buffer.from(encodedIv, "base64url").length !== 12 || Buffer.from(encodedTag, "base64url").length !== 16) throw new Error("invalid ciphertext");
     const decipher = createDecipheriv("aes-256-gcm", encryptionMaterial(), Buffer.from(encodedIv, "base64url"));
     decipher.setAuthTag(Buffer.from(encodedTag, "base64url"));
     const apiKey = Buffer.concat([decipher.update(Buffer.from(encodedCiphertext, "base64url")), decipher.final()]).toString("utf8");
     if (!validGeminiApiKey(apiKey)) throw new Error("invalid key");
     return apiKey;
   } catch {
-    throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر قراءة مفتاح مزود الخدمة المحفوظ.", 500);
+    throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر فك المفتاح المحفوظ. تحقق من ثبات AI_KEYS_ENCRYPTION_KEY بين نسخ الخادم أو أعد حفظ المفتاح.", 500);
   }
 }
 

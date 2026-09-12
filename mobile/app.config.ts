@@ -13,15 +13,15 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   if (!/^https:\/\//i.test(apiUrl)) {
     throw new Error("EXPO_PUBLIC_API_URL must be an HTTPS URL");
   }
-  const requestedStoreMode = String(process.env.EXPO_PUBLIC_STORE_MODE || "reader").trim().toLowerCase();
-  if (!new Set(["reader", "direct"]).has(requestedStoreMode)) {
-    throw new Error("EXPO_PUBLIC_STORE_MODE must be either reader or direct");
+  const requestedStoreMode = String(process.env.EXPO_PUBLIC_STORE_MODE || "iap").trim().toLowerCase();
+  if (!new Set(["reader", "direct", "iap"]).has(requestedStoreMode)) {
+    throw new Error("EXPO_PUBLIC_STORE_MODE must be reader, direct or iap");
   }
 
   const buildProfile = String(process.env.EAS_BUILD_PROFILE || "");
   const storeDistribution = ["development", "preview", "production-direct"].includes(buildProfile) ? "internal" : "store";
-  if (buildProfile === "production" && requestedStoreMode !== "reader") {
-    throw new Error("The production store profile must use reader mode; use production-direct for internal checkout testing.");
+  if (buildProfile === "production" && requestedStoreMode === "direct") {
+    throw new Error("The production store profile cannot use direct checkout.");
   }
 
   const appLinkHost = String(process.env.EXPO_PUBLIC_APP_LINK_HOST || new URL(apiUrl).hostname)
@@ -165,6 +165,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       appLinkHost,
 
       storeMode: requestedStoreMode,
+      revenuecatIosKey: process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || "",
+      revenuecatAndroidKey: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || "",
       readerPreview: process.env.EXPO_PUBLIC_READER_PREVIEW === "true",
       storeDistribution,
 

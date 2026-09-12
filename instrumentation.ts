@@ -13,6 +13,12 @@ export async function register() {
     } catch (caught) {
       logEvent("warn", "lifecycle.scheduler.unavailable", { errorType: caught instanceof Error ? caught.name : "UnknownError" });
     }
+    try {
+      const { startFileScanScheduler } = await import("./lib/file-scan-scheduler");
+      startFileScanScheduler();
+    } catch (caught) {
+      logEvent("warn", "files.scheduler.unavailable", { errorType: caught instanceof Error ? caught.name : "UnknownError" });
+    }
   }
 }
 

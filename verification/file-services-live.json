@@ -1,0 +1,45 @@
+{
+  "testedAt": "2026-09-12T18:48:20.504Z",
+  "engine": "real ClamAV 1.4.6",
+  "production": false,
+  "studentDataUsed": false,
+  "results": [
+    {
+      "area": "course_request_files",
+      "upload": 201,
+      "cleanDownload": 200,
+      "bytesMatch": true,
+      "foreignDownload": 404,
+      "anonymousDownload": 401,
+      "pendingDownload": 423
+    },
+    {
+      "area": "support_reply_files",
+      "upload": 201,
+      "cleanDownload": 200,
+      "bytesMatch": true,
+      "foreignDownload": 403,
+      "anonymousDownload": 401,
+      "pendingDownload": 423
+    },
+    {
+      "area": "ai_files",
+      "upload": 201,
+      "cleanStatus": "ready",
+      "digestVerified": true,
+      "foreignAction": 404,
+      "pendingWorkerStatus": "ready",
+      "liveAiProviderCalled": false
+    }
+  ],
+  "worker": {
+    "scanned": 3,
+    "clean": 3,
+    "pending": 0,
+    "quarantined": 0
+  },
+  "malwareUpload": {
+    "supportStatus": 422,
+    "persisted": false
+  }
+}

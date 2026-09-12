@@ -17,7 +17,7 @@ export type BundleOffer = {
   regularPrice: number;
 };
 
-export function CourseBundleOffers({ bundles, currentSlug }: { bundles: BundleOffer[]; currentSlug: string }) {
+export function CourseBundleOffers({ bundles, currentSlug, heading = "باقات تشمل هذه المادة" }: { bundles: BundleOffer[]; currentSlug: string; heading?: string }) {
   const router = useRouter();
   const [busy, setBusy] = useState("");
   const [message, setMessage] = useState("");
@@ -35,7 +35,7 @@ export function CourseBundleOffers({ bundles, currentSlug }: { bundles: BundleOf
   };
 
   return <section className="course-bundle-offers" aria-labelledby="bundle-offers-title">
-    <div className="curriculum-head"><div><h2 id="bundle-offers-title">باقات تشمل هذه المادة</h2><p>وفّر عند اشتراكك في أكثر من مادة معًا؛ يُطبّق الخصم تلقائيًا في السلة.</p></div></div>
+    <div className="curriculum-head"><div><h2 id="bundle-offers-title">{heading}</h2><p>وفّر عند اشتراكك في أكثر من مادة معًا؛ يُطبّق الخصم تلقائيًا في السلة.</p></div></div>
     <div className="bundle-offer-grid">{bundles.map((bundle) => <article key={bundle.slug} className="bundle-offer-card">
       <header><i><PackageOpen size={18} /></i><div><strong>{bundle.title}</strong><small>{bundle.courses.length} مواد · وفّر {bundle.savings.toLocaleString("ar-SA")} ر.س</small></div></header>
       {bundle.description && <p>{bundle.description}</p>}

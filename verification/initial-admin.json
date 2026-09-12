@@ -1,0 +1,27 @@
+{
+  "checkedAt": "2026-09-12T19:21:18.931Z",
+  "scope": "Behavior tests with mocked database and password hashing; documented CLI --help ran; no production account created",
+  "checks": [
+    {
+      "name": "first admin normalized, password hashed and action audited",
+      "passed": true
+    },
+    {
+      "name": "any existing admin, including suspended, closes bootstrap",
+      "passed": true
+    },
+    {
+      "name": "existing non-admin account is not promoted",
+      "passed": true
+    },
+    {
+      "name": "audit failure rolls back account creation",
+      "passed": true
+    },
+    {
+      "name": "invalid password rejected before database access",
+      "passed": true
+    }
+  ],
+  "evidence": "tests/initial-admin.test.mjs; full final web TAP includes these cases"
+}

@@ -1,7 +1,7 @@
 import { eq, inArray, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
-  auditLogs, authSessions, courseAccess, courseRequestFiles, courseRequests, courseReviews, favorites, invoices,
+  auditLogs, authSessions, courseAccess, storeCourseGrants, courseRequestFiles, courseRequests, courseReviews, favorites, invoices,
   lessonNotes, lessonProgress, notificationsDb, orders, passwordResetTokens, pushDevices, supervisorAssignments,
   supportReplyFiles, supportReplies, supportTickets, users,
 } from "@/db/schema";
@@ -55,6 +55,7 @@ export async function DELETE(request: Request) {
     await tx.delete(lessonNotes).where(eq(lessonNotes.userEmail, current.email));
     await tx.delete(lessonProgress).where(eq(lessonProgress.userEmail, current.email));
     await tx.delete(courseAccess).where(eq(courseAccess.userEmail, current.email));
+    await tx.update(storeCourseGrants).set({ userEmail: anonymizedEmail }).where(eq(storeCourseGrants.userEmail, current.email));
     await tx.delete(courseReviews).where(eq(courseReviews.userEmail, current.email));
     await tx.delete(notificationsDb).where(eq(notificationsDb.userEmail, current.email));
     await tx.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, current.id));

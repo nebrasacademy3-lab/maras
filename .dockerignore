@@ -12,3 +12,14 @@ mobile
 *.zip
 .git
 .gitignore
+
+.data
+outputs
+output
+artifacts
+*.zip
+.env.staging
+
+release
+.playwright-cli
+verification

@@ -1,3 +1,4 @@
+import { resolvedPublicPageMetadata } from "@/lib/seo-settings";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { ChevronLeft } from "lucide-react";
@@ -5,10 +6,10 @@ import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { UniversityCatalog } from "@/components/university-catalog";
 import { getInstitutionsCatalog } from "@/lib/catalog-store";
-import { catalogHasFilters, publicPageMetadata, type SeoSearchParams } from "@/lib/seo";
+import { catalogHasFilters, type SeoSearchParams } from "@/lib/seo";
 
 export async function generateMetadata({ searchParams }: { searchParams: Promise<SeoSearchParams> }): Promise<Metadata> {
-  return publicPageMetadata("/universities", "دليل الجامعات والكليات السعودية وشروحات المواد", "تصفح الجامعات والكليات السعودية والتخصصات، ثم اكتشف شروحات المقررات المتوفرة لطلاب كل جامعة على مراس العلم.", { noindex: catalogHasFilters(await searchParams) });
+  return resolvedPublicPageMetadata("/universities", "دليل الجامعات والكليات السعودية وشروحات المواد", "تصفح الجامعات والكليات السعودية والتخصصات، ثم اكتشف شروحات المقررات المتوفرة لطلاب كل جامعة على مراس العلم.", { noindex: catalogHasFilters(await searchParams) });
 }
 
 export const revalidate = 60;

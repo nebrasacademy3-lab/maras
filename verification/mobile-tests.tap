@@ -1,0 +1,430 @@
+TAP version 13
+# Subtest: verified complete account purchases repeatedly without another email challenge
+ok 1 - verified complete account purchases repeatedly without another email challenge
+  ---
+  duration_ms: 5.347
+  type: 'test'
+  ...
+# Subtest: email then profile requirements preserve the requested destination
+ok 2 - email then profile requirements preserve the requested destination
+  ---
+  duration_ms: 1.0304
+  type: 'test'
+  ...
+# Subtest: every purchase needs actual profile fields even when the account is an admin
+ok 3 - every purchase needs actual profile fields even when the account is an admin
+  ---
+  duration_ms: 0.7186
+  type: 'test'
+  ...
+# Subtest: one-time codes normalize Arabic and Persian digits without changing their length
+ok 4 - one-time codes normalize Arabic and Persian digits without changing their length
+  ---
+  duration_ms: 1.1349
+  type: 'test'
+  ...
+# Subtest: native Google sign-in uses a system browser, exact callback and SHA256 PKCE
+ok 5 - native Google sign-in uses a system browser, exact callback and SHA256 PKCE
+  ---
+  duration_ms: 94.9301
+  type: 'test'
+  ...
+# Subtest: OAuth cancel never returns credentials and wrong redirect/start origin is rejected
+ok 6 - OAuth cancel never returns credentials and wrong redirect/start origin is rejected
+  ---
+  duration_ms: 269.2611
+  type: 'test'
+  ...
+# Subtest: provider error or bearer-token callback cannot become a native session
+ok 7 - provider error or bearer-token callback cannot become a native session
+  ---
+  duration_ms: 251.0761
+  type: 'test'
+  ...
+# Subtest: native Apple uses its own same-origin bootstrap and PKCE
+ok 8 - native Apple uses its own same-origin bootstrap and PKCE
+  ---
+  duration_ms: 52.1111
+  type: 'test'
+  ...
+# Subtest: floating assistant remains in safe areas on phones, tablets and rotation
+ok 9 - floating assistant remains in safe areas on phones, tablets and rotation
+  ---
+  duration_ms: 3.0999
+  type: 'test'
+  ...
+# Subtest: saved normalized position survives rotation and corrupt storage falls back
+ok 10 - saved normalized position survives rotation and corrupt storage falls back
+  ---
+  duration_ms: 2.4442
+  type: 'test'
+  ...
+# Subtest: a long press or drag never opens the assistant on release
+ok 11 - a long press or drag never opens the assistant on release
+  ---
+  duration_ms: 0.7005
+  type: 'test'
+  ...
+# Subtest: mobile home keeps track descriptions, all tracks and wrapping button labels
+ok 12 - mobile home keeps track descriptions, all tracks and wrapping button labels
+  ---
+  duration_ms: 5.1774
+  type: 'test'
+  ...
+# Subtest: ios: Expo Go and development show checkout while store releases remain reader
+ok 13 - ios: Expo Go and development show checkout while store releases remain reader
+  ---
+  duration_ms: 4.6452
+  type: 'test'
+  ...
+# Subtest: android: Expo Go and development show checkout while store releases remain reader
+ok 14 - android: Expo Go and development show checkout while store releases remain reader
+  ---
+  duration_ms: 0.8222
+  type: 'test'
+  ...
+# Subtest: web checkout is available by default and QA can explicitly select reader mode
+ok 15 - web checkout is available by default and QA can explicitly select reader mode
+  ---
+  duration_ms: 0.6999
+  type: 'test'
+  ...
+# Subtest: header keeps its three interactive icons in one row with RTL=true
+ok 16 - header keeps its three interactive icons in one row with RTL=true
+  ---
+  duration_ms: 492.6385
+  type: 'test'
+  ...
+# Subtest: header keeps its three interactive icons in one row with RTL=false
+ok 17 - header keeps its three interactive icons in one row with RTL=false
+  ---
+  duration_ms: 295.8168
+  type: 'test'
+  ...
+# Subtest: reader header preserves three useful controls and never sends a cart query
+ok 18 - reader header preserves three useful controls and never sends a cart query
+  ---
+  duration_ms: 159.2809
+  type: 'test'
+  ...
+# Subtest: auth appearance control is translated and toggles the real theme
+ok 19 - auth appearance control is translated and toggles the real theme
+  ---
+  duration_ms: 141.2204
+  type: 'test'
+  ...
+# Subtest: concurrent initialization registers exactly one installation device identity
+ok 20 - concurrent initialization registers exactly one installation device identity
+  ---
+  duration_ms: 100.1353
+  type: 'test'
+  ...
+# Subtest: referral share cancellation and native failure do not record a successful share
+ok 21 - referral share cancellation and native failure do not record a successful share
+  ---
+  duration_ms: 322.7636
+  type: 'test'
+  ...
+# Subtest: device identity fails closed on read and can retry safely
+ok 22 - device identity fails closed on read and can retry safely
+  ---
+  duration_ms: 92.8096
+  type: 'test'
+  ...
+# Subtest: device identity fails closed on write and can retry safely
+ok 23 - device identity fails closed on write and can retry safely
+  ---
+  duration_ms: 73.9034
+  type: 'test'
+  ...
+# Subtest: device identity fails closed on readback and can retry safely
+ok 24 - device identity fails closed on readback and can retry safely
+  ---
+  duration_ms: 98.0507
+  type: 'test'
+  ...
+# Subtest: device identity fails closed on corrupt and can retry safely
+ok 25 - device identity fails closed on corrupt and can retry safely
+  ---
+  duration_ms: 48.9433
+  type: 'test'
+  ...
+# Subtest: admin replacement needs confirmation and sends the permanent registration ID and reason
+ok 26 - admin replacement needs confirmation and sends the permanent registration ID and reason
+  ---
+  duration_ms: 489.6437
+  type: 'test'
+  ...
+# Subtest: leaving a lesson persists the last JS snapshot after the native player was released
+ok 27 - leaving a lesson persists the last JS snapshot after the native player was released
+  ---
+  duration_ms: 492.2385
+  type: 'test'
+  ...
+# Subtest: invalid video values never create negative or non-finite progress
+ok 28 - invalid video values never create negative or non-finite progress
+  ---
+  duration_ms: 1.0864
+  type: 'test'
+  ...
+# Subtest: Arabic paragraphs stay RTL even when a course code or English product name appears first
+ok 29 - Arabic paragraphs stay RTL even when a course code or English product name appears first
+  ---
+  duration_ms: 585.1239
+  type: 'test'
+  ...
+# Subtest: code cells preserve centered alignment and Arabic empty inputs start on the right
+ok 30 - code cells preserve centered alignment and Arabic empty inputs start on the right
+  ---
+  duration_ms: 148.3929
+  type: 'test'
+  ...
+# Subtest: Expo Go and web never import unavailable native push code
+ok 31 - Expo Go and web never import unavailable native push code
+  ---
+  duration_ms: 136.7751
+  type: 'test'
+  ...
+# Subtest: native builds initialize notification handlers only once
+ok 32 - native builds initialize notification handlers only once
+  ---
+  duration_ms: 23.9412
+  type: 'test'
+  ...
+# Subtest: API requests and uploads cannot send credentials outside the platform
+ok 33 - API requests and uploads cannot send credentials outside the platform
+  ---
+  duration_ms: 326.1779
+  type: 'test'
+  ...
+# Subtest: an already cancelled upload never opens a network request
+ok 34 - an already cancelled upload never opens a network request
+  ---
+  duration_ms: 341.7774
+  type: 'test'
+  ...
+# Subtest: a successful response with invalid JSON is reported as a service error
+ok 35 - a successful response with invalid JSON is reported as a service error
+  ---
+  duration_ms: 143.8373
+  type: 'test'
+  ...
+# Subtest: notification links with malformed escaping do not crash navigation
+ok 36 - notification links with malformed escaping do not crash navigation
+  ---
+  duration_ms: 49.0978
+  type: 'test'
+  ...
+# Subtest: protected downloads reject external origins before requesting files or credentials
+ok 37 - protected downloads reject external origins before requesting files or credentials
+  ---
+  duration_ms: 161.3541
+  type: 'test'
+  ...
+# Subtest: a late account refresh cannot restore a session after logout
+ok 38 - a late account refresh cannot restore a session after logout
+  ---
+  duration_ms: 46.1757
+  type: 'test'
+  ...
+# Subtest: an expired session clears cached private account data
+ok 39 - an expired session clears cached private account data
+  ---
+  duration_ms: 39.1793
+  type: 'test'
+  ...
+# Subtest: notification routes separate fragments, queries and safely decoded university slugs
+ok 40 - notification routes separate fragments, queries and safely decoded university slugs
+  ---
+  duration_ms: 39.5491
+  type: 'test'
+  ...
+# Subtest: route parsing rejects traversal, malformed and multiply encoded separators
+ok 41 - route parsing rejects traversal, malformed and multiply encoded separators
+  ---
+  duration_ms: 37.0805
+  type: 'test'
+  ...
+# Subtest: assistant actions use the shared route resolver and retain policy fragments
+ok 42 - assistant actions use the shared route resolver and retain policy fragments
+  ---
+  duration_ms: 62.6085
+  type: 'test'
+  ...
+# Subtest: Arabic content and fields remain physically right aligned on ios
+ok 43 - Arabic content and fields remain physically right aligned on ios
+  ---
+  duration_ms: 75.5802
+  type: 'test'
+  ...
+# Subtest: Arabic content and fields remain physically right aligned on android
+ok 44 - Arabic content and fields remain physically right aligned on android
+  ---
+  duration_ms: 66.0359
+  type: 'test'
+  ...
+# Subtest: Arabic content and fields remain physically right aligned on web
+ok 45 - Arabic content and fields remain physically right aligned on web
+  ---
+  duration_ms: 80.2955
+  type: 'test'
+  ...
+# Subtest: password login and registration initialize identity before API and logout preserves installation ID
+ok 46 - password login and registration initialize identity before API and logout preserves installation ID
+  ---
+  duration_ms: 98.2189
+  type: 'test'
+  ...
+# Subtest: failed device persistence prevents every password and OAuth authentication request
+ok 47 - failed device persistence prevents every password and OAuth authentication request
+  ---
+  duration_ms: 37.1152
+  type: 'test'
+  ...
+# Subtest: native channels consume the server list and ignore unsafe or duplicate entries
+ok 48 - native channels consume the server list and ignore unsafe or duplicate entries
+  ---
+  duration_ms: 3.4791
+  type: 'test'
+  ...
+# Subtest: scroll reveal waits for the actual visible viewport rather than mount time
+ok 49 - scroll reveal waits for the actual visible viewport rather than mount time
+  ---
+  duration_ms: 0.7128
+  type: 'test'
+  ...
+# Subtest: shared native motion replays on focus and measures only unrevealed sections
+ok 50 - shared native motion replays on focus and measures only unrevealed sections
+  ---
+  duration_ms: 2.542
+  type: 'test'
+  ...
+# Subtest: foreground and admin saves invalidate live social settings
+ok 51 - foreground and admin saves invalidate live social settings
+  ---
+  duration_ms: 5.2523
+  type: 'test'
+  ...
+# Subtest: ios native IAP uses stores in release and custom development clients
+ok 52 - ios native IAP uses stores in release and custom development clients
+  ---
+  duration_ms: 4.2237
+  type: 'test'
+  ...
+# Subtest: android native IAP uses stores in release and custom development clients
+ok 53 - android native IAP uses stores in release and custom development clients
+  ---
+  duration_ms: 0.4149
+  type: 'test'
+  ...
+# Subtest: native successful purchase calls only authenticated server sync for entitlement
+ok 54 - native successful purchase calls only authenticated server sync for entitlement
+  ---
+  duration_ms: 319.2978
+  type: 'test'
+  ...
+# Subtest: store cancellation does not call server fulfillment
+ok 55 - store cancellation does not call server fulfillment
+  ---
+  duration_ms: 229.7225
+  type: 'test'
+  ...
+# Subtest: account change while store sheet is open cannot sync the old purchase to the new account
+ok 56 - account change while store sheet is open cannot sync the old purchase to the new account
+  ---
+  duration_ms: 190.4155
+  type: 'test'
+  ...
+# Subtest: stale catalog cannot change SDK identity after switching accounts
+ok 57 - stale catalog cannot change SDK identity after switching accounts
+  ---
+  duration_ms: 65.0309
+  type: 'test'
+  ...
+# Subtest: verified store payment with failed sync yields recoverable pending state
+ok 58 - verified store payment with failed sync yields recoverable pending state
+  ---
+  duration_ms: 113.4404
+  type: 'test'
+  ...
+# Subtest: restore reads store receipts then verifies them on the server
+ok 59 - restore reads store receipts then verifies them on the server
+  ---
+  duration_ms: 79.7256
+  type: 'test'
+  ...
+# Subtest: rotation fits the same measured host in portrait, landscape and tablet
+ok 60 - rotation fits the same measured host in portrait, landscape and tablet
+  ---
+  duration_ms: 5.6806
+  type: 'test'
+  ...
+# Subtest: inline layout leaves room for lesson navigation in narrow landscape
+ok 61 - inline layout leaves room for lesson navigation in narrow landscape
+  ---
+  duration_ms: 0.9699
+  type: 'test'
+  ...
+# Subtest: back closes settings before fullscreen before leaving the lesson
+ok 62 - back closes settings before fullscreen before leaving the lesson
+  ---
+  duration_ms: 0.5261
+  type: 'test'
+  ...
+# Subtest: capture cleanup waits for pending protection and runs only once
+ok 63 - capture cleanup waits for pending protection and runs only once
+  ---
+  duration_ms: 5.1104
+  type: 'test'
+  ...
+# Subtest: cleanup of the previous lesson cannot release the current lease
+ok 64 - cleanup of the previous lesson cannot release the current lease
+  ---
+  duration_ms: 3.7283
+  type: 'test'
+  ...
+# Subtest: failed protection rejects playback readiness and retry uses a fresh key
+ok 65 - failed protection rejects playback readiness and retry uses a fresh key
+  ---
+  duration_ms: 4.4403
+  type: 'test'
+  ...
+# Subtest: native fullscreen keeps one protected video surface with custom controls
+ok 66 - native fullscreen keeps one protected video surface with custom controls
+  ---
+  duration_ms: 1.5932
+  type: 'test'
+  ...
+# Subtest: settings scroll within the frame and time polling does not fight seeking
+ok 67 - settings scroll within the frame and time polling does not fight seeking
+  ---
+  duration_ms: 1.1382
+  type: 'test'
+  ...
+# Subtest: Expo Web promotes the same open dialog without replacing its video
+ok 68 - Expo Web promotes the same open dialog without replacing its video
+  ---
+  duration_ms: 468.46
+  type: 'test'
+  ...
+# Subtest: Expo Web collapse or unmount restores exact document scrolling styles
+ok 69 - Expo Web collapse or unmount restores exact document scrolling styles
+  ---
+  duration_ms: 240.2713
+  type: 'test'
+  ...
+# Subtest: unsupported or failed top-layer activation returns inline without locking scroll
+ok 70 - unsupported or failed top-layer activation returns inline without locking scroll
+  ---
+  duration_ms: 326.144
+  type: 'test'
+  ...
+1..70
+# tests 70
+# suites 0
+# pass 70
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 5406.5509

@@ -1,3 +1,4 @@
+import { resolvedPublicPageMetadata } from "@/lib/seo-settings";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -19,7 +20,7 @@ import { getCourseCatalog, getCoursesCatalog } from "@/lib/catalog-store";
 import { activeCourseAccessWhere } from "@/lib/course-access";
 import { listActiveCourseBundles } from "@/lib/course-bundles";
 import { currentUser } from "@/lib/server-auth";
-import { courseSeoDescription, courseStructuredData, jsonLd, publicPageMetadata, seoSegment } from "@/lib/seo";
+import { courseSeoDescription, courseStructuredData, jsonLd, seoSegment } from "@/lib/seo";
 
 type Props = { params: Promise<{ slug: string }>; searchParams: Promise<{ access?: string; status?: string }> };
 export const dynamic = "force-dynamic";
@@ -29,7 +30,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   if (!course) notFound();
   const description = courseSeoDescription(course);
   const image = course.coverImage || "/og.png";
-  return publicPageMetadata(`/courses/${seoSegment(course.slug)}`, `${course.title} — ${course.university}`, description, { image });
+  return resolvedPublicPageMetadata(`/courses/${seoSegment(course.slug)}`, `${course.title} — ${course.university}`, description, { image });
 }
 
 export default async function CoursePage({ params, searchParams }: Props) {

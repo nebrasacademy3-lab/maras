@@ -9,6 +9,14 @@ import type { BundleDiscountType } from "@/lib/course-bundles";
 import { toMinorUnits } from "@/lib/finance";
 import { ADMIN_PERMISSIONS, hasPermission } from "@/lib/permissions";
 
+import { enqueuePublicSeoUrls, indexNowConfig } from "@/lib/seo-indexnow";
+import { seoSegment } from "@/lib/seo";
+
+async function notifyBundleDiscovery(slugs: string[]) {
+  try { if (indexNowConfig().enabled) await enqueuePublicSeoUrls(["/bundles", "/courses", ...slugs.map((slug) => `/bundles/${seoSegment(slug)}`)]); }
+  catch { console.error("[seo] Bundle saved; discovery queue unavailable"); }
+}
+
 export const dynamic = "force-dynamic";
 
 type BundleInput = {
@@ -181,6 +189,7 @@ export async function POST(request: Request) {
       await tx.insert(auditLogs).values({ actorEmail: guarded.authorization.actor, action: "create", entityType: "course_bundle", entityId: input.slug, beforeJson: null, afterJson: json(snapshot), ipAddress: clientIp(request), createdAt: now });
       return snapshot;
     });
+    await notifyBundleDiscovery([created.slug]);
     return Response.json({ ok: true, bundle: created }, { status: 201, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   } catch (error) {
     if (error instanceof BundleInputError) return jsonError(error.message, 400);
@@ -198,10 +207,12 @@ export async function PATCH(request: Request) {
     if (!Number.isInteger(id) || id <= 0) throw new BundleInputError("معرّف سجل الباقة غير صالح");
     const input = await bundleInput(payload);
     const now = new Date().toISOString();
+    let previousSlug = input.slug;
     const updated = await getDb().transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM course_bundles WHERE id = ${id} FOR UPDATE`);
       const [beforeBundle] = await tx.select().from(courseBundles).where(eq(courseBundles.id, id)).limit(1);
       if (!beforeBundle) throw new BundleInputError("الباقة غير موجودة");
+      previousSlug = beforeBundle.slug;
       const beforeItems = await tx.select().from(courseBundleItems).where(eq(courseBundleItems.bundleId, id)).orderBy(asc(courseBundleItems.position));
       const before = { ...beforeBundle, courseSlugs: beforeItems.map((item) => item.courseSlug) };
       const [bundle] = await tx.update(courseBundles).set(bundleValues(input, now)).where(eq(courseBundles.id, id)).returning();
@@ -211,6 +222,7 @@ export async function PATCH(request: Request) {
       await tx.insert(auditLogs).values({ actorEmail: guarded.authorization.actor, action: "update", entityType: "course_bundle", entityId: input.slug, beforeJson: json(before), afterJson: json(after), ipAddress: clientIp(request), createdAt: now });
       return after;
     });
+    await notifyBundleDiscovery([previousSlug, updated.slug]);
     return Response.json({ ok: true, bundle: updated }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   } catch (error) {
     if (error instanceof BundleInputError) return jsonError(error.message, error.message === "الباقة غير موجودة" ? 404 : 400);
@@ -232,7 +244,7 @@ export async function DELETE(request: Request) {
   try {
     const id = Number(new URL(request.url).searchParams.get("id"));
     if (!Number.isInteger(id) || id <= 0) throw new BundleInputError("معرّف سجل الباقة غير صالح");
-    await getDb().transaction(async (tx) => {
+    const removedSlug = await getDb().transaction(async (tx) => {
       await tx.execute(sql`SELECT id FROM course_bundles WHERE id = ${id} FOR UPDATE`);
       const [bundle] = await tx.select().from(courseBundles).where(eq(courseBundles.id, id)).limit(1);
       if (!bundle) throw new BundleInputError("الباقة غير موجودة");
@@ -243,7 +255,9 @@ export async function DELETE(request: Request) {
       await tx.delete(courseBundles).where(eq(courseBundles.id, id));
       const now = new Date().toISOString();
       await tx.insert(auditLogs).values({ actorEmail: guarded.authorization.actor, action: "delete", entityType: "course_bundle", entityId: bundle.slug, beforeJson: json(before), afterJson: null, ipAddress: clientIp(request), createdAt: now });
+      return bundle.slug;
     });
+    await notifyBundleDiscovery([removedSlug]);
     return Response.json({ ok: true }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   } catch (error) {
     if (error instanceof BundleConflictError) return jsonError(error.message, 409);

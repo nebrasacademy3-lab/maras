@@ -78,6 +78,7 @@ export async function getAiMonthlyPrice() {
 }
 
 function normalizedEntitlementSource(source: string): AiEntitlementStatus["source"] {
+  if (source === "revenuecat") return "paid";
   return source === "paid" || source === "admin" || source === "gift" || source === "referral" ? source : "admin";
 }
 

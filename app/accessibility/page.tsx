@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { publicPageMetadata } from "@/lib/seo";
+import { staticPublicPageMetadata } from "@/lib/seo-settings";
 import { PolicyPage } from "@/components/policy-page";
 
-export const metadata: Metadata = publicPageMetadata("/accessibility", "إمكانية الوصول", "تعرف على دعم التصفح بلوحة المفاتيح ووضوح المحتوى والمظهر في مراس العلم، وكيفية إبلاغ الدعم عن عوائق الوصول.");
+export function generateMetadata(): Promise<Metadata> { return staticPublicPageMetadata("/accessibility"); }
 export default function AccessibilityPage() { return <PolicyPage title="إمكانية الوصول" intro="نعمل لتكون مراس قابلة للاستخدام مع لوحة المفاتيح وقارئات الشاشة وفي مختلف أحجام الأجهزة." sections={[
   { title: "التصفح والوضوح", body: "يدعم الموقع اتجاه العربية، التنقل بلوحة المفاتيح، حالات التركيز المرئية، والتكبير دون فقد الوظائف الأساسية." },
   { title: "الألوان والمظهر", body: "يتوفر وضع فاتح وليلي مع تباين واضح، ولا نعتمد على اللون وحده لإيصال الحالات المهمة." },

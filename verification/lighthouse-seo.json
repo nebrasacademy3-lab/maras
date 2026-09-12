@@ -1,0 +1,142 @@
+{
+  "checkedAt": "2026-09-12T19:28:03.748Z",
+  "environment": "Loopback production build with synthetic database; mobile SEO category only",
+  "settings": {
+    "onlyCategories": [
+      "seo"
+    ],
+    "networkQuietThresholdMs": 0,
+    "pauseAfterLoadMs": 1000,
+    "cpuQuietThresholdMs": 1000
+  },
+  "measurementNote": "Network quiet wait is zero because host security software injects continuous polling. Load event, post-load pause and CPU quiet remain. Security software was not disabled or blocked. Default runs retained separately.",
+  "pages": [
+    {
+      "path": "/",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/courses",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/universities",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/courses/qa-physics",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/universities/qa-university",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/universities/qa-university/specialties/qa-science",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/bundles",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/bundles/qa-science",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/tools",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/about",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/faq",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/how-it-works",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/contact",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/terms",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/privacy",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/refund-policy",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/content-policy",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    },
+    {
+      "path": "/accessibility",
+      "score": 100,
+      "lighthouseVersion": "13.4.1",
+      "failed": [],
+      "warnings": []
+    }
+  ],
+  "rawReportDirectory": "verification/lighthouse"
+}

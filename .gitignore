@@ -14,3 +14,8 @@ coverage
 /outputs
 /work
 .sites-runtime/
+
+!.env.*.example
+/release
+/output
+/.playwright-cli/

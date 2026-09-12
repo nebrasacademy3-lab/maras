@@ -13,13 +13,16 @@ import { DeferredEnhancements } from "@/components/deferred-enhancements";
 import { AnnouncementCampaign } from "@/components/announcement-campaign";
 import { RealtimeSync } from "@/components/realtime-sync";
 import { PlatformAnalytics } from "@/components/platform-analytics";
-import { googleSiteVerification, jsonLd, searchIndexingEnabled, seoSiteOrigin, siteStructuredData } from "@/lib/seo";
+import { bingSiteVerification, googleSiteVerification, jsonLd, searchIndexingEnabled, seoSiteOrigin, siteStructuredData } from "@/lib/seo";
+
+import { getPublicSettings } from "@/lib/platform-settings";
+import { normalizedSocialLinks } from "@/lib/social-links";
 
 const siteUrl = seoSiteOrigin();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
-  verification: { google: googleSiteVerification() },
+  verification: { google: googleSiteVerification(), other: bingSiteVerification() ? { "msvalidate.01": bingSiteVerification()! } : {} },
   robots: { index: searchIndexingEnabled(), follow: true },
   title: { default: "مراس العلم | شرح جامعتك في مكان واحد", template: "%s | مراس العلم" },
   description: "منصة تعليم جامعي سعودية تجمع شروحات المواد حسب الجامعة والتخصص، مع درس تجريبي مجاني قبل الاشتراك.",
@@ -48,9 +51,11 @@ export const viewport: Viewport = {
 };
 
 const themeScript = `(function(){try{var t=localStorage.getItem('meras-theme');var p=localStorage.getItem('meras-palette');var s=localStorage.getItem('meras-font-scale');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.dataset.palette=['official','violet','rose','teal'].indexOf(p)>=0?p:'official';document.documentElement.dataset.fontScale=['0.9','1','1.1','1.2'].indexOf(s)>=0?s:'1'}catch(e){}})()`;
-const structuredData = siteStructuredData();
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const settings = await getPublicSettings();
+  const structuredData = siteStructuredData({ legalName: settings.legal_name, description: settings.footer_description, sameAs: normalizedSocialLinks(settings).map((link) => link.url) });
   return (
     <html lang="ar" dir="rtl" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(structuredData) }} /></head>

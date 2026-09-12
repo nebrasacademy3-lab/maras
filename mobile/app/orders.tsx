@@ -1,3 +1,4 @@
+import { StorePurchases } from "@/src/components/StorePurchases";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -41,6 +42,7 @@ export default function Orders() {
   const downloadInvoice=async(orderNumber:string,invoiceNumber:string)=>{setDownloading(invoiceNumber);setMessage("");try{const result=await downloadProtectedFile({path:`/api/invoices/${encodeURIComponent(orderNumber)}/download`,fileName:`${invoiceNumber}.html`,mimeType:"text/html",saveToFiles:true,openAfterDownload:true});setMessage(result.action==="cancelled"?"تم إلغاء اختيار مكان الحفظ.":"أصبحت نسخة الفاتورة جاهزة للعرض أو الحفظ أو الطباعة.");}catch(reason){setMessage(reason instanceof ApiError?reason.message:"تعذر تحميل الفاتورة.");}finally{setDownloading("");}};
   return <Screen>
     <AppHeader title="الطلبات والفواتير" subtitle="سجل مرتبط بحسابك" back />
+    <StorePurchases history />
     <SectionTitle title="الطلبات" subtitle={`${orders.length} عملية`} />
     {orders.length ? orders.map((order) => <Card key={order.orderNumber} style={styles.card}>
       <View style={styles.row}><View style={[styles.status, { backgroundColor: order.status === "paid" ? `${colors.success}18` : colors.surfaceAlt }]}><Text style={{ color: order.status === "paid" ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{orderLabels[order.status] || "حالة دفع غير معروفة"}</Text></View><Text style={[styles.title, { color: colors.text }]}>{order.courseTitle}</Text></View>

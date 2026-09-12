@@ -1,0 +1,44 @@
+[
+  {
+    "path": "/",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/courses/qa-physics",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/bundles",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/about",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/contact",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/refund-policy",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  }
+]

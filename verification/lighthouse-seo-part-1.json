@@ -1,0 +1,44 @@
+[
+  {
+    "path": "/courses",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/universities/qa-university",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/bundles/qa-science",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/faq",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/terms",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/content-policy",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  }
+]

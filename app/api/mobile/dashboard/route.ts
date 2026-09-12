@@ -1,3 +1,4 @@
+import { effectiveAccessRows } from "@/lib/course-access";
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, courseRequests, invoices, lessonProgress, notificationReads, notificationsDb, orders, supportReplies, supportTickets } from "@/db/schema";
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
     or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now)),
   );
   const [accessRows, progressRows, orderRows, invoiceRows, requestRows, noticeRows, ticketRows] = await Promise.all([
-    db.select().from(courseAccess).where(eq(courseAccess.userEmail, user.email)),
+    db.select().from(courseAccess).where(eq(courseAccess.userEmail, user.email)).then(rows => effectiveAccessRows(rows)),
     db.select().from(lessonProgress).where(eq(lessonProgress.userEmail, user.email)),
     db.select().from(orders).where(eq(orders.customerEmail, user.email)).orderBy(desc(orders.createdAt)).limit(50),
     db.select().from(invoices).where(eq(invoices.customerEmail, user.email)).orderBy(desc(invoices.issuedAt)).limit(50),
@@ -48,7 +49,7 @@ export async function GET(request: Request) {
     const progress = progressRows.filter((row) => row.courseSlug === course.slug && availableIds.has(row.lessonId));
     const completed = progress.filter((row) => row.completed).length;
     const last = [...progress].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
-    const accessState = access.suspendedAt ? "suspended" : access.expiresAt && Date.parse(access.expiresAt) <= Date.now() ? "expired" : "active";
+    const accessState = access.suspendedAt ? "suspended" : Date.parse(access.startsAt) > Date.parse(now) ? "scheduled" : access.expiresAt && Date.parse(access.expiresAt) <= Date.now() ? "expired" : "active";
     return [{ ...course, progress: availableLessons.length ? Math.round(completed / availableLessons.length * 100) : 0, currentLessonId: last?.lessonId || availableLessons[0]?.id || null, expiresAt: access.expiresAt, accessState }];
   });
   const owned = allCourses.filter((course) => course.accessState === "active");

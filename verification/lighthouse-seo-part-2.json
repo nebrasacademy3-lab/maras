@@ -1,0 +1,44 @@
+[
+  {
+    "path": "/universities",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/universities/qa-university/specialties/qa-science",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/tools",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/how-it-works",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/privacy",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  },
+  {
+    "path": "/accessibility",
+    "score": 100,
+    "lighthouseVersion": "13.4.1",
+    "failed": [],
+    "warnings": []
+  }
+]

@@ -70,6 +70,8 @@ test("store builds cannot expose or call Tap checkout while direct builds retain
   assert.match(api, /STORE_COMMERCE_ENABLED/);
   assert.match(api, /pathname === "\/api\/checkout"/);
   for (const surface of [cart, course, header, account]) assert.match(surface, /STORE_COMMERCE_ENABLED/);
-  assert.match(eas, /"production"[\s\S]*"EXPO_PUBLIC_STORE_MODE": "reader"/);
+  assert.equal(JSON.parse(eas).build.production.env.EXPO_PUBLIC_STORE_MODE, "iap");
+  assert.match(api, /!DIRECT_COMMERCE_ENABLED && url.pathname === "\/api\/checkout"/);
+  assert.match(course, /NATIVE_PURCHASES_ENABLED \? <StorePurchases/);
   assert.match(eas, /"production-direct"[\s\S]*"EXPO_PUBLIC_STORE_MODE": "direct"/);
 });

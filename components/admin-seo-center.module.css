@@ -1,0 +1,28 @@
+.root { max-width: 1440px; margin-inline: auto; padding: 1.5rem; line-height: 1.8; }
+.header { display: flex; justify-content: space-between; align-items: center; gap: 1.5rem; margin-bottom: 1.5rem; }
+.header h1 { font-size: clamp(1.5rem, 3vw, 2.2rem); margin: .5rem 0; }
+.card { padding: 1.5rem; border: 1px solid #94a3b850; border-radius: 1.15rem; margin-block: 1.5rem; background: #94a3b808; }
+.card h2 { font-size: 1.25rem; margin: 0 0 1rem; }
+.card p { margin: .75rem 0; }
+.card a, .header a { color: #3b75d6; text-decoration: underline; text-underline-offset: .2em; }
+.stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-block: 1.5rem; }
+.stats article { display: grid; padding: 1.4rem; border: 1px solid #94a3b850; border-radius: 1rem; }
+.stats strong { font-size: 1.65rem; }
+.actions { display: flex; align-items: center; flex-wrap: wrap; gap: 1rem; margin-top: 1rem; }
+.search, .field { display: grid; gap: .5rem; margin-bottom: 1.2rem; max-width: 850px; }
+.search input, .field input, .field textarea { width: 100%; border: 1px solid #94a3b870; border-radius: .7rem; padding: .8rem; background: transparent; color: inherit; font: inherit; }
+.tableWrap { overflow-x: auto; }
+.table { min-width: 760px; width: 100%; border-collapse: collapse; text-align: start; }
+.table th, .table td { padding: 1rem .7rem; text-align: start; border-bottom: 1px solid #94a3b840; vertical-align: top; }
+.table td:nth-child(2) { max-width: 450px; }
+.table small { display: block; overflow-wrap: anywhere; }
+.pagination { display: flex; gap: 1rem; justify-content: center; align-items: center; margin-block: 1rem; }
+.preview { max-width: 850px; border: 1px solid #94a3b850; padding: 1.3rem; border-radius: .8rem; }
+.preview h3 { color: #3b75d6; font-size: 1.35rem; margin: .25rem 0; }
+.preview small { overflow-wrap: anywhere; }
+.note { font-size: .9rem; opacity: .8; }
+.error, .message { border-radius: .8rem; padding: 1rem; border: 1px solid; }
+.error { background: #ef444415; color: #b91c1c; }
+.message { background: #16a34a15; color: #168042; }
+.warning { color: #b45309; }
+@media (max-width: 700px) { .root { padding: .85rem; } .header { align-items: flex-start; flex-direction: column; } .stats { grid-template-columns: 1fr; } .card { padding: 1rem; } }

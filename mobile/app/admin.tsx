@@ -1,3 +1,4 @@
+import { AdminCourseRoster } from "@/src/components/admin-course-roster";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
@@ -30,6 +31,7 @@ const LazySupportChat = React.lazy(async () => {
 
 type Colors = ReturnType<typeof useTheme>["colors"];
 type AdminData = {
+  pagination?: { view: string; page: number; pageSize: number; total: number } | null;
   metrics: { students: number; activeStudents: number; institutions: number; publishedCourses: number; orders: number; paidOrders: number; revenue: number; openRequests: number; openTickets: number; pendingReviews: number };
   services: Record<string, boolean>;
   users: { id: number; fullName: string; email: string; phone: string | null; role: string; status: string; universitySlug: string | null; specialty: string | null; academicLevel: string | null; profileCompletedAt: string | null; deviceCount?: number; sessions?: { id: number; deviceId: string | null; deviceLabel: string; platform: string; ipAddress: string | null; lastSeenAt: string; expiresAt: string; createdAt: string }[] }[];
@@ -51,7 +53,7 @@ type AdminData = {
   settings: Record<string, string>;
 };
 
-type Tab = "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "finance" | "operations" | "bundles" | "tracks" | "referrals" | "ai" | "reviews" | "communication" | "security" | "appearance";
+type Tab = "roster" | "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "finance" | "operations" | "bundles" | "tracks" | "referrals" | "ai" | "reviews" | "communication" | "security" | "appearance";
 type Mutate = (payload: Record<string, unknown>, success?: string) => Promise<boolean>;
 type DeleteEntity = (entityType: string, entityId: string | number, label: string, impact: string) => void;
 const arabicMap: Record<string, string> = { ا: "a", أ: "a", إ: "i", آ: "a", ب: "b", ت: "t", ث: "th", ج: "j", ح: "h", خ: "kh", د: "d", ذ: "dh", ر: "r", ز: "z", س: "s", ش: "sh", ص: "s", ض: "d", ط: "t", ظ: "z", ع: "a", غ: "gh", ف: "f", ق: "q", ك: "k", ل: "l", م: "m", ن: "n", ه: "h", و: "w", ي: "y", ة: "h", ى: "a", ء: "a" };
@@ -113,6 +115,7 @@ const tabs: { key: Tab; label: string; icon: React.ComponentProps<typeof Ionicon
   { key: "users", label: "الحسابات", icon: "people-outline" },
   { key: "subscriptions", label: "الاشتراكات", icon: "shield-checkmark-outline" },
   { key: "staff", label: "الموظفون", icon: "person-add-outline" },
+  { key: "roster", label: "مشتركو المواد والانتظار", icon: "people-circle-outline" },
   { key: "requests", label: "الطلبات", icon: "cloud-upload-outline" },
   { key: "support", label: "الدعم", icon: "headset-outline" },
   { key: "catalog", label: "الكتالوج", icon: "library-outline" },
@@ -137,7 +140,12 @@ export default function Admin() {
   const [tab, setTab] = useState<Tab>("overview");
   const [message, setMessage] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
-  const query = useQuery({ queryKey: ["admin-console"], queryFn: () => api<AdminData>("/api/admin/console?client=mobile"), enabled: user?.role === "admin", staleTime: 15_000, retry: 1 });
+  const [courseSelection, setCourseSelection] = useState("");
+  const [searchDraft, setSearchDraft] = useState(""); const [serverSearch, setServerSearch] = useState("");
+  const [pageState, setPageState] = useState({ tab: "overview", q: "", page: 1 });
+  const view = ({ users: "students", subscriptions: "subscriptions", staff: "staff", requests: "requests", support: "support", reviews: "reviews", commerce: "orders" } as Record<string, string>)[tab] || "overview";
+  const page = pageState.tab === tab && pageState.q === serverSearch ? pageState.page : 1;
+  const query = useQuery({ queryKey: ["admin-console", view, serverSearch, page], queryFn: ({ signal }) => api<AdminData>(`/api/admin/console?${new URLSearchParams({ client: "mobile", view, q: serverSearch, page: String(page) })}`, { signal }), enabled: user?.role === "admin", staleTime: 15_000, retry: 1 });
   const refresh = async () => { await client.invalidateQueries({ queryKey: ["admin-console"] }); };
   const stepUpRequired = (detail?: string) => {
     setMessage(ADMIN_STEP_UP_MESSAGE);
@@ -181,15 +189,17 @@ export default function Admin() {
     </View>
     <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.tabs, { direction, flexDirection: rowDirection }]}>{tabs.map((item) => <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected: tab === item.key }} onPress={() => setTab(item.key)} style={[styles.tab, { backgroundColor: tab === item.key ? colors.primary : colors.surface, borderColor: tab === item.key ? colors.primary : colors.border }]}><View style={styles.tabIcon}><Ionicons name={item.icon} size={18} color={tab === item.key ? "#FFF" : colors.primary} /></View><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.82} style={[styles.tabLabel, { color: tab === item.key ? "#FFF" : colors.text }]}>{item.label}</Text></Pressable>)}</ScrollView>
     {message ? <Text style={[styles.message, { color: message.startsWith("تم") ? colors.success : colors.danger }]}>{message}</Text> : null}
+    {view !== "overview" && (tab !== "users" || !profileEmail) && <Card><Field label="بحث في جميع السجلات" value={searchDraft} onChangeText={setSearchDraft} /><AppButton title="بحث" onPress={() => { setServerSearch(searchDraft.trim()); setPageState({ tab, q: searchDraft.trim(), page: 1 }); }} /></Card>}
+    {tab === "roster" && <AdminCourseRoster key={courseSelection} initialSlug={courseSelection} courses={data.courses} onOpenStudent={email => { setProfileEmail(email); setTab("users"); }} />}
     {tab === "overview" && <Overview data={data} colors={colors} />}
-    {tab === "users" && (profileEmail ? <AdminStudentProfile email={profileEmail} onClose={() => setProfileEmail("")} onStepUpRequired={stepUpRequired} /> : <Users data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} onOpenProfile={setProfileEmail} />)}
+    {tab === "users" && (profileEmail ? <AdminStudentProfile email={profileEmail} onClose={() => setProfileEmail("")} onStepUpRequired={stepUpRequired} onOpenCourse={slug => { setCourseSelection(slug); setTab("roster"); }} onOpenSection={(section, search) => { setServerSearch(search); setSearchDraft(search); setTab(section); }} /> : <Users data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} onOpenProfile={setProfileEmail} />)}
     {tab === "subscriptions" && <SubscriptionAdmin data={data} colors={colors} mutate={mutate} />}
     {tab === "staff" && <StaffAdmin data={data} colors={colors} refresh={refresh} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "requests" && <Requests rows={data.requests} courses={data.courses} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "support" && <Support rows={data.tickets} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
     {tab === "catalog" && <CatalogAdmin data={data} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
     {tab === "commerce" && <Commerce data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
-    {tab === "finance" && <AdminFinance onStepUpRequired={stepUpRequired} />}
+    {tab === "finance" && <AdminFinance key={serverSearch} initialSearch={serverSearch} onStepUpRequired={stepUpRequired} />}
     {tab === "operations" && <AdminOperations onStepUpRequired={stepUpRequired} />}
     {tab === "bundles" && <MobileBundleAdmin colors={colors} institutions={data.institutions}/>}
     {tab === "tracks" && <AdminLearningTracks onStepUpRequired={stepUpRequired} />}
@@ -199,6 +209,7 @@ export default function Admin() {
     {tab === "communication" && <Communication data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "security" && <MobileAdminSecurity colors={colors} />}
     {tab === "appearance" && <AppearanceSettings />}
+    {data.pagination && data.pagination.view === view && !(tab === "users" && profileEmail) && <Card><Text style={{ color: colors.text }}>صفحة {page} من {Math.max(1, Math.ceil(data.pagination.total / data.pagination.pageSize))} · {data.pagination.total} سجل مطابق</Text><View style={styles.actionRow}><AppButton full={false} title="السابق" disabled={page <= 1 || query.isFetching} onPress={() => setPageState({ tab, q: serverSearch, page: page - 1 })} /><AppButton full={false} title="التالي" disabled={page * data.pagination.pageSize >= data.pagination.total || query.isFetching} onPress={() => setPageState({ tab, q: serverSearch, page: page + 1 })} /></View></Card>}
   </Screen>;
 }
 

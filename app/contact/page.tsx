@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { publicPageMetadata } from "@/lib/seo";
+import { staticPublicPageMetadata } from "@/lib/seo-settings";
 import Link from "next/link";
 import { ArrowLeft, Clock3, ExternalLink, Headphones, Mail, MessageCircle, Send, ShieldCheck } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
@@ -8,7 +8,7 @@ import { getPublicSettings, whatsappHref } from "@/lib/platform-settings";
 import { SocialLinks } from "@/components/social-links";
 import { normalizedSocialLinks } from "@/lib/social-links";
 
-export const metadata: Metadata = publicPageMetadata("/contact", "تواصل معنا", "تواصل مع فريق مراس العلم للاستفسارات والمساعدة بشأن حسابك والمواد الجامعية والاشتراكات.");
+export function generateMetadata(): Promise<Metadata> { return staticPublicPageMetadata("/contact"); }
 
 export default async function ContactPage() {
   const settings = await getPublicSettings();

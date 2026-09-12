@@ -129,3 +129,34 @@ test("invalid-key signals disable only that key while model failures do not rota
   await assert.rejects(missing.generateGeminiContent(generation), error => error.code === "AI_MODEL_UNAVAILABLE");
   assert.equal(missing.calls.length, 1); assert.equal(missing.updates[0].status, "active"); assert.equal(missing.updates[0].cooldownUntil, null);
 });
+
+
+test("corrupt encrypted key reports configuration failure instead of generic provider outage", async () => {
+  const rows=[{id:1,encryptedKey:"bad",fingerprint:"bad",priority:1,cooldownUntil:null}];
+  const db={select:()=>({from:()=>({where:()=>({orderBy:async()=>rows})})})};
+  const r=await isolated("../lib/gemini.ts",{...platform,...config,...errors,createHash:crypto.createHash,asc:()=>true,eq:()=>true,aiApiKeys:{},getDb:()=>db,decryptAiApiKey:()=>{throw Error("private-key-secret");},geminiEnvironmentKeys:()=>[],process:{env:{}}});
+  await assert.rejects(r.generateGeminiContent(generation),error=>error.code==="AI_KEY_DECRYPTION_FAILED"&&!error.message.includes("private-key-secret"));
+  const ciphertext=keys.encryptAiApiKey(modern);
+  assert.throws(()=>keys.decryptAiApiKey(ciphertext+".extra"),error=>error.code==="AI_KEY_DECRYPTION_FAILED");
+});
+
+test("runtime service diagnostic uses actual generation helpers with stored service config", async () => {
+  const calls=[];
+  let disabled=false;
+  const settings=Object.fromEntries(["chat","summary","translation","quiz"].map(service=>[service,{service,enabled:true,model:"gemini-stored-test",temperature:0.31,maxOutputTokens:1234,instructions:"stored instructions"}]));
+  const result={text:"fixture",model:"gemini-stored-test",keyId:3};
+  const route=await isolated("../app/api/admin/ai/route.ts",{...platform,...errors,
+    getSessionUser:async()=>({id:1,email:"admin@example.test",role:"admin"}),hasPermission:async()=>true,ADMIN_PERMISSIONS:{AI_MANAGE:"ai.manage"},sameOriginRequest:()=>true,checkRateLimit:async()=>true,requireAdminStepUp:async()=>{},AdminMfaError:class extends Error{},
+    getDb:()=>({insert:()=>({values:async()=>{}})}),auditLogs:{},clientIp:()=>"local",observeRequest:(_request,_name,callback)=>callback(),readBoundedJsonObject:request=>request.json(),cleanText:value=>typeof value==="string"?value.trim():"",isAiService:value=>["chat","summary","translation","quiz"].includes(value),getAiServiceSettings:async()=>({...settings,chat:{...settings.chat,enabled:!disabled}}),
+    generateAiChat:async input=>{calls.push({kind:"chat",input});return result;},generateFileArtifact:async input=>{calls.push({kind:input.action,input});return result;},generateFileQuiz:async input=>{calls.push({kind:"quiz",input});return {result,quiz:{}};},jsonError:(error,status=400,code)=>Response.json({error,code},{status}),RequestBodyTooLargeError:class extends Error{},isUniqueConstraintError:()=>false,
+  });
+  for(const service of ["chat","summary","translation","quiz"]){
+    const response=await route.POST(new Request("https://meras.example/api/admin/ai",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({action:"testRuntime",service})}));
+    assert.equal(response.status,200);assert.equal((await response.json()).runtimeVerified,true);
+    assert.equal(calls.at(-1).kind,service);assert.deepEqual(calls.at(-1).input.config,settings[service]);
+    if(service!=="chat")assert.equal(calls.at(-1).input.originalName,"meras-diagnostic.txt");
+  }
+  disabled=true;
+  const response=await route.POST(new Request("https://meras.example/api/admin/ai",{method:"POST",body:JSON.stringify({action:"testRuntime",service:"chat"})}));
+  assert.equal(response.status,409);assert.equal(calls.length,4);
+});

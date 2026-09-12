@@ -58,7 +58,7 @@ test("same-origin fullscreen stays allowed while document capture and picture-in
   const headersFor = await configuration();
   for (const path of ["/learn/chemistry", "/courses/chemistry", "/checkout/chemistry"]) {
     const policy = headersFor(path).get("permissions-policy");
-    for (const directive of ["fullscreen=(self)", "display-capture=()", "picture-in-picture=()", "camera=()", "microphone=()", "geolocation=()"]) assert.ok(policy.includes(directive), directive);
+    for (const directive of ["fullscreen=(self)", "display-capture=()", "picture-in-picture=()", "camera=()", "microphone=(self)", "geolocation=()"]) assert.ok(policy.includes(directive), directive);
     assert.doesNotMatch(policy, /fullscreen=\(\)|payment=\(\)/);
   }
 });

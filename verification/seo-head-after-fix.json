@@ -1,0 +1,36 @@
+{
+  "checkedAt": "2026-09-12T19:26:47.488Z",
+  "browser": "HeadlessChrome/152.0.0.0 Win32",
+  "change": "Global documented htmlLimitedBots: /.*/ resolves metadata before initial HTML for every user agent.",
+  "pages": [
+    {
+      "path": "/universities",
+      "headDescriptionAtLoad": true,
+      "bodyDescription": false,
+      "loadEventEndMs": 848.9,
+      "elapsedMs": 985
+    },
+    {
+      "path": "/about",
+      "headDescriptionAtLoad": true,
+      "bodyDescription": false,
+      "loadEventEndMs": 1186.6,
+      "elapsedMs": 1321
+    },
+    {
+      "path": "/contact",
+      "headDescriptionAtLoad": true,
+      "bodyDescription": false,
+      "loadEventEndMs": 735.9,
+      "elapsedMs": 872
+    },
+    {
+      "path": "/refund-policy",
+      "headDescriptionAtLoad": true,
+      "bodyDescription": false,
+      "loadEventEndMs": 1003.8,
+      "elapsedMs": 1150
+    }
+  ],
+  "timingNote": "Diagnostics collected alongside HTTP crawls. These are not controlled performance benchmarks or before/after speed comparisons."
+}

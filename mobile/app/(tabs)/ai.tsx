@@ -1,3 +1,4 @@
+import { StorePurchases } from "@/src/components/StorePurchases";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
@@ -11,7 +12,7 @@ import { purchaseAccountRequirement } from "@/src/lib/account-access";
 import { PurchaseRequirements } from "@/src/components/PurchaseRequirements";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton, Card, EmptyState, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
-import { absoluteUrl, api, apiUpload, ApiError, formatUploadProgress, jsonBody, STORE_COMMERCE_ENABLED, type ApiUploadProgress } from "@/src/lib/api";
+import { absoluteUrl, api, apiUpload, ApiError, formatUploadProgress, jsonBody, STORE_COMMERCE_ENABLED, DIRECT_COMMERCE_ENABLED, NATIVE_PURCHASES_ENABLED, type ApiUploadProgress } from "@/src/lib/api";
 import { assetMimeType } from "@/src/lib/file-types";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -67,7 +68,7 @@ export default function MerasAiScreen() {
   const enabledPickerTypes = useMemo(() => status.data?.supportedFiles.map((item) => item.mimeType).filter(Boolean) || ["application/pdf", "image/png", "image/jpeg", "text/plain"], [status.data]);
 
   if (!user) return <Screen><AppHeader title="أدوات مراس" subtitle="مساعد مذاكرتك الذكي" /><EmptyState icon="sparkles-outline" title="سجّل الدخول إلى أدوات مراس" text="احفظ الملخصات والترجمات والاختبارات والمحادثات في حساب واحد." action={<AppButton title="تسجيل الدخول" icon="log-in-outline" onPress={() => router.push("/(auth)/login")} />} /></Screen>;
-  if (status.isLoading) return <Screen><AppHeader title="أدوات مراس" /><LoadingState label="نجهّز أدوات أدوات مراس…" /></Screen>;
+  if (status.isLoading) return <Screen><AppHeader title="أدوات مراس" /><LoadingState label="نجهّز أدوات مراس…" /></Screen>;
   if (status.isError || !status.data) return <Screen><AppHeader title="أدوات مراس" /><EmptyState icon="cloud-offline-outline" title="أدوات مراس غير متاح الآن" text={status.error instanceof Error ? status.error.message : "حاول مرة أخرى بعد قليل."} action={<AppButton title="إعادة المحاولة" icon="refresh-outline" onPress={() => void status.refetch()} />} /></Screen>;
 
   const ai = status.data;
@@ -167,7 +168,7 @@ export default function MerasAiScreen() {
     <SectionTitle title="سجل أدوات مراس" subtitle="ارجع إلى محادثاتك وملفاتك من أي جهاز" action={<Pressable onPress={() => void conversations.refetch()}><Ionicons name="refresh-outline" size={19} color={colors.primary} /></Pressable>} />
     {conversations.isLoading ? <LoadingState label="تحميل السجل…" /> : conversations.data?.conversations.length ? <View style={styles.history}>{conversations.data.conversations.slice(0, 8).map((row) => <Pressable key={row.id} onPress={() => router.push({ pathname: "/ai/conversation/[id]", params: { id: String(row.id) } })} style={({ pressed }) => [styles.historyRow, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .8 : 1 }]}><View style={[styles.historyIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name={row.kind === "chat" ? "chatbubble-ellipses-outline" : "document-text-outline"} size={20} color={colors.primary} /></View><View style={styles.historyCopy}><Text numberOfLines={1} style={[styles.historyTitle, { color: colors.text }]}>{row.title}</Text><Text numberOfLines={2} style={[styles.historyPreview, { color: colors.textSoft }]}>{row.preview || "افتح لمشاهدة المحتوى المحفوظ"}</Text></View><Ionicons name="chevron-back" size={17} color={colors.textSoft} /></Pressable>)}</View> : <EmptyState icon="chatbubbles-outline" title="سجلك يبدأ من هنا" text="أنشئ محادثة أو ارفع أول ملف، وسيُحفظ كل شيء تلقائيًا." />}
 
-    {ai.entitlement.tier === "free" && STORE_COMMERCE_ENABLED ? <PurchaseRequirements returnTo="/(tabs)/ai" /> : null}{ai.entitlement.tier === "free" ? <Card style={styles.subscribe}><View style={[styles.subscribeIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="diamond-outline" size={25} color={colors.primary} /></View><View style={styles.subscribeCopy}><Text style={[styles.subscribeTitle, { color: colors.text }]}>أدوات مراس الكامل · {ai.entitlement.monthlyPrice} ر.س شهريًا</Text><Text style={[styles.subscribeText, { color: colors.textSoft }]}>ويأتي مجانًا تلقائيًا مع أي اشتراك مادة فعّال.</Text></View>{STORE_COMMERCE_ENABLED ? <Pressable disabled={Boolean(purchaseAccountRequirement(user))} onPress={() => void Linking.openURL(absoluteUrl(ai.deepLinks.subscribe))} style={[styles.subscribeButton, { backgroundColor: colors.primary }]}><Text style={{ color: "#FFF", fontSize: 10, fontWeight: "900" }}>اشترك</Text></Pressable> : null}</Card> : null}
+    {ai.entitlement.tier === "free" && STORE_COMMERCE_ENABLED ? <PurchaseRequirements returnTo="/(tabs)/ai" /> : null}{NATIVE_PURCHASES_ENABLED ? <StorePurchases kind="ai" /> : ai.entitlement.tier === "free" ? <Card style={styles.subscribe}><View style={[styles.subscribeIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="diamond-outline" size={25} color={colors.primary} /></View><View style={styles.subscribeCopy}><Text style={[styles.subscribeTitle, { color: colors.text }]}>أدوات مراس الكامل · {ai.entitlement.monthlyPrice} ر.س شهريًا</Text><Text style={[styles.subscribeText, { color: colors.textSoft }]}>ويأتي مجانًا تلقائيًا مع أي اشتراك مادة فعّال.</Text></View>{DIRECT_COMMERCE_ENABLED ? <Pressable disabled={Boolean(purchaseAccountRequirement(user))} onPress={() => void Linking.openURL(absoluteUrl(ai.deepLinks.subscribe))} style={[styles.subscribeButton, { backgroundColor: colors.primary }]}><Text style={{ color: "#FFF", fontSize: 10, fontWeight: "900" }}>اشترك</Text></Pressable> : null}</Card> : null}
   </Screen>;
 }
 

@@ -11,6 +11,7 @@ export function AdminGeminiConnection({ providers, environmentKeyCount, draftApi
 }) {
   const id = useId();
   const [source, setSource] = useState("");
+  const [service, setService] = useState("chat");
   const [model, setModel] = useState(defaultModel);
   const [models, setModels] = useState<GeminiModelOption[]>([]);
   const [result, setResult] = useState<Result | null>(null);
@@ -18,13 +19,13 @@ export function AdminGeminiConnection({ providers, environmentKeyCount, draftApi
   const pending = useRef(false);
   const effectiveSource = source || (providers[0] ? String(providers[0].id) : environmentKeyCount ? "environment" : "draft");
   const validSource = effectiveSource === "draft" ? Boolean(draftApiKey.trim()) : effectiveSource === "environment" ? environmentKeyCount > 0 : providers.some(item => String(item.id) === effectiveSource);
-  async function check(action: "listModels" | "testConnection" | "testGeneration") {
-    if (pending.current || !validSource) return;
+  async function check(action: "listModels" | "testConnection" | "testGeneration" | "testRuntime") {
+    if (pending.current || (action !== "testRuntime" && !validSource)) return;
     pending.current = true; setBusy(action); setResult(null);
     const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 65_000);
+    const timer = window.setTimeout(() => controller.abort(), action === "testRuntime" ? 130_000 : 65_000);
     try {
-      const response = await fetch("/api/admin/ai", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, model, ...(effectiveSource === "draft" ? { source: "draft", apiKey: draftApiKey } : effectiveSource === "environment" ? { source: "environment" } : { keyId: Number(effectiveSource) }) }), signal: controller.signal });
+      const response = await fetch("/api/admin/ai", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, model, service, ...(effectiveSource === "draft" ? { source: "draft", apiKey: draftApiKey } : effectiveSource === "environment" ? { source: "environment" } : { keyId: Number(effectiveSource) }) }), signal: controller.signal });
       if (isAdminStepUpResponse(response)) { setResult({ ok: false, error: ADMIN_STEP_UP_MESSAGE, code: "ADMIN_STEP_UP_REQUIRED" }); return; }
       const value = await response.json().catch(() => ({})) as Result;
       if (!response.ok) { setResult({ ...value, ok: false, error: value.error || "تعذر إكمال الفحص. حاول مرة أخرى." }); return; }
@@ -39,6 +40,8 @@ export function AdminGeminiConnection({ providers, environmentKeyCount, draftApi
     <header><span><PlugZap size={22} /></span><div><h2 id={`${id}-title`}>فحص الاتصال والنموذج</h2><p>حدّد سبب المشكلة قبل تغيير المفتاح. تُنفّذ الاتصالات من الخادم إلى Google فقط.</p></div></header>
     <div className={styles.fields}><label htmlFor={`${id}-key`}>المفتاح المستخدم<select id={`${id}-key`} value={effectiveSource} onChange={event => { setSource(event.target.value); setModels([]); setResult(null); }} disabled={Boolean(busy)}>{providers.map(item => <option key={item.id} value={String(item.id)}>{item.label} · {item.maskedKey}</option>)}{environmentKeyCount > 0 && <option value="environment">مفتاح الخادم الأول · {environmentKeyCount} مهيّأة</option>}<option value="draft">المفتاح المكتوب في نموذج الإضافة</option></select></label><label htmlFor={`${id}-model`}>معرّف النموذج<input id={`${id}-model`} dir="ltr" list={`${id}-models`} value={model} maxLength={107} onChange={event => { setModel(event.target.value); setResult(null); }} autoComplete="off" spellCheck={false} placeholder="models/gemini-2.5-flash" disabled={Boolean(busy)} /><datalist id={`${id}-models`}>{models.map(item => <option key={item.id} value={item.id}>{item.displayName}</option>)}</datalist></label></div>
     <div className={styles.actions}><button type="button" disabled={Boolean(busy) || !validSource} onClick={() => void check("listModels")}>{busy === "listModels" ? <LoaderCircle className={styles.spin} size={16} /> : <RefreshCw size={16} />}جلب النماذج المتاحة</button><button type="button" disabled={Boolean(busy) || !validSource || !model.trim()} onClick={() => void check("testConnection")}>{busy === "testConnection" ? <LoaderCircle className={styles.spin} size={16} /> : <KeyRound size={16} />}فحص الوصول للنموذج</button><button type="button" disabled={Boolean(busy) || !validSource || !model.trim()} onClick={() => void check("testGeneration")}>{busy === "testGeneration" ? <LoaderCircle className={styles.spin} size={16} /> : <PlugZap size={16} />}اختبار إجابة قصيرة</button></div>
+    <div className={styles.fields}><label htmlFor={`${id}-service`}>اختبار أداة بإعداداتها المحفوظة<select id={`${id}-service`} value={service} onChange={event => { setService(event.target.value); setResult(null); }} disabled={Boolean(busy)}><option value="chat">المحادثة</option><option value="summary">التلخيص</option><option value="translation">الترجمة</option><option value="quiz">الاختبارات</option></select></label><div className={styles.actions}><button type="button" disabled={Boolean(busy)} onClick={() => void check("testRuntime")}>{busy === "testRuntime" ? <LoaderCircle className={styles.spin} size={16} /> : <PlugZap size={16} />}اختبار الأداة الفعلي</button></div></div>
+    <p className={styles.hint}>اختبار الأداة يستخدم إعداداتها المحفوظة وتدوير المفاتيح نفسه الذي يستخدمه الطلاب مع محتوى تجريبي عام، وقد يستهلك حصة محدودة. </p>
     <p className={styles.hint}>جلب النماذج وفحص الوصول يقرآن بيانات النموذج فقط. اختبار الإجابة يرسل عبارة تجريبية عامة وقد يستهلك حصة أو تكلفة محدودة وفق مشروعك، ولا يرسل ملفات الطلاب.</p>
     {result?.code === "ADMIN_STEP_UP_REQUIRED" ? <AdminMfaNotice /> : result && <div className={styles.result} data-ok={result.ok} role={result.ok ? "status" : "alert"}>{result.ok ? <ShieldCheck size={20} /> : <CircleAlert size={20} />}<div><strong>{result.ok ? result.generationVerified ? "نجح اختبار التوليد" : "اكتمل فحص الوصول" : "لم يكتمل الفحص"}</strong><p>{result.ok ? result.message : result.error}</p>{result.code && <small dir="ltr">{result.code}{result.providerStatus ? ` · Google HTTP ${result.providerStatus}` : ""}</small>}{Boolean(result.retryAfterSeconds) && <small>أعد المحاولة بعد نحو {result.retryAfterSeconds} ثانية.</small>}</div></div>}
   </section>;

@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { and, desc, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { cartItems, courseAccess, courseWaitlist, learningTrackInterests, learningTracks, notificationsDb, orders, users } from "@/db/schema";
 import { getCoursesCatalog } from "@/lib/catalog-store";
@@ -22,12 +22,13 @@ export async function runLifecycleAutomations(now = new Date()): Promise<Lifecyc
   const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60_000).toISOString();
   const openStatuses = ["pending", "initiated", "in_progress", "authorized", "verification_pending", "payment_review"];
 
-  const [staleCartRows, pendingOrders, expiringAccess, waitlistRows, courses, trackInterestRows] = await Promise.all([
+  const courses = await getCoursesCatalog();
+  const launched = new Map(courses.filter((course) => course.availableForPurchase).map((course) => [course.slug, course]));
+  const [staleCartRows, pendingOrders, expiringAccess, waitlistRows, trackInterestRows] = await Promise.all([
     db.select().from(cartItems).where(lte(cartItems.createdAt, twoHoursAgo)).orderBy(desc(cartItems.createdAt)).limit(2_000),
     db.select().from(orders).where(and(inArray(orders.status, openStatuses), lte(orders.createdAt, twoHoursAgo))).orderBy(desc(orders.createdAt)).limit(500),
     db.select().from(courseAccess).where(and(isNull(courseAccess.revokedAt), sql`${courseAccess.expiresAt} IS NOT NULL`, lte(courseAccess.expiresAt, new Date(now.getTime() + 14 * 86_400_000).toISOString()))).limit(2_000),
-    db.select().from(courseWaitlist).where(eq(courseWaitlist.status, "active")).orderBy(desc(courseWaitlist.createdAt)).limit(2_000),
-    getCoursesCatalog(),
+    launched.size ? db.select().from(courseWaitlist).where(and(eq(courseWaitlist.status, "active"), inArray(courseWaitlist.courseSlug, [...launched.keys()]))).orderBy(asc(courseWaitlist.createdAt), asc(courseWaitlist.id)).limit(2_000) : Promise.resolve([]),
     db.select({
       interestId: learningTrackInterests.id,
       lastNotifiedVersion: learningTrackInterests.lastNotifiedVersion,
@@ -116,11 +117,12 @@ export async function runLifecycleAutomations(now = new Date()): Promise<Lifecyc
     })) expiryReminders += 1;
   }
 
-  const launched = new Map(courses.filter((course) => course.availableForPurchase).map((course) => [course.slug, course]));
   for (const row of waitlistRows) {
     const course = launched.get(row.courseSlug);
     if (!course) continue;
     await db.transaction(async (tx) => {
+      const [claimed] = await tx.update(courseWaitlist).set({ status: "notified", notifiedAt: nowIso, updatedAt: nowIso }).where(and(eq(courseWaitlist.id, row.id), eq(courseWaitlist.status, "active"), eq(courseWaitlist.enrollmentVersion, row.enrollmentVersion))).returning({ id: courseWaitlist.id });
+      if (!claimed) return;
       const [notice] = await tx.insert(notificationsDb).values({
         userEmail: row.userEmail,
         audience: "student",
@@ -129,13 +131,12 @@ export async function runLifecycleAutomations(now = new Date()): Promise<Lifecyc
         actionUrl: `/courses/${course.slug}`,
         actionLabel: "عرض المادة",
         template: "success",
-        dedupeKey: `waitlist:${row.id}:launched`,
+        dedupeKey: `waitlist:${row.id}:v${row.enrollmentVersion}:launched`,
         pushEnabled: true,
         pushStatus: "pending",
         startsAt: nowIso,
         createdAt: nowIso,
       }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
-      await tx.update(courseWaitlist).set({ status: "notified", notifiedAt: nowIso, updatedAt: nowIso }).where(eq(courseWaitlist.id, row.id));
       if (notice) launchNotifications += 1;
     });
   }

@@ -28,7 +28,8 @@ test("bundle, refund and settlement governance are server-side", async () => {
 
 test("attachments fail closed until a production malware scan succeeds", async () => {
   const [scanner, supportFile, requestZip, health] = await Promise.all([read("lib/file-security.ts"), read("app/api/support/files/[id]/route.ts"), read("app/api/admin/course-requests/[id]/download/route.ts"), read("app/api/health/route.ts")]);
-  assert.match(scanner, /NODE_ENV === "production"/);
+  assert.doesNotMatch(scanner, /development-signature-check/);
+  assert.match(scanner, /validateScanVerdict/);
   assert.match(scanner, /status: "pending"/);
   assert.match(supportFile, /الفحص الأمني/);
   assert.match(requestZip, /scanStatus !== "clean"/);

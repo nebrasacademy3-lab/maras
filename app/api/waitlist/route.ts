@@ -1,5 +1,5 @@
 import { readBoundedJsonObject } from "@/lib/request-body";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { analyticsEvents, courseWaitlist } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const source = cleanText(payload.source, 40).replace(/[^a-z0-9_-]/gi, "") || "course_page";
   await getDb().transaction(async (tx) => {
-    await tx.insert(courseWaitlist).values({ userEmail: user.email, courseSlug, source, status: "active", notifiedAt: null, convertedAt: null, createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: [courseWaitlist.userEmail, courseWaitlist.courseSlug], set: { source, status: "active", notifiedAt: null, updatedAt: now } });
+    await tx.insert(courseWaitlist).values({ userEmail: user.email, courseSlug, source, status: "active", notifiedAt: null, convertedAt: null, createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: [courseWaitlist.userEmail, courseWaitlist.courseSlug], set: { source, status: "active", notifiedAt: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.notifiedAt} ELSE NULL END`, convertedAt: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.convertedAt} ELSE NULL END`, enrollmentVersion: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.enrollmentVersion} ELSE ${courseWaitlist.enrollmentVersion} + 1 END`, createdAt: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.createdAt} ELSE ${now} END`, updatedAt: now } });
     await tx.insert(analyticsEvents).values({ event: "waitlist_join", userEmail: user.email, courseSlug, metadataJson: JSON.stringify({ source }), createdAt: now });
   });
   return Response.json({ ok: true, active: true, message: "سنعلمك فور فتح الاشتراك في المادة" }, { headers: { "cache-control": "no-store" } });

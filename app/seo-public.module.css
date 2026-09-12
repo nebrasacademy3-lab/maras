@@ -1,0 +1,21 @@
+.body { padding-block: 2.5rem 4rem; line-height: 1.9; }
+.body h2 { font-size: clamp(1.3rem, 2.6vw, 1.8rem); margin: 0 0 .8rem; }
+.body h3 { margin: 0 0 .6rem; font-size: 1.12rem; }
+.body p { margin: 0 0 1rem; }
+.body a:not([class]) { color: #2464cf; text-decoration: underline; text-underline-offset: .2em; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 290px), 1fr)); gap: 1.25rem; margin: 1.5rem 0 2.5rem; }
+.card { border: 1px solid #cbd5e166; background: #94a3b80a; border-radius: 1.2rem; padding: 1.5rem; min-width: 0; }
+.section { margin-block: 2.5rem; max-width: 950px; }
+.actions { display: flex; gap: 1rem; flex-wrap: wrap; margin-block: 1.5rem; }
+.muted { opacity: .8; font-size: .94rem; }
+.price { display: block; font-size: 1.65rem; font-weight: 800; margin-block: .8rem; }
+.facts { display: grid; grid-template-columns: minmax(130px, 1fr) 2fr; gap: .8rem 1.2rem; }
+.facts dt { font-weight: 700; }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.faq { border-bottom: 1px solid #94a3b84a; padding-block: 1rem; }
+.faq summary { cursor: pointer; font-size: 1.1rem; font-weight: 700; padding: .4rem; }
+.faq p { padding: .8rem .4rem 0; max-width: 850px; }
+.tableWrap { overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; text-align: start; }
+.table th, .table td { text-align: start; padding: 1rem; border-bottom: 1px solid #94a3b84a; }
+@media (max-width: 600px) { .body { padding-block: 1.5rem 2.5rem; } .facts { grid-template-columns: 1fr; gap: .25rem; } .facts dd { margin-bottom: .8rem; } }

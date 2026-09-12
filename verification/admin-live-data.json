@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2026-09-12T18:38:48.207Z",
+  "database": "local PostgreSQL synthetic",
+  "checks": [
+    {
+      "name": "unauthenticated and student accounts cannot read administrative profiles",
+      "status": "passed"
+    },
+    {
+      "name": "Student360 totals include more than 500 records and honor suspended/future/expired access",
+      "status": "passed"
+    },
+    {
+      "name": "Student360 paginates orders with no duplicate rows between pages",
+      "status": "passed"
+    },
+    {
+      "name": "console server search reaches records past the former 500-record limit",
+      "status": "passed"
+    },
+    {
+      "name": "course waitlist exposes every identity with filtering and stable pagination",
+      "status": "passed"
+    },
+    {
+      "name": "sensitive live role changes require step-up and cannot mutate without it",
+      "status": "passed"
+    }
+  ]
+}

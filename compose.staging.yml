@@ -1,0 +1,79 @@
+name: meras-staging
+services:
+  postgres:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: meras_staging
+      POSTGRES_USER: meras
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.staging}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8 --locale=C
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U meras -d meras_staging"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  scanner:
+    build: ./services/scanner
+    environment:
+      MALWARE_SCAN_TOKEN: ${MALWARE_SCAN_TOKEN:?Set MALWARE_SCAN_TOKEN in .env.staging}
+    volumes:
+      - scanner-signatures:/var/lib/clamav
+    healthcheck:
+      test: [CMD, node, -e, "fetch('http://127.0.0.1:3001/health',{headers:{authorization:'Bearer '+process.env.MALWARE_SCAN_TOKEN}}).then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 15s
+      start_period: 180s
+      retries: 10
+    mem_limit: 2g
+    restart: unless-stopped
+  web:
+    build:
+      context: .
+      args:
+        NEXT_PUBLIC_SITE_URL: ${STAGING_ORIGIN:-http://localhost:3000}
+    ports:
+      - "127.0.0.1:${STAGING_PORT:-3000}:3000"
+    environment:
+      DATABASE_URL: postgresql://meras:${POSTGRES_PASSWORD}@postgres:5432/meras_staging
+      APP_URL: ${STAGING_ORIGIN:-http://localhost:3000}
+      NEXT_PUBLIC_SITE_URL: ${STAGING_ORIGIN:-http://localhost:3000}
+      SEO_INDEXING_ENABLED: "false"
+      SESSION_SECRET: ${SESSION_SECRET:?Set SESSION_SECRET in .env.staging}
+      ADMIN_API_TOKEN: ${ADMIN_API_TOKEN:?Set ADMIN_API_TOKEN in .env.staging}
+      ADMIN_UPLOAD_TOKEN: ${ADMIN_UPLOAD_TOKEN:?Set ADMIN_UPLOAD_TOKEN in .env.staging}
+      VIDEO_SIGNING_SECRET: ${VIDEO_SIGNING_SECRET:?Set VIDEO_SIGNING_SECRET in .env.staging}
+      ADMIN_MFA_ENCRYPTION_KEY: ${ADMIN_MFA_ENCRYPTION_KEY:?Set ADMIN_MFA_ENCRYPTION_KEY in .env.staging}
+      AI_KEYS_ENCRYPTION_KEY: ${AI_KEYS_ENCRYPTION_KEY:?Set AI_KEYS_ENCRYPTION_KEY in .env.staging}
+      MALWARE_SCAN_URL: http://scanner:3001/scan
+      MALWARE_SCAN_TOKEN: ${MALWARE_SCAN_TOKEN}
+      UPLOAD_DIR: /data/uploads
+      RUN_DB_MIGRATIONS: "true"
+      AUTO_SEED_CATALOG: "true"
+      VIDEO_WORKER_ENABLED: "true"
+      FILE_SCAN_SCHEDULER_ENABLED: "true"
+      LIFECYCLE_SCHEDULER_ENABLED: "true"
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      TAP_SECRET_KEY: ${TAP_SECRET_KEY:-}
+      TAP_WEBHOOK_SECRET: ${TAP_WEBHOOK_SECRET:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      REVENUECAT_SECRET_API_KEY: ${REVENUECAT_SECRET_API_KEY:-}
+      REVENUECAT_PROJECT_ID: ${REVENUECAT_PROJECT_ID:-}
+      REVENUECAT_APP_IDS: ${REVENUECAT_APP_IDS:-}
+      REVENUECAT_WEBHOOK_SECRET: ${REVENUECAT_WEBHOOK_SECRET:-}
+      REVENUECAT_ENVIRONMENT: sandbox
+    depends_on:
+      postgres:
+        condition: service_healthy
+      scanner:
+        condition: service_healthy
+    volumes:
+      - uploads:/data/uploads
+    restart: unless-stopped
+volumes:
+  postgres-data:
+  scanner-signatures:
+  uploads:

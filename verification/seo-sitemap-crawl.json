@@ -1,0 +1,1016 @@
+{
+  "checkedAt": "2026-09-12T19:24:40.202Z",
+  "environment": "Every discovered sitemap URL fetched over loopback with synthetic production data",
+  "total": 112,
+  "passed": 112,
+  "rows": [
+    {
+      "path": "/",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/about",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/about",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/accessibility",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/accessibility",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/bundles",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/bundles",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/bundles/qa-science",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/bundles/qa-science",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/contact",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/contact",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/content-policy",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/content-policy",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/accounting-principles",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/accounting-principles",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/anatomy-1",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/anatomy-1",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/calculus-1",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/calculus-1",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/cybersecurity-fundamentals",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/cybersecurity-fundamentals",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/data-structures",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/data-structures",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/discrete-structures",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/discrete-structures",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/java-programming",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/java-programming",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/pharmacology",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/pharmacology",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/qa-math",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/qa-math",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/courses/qa-physics",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/courses/qa-physics",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/faq",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/faq",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/how-it-works",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/how-it-works",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/privacy",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/privacy",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/refund-policy",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/refund-policy",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/terms",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/terms",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/tools",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/tools",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/aic",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/aic",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/alasala",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/alasala",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/alfaisal",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/alfaisal",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/alghad",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/alghad",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/almaarefa",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/almaarefa",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/almoosa",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/almoosa",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/alnahda",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/alnahda",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/aloola",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/aloola",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/alrayan",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/alrayan",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/alriyada",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/alriyada",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/alyamamah",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/alyamamah",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/aou",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/aou",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/baha-private",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/baha-private",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/bmc",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/bmc",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/bu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/bu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/buraidah-colleges",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/buraidah-colleges",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/dah",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/dah",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/dar-aluloom",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/dar-aluloom",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/effat",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/effat",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/fakeeh",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/fakeeh",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/fayha",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/fayha",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/fbsu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/fbsu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/gulf",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/gulf",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/iau",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/iau",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/ibn-rushd",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/ibn-rushd",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/ibnsina",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/ibnsina",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/imamu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/imamu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/inaya",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/inaya",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/islamic-university",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/islamic-university",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/jadara",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/jadara",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/jazanu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/jazanu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/jic",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/jic",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/ju",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/ju",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/jubail-industrial",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/jubail-industrial",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/kau",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/kau",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/kaust",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/kaust",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/kfu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/kfu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/kfupm",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/kfupm",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/kku",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/kku",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/ksau-hs",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/ksau-hs",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/kspp",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/kspp",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/ksu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/ksu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/machs",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/machs",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/madinah-law",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/madinah-law",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/makkah-national",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/makkah-national",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/manar-aljanoub",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/manar-aljanoub",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/mbsc",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/mbsc",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/mu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/mu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/mustaqbal",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/mustaqbal",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/nbu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/nbu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/north-nursing",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/north-nursing",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/nu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/nu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/pmu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/pmu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/pnu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/pnu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/psau",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/psau",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/psc-management",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/psc-management",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/psu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/psu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/qa-university",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/qa-university",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/qa-university/specialties/qa-science",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/qa-university/specialties/qa-science",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/qu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/qu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/riyadh-elm",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/riyadh-elm",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/saad-nursing",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/saad-nursing",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/seu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/seu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/sr.edu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/sr.edu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/su",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/su",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/taibahu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/taibahu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/tu",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/tu",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/tvtc-abha",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/tvtc-abha",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/tvtc-dammam",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/tvtc-dammam",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/tvtc-jeddah",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/tvtc-jeddah",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/tvtc-madinah",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/tvtc-madinah",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/tvtc-qassim",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/tvtc-qassim",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/tvtc-riyadh",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/tvtc-riyadh",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/tvtc-tabuk",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/tvtc-tabuk",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/tvtc-taif",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/tvtc-taif",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/ub",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/ub",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/ubt",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/ubt",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/uhb",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/uhb",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/uj",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/uj",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/umm-al-qura",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/umm-al-qura",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/unaizah-colleges",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/unaizah-colleges",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/uoh",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/uoh",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/upm",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/upm",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/ut",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/ut",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/vision",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/vision",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/vision-jeddah",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/vision-jeddah",
+      "robots": "index, follow"
+    },
+    {
+      "path": "/universities/yanbu-industrial",
+      "status": 200,
+      "passed": true,
+      "headTitle": true,
+      "headDescription": true,
+      "canonical": "https://maras-qa.example/universities/yanbu-industrial",
+      "robots": "index, follow"
+    }
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "source": "Reconstructed from preserved raw reports produced before global metadata-head fix",
+  "pages": [
+    {
+      "path": "/about",
+      "score": 91,
+      "failed": [
+        "meta-description"
+      ],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-about.json"
+    },
+    {
+      "path": "/accessibility",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-accessibility.json"
+    },
+    {
+      "path": "/bundles/qa-science",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-bundles-qa-science.json"
+    },
+    {
+      "path": "/bundles",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-bundles.json"
+    },
+    {
+      "path": "/contact",
+      "score": 91,
+      "failed": [
+        "meta-description"
+      ],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-contact.json"
+    },
+    {
+      "path": "/content-policy",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-content-policy.json"
+    },
+    {
+      "path": "/courses/qa-physics",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-courses-qa-physics.json"
+    },
+    {
+      "path": "/courses",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-courses.json"
+    },
+    {
+      "path": "/faq",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-faq.json"
+    },
+    {
+      "path": "/",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-home.json"
+    },
+    {
+      "path": "/how-it-works",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-how-it-works.json"
+    },
+    {
+      "path": "/privacy",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-privacy.json"
+    },
+    {
+      "path": "/refund-policy",
+      "score": 91,
+      "failed": [
+        "meta-description"
+      ],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-refund-policy.json"
+    },
+    {
+      "path": "/terms",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-terms.json"
+    },
+    {
+      "path": "/tools",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-tools.json"
+    },
+    {
+      "path": "/universities/qa-university/specialties/qa-science",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-universities-qa-university-specialties-qa-science.json"
+    },
+    {
+      "path": "/universities/qa-university",
+      "score": 100,
+      "failed": [],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-universities-qa-university.json"
+    },
+    {
+      "path": "/universities",
+      "score": 91,
+      "failed": [
+        "meta-description"
+      ],
+      "warnings": [],
+      "raw": "verification/lighthouse/lighthouse-before-head-fix-universities.json"
+    }
+  ]
+}

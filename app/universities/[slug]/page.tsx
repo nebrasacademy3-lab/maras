@@ -1,3 +1,4 @@
+import { resolvedPublicPageMetadata } from "@/lib/seo-settings";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -10,7 +11,7 @@ import { InstitutionPrograms } from "@/components/institution-programs";
 import { institutions } from "@/lib/data";
 import { getCoursesCatalog, getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
 import { getPublicSpecialtyCatalog } from "@/lib/seo-catalog";
-import { breadcrumbData, itemListData, jsonLd, publicPageMetadata, seoSegment } from "@/lib/seo";
+import { breadcrumbData, itemListData, jsonLd, seoSegment } from "@/lib/seo";
 
 type Props = { params: Promise<{ slug: string }> };
 
@@ -21,7 +22,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const institution = await getInstitutionCatalog((await params).slug);
   if (!institution) notFound();
   const description = `الشروحات والمواد المتوفرة لطلاب ${institution.name} على منصة مراس العلم.`;
-  return publicPageMetadata(`/universities/${seoSegment(institution.slug)}`, `مواد وشروحات ${institution.name}`, description);
+  return resolvedPublicPageMetadata(`/universities/${seoSegment(institution.slug)}`, `مواد وشروحات ${institution.name}`, description);
 }
 
 export default async function UniversityPage({ params }: Props) {

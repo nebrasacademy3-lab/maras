@@ -69,7 +69,7 @@ test("separate confirmed AI refunds accumulate once per provider refund id", asy
 test("replayed course fulfillment preserves administrator suspensions and revocations", async () => {
   for (const stopped of [{ suspendedAt: "2026-01-02", suspensionReason: "review" }, { revokedAt: "2026-01-02", revocationReason: "policy" }]) {
     const db = database({ orders: [{ ...order }], courseAccess: [{ id: 1, orderNumber: order.orderNumber, userEmail: order.customerEmail, courseSlug: order.courseSlug, expiresAt: "2027-01-01", ...stopped }] });
-    const fulfillment = await isolated("../lib/order-fulfillment.ts", { ...tables, eq, ne, and, normalizeAccessDurationDays: value => value, accessExpiryIso: () => "2027-01-01", qualifyReferralForPaidOrderTx: async () => {} });
+    const fulfillment = await isolated("../lib/order-fulfillment.ts", { ...tables, eq, ne, and, sql, normalizeAccessDurationDays: value => value, accessExpiryIso: () => "2027-01-01", qualifyReferralForPaidOrderTx: async () => {} });
     await fulfillment.fulfillPaidOrderTx(db, order, [{ courseSlug: "physics", accessDurationDays: 90 }], { chargeId: "chg_test", now: new Date().toISOString(), actorEmail: "tap-webhook" });
     for (const [key, value] of Object.entries(stopped)) assert.equal(db.rows.courseAccess[0][key], value);
   }

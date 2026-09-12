@@ -1,11 +1,12 @@
-import { and, asc, count, desc, eq, inArray, isNull, sql } from "drizzle-orm";
+import { createHash } from "node:crypto";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   aiApiKeys, auditLogs, authDevices, authSessions, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb, courseAccess, courseAccessEvents, courseRequestFiles, courseRequests,
   courseReviews, courseUnitsDb, courseWaitlist, institutionSpecialties, lessonsDb, notificationsDb, orderItems, orders, paymentEvents, platformSettings,
   pushDevices, supervisorAssignments, supportReplyFiles, supportReplies, supportTickets, users, videoAssets,
 } from "@/db/schema";
-import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
+import { cleanText, finiteNumber, isAdminRequest, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest, validEmail } from "@/lib/auth";
 import { AdminMfaError, adminMfaConfigured, requireAdminStepUp } from "@/lib/admin-mfa";
 import { geminiEnvironmentKeys } from "@/lib/ai-keys";
@@ -18,9 +19,20 @@ import { syncCatalogTemplates } from "@/lib/catalog-sync";
 import { syncOfficialInstitutionPrograms } from "@/lib/catalog-official-sync";
 import { courseSlug, institutionSlug as makeInstitutionSlug, lessonId, specialtySlug } from "@/lib/catalog-templates";
 import { deleteAdminEntity, DeletionPolicyError, type AdminDeletionType } from "@/lib/admin-deletion";
-import { accessExpiryIso, normalizeAccessDurationDays } from "@/lib/course-access";
+import { accessExpiryIso, normalizeAccessDurationDays, effectiveAccessRows } from "@/lib/course-access";
 import { ADMIN_PERMISSIONS, hasPermission, type AdminPermission } from "@/lib/permissions";
+import { adminPage, adminUserTransitionError, extendAccessExpiry } from "@/lib/admin-operations";
+import { fulfillPaidOrderTx, type FulfillmentNotice } from "@/lib/order-fulfillment";
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { isSocialSettingKey, normalizeSocialUrl, normalizeWhatsappNumber } from "@/lib/social-links";
+
+import { enqueuePublicSeoUrls, indexNowConfig } from "@/lib/seo-indexnow";
+import { seoSegment } from "@/lib/seo";
+
+async function notifyCatalogDiscovery(paths: string[]) {
+  try { if (indexNowConfig().enabled) await enqueuePublicSeoUrls(paths); }
+  catch { console.error("[seo] Catalog saved; discovery queue unavailable"); }
+}
 
 async function authorize(request: Request, delegatedPermission?: AdminPermission) {
   const user = await getSessionUser(request);
@@ -79,7 +91,21 @@ export async function GET(request: Request) {
   const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
   if (!await checkRateLimit("admin-console-read", identity, 30, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
-  const compactMobile = new URL(request.url).searchParams.get("client") === "mobile";
+  const query = new URL(request.url).searchParams;
+  const compactMobile = query.get("client") === "mobile";
+  const view = query.get("view") || "overview";
+  const page = adminPage(query.get("page"));
+  const needle = (query.get("q") || "").trim().slice(0, 160);
+  const pattern = `%${needle.replace(/[\\%_]/g, "\\$&")}%`;
+  const userFilter = ["students", "staff"].includes(view) ? and(view === "students" ? eq(users.role, "student") : inArray(users.role, ["admin", "supervisor"]), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern), ilike(users.specialty, pattern)) : undefined) : undefined;
+  const orderFilter = view === "orders" && needle ? or(ilike(orders.orderNumber, pattern), ilike(orders.customerEmail, pattern), ilike(orders.customerName, pattern), ilike(orders.courseSlug, pattern), ilike(orders.status, pattern)) : undefined;
+  const requestFilter = view === "requests" && needle ? or(sql`${courseRequests.id}::text = ${needle}`, ilike(courseRequests.name, pattern), ilike(courseRequests.courseName, pattern), ilike(courseRequests.phone, pattern), ilike(courseRequests.university, pattern), ilike(courseRequests.specialty, pattern), sql`${courseRequests.userId} IN (SELECT id FROM users WHERE email ILIKE ${pattern})`) : undefined;
+  const ticketFilter = view === "support" && needle ? or(ilike(supportTickets.ticketNumber, pattern), ilike(supportTickets.userEmail, pattern), ilike(supportTickets.title, pattern), ilike(supportTickets.message, pattern)) : undefined;
+  const accessFilter = view === "subscriptions" && needle ? or(ilike(courseAccess.userEmail, pattern), ilike(courseAccess.courseSlug, pattern), ilike(courseAccess.orderNumber, pattern), sql`${courseAccess.userEmail} IN (SELECT email FROM users WHERE full_name ILIKE ${pattern} OR phone ILIKE ${pattern})`) : undefined;
+  const reviewFilter = view === "reviews" && needle ? or(ilike(courseReviews.userEmail, pattern), ilike(courseReviews.courseSlug, pattern), ilike(courseReviews.body, pattern), ilike(courseReviews.status, pattern)) : undefined;
+  const auditFilter = view === "audit" && needle ? or(ilike(auditLogs.actorEmail, pattern), ilike(auditLogs.action, pattern), ilike(auditLogs.entityType, pattern), ilike(auditLogs.entityId, pattern)) : undefined;
+  const take = (target: string, fallback: number) => view === target || target === "students" && view === "staff" ? page.pageSize : fallback;
+  const skip = (target: string) => view === target || target === "students" && view === "staff" ? page.offset : 0;
   const limits = compactMobile
     ? { videos: 120, users: 160, sessions: 600, orders: 180, requests: 160, files: 600, tickets: 120, replies: 700, reviews: 180, access: 400, assignments: 250, notifications: 120, coupons: 120, audits: 60 }
     : { videos: 500, users: 500, sessions: 3000, orders: 300, requests: 300, files: 3000, tickets: 300, replies: 2000, reviews: 300, access: 500, assignments: 500, notifications: 200, coupons: 200, audits: 120 };
@@ -91,23 +117,34 @@ export async function GET(request: Request) {
     db.select().from(courseUnitsDb).orderBy(courseUnitsDb.position),
     db.select().from(lessonsDb).orderBy(lessonsDb.position),
     db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(limits.videos),
-    db.select({ id: users.id, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).orderBy(desc(users.createdAt)).limit(limits.users),
+    db.select({ id: users.id, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).where(userFilter).orderBy(desc(users.createdAt), desc(users.id)).limit(take("students", limits.users)).offset(skip("students")),
     db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).orderBy(desc(authSessions.lastSeenAt)).limit(limits.sessions),
-    db.select().from(orders).orderBy(desc(orders.createdAt)).limit(limits.orders),
-    db.select().from(courseRequests).orderBy(desc(courseRequests.createdAt)).limit(limits.requests),
+    db.select().from(orders).where(orderFilter).orderBy(desc(orders.createdAt), desc(orders.id)).limit(take("orders", limits.orders)).offset(skip("orders")),
+    db.select().from(courseRequests).where(requestFilter).orderBy(desc(courseRequests.createdAt), desc(courseRequests.id)).limit(take("requests", limits.requests)).offset(skip("requests")),
     db.select().from(courseRequestFiles).orderBy(desc(courseRequestFiles.createdAt)).limit(limits.files),
-    db.select().from(supportTickets).orderBy(desc(supportTickets.createdAt)).limit(limits.tickets),
+    db.select().from(supportTickets).where(ticketFilter).orderBy(desc(supportTickets.createdAt), desc(supportTickets.id)).limit(take("support", limits.tickets)).offset(skip("support")),
     db.select().from(supportReplies).orderBy(asc(supportReplies.createdAt)).limit(limits.replies),
     db.select().from(supportReplyFiles).limit(limits.files),
-    db.select().from(courseReviews).orderBy(desc(courseReviews.createdAt)).limit(limits.reviews),
-    db.select().from(courseAccess).orderBy(desc(courseAccess.startsAt)).limit(limits.access),
+    db.select().from(courseReviews).where(reviewFilter).orderBy(desc(courseReviews.createdAt), desc(courseReviews.id)).limit(take("reviews", limits.reviews)).offset(skip("reviews")),
+    db.select().from(courseAccess).where(accessFilter).orderBy(desc(courseAccess.startsAt), desc(courseAccess.id)).limit(take("subscriptions", limits.access)).offset(skip("subscriptions")),
     db.select().from(supervisorAssignments).orderBy(desc(supervisorAssignments.createdAt)).limit(limits.assignments),
     db.select().from(notificationsDb).orderBy(desc(notificationsDb.createdAt)).limit(limits.notifications),
     db.select().from(couponsDb).orderBy(desc(couponsDb.createdAt)).limit(limits.coupons),
     db.select().from(platformSettings),
-    db.select().from(auditLogs).orderBy(desc(auditLogs.createdAt)).limit(limits.audits),
+    db.select().from(auditLogs).where(auditFilter).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(take("audit", limits.audits)).offset(skip("audit")),
   ]);
 
+  const paginatedTotal = view === "students" || view === "staff" ? await db.select({ total: count() }).from(users).where(userFilter)
+    : view === "orders" ? await db.select({ total: count() }).from(orders).where(orderFilter)
+    : view === "requests" ? await db.select({ total: count() }).from(courseRequests).where(requestFilter)
+    : view === "support" ? await db.select({ total: count() }).from(supportTickets).where(ticketFilter)
+    : view === "subscriptions" ? await db.select({ total: count() }).from(courseAccess).where(accessFilter)
+    : view === "reviews" ? await db.select({ total: count() }).from(courseReviews).where(reviewFilter)
+    : view === "audit" ? await db.select({ total: count() }).from(auditLogs).where(auditFilter) : null;
+  const relatedUserIds = requestRows.flatMap((row) => row.userId ? [row.userId] : []);
+  const relatedUserEmails = ticketRows.flatMap((row) => row.userEmail ? [row.userEmail] : []);
+  const relatedStudents = relatedUserIds.length || relatedUserEmails.length ? await db.select({ id: users.id, email: users.email, fullName: users.fullName, phone: users.phone, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, status: users.status }).from(users).where(or(relatedUserIds.length ? inArray(users.id, relatedUserIds) : undefined, relatedUserEmails.length ? inArray(users.email, relatedUserEmails) : undefined)) : [];
+  const effectiveAccess = await effectiveAccessRows(accessRows);
   const registeredDeviceRows = studentRows.length ? await db.select({ id: authDevices.id, userId: authDevices.userId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(inArray(authDevices.userId, studentRows.map(student => student.id)), isNull(authDevices.revokedAt))) : [];
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...ADMIN_SETTING_DEFAULTS } as Record<string, string>;
   for (const row of settingRows) settings[row.key] = row.value;
@@ -135,6 +172,7 @@ export async function GET(request: Request) {
   return Response.json({
     ok: true,
     generatedAt: new Date().toISOString(),
+    pagination: paginatedTotal ? { view, page: page.page, pageSize: page.pageSize, total: Number(paginatedTotal[0]?.total || 0) } : null,
     metrics: {
       students: Number(totalRow.students || 0),
       activeStudents: Number(totalRow.active_students || 0),
@@ -167,7 +205,7 @@ export async function GET(request: Request) {
     }),
     deviceLimit: 2,
     orders: orderRows,
-    requests: requestRows.map((request) => ({ ...request, student: request.userId ? (() => { const student = studentRows.find((user) => user.id === request.userId); return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null; })() : null, files: requestFileRows.filter((file) => file.requestId === request.id).map((file) => ({ id: file.id, requestId: file.requestId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })),
+    requests: requestRows.map((request) => ({ ...request, student: request.userId ? (() => { const student = relatedStudents.find((user) => user.id === request.userId); return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null; })() : null, files: requestFileRows.filter((file) => file.requestId === request.id).map((file) => ({ id: file.id, requestId: file.requestId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })),
     tickets: ticketRows.map((ticket) => {
       const ticketReplies = replyRows
         .filter((reply) => reply.ticketId === ticket.id)
@@ -188,14 +226,14 @@ export async function GET(request: Request) {
       return {
         ...ticket,
         student: ticket.userEmail ? (() => {
-          const student = studentRows.find((user) => user.email.toLowerCase() === ticket.userEmail!.toLowerCase());
+          const student = relatedStudents.find((user) => user.email.toLowerCase() === ticket.userEmail!.toLowerCase());
           return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null;
         })() : null,
         replies,
       };
     }),
     reviews: reviewRows,
-    access: accessRows,
+    access: effectiveAccess,
     supervisorAssignments: supervisorRows,
     notifications: notificationRows,
     coupons: couponRows,
@@ -216,7 +254,7 @@ export async function POST(request: Request) {
   const machineAuthorized = isAdminRequest(request);
   if (!machineAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   let payload: Record<string, unknown>;
-  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
+  try { payload = await readBoundedJsonObject(request, 128 * 1024); } catch { return jsonError("بيانات غير صالحة"); }
   const action = cleanText(payload.action, 50);
   const delegatedPermission = action === "deleteEntity"
     ? ADMIN_PERMISSIONS.RECORDS_DELETE
@@ -231,6 +269,14 @@ export async function POST(request: Request) {
   if (!await checkRateLimit("admin-console-write", identity, 60, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
   const now = new Date().toISOString();
+  if (["updateUser", "updateStudentProfile", "grantAccess", "updateAccess", "revokeUserSession"].includes(action)) {
+    if (!authorization.user) return jsonError("هذا الإجراء يتطلب جلسة مدير موثقة", 403);
+    try { await requireAdminStepUp(request, authorization.user); }
+    catch (error) {
+      if (error instanceof AdminMfaError) return jsonError(error.message, error.status, error.code);
+      throw error;
+    }
+  }
 
   if (action === "deleteEntity") {
     if (!authorization.user || !await hasPermission(authorization.user, ADMIN_PERMISSIONS.RECORDS_DELETE)) return jsonError("غير مصرح بتنفيذ الحذف", 403);
@@ -248,7 +294,10 @@ export async function POST(request: Request) {
     if (!entityType || !entityId) return jsonError("حدد السجل المراد حذفه");
     try {
       const result = await deleteAdminEntity(db, { entityType, entityId, actor: authorization.actor, ipAddress: clientIp(request), confirmation });
-      if (["institution", "specialty", "course", "unit", "lesson", "video"].includes(entityType)) invalidateCatalogCache();
+      if (["institution", "specialty", "course", "unit", "lesson", "video"].includes(entityType)) {
+        invalidateCatalogCache();
+        await notifyCatalogDiscovery(["/", "/universities", "/courses", "/bundles", ...(entityType === "course" ? [`/courses/${seoSegment(entityId)}`] : entityType === "institution" ? [`/universities/${seoSegment(entityId)}`] : [])]);
+      }
       return Response.json({ ok: true, ...result }, { headers: { "cache-control": "no-store" } });
     } catch (error) {
       if (error instanceof DeletionPolicyError) return jsonError(error.message, error.status);
@@ -273,7 +322,7 @@ export async function POST(request: Request) {
   }
 
   if (action === "syncCatalogTemplates") {
-    const rawPrice = Number(payload.templatePrice);
+    const rawPrice = finiteNumber(payload.templatePrice);
     const templatePrice = Number.isFinite(rawPrice) && rawPrice >= 0 && rawPrice <= 50_000 ? rawPrice : 49;
     const mode = cleanText(payload.mode, 10) === "full" ? "full" : "core";
     const result = await syncCatalogTemplates(templatePrice, mode);
@@ -315,10 +364,11 @@ export async function POST(request: Request) {
     if (logoUrl && !safeUrl(logoUrl) && !logoUrl.startsWith("r2:")) return jsonError("رابط الشعار يجب أن يبدأ بـ https");
     if (directorySourceUrl && !safeUrl(directorySourceUrl)) return jsonError("رابط المصدر يجب أن يبدأ بـ https");
     const [before] = await db.select().from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
-    const values = { slug, name, nameEn, region, type, domain: domain || null, logoUrl: logoUrl || before?.logoUrl || null, directorySourceUrl: directorySourceUrl || before?.directorySourceUrl || null, verificationStatus: verificationStatus === "pending-review" && before?.verificationStatus === "official-directory" ? "official-directory" : verificationStatus, aliasesJson: aliasesJson ?? before?.aliasesJson ?? "[]", status, featured: payload.featured === true, sortOrder: Number.isFinite(Number(payload.sortOrder)) ? Math.floor(Number(payload.sortOrder)) : 0, updatedAt: now };
+    const values = { slug, name, nameEn, region, type, domain: domain || null, logoUrl: logoUrl || before?.logoUrl || null, directorySourceUrl: directorySourceUrl || before?.directorySourceUrl || null, verificationStatus: verificationStatus === "pending-review" && before?.verificationStatus === "official-directory" ? "official-directory" : verificationStatus, aliasesJson: aliasesJson ?? before?.aliasesJson ?? "[]", status, featured: payload.featured === true, sortOrder: Number.isFinite(finiteNumber(payload.sortOrder)) ? Math.floor(finiteNumber(payload.sortOrder)) : 0, updatedAt: now };
     await db.insert(catalogInstitutions).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "institution", slug, before, values);
+    await notifyCatalogDiscovery(["/", "/universities", `/universities/${seoSegment(slug)}`, "/courses"]);
     return Response.json({ ok: true, institution: values });
   }
 
@@ -343,6 +393,7 @@ export async function POST(request: Request) {
     if (institutionSlug) await db.insert(institutionSpecialties).values({ institutionSlug, specialtySlug: slug, status: "published", sortOrder: 0 }).onConflictDoUpdate({ target: [institutionSpecialties.institutionSlug, institutionSpecialties.specialtySlug], set: { status: "published" } });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "specialty", slug, before, { ...values, institutionSlug });
+    await notifyCatalogDiscovery(["/universities", "/courses", ...(institutionSlug ? [`/universities/${seoSegment(institutionSlug)}`, `/universities/${seoSegment(institutionSlug)}/specialties/${seoSegment(slug)}`] : [])]);
     return Response.json({ ok: true, specialty: values });
   }
 
@@ -353,8 +404,8 @@ export async function POST(request: Request) {
     const suppliedSlug = cleanText(payload.slug, 80).toLowerCase();
     const status = cleanText(payload.status, 20) || "draft";
     const audienceScope = cleanText(payload.audienceScope, 20) === "institution" ? "institution" : "specialty";
-    const price = Number(payload.price);
-    const oldPriceValue = Number(payload.oldPrice);
+    const price = finiteNumber(payload.price);
+    const oldPriceValue = finiteNumber(payload.oldPrice);
     const coverImageUrl = cleanText(payload.coverImageUrl, 1000);
     const [specialty] = await db.select().from(catalogSpecialties).where(eq(catalogSpecialties.slug, specialtySlug)).limit(1);
     if (!specialty) return jsonError("أنشئ التخصص أو اربطه أولًا");
@@ -378,11 +429,12 @@ export async function POST(request: Request) {
     await db.insert(catalogCourses).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogCourses.slug, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "course", slug, before, values);
+    await notifyCatalogDiscovery(["/", "/courses", "/bundles", `/courses/${seoSegment(slug)}`, `/universities/${seoSegment(institutionSlug)}`, `/universities/${seoSegment(institutionSlug)}/specialties/${seoSegment(specialtySlug)}`]);
     return Response.json({ ok: true, course: values });
   }
 
   if (action === "saveUnit") {
-    const id = Math.floor(Number(payload.id));
+    const id = Math.floor(finiteNumber(payload.id));
     const courseSlug = cleanText(payload.courseSlug, 80);
     const title = cleanText(payload.title, 160);
     const description = cleanText(payload.description, 2000);
@@ -390,57 +442,93 @@ export async function POST(request: Request) {
     if (!validSlug(courseSlug) || title.length < 2 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من الوحدة");
     const [course] = await db.select().from(catalogCourses).where(eq(catalogCourses.slug, courseSlug)).limit(1);
     if (!course) return jsonError("يجب إنشاء المادة في الإدارة أولًا");
-    const position = Math.max(0, Math.floor(Number(payload.position) || 0));
+    const position = Math.max(0, Math.floor(finiteNumber(payload.position) || 0));
     if (id) {
       const [before] = await db.select().from(courseUnitsDb).where(eq(courseUnitsDb.id, id)).limit(1);
       if (!before || before.courseSlug !== courseSlug) return jsonError("الوحدة غير موجودة", 404);
       await db.update(courseUnitsDb).set({ title, description: description || before.description, position, status, updatedAt: now }).where(eq(courseUnitsDb.id, id));
       invalidateCatalogCache();
       await audit(request, authorization.actor, "update", "unit", String(id), before, { title, description: description || before.description, position, status });
+      await notifyCatalogDiscovery(["/courses", "/bundles", `/courses/${seoSegment(courseSlug)}`]);
       return Response.json({ ok: true, id });
     }
     const [created] = await db.insert(courseUnitsDb).values({ courseSlug, title, description, position, status, createdAt: now, updatedAt: now }).returning({ id: courseUnitsDb.id });
     invalidateCatalogCache();
     await audit(request, authorization.actor, "create", "unit", String(created.id), null, { courseSlug, title, description, position, status });
+    await notifyCatalogDiscovery(["/courses", "/bundles", `/courses/${seoSegment(courseSlug)}`]);
     return Response.json({ ok: true, id: created.id }, { status: 201 });
   }
 
   if (action === "saveLesson") {
     const suppliedId = cleanText(payload.id, 100);
     const courseSlug = cleanText(payload.courseSlug, 80);
-    const unitId = Math.floor(Number(payload.unitId));
+    const unitId = Math.floor(finiteNumber(payload.unitId));
     const title = cleanText(payload.title, 160);
     const description = cleanText(payload.description, 2000);
     const status = cleanText(payload.status, 20) || "draft";
-    const position = Math.max(0, Math.floor(Number(payload.position) || 0));
+    const position = Math.max(0, Math.floor(finiteNumber(payload.position) || 0));
     const id = suppliedId || lessonId(courseSlug, position + 1, title);
     if (!validSlug(courseSlug) || !validSlug(id) || !unitId || title.length < 2 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من بيانات الدرس");
     const [unit] = await db.select().from(courseUnitsDb).where(and(eq(courseUnitsDb.id, unitId), eq(courseUnitsDb.courseSlug, courseSlug))).limit(1);
     if (!unit) return jsonError("الوحدة لا تتبع هذه المادة");
     const [before] = await db.select().from(lessonsDb).where(eq(lessonsDb.id, id)).limit(1);
-    const values = { id, courseSlug, unitId, title, description: description || before?.description || "", position, durationSeconds: Math.max(0, Math.floor(Number(payload.durationSeconds) || 0)), freePreview: payload.freePreview === true, status, videoAssetId: before?.videoAssetId || null, updatedAt: now };
+    const values = { id, courseSlug, unitId, title, description: description || before?.description || "", position, durationSeconds: Math.max(0, Math.floor(finiteNumber(payload.durationSeconds) || 0)), freePreview: payload.freePreview === true, status, videoAssetId: before?.videoAssetId || null, updatedAt: now };
     await db.insert(lessonsDb).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: lessonsDb.id, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "lesson", id, before, values);
+    await notifyCatalogDiscovery(["/courses", "/bundles", `/courses/${seoSegment(courseSlug)}`]);
     return Response.json({ ok: true, lesson: values });
   }
 
   if (action === "updateUser") {
-    const id = Math.floor(Number(payload.id));
+    const id = finiteNumber(payload.id);
     const status = cleanText(payload.status, 20);
     const role = cleanText(payload.role, 20);
-    if (!id || !["active", "suspended"].includes(status) || !["student", "supervisor", "admin"].includes(role)) return jsonError("بيانات المستخدم غير صالحة");
-    const [before] = await db.select().from(users).where(eq(users.id, id)).limit(1);
-    if (!before) return jsonError("المستخدم غير موجود", 404);
-    if (before.email === authorization.actor && (status !== "active" || role !== "admin")) return jsonError("لا يمكنك تعطيل صلاحية حسابك الإداري الحالي");
-    await db.update(users).set({ status, role, updatedAt: now }).where(eq(users.id, id));
-    await audit(request, authorization.actor, "update", "user", String(id), { status: before.status, role: before.role }, { status, role });
-    return Response.json({ ok: true });
+    if (!Number.isSafeInteger(id) || id < 1 || !["active", "suspended"].includes(status) || !["student", "supervisor", "admin"].includes(role)) return jsonError("بيانات المستخدم غير صالحة");
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'active-admin-membership'}))`);
+      const [before] = await tx.select().from(users).where(eq(users.id, id)).limit(1);
+      if (!before) return { error: "المستخدم غير موجود", status: 404 };
+      if (payload.expectedUpdatedAt && payload.expectedUpdatedAt !== before.updatedAt) return { error: "تغير الحساب أثناء التحرير. حدث الملف ثم حاول مجددًا", status: 409 };
+      const activeAdmins = await tx.select({ id: users.id }).from(users).where(and(eq(users.role, "admin"), eq(users.status, "active")));
+      const invalid = adminUserTransitionError(before, { role, status }, authorization.user?.id || null, activeAdmins.length);
+      if (invalid) return { error: invalid, status: 409 };
+      await tx.update(users).set({ status, role, updatedAt: now }).where(eq(users.id, id));
+      if (status !== "active" || role !== before.role) {
+        await tx.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, id), isNull(authSessions.revokedAt)));
+        await tx.update(pushDevices).set({ status: "revoked", lastSeenAt: now }).where(eq(pushDevices.userId, id));
+      }
+      await tx.insert(auditLogs).values({ actorEmail: authorization.actor, action: "update", entityType: "user", entityId: String(id), beforeJson: asJson({ status: before.status, role: before.role }), afterJson: asJson({ status, role, reason: cleanText(payload.reason, 500) }), ipAddress: clientIp(request), createdAt: now });
+      return { updatedAt: now };
+    });
+    if ("error" in result) return jsonError(result.error!, result.status);
+    return Response.json({ ok: true, ...result });
+  }
+
+  if (action === "updateStudentProfile") {
+    const id = finiteNumber(payload.id);
+    const fullName = cleanText(payload.fullName, 120);
+    const universitySlug = cleanText(payload.universitySlug, 120);
+    const specialty = cleanText(payload.specialty, 140);
+    const academicLevel = cleanText(payload.academicLevel, 80);
+    if (!Number.isSafeInteger(id) || id < 1 || fullName.length < 3) return jsonError("تحقق من اسم الطالب");
+    if (universitySlug && !await getInstitutionCatalog(universitySlug, true)) return jsonError("الجامعة غير موجودة");
+    const result = await db.transaction(async (tx) => {
+      const [before] = await tx.select().from(users).where(eq(users.id, id)).for("update");
+      if (!before || before.role !== "student") return { error: "الطالب غير موجود", status: 404 };
+      if (payload.expectedUpdatedAt !== before.updatedAt) return { error: "تغير الملف أثناء التحرير. حدّث الصفحة ثم حاول مجددًا", status: 409 };
+      const changes = { fullName, universitySlug: universitySlug || null, specialty: specialty || null, academicLevel: academicLevel || null, updatedAt: now };
+      await tx.update(users).set(changes).where(eq(users.id, id));
+      await tx.insert(auditLogs).values({ actorEmail: authorization.actor, action: "update", entityType: "student_profile", entityId: String(id), beforeJson: asJson({ fullName: before.fullName, universitySlug: before.universitySlug, specialty: before.specialty, academicLevel: before.academicLevel }), afterJson: asJson(changes), ipAddress: clientIp(request), createdAt: now });
+      return { updatedAt: now };
+    });
+    if ("error" in result) return jsonError(result.error!, result.status);
+    return Response.json({ ok: true, ...result });
   }
 
   if (action === "saveSupervisorAssignment") {
-    const id = Math.floor(Number(payload.id));
-    const supervisorId = Math.floor(Number(payload.supervisorId));
+    const id = Math.floor(finiteNumber(payload.id));
+    const supervisorId = Math.floor(finiteNumber(payload.supervisorId));
     const institutionSlug = cleanText(payload.institutionSlug, 80).toLowerCase();
     const specialty = cleanText(payload.specialty, 140);
     const active = payload.active !== false;
@@ -471,62 +559,85 @@ export async function POST(request: Request) {
     if (!validEmail(userEmail) || !course) return jsonError("تحقق من الطالب والمادة");
     const [student] = await db.select({ id: users.id, fullName: users.fullName, phone: users.phone, role: users.role }).from(users).where(eq(users.email, userEmail)).limit(1);
     if (!student || student.role !== "student") return jsonError("الطالب غير موجود", 404);
-    const expiresAt = cleanText(payload.expiresAt, 40) || null;
-    if (expiresAt && Number.isNaN(new Date(expiresAt).getTime())) return jsonError("تاريخ انتهاء الصلاحية غير صحيح");
-    const suppliedPrice = Number(payload.price);
+    const rawExpiry = cleanText(payload.expiresAt, 40);
+    if (rawExpiry && (!Number.isFinite(Date.parse(rawExpiry)) || Date.parse(rawExpiry) <= Date.parse(now))) return jsonError("يجب أن يكون تاريخ الانتهاء في المستقبل");
     const grantType = cleanText(payload.grantType, 30) === "manual_payment" ? "manual_payment" : "complimentary";
-    const price = grantType === "manual_payment" && Number.isFinite(suppliedPrice) && suppliedPrice >= 0 ? Math.round(suppliedPrice * 100) / 100 : 0;
-    const orderNumber = grantType === "manual_payment" ? `MANUAL-${Date.now()}-${crypto.randomUUID().slice(0, 8).toUpperCase()}` : null;
-    const resolvedExpiry = expiresAt || accessExpiryIso(normalizeAccessDurationDays(course.accessDurationDays, course.access), new Date(now));
-    let grantedExpiry: string | null = resolvedExpiry;
-    let accessId: number | undefined;
-    await db.transaction(async (tx) => {
+    const suppliedPrice = typeof payload.price === "string" || typeof payload.price === "number" ? finiteNumber(payload.price) : Number.NaN;
+    if (grantType === "manual_payment" && (!Number.isFinite(suppliedPrice) || suppliedPrice <= 0 || suppliedPrice > 1_000_000)) return jsonError("اكتب مبلغ الدفعة اليدوية الصحيح");
+    const price = grantType === "manual_payment" ? Math.round(suppliedPrice * 100) / 100 : 0;
+    const suppliedKey = cleanText(payload.operationKey, 100);
+    if (suppliedKey && !/^[A-Za-z0-9_-]{12,90}$/.test(suppliedKey)) return jsonError("معرّف العملية غير صالح");
+    // Legacy clients may omit the key; modern clients retain it across a retry.
+    const operationKey = suppliedKey || crypto.randomUUID();
+    const fingerprint = createHash("sha256").update(JSON.stringify({ userEmail, courseSlug, grantType, price, rawExpiry })).digest("hex");
+    const eventKey = `admin-grant:${authorization.actor}:${operationKey}`;
+    const orderNumber = grantType === "manual_payment" ? `MANUAL-${createHash("sha256").update(eventKey).digest("hex").slice(0, 24).toUpperCase()}` : null;
+    const days = rawExpiry ? Math.max(1, Math.ceil((Date.parse(rawExpiry) - Date.parse(now)) / 86_400_000)) : normalizeAccessDurationDays(course.accessDurationDays, course.access);
+    const resolvedExpiry = rawExpiry ? new Date(rawExpiry).toISOString() : accessExpiryIso(days, new Date(now));
+    const result = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${eventKey}))`);
+      const [previous] = await tx.select().from(courseAccessEvents).where(eq(courseAccessEvents.eventKey, eventKey)).limit(1);
+      if (previous) {
+        const prior = JSON.parse(previous.afterJson || "{}") as { fingerprint?: string };
+        if (prior.fingerprint !== fingerprint) return { error: "معرّف العملية مستخدم لبيانات مختلفة", status: 409 };
+        return { replayed: true, notice: null as FulfillmentNotice | null };
+      }
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${userEmail}:${courseSlug}`}))`);
+      const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, userEmail), eq(courseAccess.courseSlug, courseSlug))).limit(1);
+      if (existing?.suspendedAt) return { error: "استأنف الاشتراك المتوقف أولًا قبل منح وصول إضافي", status: 409 };
+      if (existing?.storeAccessBlockedAt) await tx.update(courseAccess).set({ storeAccessBlockedAt: null }).where(eq(courseAccess.id, existing.id));
+      let notice: FulfillmentNotice | null = null;
+      let accessId = existing?.id;
       if (orderNumber) {
-        await tx.insert(orders).values({ orderNumber, customerEmail: userEmail, customerName: student.fullName, customerPhone: student.phone, courseSlug, subtotal: price, discount: 0, total: price, currency: "SAR", status: "paid", paymentMethod: "manual", createdAt: now, paidAt: now, updatedAt: now });
-        await tx.insert(orderItems).values({ orderNumber, courseSlug, unitPrice: price, discount: 0, total: price, accessDurationDays: normalizeAccessDurationDays(course.accessDurationDays, course.access), createdAt: now });
-        await tx.insert(paymentEvents).values({ provider: "admin", providerEventId: `admin-payment:${orderNumber}`, orderNumber, status: "paid", payload: JSON.stringify({ source: "manual_payment", actor: authorization.actor, price, courseSlug, userEmail }), receivedAt: now });
+        const [order] = await tx.insert(orders).values({ orderNumber, customerEmail: userEmail, customerName: student.fullName, customerPhone: student.phone, courseSlug, subtotal: price, discount: 0, total: price, subtotalMinor: Math.round(price * 100), discountMinor: 0, totalMinor: Math.round(price * 100), currency: "SAR", status: "pending", paymentMethod: "manual", createdAt: now, updatedAt: now }).returning();
+        await tx.insert(orderItems).values({ orderNumber, courseSlug, unitPrice: price, discount: 0, total: price, accessDurationDays: days, createdAt: now });
+        await tx.insert(paymentEvents).values({ provider: "admin", providerEventId: `admin-payment:${orderNumber}`, orderNumber, status: "paid", payload: asJson({ actor: authorization.actor, price, fingerprint }), receivedAt: now });
+        const fulfillment = await fulfillPaidOrderTx(tx, order, [{ courseSlug, accessDurationDays: days, expiresAt: resolvedExpiry }], { actorEmail: authorization.actor, chargeId: null, now, accessSource: "admin_payment", extendDuplicates: true });
+        notice = fulfillment.notice;
+        const [granted] = await tx.select({ id: courseAccess.id }).from(courseAccess).where(and(eq(courseAccess.userEmail, userEmail), eq(courseAccess.courseSlug, courseSlug))).limit(1);
+        accessId = granted?.id;
+      } else {
+        const expiresAt = existing && existing.source !== "revenuecat" && !existing.revokedAt ? !existing.expiresAt ? null : Date.parse(existing.expiresAt) > Date.parse(resolvedExpiry) ? existing.expiresAt : resolvedExpiry : resolvedExpiry;
+        const values = { userEmail, courseSlug, source: existing && existing.source !== "revenuecat" && !existing.revokedAt ? existing.source : "admin_complimentary", orderNumber: existing && existing.source !== "revenuecat" && !existing.revokedAt ? existing.orderNumber : null, startsAt: existing && existing.source !== "revenuecat" && !existing.revokedAt ? existing.startsAt : now, expiresAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now };
+        const [access] = await tx.insert(courseAccess).values(values).onConflictDoUpdate({ target: [courseAccess.userEmail, courseAccess.courseSlug], set: values }).returning({ id: courseAccess.id });
+        accessId = access.id;
+        await tx.update(courseWaitlist).set({ status: "converted", convertedAt: now, updatedAt: now }).where(and(eq(courseWaitlist.userEmail, userEmail), eq(courseWaitlist.courseSlug, courseSlug)));
+        const title = "تم تفعيل المادة"; const body = `أصبحت مادة «${course.title}» متاحة في حسابك.`;
+        const [saved] = await tx.insert(notificationsDb).values({ userEmail, audience: "student", title, body, actionUrl: `/learn/${courseSlug}`, actionLabel: "فتح المادة", template: "success", dedupeKey: eventKey, pushStatus: "pending", createdAt: now }).returning({ id: notificationsDb.id });
+        notice = { id: saved.id, title, body, route: `/learn/${courseSlug}` };
       }
-      const [existingAccess] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, userEmail), eq(courseAccess.courseSlug, courseSlug))).limit(1);
-      if (existingAccess && !existingAccess.revokedAt) {
-        if (!existingAccess.expiresAt) grantedExpiry = null;
-        else if (grantedExpiry && Date.parse(existingAccess.expiresAt) > Date.parse(grantedExpiry)) grantedExpiry = existingAccess.expiresAt;
-      }
-      const startAt = existingAccess && !existingAccess.revokedAt ? existingAccess.startsAt : now;
-      const [access] = await tx.insert(courseAccess).values({ userEmail, courseSlug, source: grantType === "manual_payment" ? "admin_payment" : "admin_complimentary", orderNumber, expiresAt: grantedExpiry, startsAt: startAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now }).onConflictDoUpdate({ target: [courseAccess.userEmail, courseAccess.courseSlug], set: { revokedAt: null, revocationReason: null, suspendedAt: null, suspensionReason: null, source: grantType === "manual_payment" ? "admin_payment" : "admin_complimentary", orderNumber, expiresAt: grantedExpiry, startsAt: startAt, updatedAt: now } }).returning({ id: courseAccess.id });
-      accessId = access?.id;
-      await tx.insert(courseAccessEvents).values({ eventKey: `admin:${crypto.randomUUID()}`, accessId, userEmail, courseSlug, action: grantType === "manual_payment" ? "manual_payment_granted" : "complimentary_granted", actorEmail: authorization.actor, reason: cleanText(payload.reason, 500) || "منحة إدارية", orderNumber, beforeJson: existingAccess ? JSON.stringify(existingAccess) : null, afterJson: JSON.stringify({ expiresAt: grantedExpiry, price, grantType }), createdAt: now });
+      await tx.insert(courseAccessEvents).values({ eventKey, accessId, userEmail, courseSlug, action: grantType === "manual_payment" ? "manual_payment_granted" : "complimentary_granted", actorEmail: authorization.actor, reason: cleanText(payload.reason, 500) || "منحة إدارية", orderNumber, beforeJson: existing ? asJson(existing) : null, afterJson: asJson({ fingerprint, price, grantType, expiresAt: resolvedExpiry }), createdAt: now });
+      await tx.insert(auditLogs).values({ actorEmail: authorization.actor, action: "grant", entityType: "course_access", entityId: `${userEmail}:${courseSlug}`, afterJson: asJson({ orderNumber, grantType, price, operationKey }), ipAddress: clientIp(request), createdAt: now });
+      return { replayed: false, notice };
     });
-    const notificationTitle = "تم تفعيل المادة";
-    const notificationBody = `أصبحت مادة «${course.title || courseSlug}» متاحة في حسابك.`;
-    const [notice] = await db.insert(notificationsDb).values({ userEmail, audience: "student", title: notificationTitle, body: notificationBody, actionUrl: `/learn/${courseSlug}`, actionLabel: "فتح المادة", template: "success", dedupeKey: `access:${accessId}:grant:${now}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).returning({ id: notificationsDb.id }).catch(() => []);
-    const push = await sendPushNotification({ userEmail }, notificationTitle, notificationBody, { route: `/learn/${courseSlug}`, notificationId: notice?.id || 0 });
-    if (notice) await db.update(notificationsDb).set({ pushStatus: push.accepted > 0 ? "accepted" : push.attempted === 0 ? "no_devices" : "failed", pushAttempts: 1, pushLastError: push.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: push.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, notice.id));
-    await audit(request, authorization.actor, "grant", "course_access", `${userEmail}:${courseSlug}`, null, { expiresAt: grantedExpiry, price, orderNumber, grantType });
-    return Response.json({ ok: true, orderNumber, price, grantType, push });
+    if ("error" in result) return jsonError(result.error!, result.status);
+    // Persisted notifications are dispatched by the retryable worker.
+    if (result.notice) await db.update(notificationsDb).set({ pushStatus: "pending", pushClaimedAt: null }).where(eq(notificationsDb.id, result.notice.id));
+    return Response.json({ ok: true, orderNumber, price, grantType, replayed: result.replayed, operationKey });
   }
 
   if (action === "updateAccess") {
-    const accessId = Math.floor(Number(payload.id));
+    const accessId = Math.floor(finiteNumber(payload.id));
     const operation = cleanText(payload.operation, 30);
     const reason = cleanText(payload.reason, 500);
     const suppliedOperationKey = cleanText(payload.operationKey, 100);
     const operationKey = /^[A-Za-z0-9_-]{12,90}$/.test(suppliedOperationKey) ? suppliedOperationKey : crypto.randomUUID();
-    if (!accessId || !["pause", "resume", "extend", "revoke"].includes(operation)) return jsonError("إجراء الاشتراك غير صالح");
+    if (!Number.isSafeInteger(accessId) || accessId < 1 || !["pause", "resume", "extend", "revoke"].includes(operation)) return jsonError("إجراء الاشتراك غير صالح");
     if (["pause", "revoke"].includes(operation) && reason.length < 3) return jsonError("اكتب سبب الإجراء ليظهر في سجل الاشتراك");
     const [before] = await db.select().from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
     if (!before) return jsonError("الاشتراك غير موجود", 404);
+    const [decisionBefore] = await effectiveAccessRows([{ ...before, suspendedAt: null }], now);
     const [course] = await Promise.all([getCourseCatalog(before.courseSlug, true)]);
     const changes: Partial<typeof courseAccess.$inferInsert> = { updatedAt: now };
     let extensionDays = 0;
     let notificationTitle = "تم تحديث اشتراكك";
     let notificationBody = `تم تحديث الوصول إلى مادة «${course?.title || before.courseSlug}».`;
     if (operation === "pause") {
-      if (before.revokedAt) return jsonError("الاشتراك ملغي ولا يمكن إيقافه مؤقتًا", 409);
+      if (decisionBefore.revokedAt) return jsonError("الاشتراك ملغي ولا يمكن إيقافه مؤقتًا", 409);
       changes.suspendedAt = now; changes.suspensionReason = reason;
       notificationTitle = "تم إيقاف الوصول مؤقتًا"; notificationBody = `أُوقف الوصول إلى مادة «${course?.title || before.courseSlug}» مؤقتًا. السبب: ${reason}`;
     } else if (operation === "resume") {
-      if (before.revokedAt) return jsonError("الاشتراك ملغي؛ امنح صلاحية جديدة بدل الاستئناف", 409);
+      if (decisionBefore.revokedAt) return jsonError("الاشتراك ملغي؛ امنح صلاحية جديدة بدل الاستئناف", 409);
       if (before.suspendedAt && before.expiresAt) {
         const pauseDuration = Math.max(0, Date.now() - Date.parse(before.suspendedAt));
         if (Number.isFinite(pauseDuration)) changes.expiresAt = new Date(Date.parse(before.expiresAt) + pauseDuration).toISOString();
@@ -534,14 +645,13 @@ export async function POST(request: Request) {
       changes.suspendedAt = null; changes.suspensionReason = null;
       notificationTitle = "تم استئناف الوصول"; notificationBody = `يمكنك متابعة مادة «${course?.title || before.courseSlug}» الآن.`;
     } else if (operation === "extend") {
-      const days = Math.floor(Number(payload.days));
+      const days = Math.floor(finiteNumber(payload.days));
       extensionDays = days;
       if (!Number.isInteger(days) || days < 1 || days > 3650) return jsonError("مدة التمديد يجب أن تكون بين يوم و3650 يومًا");
-      const currentEnd = before.expiresAt && Date.parse(before.expiresAt) > Date.now() ? new Date(before.expiresAt) : new Date();
-      changes.expiresAt = accessExpiryIso(days, currentEnd);
+      changes.expiresAt = extendAccessExpiry(decisionBefore.expiresAt, days, now);
       notificationTitle = "تم تمديد اشتراكك"; notificationBody = `مُدّد وصولك إلى مادة «${course?.title || before.courseSlug}» لمدة ${days} يومًا.`;
     } else {
-      changes.revokedAt = now; changes.revocationReason = reason; changes.suspendedAt = null; changes.suspensionReason = null;
+      changes.revokedAt = now; changes.storeAccessBlockedAt = now; changes.revocationReason = reason; changes.suspendedAt = null; changes.suspensionReason = null;
       notificationTitle = "تم إيقاف الوصول"; notificationBody = `تم إيقاف الوصول إلى مادة «${course?.title || before.courseSlug}». السبب: ${reason}`;
     }
     let noticeId: number | undefined;
@@ -550,18 +660,21 @@ export async function POST(request: Request) {
     let committedChanges = changes;
     let replayed = false;
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${accessId}`}))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${before.userEmail}:${before.courseSlug}`}))`);
       const [current] = await tx.select().from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
       if (!current) { transactionError = { message: "الاشتراك غير موجود", status: 404 }; return; }
       const eventKey = `admin-access:${accessId}:${operationKey}`;
       const [previousEvent] = await tx.select({ id: courseAccessEvents.id }).from(courseAccessEvents).where(eq(courseAccessEvents.eventKey, eventKey)).limit(1);
       if (previousEvent) { replayed = true; committedBefore = current; return; }
-      if (operation === "pause" && current.revokedAt) { transactionError = { message: "الاشتراك ملغي ولا يمكن إيقافه مؤقتًا", status: 409 }; return; }
+      if (payload.expectedUpdatedAt && payload.expectedUpdatedAt !== current.updatedAt) { transactionError = { message: "تغير الاشتراك أثناء التحرير. حدّث الملف وحاول مجددًا", status: 409 }; return; }
+      // Ignore the global pause only to inspect underlying rights; writes retain the raw baseline.
+      const [decisionCurrent] = await effectiveAccessRows([{ ...current, suspendedAt: null }], now);
+      if (operation === "pause" && decisionCurrent.revokedAt) { transactionError = { message: "الاشتراك ملغي ولا يمكن إيقافه مؤقتًا", status: 409 }; return; }
       if (operation === "pause" && current.suspendedAt) { transactionError = { message: "الاشتراك متوقف مؤقتًا بالفعل", status: 409 }; return; }
-      if (operation === "resume" && current.revokedAt) { transactionError = { message: "الاشتراك ملغي؛ امنح صلاحية جديدة بدل الاستئناف", status: 409 }; return; }
+      if (operation === "resume" && decisionCurrent.revokedAt) { transactionError = { message: "الاشتراك ملغي؛ امنح صلاحية جديدة بدل الاستئناف", status: 409 }; return; }
       if (operation === "resume" && !current.suspendedAt) { transactionError = { message: "الاشتراك غير متوقف مؤقتًا", status: 409 }; return; }
-      if (operation === "extend" && current.revokedAt) { transactionError = { message: "لا يمكن تمديد اشتراك ملغي", status: 409 }; return; }
-      if (operation === "revoke" && current.revokedAt) { transactionError = { message: "الاشتراك ملغي بالفعل", status: 409 }; return; }
+      if (operation === "extend" && decisionCurrent.revokedAt) { transactionError = { message: "لا يمكن تمديد اشتراك ملغي", status: 409 }; return; }
+      if (operation === "revoke" && decisionCurrent.revokedAt) { transactionError = { message: "الاشتراك ملغي بالفعل", status: 409 }; return; }
 
       const lockedChanges: Partial<typeof courseAccess.$inferInsert> = { ...changes, updatedAt: now };
       if (operation === "resume") {
@@ -571,8 +684,12 @@ export async function POST(request: Request) {
           if (Number.isFinite(pauseDuration)) lockedChanges.expiresAt = new Date(Date.parse(current.expiresAt) + pauseDuration).toISOString();
         }
       } else if (operation === "extend") {
-        const currentEnd = current.expiresAt && Date.parse(current.expiresAt) > Date.now() ? new Date(current.expiresAt) : new Date();
-        lockedChanges.expiresAt = accessExpiryIso(extensionDays, currentEnd);
+        lockedChanges.expiresAt = extendAccessExpiry(decisionCurrent.expiresAt, extensionDays, now);
+        const baselineUnavailable = current.source === "revenuecat" || current.revokedAt || (current.expiresAt && Date.parse(current.expiresAt) <= Date.parse(now));
+        if (baselineUnavailable) {
+          lockedChanges.source = "admin_complimentary"; lockedChanges.startsAt = now; lockedChanges.orderNumber = null;
+          lockedChanges.revokedAt = null; lockedChanges.revocationReason = null;
+        }
       }
       const [after] = await tx.update(courseAccess).set(lockedChanges).where(eq(courseAccess.id, accessId)).returning();
       if (!after) { transactionError = { message: "تعذر تحديث الاشتراك", status: 409 }; return; }
@@ -592,8 +709,8 @@ export async function POST(request: Request) {
   }
 
   if (action === "revokeUserSession") {
-    const sessionId = Math.floor(Number(payload.sessionId));
-    if (!sessionId) return jsonError("الجلسة غير صحيحة");
+    const sessionId = Math.floor(finiteNumber(payload.sessionId));
+    if (!Number.isSafeInteger(sessionId) || sessionId < 1) return jsonError("الجلسة غير صحيحة");
     const [target] = await db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, revokedAt: authSessions.revokedAt }).from(authSessions).where(eq(authSessions.id, sessionId)).limit(1);
     if (!target) return jsonError("الجهاز غير موجود", 404);
     const [targetUser] = await db.select({ id: users.id, email: users.email, role: users.role }).from(users).where(eq(users.id, target.userId)).limit(1);
@@ -608,7 +725,7 @@ export async function POST(request: Request) {
   }
 
   if (action === "prepareRequest") {
-    const id = Math.floor(Number(payload.id));
+    const id = Math.floor(finiteNumber(payload.id));
     const courseSlug = cleanText(payload.courseSlug, 80);
     if (!id || !courseSlug || !validSlug(courseSlug)) return jsonError("اختر طلبًا ومادة صالحة");
     const [before] = await db.select().from(courseRequests).where(eq(courseRequests.id, id)).limit(1);
@@ -635,7 +752,7 @@ export async function POST(request: Request) {
   }
 
   if (action === "updateRequest") {
-    const id = Math.floor(Number(payload.id));
+    const id = Math.floor(finiteNumber(payload.id));
     const status = cleanText(payload.status, 30);
     const selectedCourseSlug = cleanText(payload.courseSlug, 80);
     if (!id || !["new", "assigned", "reviewing", "planned", "producing", "available", "declined"].includes(status)) return jsonError("الحالة غير صالحة");
@@ -663,7 +780,7 @@ export async function POST(request: Request) {
   }
 
   if (action === "updateTicket") {
-    const id = Math.floor(Number(payload.id));
+    const id = Math.floor(finiteNumber(payload.id));
     const status = cleanText(payload.status, 30);
     const reply = cleanText(payload.reply, 4000);
     if (!id || !["new", "open", "waiting", "resolved", "closed"].includes(status)) return jsonError("حالة التذكرة غير صالحة");
@@ -685,7 +802,7 @@ export async function POST(request: Request) {
   }
 
   if (action === "updateReview") {
-    const id = Math.floor(Number(payload.id));
+    const id = Math.floor(finiteNumber(payload.id));
     const status = cleanText(payload.status, 30);
     if (!id || !["pending", "published", "rejected"].includes(status)) return jsonError("الحالة غير صالحة");
     const [before] = await db.select().from(courseReviews).where(eq(courseReviews.id, id)).limit(1);
@@ -760,7 +877,7 @@ export async function POST(request: Request) {
       const specialty = cleanText(payload.segmentSpecialty, 160);
       const segmentCourse = cleanText(payload.segmentCourse, 120);
       const accessState = cleanText(payload.segmentAccessState, 30);
-      const inactiveDays = Math.min(3650, Math.max(0, Math.floor(Number(payload.segmentInactiveDays) || 0)));
+      const inactiveDays = Math.min(3650, Math.max(0, Math.floor(finiteNumber(payload.segmentInactiveDays) || 0)));
       if (!universitySlug && !specialty && !segmentCourse && !accessState && !inactiveDays) return jsonError("اختر معيارًا واحدًا على الأقل للشريحة المستهدفة");
       const candidates = await db.select({ id: users.id, email: users.email, universitySlug: users.universitySlug, specialty: users.specialty, lastLoginAt: users.lastLoginAt }).from(users).where(and(eq(users.role, "student"), eq(users.status, "active"))).limit(10_000);
       const accessRows = segmentCourse || accessState ? await db.select().from(courseAccess).limit(50_000) : [];
@@ -822,9 +939,9 @@ export async function POST(request: Request) {
   if (action === "saveCoupon") {
     const code = cleanText(payload.code, 40).toUpperCase().replace(/[^A-Z0-9_-]/g, "");
     const type = cleanText(payload.type, 20);
-    const value = Number(payload.value);
+    const value = finiteNumber(payload.value);
     const courseSlug = cleanText(payload.courseSlug, 80) || null;
-    const usageLimitValue = Number(payload.usageLimit);
+    const usageLimitValue = finiteNumber(payload.usageLimit);
     const usageLimit = Number.isFinite(usageLimitValue) && usageLimitValue > 0 ? Math.floor(usageLimitValue) : null;
     const startsAt = cleanText(payload.startsAt, 40) || null;
     const expiresAt = cleanText(payload.expiresAt, 40) || null;

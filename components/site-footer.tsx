@@ -35,8 +35,8 @@ export async function SiteFooter() {
             </div>
           </section>}
         </div>
-        <div><h3>استكشف</h3><Link href="/universities">الجامعات والكليات</Link><Link href="/courses">جميع المواد</Link><Link href="/request-course">اطلب مادة</Link><Link href="/how-it-works">كيف تعمل مراس؟</Link></div>
-        <div><h3>مساعدة</h3><Link href="/support">الدعم الفني</Link><Link href="/#faq">الأسئلة الشائعة</Link><Link href="/refund-policy">سياسة الاسترداد</Link><Link href="/contact">تواصل معنا</Link></div>
+        <div><h3>استكشف</h3><Link href="/universities">الجامعات والكليات</Link><Link href="/courses">جميع المواد</Link><Link href="/bundles">باقات المواد</Link><Link href="/tools">أدوات مراس للمذاكرة</Link><Link href="/about">عن مراس العلم</Link><Link href="/request-course">اطلب مادة</Link><Link href="/how-it-works">كيف تعمل مراس؟</Link></div>
+        <div><h3>مساعدة</h3><Link href="/support">الدعم الفني</Link><Link href="/faq">الأسئلة الشائعة</Link><Link href="/refund-policy">سياسة الاسترداد</Link><Link href="/contact">تواصل معنا</Link></div>
         <div><h3>قانوني</h3><Link href="/terms">الشروط والأحكام</Link><Link href="/privacy">سياسة الخصوصية</Link><Link href="/content-policy">حقوق المحتوى</Link><Link href="/accessibility">إمكانية الوصول</Link></div>
         <div className="footer-contact"><h3>تواصل معنا</h3>{settings.support_email && <a href={`mailto:${settings.support_email}`}><Mail size={17} /> {settings.support_email}</a>}{whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={17} /> واتساب مراس</a>}{telegram && <a href={telegram.url} target="_blank" rel="noopener noreferrer"><Send size={17} /> تيليجرام مراس</a>}<Link href="/support">فتح تذكرة دعم</Link><p>{settings.support_hours}</p></div>
       </div>

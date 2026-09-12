@@ -1,0 +1,43 @@
+{
+  "at": "2026-09-12T19:02:27.533Z",
+  "provider": "synthetic verified payloads; no real store purchase",
+  "database": "real local PostgreSQL",
+  "checks": [
+    {
+      "name": "provider payload rejects another owner and wrong environment",
+      "passed": true
+    },
+    {
+      "name": "lifetime baseline survives store purchase and refund",
+      "passed": true
+    },
+    {
+      "name": "concurrent duplicate transaction creates one 30-day entitlement",
+      "passed": true
+    },
+    {
+      "name": "manual AI renewal appends a second 30 days",
+      "passed": true
+    },
+    {
+      "name": "refund revokes only its AI entitlement and advances queued paid time",
+      "passed": true
+    },
+    {
+      "name": "transaction cannot transfer to another account",
+      "passed": true
+    },
+    {
+      "name": "store course access respects suspension and explicit admin revocation",
+      "passed": true
+    },
+    {
+      "name": "refund and reversal retain original expiry rather than issuing new time",
+      "passed": true
+    },
+    {
+      "name": "second course purchase remains usable after first purchase refund",
+      "passed": true
+    }
+  ]
+}

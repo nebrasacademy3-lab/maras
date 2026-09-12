@@ -3,6 +3,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { sql, and, eq } from "drizzle-orm";
+import { pgTable, text, PgDialect } from "drizzle-orm/pg-core";
+import { isolated } from "./helpers/business-fixtures.mjs";
 import { loadMobileRouting } from "./mobile-routing-harness.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -13,7 +16,12 @@ const context = await read("lib/assistant-context.ts");
 const route = await read("app/api/assistant/route.ts");
 const web = await read("components/meras-assistant.tsx");
 const mobile = await read("mobile/app/assistant.tsx");
-const access = await read("lib/course-access.ts");
+const courseAccess = pgTable("course_access", {
+  userEmail: text("user_email"), courseSlug: text("course_slug"), suspendedAt: text("suspended_at"),
+  source: text("source"), revokedAt: text("revoked_at"), startsAt: text("starts_at"),
+  expiresAt: text("expires_at"), storeAccessBlockedAt: text("store_access_blocked_at"),
+});
+const access = await isolated("../lib/course-access.ts", { sql, and, eq, courseAccess });
 
 test("assistant understands a broad Arabic intent vocabulary and has detailed fallbacks", () => {
   assert.match(knowledge, /export type AssistantIntent/);
@@ -46,8 +54,22 @@ test("live retrieval stays ahead of bounded, active account context", () => {
   assert.match(context, /privateContext\.slice\(0, 5_000\)/);
   assert.ok(context.indexOf("${retrieved}") < context.indexOf("${boundedPrivateContext}"));
   assert.match(context, /activeUserAccessWhere\(user\.email, now\)/);
-  assert.match(access, /isNull\(courseAccess\.suspendedAt\)/);
-  assert.match(access, /gt\(courseAccess\.expiresAt, now\)/);
+  const instant = "2026-09-12T12:00:00.000Z";
+  const query = new PgDialect().sqlToQuery(access.activeUserAccessWhere("private-user@example.test", instant));
+  const predicate = query.sql.replace(/\s+/g, " ");
+  assert.ok(query.params.includes("private-user@example.test"));
+  assert.ok(!predicate.includes("private-user@example.test"), "identity is bound as a parameter");
+  assert.match(predicate, /"user_email" = \$\d+/);
+  assert.match(predicate, /"suspended_at" IS NULL AND \(/, "global suspension gates both baseline and store rights");
+  assert.match(predicate, /"revoked_at" IS NULL/);
+  assert.match(predicate, /"starts_at"::timestamptz<=\$\d+::timestamptz/);
+  assert.match(predicate, /"expires_at" IS NULL OR "course_access"\."expires_at"::timestamptz>\$\d+::timestamptz/);
+  assert.match(predicate, /"store_access_blocked_at" IS NULL AND EXISTS/);
+  assert.match(predicate, /access_grant\.user_email="course_access"\."user_email"/);
+  assert.match(predicate, /access_grant\.course_slug="course_access"\."course_slug"/);
+  assert.match(predicate, /access_grant\.status='active'/);
+  assert.match(predicate, /access_grant\.expires_at IS NULL OR access_grant\.expires_at::timestamptz>\$\d+::timestamptz/);
+  assert.ok(query.params.filter(value => value === instant).length >= 4);
 });
 
 test("lesson-specific questions outrank a simultaneous course match", () => {

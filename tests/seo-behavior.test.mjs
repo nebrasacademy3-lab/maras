@@ -12,7 +12,8 @@ async function isolated(path, dependencies = {}) {
     return await import("data:text/javascript;base64," + Buffer.from(ts.transpileModule(input, { fileName: path, compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText).toString("base64"));
   } finally { delete globalThis[key]; }
 }
-const seo = await isolated("../lib/seo.ts", { process: { env: { NODE_ENV: "production", APP_URL: "https://meras.example/" } } });
+const baseSeo = await isolated("../lib/seo.ts", { process: { env: { NODE_ENV: "production", APP_URL: "https://meras.example/" } } });
+const seo = { ...baseSeo, resolvedPublicPageMetadata: (...args) => baseSeo.publicPageMetadata(...args) };
 const build = (await isolated("../lib/seo-sitemap.ts", seo)).buildPublicSitemap;
 const institution = { slug: "test-university", name: "جامعة الاختبار" };
 const course = { slug: "physics", title: "الفيزياء", titleEn: "Physics", code: "PHYS101", universitySlug: institution.slug, specialtySlug: "science", specialty: "العلوم", description: "شرح الحركة والقوى", price: 150, availableForPurchase: true, rating: 4.5, ratingsCount: 2, updatedAt: "2025-01-02T00:00:00.000Z" };
@@ -137,7 +138,7 @@ test("sitemap route does not read database or publish demo URLs when indexing di
 test("sitemap reads the runtime indexing flag without waiting for ISR", async () => {
   const env = { NODE_ENV: "production", APP_URL: "https://meras.example", SEO_INDEXING_ENABLED: "false" };
   const runtimeSeo = await isolated("../lib/seo.ts", { process: { env } });
-  const route = await isolated("../app/sitemap.ts", { ...runtimeSeo, getCoursesCatalog: async () => [course], getInstitutionsCatalog: async () => [institution], getPublicSpecialtyCatalog: async () => [specialty], buildPublicSitemap: build });
+  const route = await isolated("../app/sitemap.ts", { ...runtimeSeo, getCoursesCatalog: async () => [course], getInstitutionsCatalog: async () => [institution], getPublicSpecialtyCatalog: async () => [specialty], getPublicBundleCatalog: async () => [], buildPublicSitemap: build });
   assert.deepEqual(await route.default(), []);
   env.SEO_INDEXING_ENABLED = "true";
   assert.ok((await route.default()).some(item => item.url.endsWith("/courses/physics")));

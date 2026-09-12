@@ -3,7 +3,8 @@ import { spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { test } from "node:test";
 
-const origin = "https://marasalelm.com";
+// Match the public origin used when compiling NEXT_PUBLIC_SITE_URL into the build.
+const origin = new URL(process.env.SEO_TEST_ORIGIN || process.env.NEXT_PUBLIC_SITE_URL || "https://marasalelm.com").origin;
 async function availablePort() {
   const socket = createServer();
   await new Promise((resolve, reject) => { socket.once("error", reject); socket.listen(0, "127.0.0.1", resolve); });

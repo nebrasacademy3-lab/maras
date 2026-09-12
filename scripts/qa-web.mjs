@@ -1,0 +1,13 @@
+import { readFileSync, openSync, existsSync } from "node:fs";
+import { spawn } from "node:child_process";
+const {url}=JSON.parse(readFileSync(".data/qa-database.json","utf8"));
+if(new URL(url).hostname!=="127.0.0.1" || !new URL(url).pathname.startsWith("/maras_qa")) throw new Error("Local synthetic DB required");
+const mode=process.argv[2] === "production" ? "start" : "dev";
+const qaSecurity=existsSync(".data/qa-security.json")?JSON.parse(readFileSync(".data/qa-security.json","utf8")):{};
+const qaScanner=existsSync(".data/qa-scanner.json")?JSON.parse(readFileSync(".data/qa-scanner.json","utf8")):{};
+const env={...process.env,...qaSecurity,DATABASE_URL:url,MALWARE_SCAN_URL:qaScanner.url||"",MALWARE_SCAN_TOKEN:qaScanner.token||"",UPLOAD_DIR:process.cwd()+"/.data/qa-uploads",S3_ENDPOINT:"",S3_BUCKET:"",S3_ACCESS_KEY_ID:"",S3_SECRET_ACCESS_KEY:"",APP_URL:"http://127.0.0.1:3100",NEXT_PUBLIC_SITE_URL:mode==="start"?"https://maras-qa.example":"http://127.0.0.1:3100",NODE_ENV:mode==="start"?"production":"development",SEO_INDEXING_ENABLED:"true",INDEXNOW_ENABLED:"false",INDEXNOW_KEY:"",AUTO_SEED_CATALOG:"false",VIDEO_WORKER_ENABLED:"false",FILE_SCAN_WORKER_ENABLED:"false",FILE_SCAN_SCHEDULER_ENABLED:"false",LIFECYCLE_SCHEDULER_ENABLED:"false",RUN_DB_MIGRATIONS:"false",TAP_SECRET_KEY:"",TAP_WEBHOOK_SECRET:"",RESEND_API_KEY:"",SMTP_HOST:"",GEMINI_API_KEY:"",GOOGLE_API_KEY:"",GEMINI_API_KEYS:"",REVENUECAT_SECRET_API_KEY:""};
+const log=openSync(".data/qa-web.log","a");
+const child=spawn(process.execPath,["node_modules/next/dist/bin/next",mode,"--hostname","127.0.0.1","--port","3100"],{env,windowsHide:true,stdio:["ignore",log,log]});
+console.log("Synthetic web "+mode+" process started on http://127.0.0.1:3100");
+for(const signal of ["SIGTERM","SIGINT"]) process.on(signal,()=>{child.kill(signal);process.exit(0)});
+child.on("exit",code=>process.exit(code || 0));

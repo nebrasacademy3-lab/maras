@@ -1,3 +1,4 @@
+import { staticPublicPageMetadata } from "@/lib/seo-settings";
 import type { Metadata } from "next";
 import Link from "next/link";
 import {
@@ -19,18 +20,7 @@ import styles from "../legal.module.css";
 const EFFECTIVE_DATE = "05 سبتمبر 2026";
 const DOCUMENT_VERSION = "1.0";
 
-export const metadata: Metadata = {
-  title: "سياسة الاسترداد",
-  description: "سياسة طلبات الإلغاء والاسترداد في مراس العلم، وحالات الأهلية وآلية التقديم والمراجعة وإعادة المبلغ.",
-  alternates: { canonical: "/refund-policy" },
-  openGraph: {
-    title: "سياسة الاسترداد | مراس العلم",
-    description: "تعرف على حالات وشروط وخطوات طلب الاسترداد في مراس العلم.",
-    url: "/refund-policy",
-    locale: "ar_SA",
-    type: "article",
-  },
-};
+export function generateMetadata(): Promise<Metadata> { return staticPublicPageMetadata("/refund-policy"); }
 
 export default async function RefundPolicyPage() {
   const settings = await getPublicSettings();

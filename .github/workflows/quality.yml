@@ -19,7 +19,9 @@ jobs:
     timeout-minutes: 25
     env:
       NEXT_TELEMETRY_DISABLED: "1"
-      NEXT_PUBLIC_SITE_URL: http://127.0.0.1:3000
+      NEXT_PUBLIC_SITE_URL: https://maras-qa.example
+      SEO_TEST_ORIGIN: https://maras-qa.example
+      SEO_INDEXING_ENABLED: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -60,3 +62,6 @@ jobs:
         run: npm run typecheck
       - name: Lint app
         run: npm run lint
+
+      - name: Test app behavior
+        run: npm test

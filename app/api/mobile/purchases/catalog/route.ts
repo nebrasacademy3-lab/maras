@@ -1,0 +1,4 @@
+import { storeCatalog } from "@/lib/store-purchases";
+import { storeApiUser,storeApiError } from "@/lib/store-api";
+import { mobileNoStoreHeaders } from "@/lib/mobile-api";
+export async function GET(request:Request){try{const user=await storeApiUser(request,false,true);const q=new URL(request.url).searchParams;const filter={kind:q.get("kind")?.slice(0,20),slug:q.get("slug")?.slice(0,150),history:q.get("history")==="true",courseSlugs:q.has("courses")?(q.get("courses")||"").split(",").filter(Boolean).slice(0,100):undefined};return Response.json({ok:true,...await storeCatalog(user.id,filter)},{headers:mobileNoStoreHeaders});}catch(e){return storeApiError(e);}}

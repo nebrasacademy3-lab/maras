@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { getPool } from "@/db";
 import { logEvent } from "@/lib/observability";
 
 // Fixed advisory-lock key shared by every server instance so only one of them
@@ -25,23 +25,16 @@ async function runTick() {
   if (!state || state.running) return;
   state.running = true;
   try {
-    const [{ getDb }, { runLifecycleAutomations }, { dispatchDuePushNotifications }] = await Promise.all([
-      import("@/db"),
+    const [{ runLifecycleAutomations }, { dispatchDuePushNotifications }] = await Promise.all([
       import("@/lib/lifecycle-automation"),
       import("@/lib/push-campaigns"),
     ]);
-    const db = getDb();
-    const locked = await db.execute(sql`SELECT pg_try_advisory_lock(${SCHEDULER_LOCK_KEY}) AS locked`);
-    const acquired = Boolean((locked.rows[0] as { locked?: boolean } | undefined)?.locked);
-    if (!acquired) return;
-    try {
+    await withLifecycleSchedulerLock(async () => {
       const startedAt = Date.now();
       const lifecycle = await runLifecycleAutomations();
       const push = await dispatchDuePushNotifications(100);
       logEvent("info", "lifecycle.scheduler.tick", { durationMs: Date.now() - startedAt, ...lifecycle, pushAttempted: push.attempted, pushAccepted: push.accepted, pushRejected: push.rejected });
-    } finally {
-      await db.execute(sql`SELECT pg_advisory_unlock(${SCHEDULER_LOCK_KEY})`).catch(() => undefined);
-    }
+    });
   } catch (error) {
     logEvent("warn", "lifecycle.scheduler.failed", { message: error instanceof Error ? error.message : "unknown error" });
   } finally {
@@ -59,4 +52,23 @@ export function startLifecycleScheduler() {
   firstRun.unref?.();
   logEvent("info", "lifecycle.scheduler.started", { intervalMs: interval });
   return true;
+}
+
+/** A session advisory lock must stay on one checked-out client until release. */
+export async function withLifecycleSchedulerLock<T>(run: () => Promise<T>) {
+  const connection = await getPool().connect();
+  let acquired = false;
+  try {
+    const locked = await connection.query<{ locked: boolean }>("SELECT pg_try_advisory_lock($1) AS locked", [SCHEDULER_LOCK_KEY]);
+    acquired = Boolean(locked.rows[0]?.locked);
+    if (!acquired) return null;
+    return await run();
+  } finally {
+    let discard = false;
+    if (acquired) {
+      try { await connection.query("SELECT pg_advisory_unlock($1)", [SCHEDULER_LOCK_KEY]); }
+      catch { discard = true; }
+    }
+    connection.release(discard);
+  }
 }

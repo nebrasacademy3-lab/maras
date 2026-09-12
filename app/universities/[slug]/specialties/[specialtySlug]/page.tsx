@@ -1,3 +1,4 @@
+import { resolvedPublicPageMetadata } from "@/lib/seo-settings";
 import type { Metadata } from "next";
 import { cache } from "react";
 import Link from "next/link";
@@ -8,7 +9,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getCoursesCatalog, getInstitutionCatalog } from "@/lib/catalog-store";
 import { coursesForSpecialty, getPublicSpecialtyCatalog } from "@/lib/seo-catalog";
-import { breadcrumbData, itemListData, jsonLd, publicPageMetadata, seoSegment } from "@/lib/seo";
+import { breadcrumbData, itemListData, jsonLd, seoSegment } from "@/lib/seo";
 
 type Props = { params: Promise<{ slug: string; specialtySlug: string }> };
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug, specialtySlug } = await params;
   const data = await pageData(slug, specialtySlug);
   if (!data) notFound();
-  return publicPageMetadata(data.path, `${data.specialty.name} في ${data.institution.name}`, `مواد وشروحات تخصص ${data.specialty.name} لطلاب ${data.institution.name} على منصة مراس العلم. ${data.specialty.description}`, { noindex: !data.rows.length });
+  return resolvedPublicPageMetadata(data.path, `${data.specialty.name} في ${data.institution.name}`, `مواد وشروحات تخصص ${data.specialty.name} لطلاب ${data.institution.name} على منصة مراس العلم. ${data.specialty.description}`, { noindex: !data.rows.length });
 }
 
 export default async function SpecialtyPage({ params }: Props) {

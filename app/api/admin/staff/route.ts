@@ -1,8 +1,9 @@
+import { adminUserTransitionError } from "@/lib/admin-operations";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { readBoundedJsonObject } from "@/lib/request-body";
-import { and, eq, or } from "drizzle-orm";
+import { and, eq, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { auditLogs, supervisorAssignments, users } from "@/db/schema";
+import { auditLogs, authSessions, pushDevices, supervisorAssignments, users } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, hashPassword, roleAllowed, sameOriginRequest, validEmail, validPassword, validSaudiPhone } from "@/lib/auth";
 import { cleanText, isAdminRequest, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
@@ -14,9 +15,11 @@ function canonicalPhone(value: string) {
   return `+966${digits}`;
 }
 
-async function ensureAssignment(userId: number, role: string, universitySlug: string, specialty: string) {
+type Db = ReturnType<typeof getDb>;
+type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+async function ensureAssignment(db: Db | Tx, userId: number, role: string, universitySlug: string, specialty: string) {
   if (role !== "supervisor") return;
-  const db = getDb();
   const [assignment] = await db.select({ id: supervisorAssignments.id }).from(supervisorAssignments).where(and(
     eq(supervisorAssignments.supervisorId, userId),
     eq(supervisorAssignments.institutionSlug, universitySlug),
@@ -25,8 +28,8 @@ async function ensureAssignment(userId: number, role: string, universitySlug: st
   if (!assignment) await db.insert(supervisorAssignments).values({ supervisorId: userId, institutionSlug: universitySlug, specialty, active: true });
 }
 
-async function auditStaffChange(actorEmail: string, request: Request, action: "create" | "update", userId: number, before: unknown, after: unknown) {
-  await getDb().insert(auditLogs).values({
+async function auditStaffChange(db: Db | Tx, actorEmail: string, request: Request, action: "create" | "update", userId: number, before: unknown, after: unknown) {
+  await db.insert(auditLogs).values({
     actorEmail,
     action,
     entityType: "staff_user",
@@ -45,7 +48,7 @@ export async function POST(request: Request) {
   const machineAuthorized = isAdminRequest(request);
   if (!machineAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const session = machineAuthorized ? null : await getSessionUser(request);
-  if (!machineAuthorized && !roleAllowed(session, ["admin"])) return jsonError("غير مصرح", 401);
+  if (!roleAllowed(session, ["admin"])) return jsonError("غير مصرح", 401);
 
   const identity = machineAuthorized ? `machine:${clientIp(request)}` : `user:${session!.id}`;
   if (!await checkRateLimit("admin-staff", identity, 20, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
@@ -87,7 +90,16 @@ export async function POST(request: Request) {
     if (session && existing.id === session.id && role !== "admin") return jsonError("لا يمكنك إزالة صلاحية حسابك الإداري الحالي");
     if (password && !validPassword(password)) return jsonError("كلمة المرور الجديدة لا تحقق المتطلبات");
     const after = { email, phone, fullName, role, universitySlug, specialty, status: "active" };
-    await db.update(users).set({
+    const passwordHash = password ? await hashPassword(password) : undefined;
+    const changed = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${'active-admin-membership'}))`);
+      const [current] = await tx.select().from(users).where(eq(users.id, existing.id)).for("update");
+      if (!current) return "الموظف غير موجود";
+      const activeAdmins = await tx.select({ id: users.id }).from(users).where(and(eq(users.role, "admin"), eq(users.status, "active")));
+      const error = adminUserTransitionError(current, { role, status: "active" }, session?.id || null, activeAdmins.length);
+      if (error) return error;
+      if (current.email !== email) return "لا يمكن تغيير هوية الحساب من نموذج الموظفين";
+      await tx.update(users).set({
       email,
       phone,
       fullName,
@@ -95,12 +107,19 @@ export async function POST(request: Request) {
       universitySlug,
       specialty,
       profileCompletedAt: now,
-      passwordHash: password ? await hashPassword(password) : existing.passwordHash,
+      passwordHash: passwordHash ?? current.passwordHash,
       status: "active",
       updatedAt: now,
     }).where(eq(users.id, existing.id));
-    await ensureAssignment(existing.id, role, universitySlug, specialty);
-    await auditStaffChange(actor, request, "update", existing.id, { email: existing.email, role: existing.role, status: existing.status }, after);
+      if (passwordHash || current.role !== role) {
+        await tx.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, existing.id), isNull(authSessions.revokedAt)));
+        await tx.update(pushDevices).set({ status: "revoked", lastSeenAt: now }).where(eq(pushDevices.userId, existing.id));
+      }
+      await ensureAssignment(tx, existing.id, role, universitySlug, specialty);
+      await auditStaffChange(tx, actor, request, "update", existing.id, { email: current.email, role: current.role, status: current.status }, { ...after, passwordReset: Boolean(passwordHash) });
+      return null;
+    });
+    if (changed) return jsonError(changed, 409);
     return response({ ok: true, user: { id: existing.id, email, role, updated: true } });
   }
 
@@ -119,7 +138,7 @@ export async function POST(request: Request) {
     createdAt: now,
     updatedAt: now,
   }).returning({ id: users.id, email: users.email, role: users.role });
-  await ensureAssignment(created.id, role, universitySlug, specialty);
-  await auditStaffChange(actor, request, "create", created.id, null, { email, role, universitySlug, specialty, status: "active" });
+  await ensureAssignment(db, created.id, role, universitySlug, specialty);
+  await auditStaffChange(db, actor, request, "create", created.id, null, { email, role, universitySlug, specialty, status: "active" });
   return response({ ok: true, user: created }, 201);
 }

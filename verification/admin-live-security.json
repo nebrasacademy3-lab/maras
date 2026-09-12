@@ -1,0 +1,30 @@
+{
+  "generatedAt": "2026-09-12T18:41:37.354Z",
+  "environment": "local PostgreSQL and HTTP with real MFA",
+  "checks": [
+    {
+      "name": "live MFA setup, verification, session-bound step-up and OTP replay rejection",
+      "status": "passed"
+    },
+    {
+      "name": "valid broad machine token cannot promote accounts",
+      "status": "passed"
+    },
+    {
+      "name": "current administrator cannot remove their own final administration access",
+      "status": "passed"
+    },
+    {
+      "name": "manual payment retry issues one invoice and grants one access record",
+      "status": "passed"
+    },
+    {
+      "name": "concurrent duplicate extension is applied once and stale edits are rejected",
+      "status": "passed"
+    },
+    {
+      "name": "lifetime access remains lifetime when an extension is requested",
+      "status": "passed"
+    }
+  ]
+}

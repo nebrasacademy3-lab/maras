@@ -1,0 +1,18 @@
+{
+  "testedAt": "2026-09-12T18:41:02.192Z",
+  "engine": "ClamAV 1.4.6",
+  "signatures": "official daily/main/bytecode downloaded by freshclam",
+  "adapter": {
+    "clean": "clean",
+    "eicar": "quarantined",
+    "threat": "Eicar-Test-Signature"
+  },
+  "postgresQueue": {
+    "scanned": 1,
+    "clean": 1,
+    "digestVerified": true,
+    "attempts": 1
+  },
+  "production": false,
+  "studentDataUsed": false
+}

@@ -146,3 +146,5 @@
   .page form button { min-height: 44px; }
 }
 .tableWrap { max-width: 100%; overscroll-behavior-x: contain; scrollbar-width: thin; }
+
+.formGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-block:18px}.formGrid label{display:flex;flex-direction:column;gap:8px;font-weight:600}.formGrid input,.formGrid select,.formGrid textarea{width:100%;padding:12px;border:1px solid var(--border,#dce2ef);border-radius:10px;background:var(--surface,#fff);color:inherit;font:inherit}.formGrid textarea{min-height:88px}.pagination{display:flex;align-items:center;justify-content:center;gap:15px;flex-wrap:wrap;margin-block:20px}.pagination button,.formGrid button{padding:10px 18px;border:1px solid var(--border,#dce2ef);border-radius:10px;background:var(--surface,#fff);color:inherit;cursor:pointer}.pagination button:disabled,.formGrid button:disabled{opacity:.5;cursor:default}

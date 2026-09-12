@@ -232,9 +232,9 @@ function DetailDrawer({ detail, loading, error, onClose, onApprove, onRefund, ac
   </div>;
 }
 
-export function FinanceCenter({ adminName }: { adminName: string }) {
-  const [filters, setFilters] = useState<FilterState>(EMPTY_FILTERS);
-  const [appliedFilters, setAppliedFilters] = useState<FilterState>(EMPTY_FILTERS);
+export function FinanceCenter({ adminName, initialSearch = "" }: { adminName: string; initialSearch?: string }) {
+  const [filters, setFilters] = useState<FilterState>(() => ({ ...EMPTY_FILTERS, search: initialSearch }));
+  const [appliedFilters, setAppliedFilters] = useState<FilterState>(() => ({ ...EMPTY_FILTERS, search: initialSearch }));
   const [data, setData] = useState<FinanceData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");

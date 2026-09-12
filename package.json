@@ -17,7 +17,16 @@
     "db:push": "drizzle-kit push",
     "video:worker": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/video-worker.ts",
     "video:worker:once": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/video-worker.ts --once",
-    "lifecycle:dispatch": "bash scripts/dispatch-lifecycle.sh"
+    "lifecycle:dispatch": "bash scripts/dispatch-lifecycle.sh",
+    "files:scan": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/file-scan-worker.ts",
+    "files:scan:once": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/file-scan-worker.ts --once",
+    "qa:database": "node scripts/qa-database.mjs",
+    "qa:seed": "node scripts/qa-seed.mjs",
+    "qa:web": "node scripts/qa-web.mjs",
+    "qa:store": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/qa-store-check.ts",
+    "admin:bootstrap": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/bootstrap-admin.ts",
+    "qa:build": "node scripts/qa-build.mjs",
+    "release:package": "node scripts/package-release.mjs"
   },
   "dependencies": {
     "busboy": "1.6.0",
@@ -31,6 +40,7 @@
     "react-dom": "19.2.6"
   },
   "devDependencies": {
+    "@playwright/cli": "0.1.19",
     "@tailwindcss/postcss": "4.2.1",
     "@types/busboy": "1.5.4",
     "@types/node": "22.19.19",
@@ -38,8 +48,10 @@
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
     "drizzle-kit": "0.31.10",
+    "embedded-postgres": "18.4.0-beta.17",
     "eslint": "9.39.4",
     "eslint-config-next": "16.3.4",
+    "lighthouse": "13.4.1",
     "tailwindcss": "4.2.1",
     "tsx": "4.22.1",
     "typescript": "5.9.3"
