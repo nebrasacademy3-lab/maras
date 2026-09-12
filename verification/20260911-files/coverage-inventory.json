@@ -1,0 +1,996 @@
+{
+  "scope": "Source inventory, not test coverage or proof that every feature works",
+  "apiRoutes": 105,
+  "webPages": 49,
+  "mobileScreenFiles": 39,
+  "routes": [
+    {
+      "file": "app/api/admin/ai/route.ts",
+      "path": "/app/api/admin/ai",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/analytics/route.ts",
+      "path": "/app/api/admin/analytics",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/bundles/route.ts",
+      "path": "/app/api/admin/bundles",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH",
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/compliance/route.ts",
+      "path": "/app/api/admin/compliance",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/console/route.ts",
+      "path": "/app/api/admin/console",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/course-requests/[id]/download/route.ts",
+      "path": "/app/api/admin/course-requests/[id]/download",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/course-resources/route.ts",
+      "path": "/app/api/admin/course-resources",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH",
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/courses/[slug]/audience/route.ts",
+      "path": "/app/api/admin/courses/[slug]/audience",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/covers/route.ts",
+      "path": "/app/api/admin/covers",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/files/scan/route.ts",
+      "path": "/app/api/admin/files/scan",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/finance/route.ts",
+      "path": "/app/api/admin/finance",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/learning-tracks/route.ts",
+      "path": "/app/api/admin/learning-tracks",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/lifecycle/dispatch/route.ts",
+      "path": "/app/api/admin/lifecycle/dispatch",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/logos/route.ts",
+      "path": "/app/api/admin/logos",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/notifications/dispatch/route.ts",
+      "path": "/app/api/admin/notifications/dispatch",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/operations/summary/route.ts",
+      "path": "/app/api/admin/operations/summary",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/partners/route.ts",
+      "path": "/app/api/admin/partners",
+      "methods": [
+        "GET",
+        "POST",
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/referrals/route.ts",
+      "path": "/app/api/admin/referrals",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/refunds/route.ts",
+      "path": "/app/api/admin/refunds",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/security/mfa/route.ts",
+      "path": "/app/api/admin/security/mfa",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/seo/route.ts",
+      "path": "/app/api/admin/seo",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/settlements/route.ts",
+      "path": "/app/api/admin/settlements",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/staff/route.ts",
+      "path": "/app/api/admin/staff",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/students/[email]/actions/route.ts",
+      "path": "/app/api/admin/students/[email]/actions",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/students/[email]/devices/route.ts",
+      "path": "/app/api/admin/students/[email]/devices",
+      "methods": [
+        "GET",
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/students/[email]/records/route.ts",
+      "path": "/app/api/admin/students/[email]/records",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/students/[email]/route.ts",
+      "path": "/app/api/admin/students/[email]",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/support/metrics/route.ts",
+      "path": "/app/api/admin/support/metrics",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/videos/process/route.ts",
+      "path": "/app/api/admin/videos/process",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/admin/videos/route.ts",
+      "path": "/app/api/admin/videos",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ai/conversations/[id]/messages/route.ts",
+      "path": "/app/api/ai/conversations/[id]/messages",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ai/conversations/[id]/route.ts",
+      "path": "/app/api/ai/conversations/[id]",
+      "methods": [
+        "GET",
+        "PATCH",
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ai/conversations/route.ts",
+      "path": "/app/api/ai/conversations",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ai/files/[id]/actions/route.ts",
+      "path": "/app/api/ai/files/[id]/actions",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ai/files/route.ts",
+      "path": "/app/api/ai/files",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ai/quizzes/[id]/attempts/route.ts",
+      "path": "/app/api/ai/quizzes/[id]/attempts",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ai/quizzes/[id]/route.ts",
+      "path": "/app/api/ai/quizzes/[id]",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ai/status/route.ts",
+      "path": "/app/api/ai/status",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ai/subscription/checkout/route.ts",
+      "path": "/app/api/ai/subscription/checkout",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/analytics/route.ts",
+      "path": "/app/api/analytics",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/assistant/route.ts",
+      "path": "/app/api/assistant",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/device/route.ts",
+      "path": "/app/api/auth/device",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/email-verification/route.ts",
+      "path": "/app/api/auth/email-verification",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/forgot-password/route.ts",
+      "path": "/app/api/auth/forgot-password",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/login/route.ts",
+      "path": "/app/api/auth/login",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/logout/route.ts",
+      "path": "/app/api/auth/logout",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/me/route.ts",
+      "path": "/app/api/auth/me",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/oauth/[provider]/callback/route.ts",
+      "path": "/app/api/auth/oauth/[provider]/callback",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/oauth/[provider]/start/route.ts",
+      "path": "/app/api/auth/oauth/[provider]/start",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/oauth/exchange/route.ts",
+      "path": "/app/api/auth/oauth/exchange",
+      "methods": [],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/oauth/providers/route.ts",
+      "path": "/app/api/auth/oauth/providers",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/register/route.ts",
+      "path": "/app/api/auth/register",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/auth/reset-password/route.ts",
+      "path": "/app/api/auth/reset-password",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/cart/route.ts",
+      "path": "/app/api/cart",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/catalog/programs/route.ts",
+      "path": "/app/api/catalog/programs",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/catalog/search/route.ts",
+      "path": "/app/api/catalog/search",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/checkout/route.ts",
+      "path": "/app/api/checkout",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/coupons/validate/route.ts",
+      "path": "/app/api/coupons/validate",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/course-requests/[id]/files/route.ts",
+      "path": "/app/api/course-requests/[id]/files",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/course-requests/files/[fileId]/route.ts",
+      "path": "/app/api/course-requests/files/[fileId]",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/course-requests/route.ts",
+      "path": "/app/api/course-requests",
+      "methods": [
+        "POST",
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/course-resources/[id]/route.ts",
+      "path": "/app/api/course-resources/[id]",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/course-resources/route.ts",
+      "path": "/app/api/course-resources",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/covers/[slug]/route.ts",
+      "path": "/app/api/covers/[slug]",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/favorites/route.ts",
+      "path": "/app/api/favorites",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/health/route.ts",
+      "path": "/app/api/health",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/invoices/[orderNumber]/download/route.ts",
+      "path": "/app/api/invoices/[orderNumber]/download",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/learning-tracks/interest/route.ts",
+      "path": "/app/api/learning-tracks/interest",
+      "methods": [
+        "GET",
+        "POST",
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/logos/[slug]/route.ts",
+      "path": "/app/api/logos/[slug]",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/account/route.ts",
+      "path": "/app/api/mobile/account",
+      "methods": [
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/auth/login/route.ts",
+      "path": "/app/api/mobile/auth/login",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/auth/logout/route.ts",
+      "path": "/app/api/mobile/auth/logout",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/auth/register/route.ts",
+      "path": "/app/api/mobile/auth/register",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/catalog/route.ts",
+      "path": "/app/api/mobile/catalog",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/dashboard/route.ts",
+      "path": "/app/api/mobile/dashboard",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/favorites/route.ts",
+      "path": "/app/api/mobile/favorites",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/notes/route.ts",
+      "path": "/app/api/mobile/notes",
+      "methods": [
+        "GET",
+        "POST",
+        "PATCH",
+        "DELETE",
+        "PUT"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/notifications/route.ts",
+      "path": "/app/api/mobile/notifications",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/mobile/push/route.ts",
+      "path": "/app/api/mobile/push",
+      "methods": [
+        "POST",
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/ping/route.ts",
+      "path": "/app/api/ping",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/profile/onboarding/route.ts",
+      "path": "/app/api/profile/onboarding",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/profile/password/route.ts",
+      "path": "/app/api/profile/password",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/profile/route.ts",
+      "path": "/app/api/profile",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/profile/sessions/route.ts",
+      "path": "/app/api/profile/sessions",
+      "methods": [
+        "GET",
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/progress/route.ts",
+      "path": "/app/api/progress",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/public/announcements/route.ts",
+      "path": "/app/api/public/announcements",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/public/bundles/route.ts",
+      "path": "/app/api/public/bundles",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/public/learning-tracks/route.ts",
+      "path": "/app/api/public/learning-tracks",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/public/partners/[id]/logo/route.ts",
+      "path": "/app/api/public/partners/[id]/logo",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/public/partners/route.ts",
+      "path": "/app/api/public/partners",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/public/settings/route.ts",
+      "path": "/app/api/public/settings",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/referrals/route.ts",
+      "path": "/app/api/referrals",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/reviews/route.ts",
+      "path": "/app/api/reviews",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/supervisor/request-files/[id]/route.ts",
+      "path": "/app/api/supervisor/request-files/[id]",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/supervisor/requests/route.ts",
+      "path": "/app/api/supervisor/requests",
+      "methods": [
+        "GET",
+        "PATCH"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/supervisor/workspace/route.ts",
+      "path": "/app/api/supervisor/workspace",
+      "methods": [
+        "GET",
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/support/files/[id]/route.ts",
+      "path": "/app/api/support/files/[id]",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/support/route.ts",
+      "path": "/app/api/support",
+      "methods": [
+        "POST",
+        "GET",
+        "DELETE",
+        "PATCH"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/sync/route.ts",
+      "path": "/app/api/sync",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/sync/stream/route.ts",
+      "path": "/app/api/sync/stream",
+      "methods": [
+        "GET"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/video/[lessonId]/hls/[...path]/route.ts",
+      "path": "/app/api/video/[lessonId]/hls/[...path]",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/video/[lessonId]/route.ts",
+      "path": "/app/api/video/[lessonId]",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/video/session/route.ts",
+      "path": "/app/api/video/session",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/waitlist/route.ts",
+      "path": "/app/api/waitlist",
+      "methods": [
+        "GET",
+        "POST",
+        "DELETE"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    },
+    {
+      "file": "app/api/webhooks/tap/route.ts",
+      "path": "/app/api/webhooks/tap",
+      "methods": [
+        "POST"
+      ],
+      "verification": "inventoried only; not individually exercised via live HTTP"
+    }
+  ],
+  "pages": [
+    "app/accessibility/page.tsx",
+    "app/admin/ai/page.tsx",
+    "app/admin/bundles/page.tsx",
+    "app/admin/course-resources/page.tsx",
+    "app/admin/courses/[slug]/page.tsx",
+    "app/admin/files/page.tsx",
+    "app/admin/finance/page.tsx",
+    "app/admin/learning-tracks/page.tsx",
+    "app/admin/operations/page.tsx",
+    "app/admin/page.tsx",
+    "app/admin/partners/page.tsx",
+    "app/admin/referrals/page.tsx",
+    "app/admin/security/page.tsx",
+    "app/admin/seo/page.tsx",
+    "app/admin/students/[email]/page.tsx",
+    "app/cart/page.tsx",
+    "app/checkout/[slug]/page.tsx",
+    "app/complete-profile/page.tsx",
+    "app/contact/page.tsx",
+    "app/content-policy/page.tsx",
+    "app/courses/[slug]/page.tsx",
+    "app/courses/page.tsx",
+    "app/dashboard/page.tsx",
+    "app/favorites/page.tsx",
+    "app/forgot-password/page.tsx",
+    "app/how-it-works/page.tsx",
+    "app/invoices/[orderNumber]/page.tsx",
+    "app/learn/[slug]/page.tsx",
+    "app/login/page.tsx",
+    "app/meras-ai/page.tsx",
+    "app/meras-ai/subscribe/page.tsx",
+    "app/notifications/page.tsx",
+    "app/onboarding/page.tsx",
+    "app/page.tsx",
+    "app/privacy/page.tsx",
+    "app/referrals/page.tsx",
+    "app/refund-policy/page.tsx",
+    "app/register/page.tsx",
+    "app/request-course/page.tsx",
+    "app/reset-password/page.tsx",
+    "app/study-tools/page.tsx",
+    "app/study-tools/subscribe/page.tsx",
+    "app/supervisor/page.tsx",
+    "app/support/page.tsx",
+    "app/terms/page.tsx",
+    "app/universities/[slug]/page.tsx",
+    "app/universities/[slug]/specialties/[specialtySlug]/page.tsx",
+    "app/universities/page.tsx",
+    "app/verify-email/page.tsx"
+  ],
+  "mobileScreens": [
+    "mobile/app/(auth)/_layout.tsx",
+    "mobile/app/(auth)/login.tsx",
+    "mobile/app/(auth)/register.tsx",
+    "mobile/app/(auth)/welcome.tsx",
+    "mobile/app/(tabs)/_layout.tsx",
+    "mobile/app/(tabs)/account.tsx",
+    "mobile/app/(tabs)/ai.tsx",
+    "mobile/app/(tabs)/courses.tsx",
+    "mobile/app/(tabs)/index.tsx",
+    "mobile/app/(tabs)/learning.tsx",
+    "mobile/app/(tabs)/universities.tsx",
+    "mobile/app/_layout.tsx",
+    "mobile/app/admin.tsx",
+    "mobile/app/ai/conversation/[id].tsx",
+    "mobile/app/ai/quiz/[id].tsx",
+    "mobile/app/assistant.tsx",
+    "mobile/app/cart.tsx",
+    "mobile/app/complete-profile.tsx",
+    "mobile/app/contact.tsx",
+    "mobile/app/course/[slug].tsx",
+    "mobile/app/favorites.tsx",
+    "mobile/app/forgot-password.tsx",
+    "mobile/app/index.tsx",
+    "mobile/app/learn/[slug].tsx",
+    "mobile/app/lesson/[courseSlug]/[lessonId].tsx",
+    "mobile/app/notifications.tsx",
+    "mobile/app/oauth/callback.tsx",
+    "mobile/app/onboarding.tsx",
+    "mobile/app/orders.tsx",
+    "mobile/app/profile.tsx",
+    "mobile/app/r/[code].tsx",
+    "mobile/app/referrals.tsx",
+    "mobile/app/requests.tsx",
+    "mobile/app/security.tsx",
+    "mobile/app/supervisor.tsx",
+    "mobile/app/support.tsx",
+    "mobile/app/tracks.tsx",
+    "mobile/app/university/[slug].tsx",
+    "mobile/app/verify-email.tsx"
+  ],
+  "externalServices": "No live provider credentials, database, browser or devices were available for end-to-end verification."
+}

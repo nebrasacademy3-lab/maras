@@ -1,0 +1,3 @@
+Command: TypeScript.transpileModule per changed/new TS/TSX source; global TypeScript 5.8.3.
+Not a project typecheck or build.
+{ files: 42, syntaxDiagnostics: 0 }

@@ -1,0 +1,154 @@
+TAP version 13
+# Subtest: course.access: another student's record cannot be mutated
+ok 1 - course.access: another student's record cannot be mutated
+  ---
+  duration_ms: 139.680421
+  type: 'test'
+  ...
+# Subtest: ai.status: another student's record cannot be mutated
+ok 2 - ai.status: another student's record cannot be mutated
+  ---
+  duration_ms: 58.245828
+  type: 'test'
+  ...
+# Subtest: waitlist.cancel: another student's record cannot be mutated
+ok 3 - waitlist.cancel: another student's record cannot be mutated
+  ---
+  duration_ms: 35.064464
+  type: 'test'
+  ...
+# Subtest: track.cancel: another student's record cannot be mutated
+ok 4 - track.cancel: another student's record cannot be mutated
+  ---
+  duration_ms: 35.796824
+  type: 'test'
+  ...
+# Subtest: favorite.remove: another student's record cannot be mutated
+ok 5 - favorite.remove: another student's record cannot be mutated
+  ---
+  duration_ms: 33.672849
+  type: 'test'
+  ...
+# Subtest: cart.remove: another student's record cannot be mutated
+ok 6 - cart.remove: another student's record cannot be mutated
+  ---
+  duration_ms: 30.670354
+  type: 'test'
+  ...
+# Subtest: support.reply: another student's record cannot be mutated
+ok 7 - support.reply: another student's record cannot be mutated
+  ---
+  duration_ms: 38.288048
+  type: 'test'
+  ...
+# Subtest: support.status: another student's record cannot be mutated
+ok 8 - support.status: another student's record cannot be mutated
+  ---
+  duration_ms: 34.718581
+  type: 'test'
+  ...
+# Subtest: request.status: another student's record cannot be mutated
+ok 9 - request.status: another student's record cannot be mutated
+  ---
+  duration_ms: 27.685806
+  type: 'test'
+  ...
+# Subtest: notification.cancel: another student's record cannot be mutated
+ok 10 - notification.cancel: another student's record cannot be mutated
+  ---
+  duration_ms: 30.824225
+  type: 'test'
+  ...
+# Subtest: notification.retry: another student's record cannot be mutated
+ok 11 - notification.retry: another student's record cannot be mutated
+  ---
+  duration_ms: 38.803048
+  type: 'test'
+  ...
+# Subtest: session.revoke: another student's record cannot be mutated
+ok 12 - session.revoke: another student's record cannot be mutated
+  ---
+  duration_ms: 29.637067
+  type: 'test'
+  ...
+# Subtest: push.disable: another student's record cannot be mutated
+ok 13 - push.disable: another student's record cannot be mutated
+  ---
+  duration_ms: 28.595192
+  type: 'test'
+  ...
+# Subtest: grant retries are idempotent even after the catalog changes
+ok 14 - grant retries are idempotent even after the catalog changes
+  ---
+  duration_ms: 39.096643
+  type: 'test'
+  ...
+# Subtest: reuse of an operation key for a different body or student returns conflict
+ok 15 - reuse of an operation key for a different body or student returns conflict
+  ---
+  duration_ms: 24.588566
+  type: 'test'
+  ...
+# Subtest: failed outbox insert rolls back grant, access event and audit/idempotency rows
+ok 16 - failed outbox insert rolls back grant, access event and audit/idempotency rows
+  ---
+  duration_ms: 25.146452
+  type: 'test'
+  ...
+# Subtest: internal support replies never create a student notification or reopen a ticket
+ok 17 - internal support replies never create a student notification or reopen a ticket
+  ---
+  duration_ms: 19.389697
+  type: 'test'
+  ...
+# Subtest: profile updates reject stale data and invalidate phone verification only on change
+ok 18 - profile updates reject stale data and invalidate phone verification only on change
+  ---
+  duration_ms: 26.542636
+  type: 'test'
+  ...
+# Subtest: suspension revokes sessions and Push without deleting durable device records
+ok 19 - suspension revokes sessions and Push without deleting durable device records
+  ---
+  duration_ms: 21.414269
+  type: 'test'
+  ...
+# Subtest: single-session revocation disables only Push registered to that device
+ok 20 - single-session revocation disables only Push registered to that device
+  ---
+  duration_ms: 23.963075
+  type: 'test'
+  ...
+# Subtest: cancelled waitlist opt-in cancels only its own unclaimed launch notice
+ok 21 - cancelled waitlist opt-in cancels only its own unclaimed launch notice
+  ---
+  duration_ms: 20.836784
+  type: 'test'
+  ...
+# Subtest: accepted/processing notifications cannot be retracted or retried
+ok 22 - accepted/processing notifications cannot be retracted or retried
+  ---
+  duration_ms: 47.151451
+  type: 'test'
+  ...
+# Subtest: existing paid access cannot be overwritten by an administrative grant
+ok 23 - existing paid access cannot be overwritten by an administrative grant
+  ---
+  duration_ms: 21.498919
+  type: 'test'
+  ...
+# Subtest: unknown financial/verification actions and oversized requests are rejected
+ok 24 - unknown financial/verification actions and oversized requests are rejected
+  ---
+  duration_ms: 23.373295
+  type: 'test'
+  ...
+1..24
+# tests 24
+# suites 0
+# pass 24
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1457.276107

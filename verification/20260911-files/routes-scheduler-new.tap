@@ -1,0 +1,191 @@
+TAP version 13
+# Subtest: file download unauthenticated access does not query storage or scan
+ok 1 - file download unauthenticated access does not query storage or scan
+  ---
+  duration_ms: 39.798327
+  type: 'test'
+  ...
+# Subtest: file download rejects another student before triggering scan
+ok 2 - file download rejects another student before triggering scan
+  ---
+  duration_ms: 6.154833
+  type: 'test'
+  ...
+# Subtest: file download validates integer identifiers without flooring
+ok 3 - file download validates integer identifiers without flooring
+  ---
+  duration_ms: 5.647381
+  type: 'test'
+  ...
+# Subtest: file download clean owner response streams bytes from recorded storage provider
+ok 4 - file download clean owner response streams bytes from recorded storage provider
+  ---
+  duration_ms: 6.908094
+  type: 'test'
+  ...
+# Subtest: file download authorized admin can access student attachment
+ok 5 - file download authorized admin can access student attachment
+  ---
+  duration_ms: 4.85459
+  type: 'test'
+  ...
+# Subtest: file download pending state returns actionable JSON and Retry-After without file bytes
+ok 6 - file download pending state returns actionable JSON and Retry-After without file bytes
+  ---
+  duration_ms: 8.872789
+  type: 'test'
+  ...
+# Subtest: file download quarantined state cannot retrieve underlying object
+ok 7 - file download quarantined state cannot retrieve underlying object
+  ---
+  duration_ms: 9.316
+  type: 'test'
+  ...
+# Subtest: file download rate limit prevents scanner and storage work
+ok 8 - file download rate limit prevents scanner and storage work
+  ---
+  duration_ms: 6.356074
+  type: 'test'
+  ...
+# Subtest: file download missing stored file is explicitly not found
+ok 9 - file download missing stored file is explicitly not found
+  ---
+  duration_ms: 5.058948
+  type: 'test'
+  ...
+# Subtest: ZIP admin endpoint rejects student accounts before storage
+ok 10 - ZIP admin endpoint rejects student accounts before storage
+  ---
+  duration_ms: 11.402113
+  type: 'test'
+  ...
+# Subtest: ZIP endpoint creates real ZIP bytes for a complete clean request
+ok 11 - ZIP endpoint creates real ZIP bytes for a complete clean request
+  ---
+  duration_ms: 17.391998
+  type: 'test'
+  ...
+# Subtest: ZIP missing attachment never returns a silently incomplete successful archive
+ok 12 - ZIP missing attachment never returns a silently incomplete successful archive
+  ---
+  duration_ms: 6.994503
+  type: 'test'
+  ...
+# Subtest: ZIP caps synchronous scan attempts at two and blocks remaining pending files
+ok 13 - ZIP caps synchronous scan attempts at two and blocks remaining pending files
+  ---
+  duration_ms: 10.369928
+  type: 'test'
+  ...
+# Subtest: ZIP changed attachment set during scan returns conflict before reading bytes
+ok 14 - ZIP changed attachment set during scan returns conflict before reading bytes
+  ---
+  duration_ms: 9.555851
+  type: 'test'
+  ...
+# Subtest: ZIP metadata limit prevents work on oversized archives
+ok 15 - ZIP metadata limit prevents work on oversized archives
+  ---
+  duration_ms: 10.129482
+  type: 'test'
+  ...
+# Subtest: ZIP actual byte-limit failure cannot become a successful partial archive
+ok 16 - ZIP actual byte-limit failure cannot become a successful partial archive
+  ---
+  duration_ms: 6.169645
+  type: 'test'
+  ...
+# Subtest: scheduler tick does not overlap a running batch and records completed heartbeat
+ok 17 - scheduler tick does not overlap a running batch and records completed heartbeat
+  ---
+  duration_ms: 75.290767
+  type: 'test'
+  ...
+# Subtest: scheduler failure releases local running flag and logs sanitized code
+ok 18 - scheduler failure releases local running flag and logs sanitized code
+  ---
+  duration_ms: 21.459667
+  type: 'test'
+  ...
+# Subtest: migration journal extends 0029 with 0030 without modifying previous chain identity
+not ok 19 - migration journal extends 0029 with 0030 without modifying previous chain identity
+  ---
+  duration_ms: 6.347873
+  type: 'test'
+  location: '/mnt/data/work/maras-main/tests/file-scan-scheduler-migration.test.mjs:8:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+    + actual - expected
+    
+    + '0029_admin_control_completion'
+    - '0029_admin_completion'
+                    ^
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: '0029_admin_completion'
+  actual: '0029_admin_control_completion'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/tests/file-scan-scheduler-migration.test.mjs:8:175)
+    async Test.run (node:internal/test_runner/test:1054:7)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: migration, Drizzle schema and snapshot all include four durable queues
+ok 20 - migration, Drizzle schema and snapshot all include four durable queues
+  ---
+  duration_ms: 7.062957
+  type: 'test'
+  ...
+# Subtest: deployment includes private scanner, supervised automatic worker and no unsafe bypass
+ok 21 - deployment includes private scanner, supervised automatic worker and no unsafe bypass
+  ---
+  duration_ms: 2.117189
+  type: 'test'
+  ...
+# Subtest: scanner reads actual private stored bytes and honors explicit provider despite default changes
+ok 22 - scanner reads actual private stored bytes and honors explicit provider despite default changes
+  ---
+  duration_ms: 54.935178
+  type: 'test'
+  ...
+# Subtest: missing actual stored object remains pending with repairable error
+ok 23 - missing actual stored object remains pending with repairable error
+  ---
+  duration_ms: 9.971495
+  type: 'test'
+  ...
+# Subtest: scanner unavailable in development still refuses a clean timestamp
+ok 24 - scanner unavailable in development still refuses a clean timestamp
+  ---
+  duration_ms: 14.644262
+  type: 'test'
+  ...
+# Subtest: scanner provider exceptions never persist private endpoint details
+ok 25 - scanner provider exceptions never persist private endpoint details
+  ---
+  duration_ms: 15.159556
+  type: 'test'
+  ...
+# Subtest: scanner concurrency cap rejects extra work before fetching another private object
+ok 26 - scanner concurrency cap rejects extra work before fetching another private object
+  ---
+  duration_ms: 14.002107
+  type: 'test'
+  ...
+# Subtest: scanner oversized metadata cancels stream without invoking transport
+ok 27 - scanner oversized metadata cancels stream without invoking transport
+  ---
+  duration_ms: 9.970113
+  type: 'test'
+  ...
+1..27
+# tests 27
+# suites 0
+# pass 26
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 761.450304
