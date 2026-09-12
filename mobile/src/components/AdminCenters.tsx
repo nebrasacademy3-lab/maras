@@ -1,7 +1,10 @@
+import { AdminFileSecurity } from "@/src/components/AdminFileSecurity";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
 import { Alert, StyleSheet, View } from "react-native";
+import { StudentControls } from "@/src/components/StudentControls";
+import type { StudentControlsData } from "@/src/lib/student-controls";
 import { SearchChoice } from "@/src/components/SearchPicker";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
@@ -96,13 +99,14 @@ export function AdminOperations({ onStepUpRequired }: { onStepUpRequired?: StepU
   const support = useQuery({ queryKey: ["admin-operations", "support"], queryFn: () => api<SupportMetrics>("/api/admin/support/metrics") });
   const analytics = useQuery({ queryKey: ["admin-operations", "analytics"], queryFn: () => api<AnalyticsData>("/api/admin/analytics?days=30") });
   const { busy, feedback, run } = useAdminMutation(onStepUpRequired);
-  const runTask = (key: string, path: string, label: string) => void run(key, () => api(path, { method: "POST" }), label).then((ok) => { if (ok) void client.invalidateQueries({ queryKey: ["admin-operations"] }); });
+  const runTask = (key: string, path: string, label: string) => void run(key, () => api(path, { method: "POST", timeoutMs: 120_000 }), label).then((ok) => { if (ok) void client.invalidateQueries({ queryKey: ["admin-operations"] }); });
   if (summary.isLoading) return <LoadingState label="جارٍ تحميل مركز التشغيل..." />;
   if (summary.isError || !summary.data) return <EmptyState icon="cloud-offline-outline" title="تعذر تحميل مركز التشغيل" text={summary.error instanceof ApiError ? summary.error.message : "حاول مرة أخرى."} action={<AppButton title="إعادة المحاولة" icon="refresh-outline" onPress={() => void summary.refetch()} />} />;
   const queues = summary.data.queues;
   return <>
     <View style={styles.metrics}><Metric label="سلال متروكة" value={queues.abandonedCheckout} icon="cart-outline" /><Metric label="وصول ينتهي قريبًا" value={queues.expiringAccess} icon="hourglass-outline" /><Metric label="مرفقات تنتظر الفحص" value={queues.filesPendingScan} icon="shield-half-outline" /><Metric label="إشعارات معلقة" value={queues.pushPending} icon="notifications-outline" /><Metric label="استردادات معلقة" value={queues.refundPending} icon="cash-outline" /><Metric label="تسويات غير مطابقة" value={queues.settlementUnmatched} icon="git-compare-outline" /><Metric label="قائمة انتظار نشطة" value={summary.data.waitlist.active || 0} icon="people-outline" /><Metric label="باقات منشورة" value={summary.data.bundles.published || 0} icon="cube-outline" /></View>
     <Feedback text={feedback} />
+    <AdminFileSecurity />
     <SectionTitle title="تشغيل المهام الآمنة" subtitle="تعمل أيضًا تلقائيًا عبر المجدول الداخلي كل بضع دقائق" />
     <View style={styles.actions}><AppButton full={false} title="تنبيهات السلة والتجديد والإطلاق" icon="alarm-outline" loading={busy === "lifecycle"} onPress={() => runTask("lifecycle", "/api/admin/lifecycle/dispatch", "تم تشغيل تنبيهات دورة الحياة.")} /><AppButton full={false} title="فحص المرفقات" icon="scan-outline" variant="soft" loading={busy === "scan"} onPress={() => runTask("scan", "/api/admin/files/scan", "تم فحص دفعة المرفقات المعلقة.")} /><AppButton full={false} title="إرسال Push المستحق" icon="send-outline" variant="soft" loading={busy === "push"} onPress={() => runTask("push", "/api/admin/notifications/dispatch", "تم إرسال الإشعارات الفورية المستحقة.")} /></View>
     <SectionTitle title="تشغيل الدعم وSLA" subtitle={support.data ? `${support.data.summary.open} مفتوحة · ${support.data.summary.resolved} محلولة` : "…"} />
@@ -170,6 +174,7 @@ export function AdminLearningTracks({ onStepUpRequired }: { onStepUpRequired?: S
 // ---------------------------------------------------------------- Student 360
 
 type StudentProfile = {
+  controls?: StudentControlsData;
   student: { id: number; email: string; phone: string | null; fullName: string; status: string; universitySlug: string | null; specialty: string | null; academicLevel: string | null; lastLoginAt: string | null; createdAt: string };
   summary: { activeSubscriptions: number; completedLessons: number; watchedSeconds: number; paidOrders: number; paidValue: number; openTickets: number; unreadNotifications: number; qualifiedReferrals?: number; activeRewards?: number; aiActive?: boolean };
   catalog: { courses: { slug: string; title: string }[] };
@@ -196,11 +201,12 @@ export function AdminStudentProfile({ email, onClose, onStepUpRequired }: { emai
   if (profile.isLoading) return <LoadingState label="جارٍ جمع ملف الطالب..." />;
   if (profile.isError || !profile.data) return <EmptyState icon="cloud-offline-outline" title="تعذر تحميل ملف الطالب" text={profile.error instanceof ApiError ? profile.error.message : "حاول مرة أخرى."} action={<AppButton title="رجوع" icon="arrow-back-outline" onPress={onClose} />} />;
   const data = profile.data;
-  const state = (row: StudentProfile["subscriptions"][number]) => row.revokedAt ? "ملغي" : row.suspendedAt ? "موقوف" : row.expiresAt && Date.parse(row.expiresAt) <= loadedAt ? "منتهي" : "نشط";
+  const state = (row: StudentProfile["subscriptions"][number]) => row.revokedAt ? "ملغي" : row.suspendedAt ? "موقوف" : Date.parse(row.startsAt) > loadedAt ? "مجدول" : row.expiresAt && Date.parse(row.expiresAt) <= loadedAt ? "منتهي" : "نشط";
   return <>
     <View style={styles.actions}><AppButton full={false} title="قائمة الطلاب" icon="arrow-back-outline" variant="ghost" onPress={onClose} /><AppButton full={false} title={data.student.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب"} variant={data.student.status === "active" ? "danger" : "soft"} loading={busy === "status"} onPress={() => act("status", { action: "updateUser", id: data.student.id, role: "student", status: data.student.status === "active" ? "suspended" : "active" }, data.student.status === "active" ? "تم إيقاف الحساب." : "تم تفعيل الحساب.")} /></View>
     <Card><Text style={[styles.profileName, { color: colors.text }]}>{data.student.fullName}</Text><Text style={[styles.rowMeta, { color: colors.textSoft }]}>{data.student.email} · {data.student.phone || "بدون جوال"}</Text><Text style={[styles.rowMeta, { color: colors.textSoft }]}>{data.student.universitySlug || "بدون جامعة"} · {data.student.specialty || "بدون تخصص"} · {data.student.academicLevel || "المستوى غير محدد"}</Text><Text style={[styles.rowMeta, { color: colors.textSoft }]}>آخر دخول {dateLabel(data.student.lastLoginAt)} · انضم {dateLabel(data.student.createdAt)}</Text></Card>
     <Feedback text={feedback} />
+    <StudentControls email={email} controls={data.controls} onStepUpRequired={onStepUpRequired} onChanged={async()=>{await client.invalidateQueries({queryKey:["admin-student",email]});await client.invalidateQueries({queryKey:["admin-console"]});}}/>
     <View style={styles.metrics}><Metric label="اشتراكات نشطة" value={data.summary.activeSubscriptions} icon="shield-checkmark-outline" /><Metric label="دروس مكتملة" value={data.summary.completedLessons} icon="checkmark-done-outline" /><Metric label="قيمة المدفوعات" value={money(data.summary.paidValue)} icon="cash-outline" /><Metric label="إحالات مؤهلة" value={data.summary.qualifiedReferrals || 0} icon="gift-outline" /><Metric label="أدوات مراس" value={data.summary.aiActive ? "اشتراك نشط" : "خطة مجانية"} icon="sparkles-outline" /><Metric label="دعم مفتوح" value={data.summary.openTickets} icon="headset-outline" /></View>
     <SectionTitle title="الاشتراكات والوصول" subtitle={`${data.subscriptions.length} سجل`} />
     <View style={styles.list}>{data.subscriptions.map((row) => { const current = state(row); return <Card key={row.id} style={styles.rowCard}><View style={styles.rowHead}><View style={styles.rowCopy}><Text style={[styles.rowTitle, { color: colors.text }]}>{courseName.get(row.courseSlug) || row.courseSlug}</Text><Text style={[styles.rowMeta, { color: colors.textSoft }]}>{current} · من {dateLabel(row.startsAt)} إلى {row.expiresAt ? dateLabel(row.expiresAt) : "دون انتهاء"} · {row.source === "tap" ? "شراء" : "منحة"}</Text></View></View>{!row.revokedAt ? <View style={styles.actions}>{current === "نشط" ? <AppButton full={false} title="إيقاف مؤقت" variant="soft" loading={busy === `pause-${row.id}`} onPress={() => act(`pause-${row.id}`, { action: "updateAccess", id: row.id, operation: "pause", reason: "إيقاف من التطبيق", operationKey: `${row.id}-${Date.now()}` }, "تم إيقاف الاشتراك مؤقتًا.")} /> : null}{current === "موقوف" ? <AppButton full={false} title="استئناف" variant="soft" loading={busy === `resume-${row.id}`} onPress={() => act(`resume-${row.id}`, { action: "updateAccess", id: row.id, operation: "resume", reason: "", operationKey: `${row.id}-${Date.now()}` }, "تم استئناف الاشتراك.")} /> : null}<AppButton full={false} title="+ 30 يومًا" variant="ghost" loading={busy === `extend-${row.id}`} onPress={() => act(`extend-${row.id}`, { action: "updateAccess", id: row.id, operation: "extend", reason: "", days: 30, operationKey: `${row.id}-${Date.now()}` }, "تم تمديد الاشتراك 30 يومًا.")} /></View> : null}</Card>; })}{!data.subscriptions.length ? <EmptyState icon="school-outline" title="لا توجد اشتراكات" text="يمكن منح مادة من تبويب المستخدمين." /> : null}</View>

@@ -24,10 +24,11 @@ const settings = Object.fromEntries(services.map(service => [service, { service,
 
 async function setup({ permission = true, stepUp = true, limit = true, diagnosticError = null, encryptionError = null } = {}) {
   const state = { keys: [], settings: [], audit: [], provider: [], dbAccess: 0 };
-  const aiApiKeys = { type: "keys", id: "id" }, aiServiceSettings = { type: "settings", service: "service" }, auditLogs = { type: "audit" };
+  const aiApiKeys = { type: "keys", id: "id", status:"status", fingerprint:"fingerprint" }, aiServiceSettings = { type: "settings", service: "service" }, auditLogs = { type: "audit" };
+  const matches=(row,condition)=>!condition || (condition.conditions ? condition.conditions.every(item=>matches(row,item)) : row[condition.field]===condition.value);
   function query(table) {
     let condition;
-    const rows = () => state[table.type].filter(row => !condition || row[condition.field] === condition.value);
+    const rows = () => state[table.type].filter(row => matches(row,condition));
     const chain = { where: value => { condition = value; return chain; }, limit: async n => rows().slice(0, n), then: (resolve, reject) => Promise.resolve(rows()).then(resolve, reject) };
     return chain;
   }
@@ -38,13 +39,13 @@ async function setup({ permission = true, stepUp = true, limit = true, diagnosti
       const chain = { onConflictDoUpdate: () => chain, returning: async () => { const row = { id: state[table.type].length + 1, ...values }; if (table.type === "settings") state.settings = state.settings.filter(item => item.service !== row.service); state[table.type].push(row); return [row]; } };
       return chain;
     } }),
-    update: table => ({ set: values => ({ where: async condition => { const row = state[table.type].find(item => item[condition.field] === condition.value); if (row) Object.assign(row, values); } }) }),
+    update: table => ({ set: values => ({ where: async condition => { const row = state[table.type].find(item => matches(item,condition)); if (row) Object.assign(row, values); } }) }),
   };
   const deps = {
     ...keys, ...config, ...errorTypes, ...bodyHelpers, AiPlatformError, AdminMfaError,
     AI_SERVICES: services, isAiService: value => services.includes(value), DEFAULT_AI_SETTINGS: settings,
     aiApiKeys, aiServiceSettings, auditLogs, aiEntitlements: {}, aiSubscriptionOrders: {}, aiUsageEvents: {}, platformSettings: {}, users: {},
-    getDb: () => { state.dbAccess++; return db; }, eq: (field, value) => ({ field, value }), asc: () => true, desc: () => true, count: () => true, gte: () => true, sql: () => true,
+    getDb: () => { state.dbAccess++; return db; }, eq: (field, value) => ({ field, value }), and:(...conditions)=>({conditions}), asc: () => true, desc: () => true, count: () => true, gte: () => true, sql: () => true,
     getSessionUser: async () => ({ id: 7, email: "admin@example.test" }), hasPermission: async () => permission, ADMIN_PERMISSIONS: { AI_MANAGE: "ai" }, sameOriginRequest: () => true,
     checkRateLimit: async name => name === "admin-ai-provider-check" ? limit : true,
     requireAdminStepUp: async () => { if (!stepUp) throw new AdminMfaError(); },

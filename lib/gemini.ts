@@ -1,5 +1,5 @@
 import "server-only";
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { getDb } from "@/db";
 import { aiApiKeys } from "@/db/schema";
@@ -8,6 +8,7 @@ import { AiPlatformError, type AiServiceConfig } from "@/lib/ai-platform";
 import { normalizeGeminiModel } from "@/lib/gemini-config";
 import { GeminiProviderError } from "@/lib/gemini-errors";
 import { geminiTextResponse, requestGemini } from "@/lib/gemini-provider";
+import { geminiGenerationConfig, shouldTryNextGeminiKey } from "@/lib/gemini-request-policy";
 
 export type GeminiPart = { text: string } | { inlineData: { mimeType: string; data: string } };
 type GeminiContent = { role: "user" | "model"; parts: GeminiPart[] };
@@ -33,10 +34,11 @@ async function keyCandidates() {
   const now = Date.now();
   let databaseRows: Array<typeof aiApiKeys.$inferSelect> = [];
   try { databaseRows = await getDb().select().from(aiApiKeys).where(eq(aiApiKeys.status, "active")).orderBy(asc(aiApiKeys.priority), asc(aiApiKeys.lastUsedAt)); } catch { /* Environment keys can operate during a staged database rollout. */ }
+  let decryptionFailures = 0;
   const database: KeyCandidate[] = databaseRows.flatMap((row) => {
     if (row.cooldownUntil && Date.parse(row.cooldownUntil) > now) return [];
     try { return [{ id: row.id, apiKey: decryptAiApiKey(row.encryptedKey), fingerprint: row.fingerprint, priority: row.priority, lastUsedAt: row.lastUsedAt, source: "database" as const }]; }
-    catch { return []; }
+    catch { decryptionFailures += 1; return []; }
   });
   const environment: KeyCandidate[] = geminiEnvironmentKeys().flatMap((apiKey, index) => {
     const fingerprint = rawFingerprint(apiKey);
@@ -44,6 +46,7 @@ async function keyCandidates() {
     if (state && state.until > now) return [];
     return [{ id: null, apiKey, fingerprint, priority: 1_000 + index, lastUsedAt: state?.lastUsedAt || null, source: "environment" as const }];
   });
+  if (!database.length && !environment.length && decryptionFailures) throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر فتح مفاتيح الخدمة المحفوظة. يجب على الإدارة مراجعة مفتاح التشفير الثابت أو استبدال المفتاح من لوحة الإدارة.", 503);
   const unique = new Map<string, KeyCandidate>();
   for (const candidate of [...database, ...environment]) if (!unique.has(candidate.fingerprint)) unique.set(candidate.fingerprint, candidate);
   return [...unique.values()].sort((left, right) => left.priority - right.priority || Date.parse(left.lastUsedAt || "1970-01-01") - Date.parse(right.lastUsedAt || "1970-01-01"));
@@ -70,14 +73,14 @@ async function markFailure(candidate: KeyCandidate, error: GeminiProviderError) 
   if (candidate.id) {
     // Permission/quota/model errors do not prove the credential is invalid.
     const databaseStatus = error.invalidCredential ? "error" : "active";
-    await getDb().update(aiApiKeys).set({ status: databaseStatus, cooldownUntil, consecutiveFailures: failures, lastUsedAt: now.toISOString(), lastErrorCode: error.code, updatedAt: now.toISOString() }).where(eq(aiApiKeys.id, candidate.id)).catch(() => undefined);
+    await getDb().update(aiApiKeys).set({ status: databaseStatus, cooldownUntil, consecutiveFailures: failures, lastUsedAt: now.toISOString(), lastErrorCode: error.code, updatedAt: now.toISOString() }).where(and(eq(aiApiKeys.id, candidate.id), eq(aiApiKeys.status, "active"), eq(aiApiKeys.fingerprint, candidate.fingerprint))).catch(() => undefined);
   }
 }
 
 async function markSuccess(candidate: KeyCandidate) {
   const now = new Date().toISOString();
   environmentCooldowns.set(candidate.fingerprint, { until: 0, failures: 0, lastUsedAt: now });
-  if (candidate.id) await getDb().update(aiApiKeys).set({ status: "active", cooldownUntil: null, consecutiveFailures: 0, lastUsedAt: now, lastSuccessAt: now, lastErrorCode: null, updatedAt: now }).where(eq(aiApiKeys.id, candidate.id)).catch(() => undefined);
+  if (candidate.id) await getDb().update(aiApiKeys).set({ status: "active", cooldownUntil: null, consecutiveFailures: 0, lastUsedAt: now, lastSuccessAt: now, lastErrorCode: null, updatedAt: now }).where(and(eq(aiApiKeys.id, candidate.id), eq(aiApiKeys.status, "active"), eq(aiApiKeys.fingerprint, candidate.fingerprint))).catch(() => undefined);
 }
 
 export async function generateGeminiContent(input: {
@@ -99,14 +102,7 @@ export async function generateGeminiContent(input: {
   for (const candidate of candidates) {
     const remainingMs = deadline - Date.now();
     if (remainingMs < 1_000) break;
-    const generationConfig: Record<string, unknown> = {
-      temperature: input.config.temperature,
-      maxOutputTokens: input.config.maxOutputTokens,
-    };
-    if (input.responseSchema) {
-      generationConfig.responseMimeType = "application/json";
-      generationConfig.responseSchema = input.responseSchema;
-    }
+    const generationConfig = geminiGenerationConfig({ temperature: input.config.temperature, maxOutputTokens: input.config.maxOutputTokens, responseSchema: input.responseSchema });
     let payload: Record<string, unknown>;
     try {
       payload = await requestGemini({ apiKey: candidate.apiKey, model, generation: {
@@ -116,7 +112,7 @@ export async function generateGeminiContent(input: {
       if (!(error instanceof GeminiProviderError)) throw error;
       lastError = error;
       await markFailure(candidate, error);
-      if (error.retryable) continue;
+      if (shouldTryNextGeminiKey(error)) continue;
       throw error;
     }
     const output = geminiTextResponse(payload);

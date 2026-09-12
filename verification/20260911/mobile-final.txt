@@ -1,0 +1,638 @@
+
+> meras-alelm-mobile@1.0.1 test
+> node --test tests/*.test.mjs
+
+TAP version 13
+# Subtest: verified complete account purchases repeatedly without another email challenge
+ok 1 - verified complete account purchases repeatedly without another email challenge
+  ---
+  duration_ms: 1.954075
+  type: 'test'
+  ...
+# Subtest: email then profile requirements preserve the requested destination
+ok 2 - email then profile requirements preserve the requested destination
+  ---
+  duration_ms: 0.310469
+  type: 'test'
+  ...
+# Subtest: every purchase needs actual profile fields even when the account is an admin
+ok 3 - every purchase needs actual profile fields even when the account is an admin
+  ---
+  duration_ms: 0.40224
+  type: 'test'
+  ...
+# Subtest: one-time codes normalize Arabic and Persian digits without changing their length
+ok 4 - one-time codes normalize Arabic and Persian digits without changing their length
+  ---
+  duration_ms: 0.401321
+  type: 'test'
+  ...
+# Subtest: native Google sign-in uses a system browser, exact callback and SHA256 PKCE
+ok 5 - native Google sign-in uses a system browser, exact callback and SHA256 PKCE
+  ---
+  duration_ms: 33.629153
+  type: 'test'
+  ...
+# Subtest: OAuth cancel never returns credentials and wrong redirect/start origin is rejected
+ok 6 - OAuth cancel never returns credentials and wrong redirect/start origin is rejected
+  ---
+  duration_ms: 58.551642
+  type: 'test'
+  ...
+# Subtest: provider error or bearer-token callback cannot become a native session
+ok 7 - provider error or bearer-token callback cannot become a native session
+  ---
+  duration_ms: 49.659683
+  type: 'test'
+  ...
+# Subtest: native Apple uses its own same-origin bootstrap and PKCE
+ok 8 - native Apple uses its own same-origin bootstrap and PKCE
+  ---
+  duration_ms: 10.584109
+  type: 'test'
+  ...
+# Subtest: floating assistant remains in safe areas on phones, tablets and rotation
+ok 9 - floating assistant remains in safe areas on phones, tablets and rotation
+  ---
+  duration_ms: 1.238499
+  type: 'test'
+  ...
+# Subtest: saved normalized position survives rotation and corrupt storage falls back
+ok 10 - saved normalized position survives rotation and corrupt storage falls back
+  ---
+  duration_ms: 18.133162
+  type: 'test'
+  ...
+# Subtest: a long press or drag never opens the assistant on release
+ok 11 - a long press or drag never opens the assistant on release
+  ---
+  duration_ms: 0.287626
+  type: 'test'
+  ...
+# Subtest: mobile home keeps track descriptions, all tracks and wrapping button labels
+ok 12 - mobile home keeps track descriptions, all tracks and wrapping button labels
+  ---
+  duration_ms: 0.68759
+  type: 'test'
+  ...
+# Subtest: ios: Expo Go and development show checkout while store releases remain reader
+ok 13 - ios: Expo Go and development show checkout while store releases remain reader
+  ---
+  duration_ms: 1.01678
+  type: 'test'
+  ...
+# Subtest: android: Expo Go and development show checkout while store releases remain reader
+ok 14 - android: Expo Go and development show checkout while store releases remain reader
+  ---
+  duration_ms: 0.271913
+  type: 'test'
+  ...
+# Subtest: web checkout is available by default and QA can explicitly select reader mode
+ok 15 - web checkout is available by default and QA can explicitly select reader mode
+  ---
+  duration_ms: 0.166123
+  type: 'test'
+  ...
+# Subtest: header keeps its three interactive icons in one row with RTL=true
+not ok 16 - header keeps its three interactive icons in one row with RTL=true
+  ---
+  duration_ms: 0.869962
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:44:36'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    header (file:///mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:34:12)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:45:19)
+  ...
+# Subtest: header keeps its three interactive icons in one row with RTL=false
+not ok 17 - header keeps its three interactive icons in one row with RTL=false
+  ---
+  duration_ms: 0.271423
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:44:36'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    header (file:///mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:34:12)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:45:19)
+  ...
+# Subtest: reader header preserves three useful controls and never sends a cart query
+not ok 18 - reader header preserves three useful controls and never sends a cart query
+  ---
+  duration_ms: 0.628028
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:60:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    header (file:///mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:34:12)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:61:19)
+  ...
+# Subtest: auth appearance control is translated and toggles the real theme
+not ok 19 - auth appearance control is translated and toggles the real theme
+  ---
+  duration_ms: 0.412361
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:69:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    header (file:///mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:34:12)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:70:19)
+  ...
+# Subtest: concurrent initialization registers exactly one installation device identity
+ok 20 - concurrent initialization registers exactly one installation device identity
+  ---
+  duration_ms: 29.251006
+  type: 'test'
+  ...
+# Subtest: referral share cancellation and native failure do not record a successful share
+ok 21 - referral share cancellation and native failure do not record a successful share
+  ---
+  duration_ms: 52.39676
+  type: 'test'
+  ...
+# Subtest: device identity fails closed on read and can retry safely
+ok 22 - device identity fails closed on read and can retry safely
+  ---
+  duration_ms: 11.930858
+  type: 'test'
+  ...
+# Subtest: device identity fails closed on write and can retry safely
+ok 23 - device identity fails closed on write and can retry safely
+  ---
+  duration_ms: 10.179824
+  type: 'test'
+  ...
+# Subtest: device identity fails closed on readback and can retry safely
+ok 24 - device identity fails closed on readback and can retry safely
+  ---
+  duration_ms: 13.150515
+  type: 'test'
+  ...
+# Subtest: device identity fails closed on corrupt and can retry safely
+ok 25 - device identity fails closed on corrupt and can retry safely
+  ---
+  duration_ms: 28.370365
+  type: 'test'
+  ...
+# Subtest: admin replacement needs confirmation and sends the permanent registration ID and reason
+not ok 26 - admin replacement needs confirmation and sends the permanent registration ID and reason
+  ---
+  duration_ms: 0.641424
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:118:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/layout-commerce-devices.test.mjs:121:17)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+  ...
+# Subtest: leaving a lesson persists the last JS snapshot after the native player was released
+ok 27 - leaving a lesson persists the last JS snapshot after the native player was released
+  ---
+  duration_ms: 100.974066
+  type: 'test'
+  ...
+# Subtest: invalid video values never create negative or non-finite progress
+ok 28 - invalid video values never create negative or non-finite progress
+  ---
+  duration_ms: 0.445221
+  type: 'test'
+  ...
+# Subtest: Arabic paragraphs stay RTL even when a course code or English product name appears first
+not ok 29 - Arabic paragraphs stay RTL even when a course code or English product name appears first
+  ---
+  duration_ms: 0.894855
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:57:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    textComponents (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:54:37)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:58:26)
+  ...
+# Subtest: code cells preserve centered alignment and Arabic empty inputs start on the right
+not ok 30 - code cells preserve centered alignment and Arabic empty inputs start on the right
+  ---
+  duration_ms: 0.494118
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:66:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    textComponents (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:54:37)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:67:31)
+  ...
+# Subtest: Expo Go and web never import unavailable native push code
+ok 31 - Expo Go and web never import unavailable native push code
+  ---
+  duration_ms: 58.022738
+  type: 'test'
+  ...
+# Subtest: native builds initialize notification handlers only once
+ok 32 - native builds initialize notification handlers only once
+  ---
+  duration_ms: 9.969316
+  type: 'test'
+  ...
+# Subtest: API requests and uploads cannot send credentials outside the platform
+ok 33 - API requests and uploads cannot send credentials outside the platform
+  ---
+  duration_ms: 66.847997
+  type: 'test'
+  ...
+# Subtest: an already cancelled upload never opens a network request
+ok 34 - an already cancelled upload never opens a network request
+  ---
+  duration_ms: 64.825059
+  type: 'test'
+  ...
+# Subtest: a successful response with invalid JSON is reported as a service error
+ok 35 - a successful response with invalid JSON is reported as a service error
+  ---
+  duration_ms: 47.026838
+  type: 'test'
+  ...
+# Subtest: notification links with malformed escaping do not crash navigation
+ok 36 - notification links with malformed escaping do not crash navigation
+  ---
+  duration_ms: 28.074907
+  type: 'test'
+  ...
+# Subtest: protected downloads reject external origins before requesting files or credentials
+ok 37 - protected downloads reject external origins before requesting files or credentials
+  ---
+  duration_ms: 54.802719
+  type: 'test'
+  ...
+# Subtest: a late account refresh cannot restore a session after logout
+not ok 38 - a late account refresh cannot restore a session after logout
+  ---
+  duration_ms: 0.522339
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:156:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    authHarness (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:150:17)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:159:19)
+  ...
+# Subtest: an expired session clears cached private account data
+not ok 39 - an expired session clears cached private account data
+  ---
+  duration_ms: 0.480296
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:167:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    authHarness (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:150:17)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:168:19)
+  ...
+# Subtest: notification routes separate fragments, queries and safely decoded university slugs
+ok 40 - notification routes separate fragments, queries and safely decoded university slugs
+  ---
+  duration_ms: 31.36904
+  type: 'test'
+  ...
+# Subtest: route parsing rejects traversal, malformed and multiply encoded separators
+ok 41 - route parsing rejects traversal, malformed and multiply encoded separators
+  ---
+  duration_ms: 10.728389
+  type: 'test'
+  ...
+# Subtest: assistant actions use the shared route resolver and retain policy fragments
+ok 42 - assistant actions use the shared route resolver and retain policy fragments
+  ---
+  duration_ms: 32.90956
+  type: 'test'
+  ...
+# Subtest: Arabic content and fields remain physically right aligned on ios
+not ok 43 - Arabic content and fields remain physically right aligned on ios
+  ---
+  duration_ms: 0.668089
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:215:51'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    textComponents (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:54:37)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:216:43)
+  ...
+# Subtest: Arabic content and fields remain physically right aligned on android
+not ok 44 - Arabic content and fields remain physically right aligned on android
+  ---
+  duration_ms: 0.301869
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:215:51'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    textComponents (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:54:37)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:216:43)
+  ...
+# Subtest: Arabic content and fields remain physically right aligned on web
+not ok 45 - Arabic content and fields remain physically right aligned on web
+  ---
+  duration_ms: 0.242221
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:215:51'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    textComponents (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:54:37)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:216:43)
+  ...
+# Subtest: password login and registration initialize identity before API and logout preserves installation ID
+not ok 46 - password login and registration initialize identity before API and logout preserves installation ID
+  ---
+  duration_ms: 0.506484
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:231:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    authHarness (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:150:17)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:234:15)
+  ...
+# Subtest: failed device persistence prevents every password and OAuth authentication request
+not ok 47 - failed device persistence prevents every password and OAuth authentication request
+  ---
+  duration_ms: 0.498563
+  type: 'test'
+  location: '/mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:242:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Cannot find module 'react'
+    Require stack:
+    - /mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs
+  code: 'MODULE_NOT_FOUND'
+  stack: |-
+    Function._resolveFilename (node:internal/modules/cjs/loader:1401:15)
+    defaultResolveImpl (node:internal/modules/cjs/loader:1057:19)
+    resolveForCJSWithHooks (node:internal/modules/cjs/loader:1062:22)
+    Function._load (node:internal/modules/cjs/loader:1211:37)
+    TracingChannel.traceSync (node:diagnostics_channel:322:14)
+    wrapModuleLoad (node:internal/modules/cjs/loader:235:24)
+    Module.require (node:internal/modules/cjs/loader:1487:12)
+    require (node:internal/modules/helpers:135:16)
+    authHarness (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:150:17)
+    TestContext.<anonymous> (file:///mnt/data/work/maras-main/mobile/tests/runtime-regressions.test.mjs:244:19)
+  ...
+# Subtest: native channels consume the server list and ignore unsafe or duplicate entries
+ok 48 - native channels consume the server list and ignore unsafe or duplicate entries
+  ---
+  duration_ms: 1.080998
+  type: 'test'
+  ...
+# Subtest: scroll reveal waits for the actual visible viewport rather than mount time
+ok 49 - scroll reveal waits for the actual visible viewport rather than mount time
+  ---
+  duration_ms: 0.211832
+  type: 'test'
+  ...
+# Subtest: shared native motion replays on focus and measures only unrevealed sections
+ok 50 - shared native motion replays on focus and measures only unrevealed sections
+  ---
+  duration_ms: 0.409992
+  type: 'test'
+  ...
+# Subtest: foreground and admin saves invalidate live social settings
+ok 51 - foreground and admin saves invalidate live social settings
+  ---
+  duration_ms: 0.955284
+  type: 'test'
+  ...
+# Subtest: rotation fits the same measured host in portrait, landscape and tablet
+ok 52 - rotation fits the same measured host in portrait, landscape and tablet
+  ---
+  duration_ms: 0.925129
+  type: 'test'
+  ...
+# Subtest: inline layout leaves room for lesson navigation in narrow landscape
+ok 53 - inline layout leaves room for lesson navigation in narrow landscape
+  ---
+  duration_ms: 0.301043
+  type: 'test'
+  ...
+# Subtest: back closes settings before fullscreen before leaving the lesson
+ok 54 - back closes settings before fullscreen before leaving the lesson
+  ---
+  duration_ms: 0.205997
+  type: 'test'
+  ...
+# Subtest: capture cleanup waits for pending protection and runs only once
+ok 55 - capture cleanup waits for pending protection and runs only once
+  ---
+  duration_ms: 1.183782
+  type: 'test'
+  ...
+# Subtest: cleanup of the previous lesson cannot release the current lease
+ok 56 - cleanup of the previous lesson cannot release the current lease
+  ---
+  duration_ms: 0.293836
+  type: 'test'
+  ...
+# Subtest: failed protection rejects playback readiness and retry uses a fresh key
+ok 57 - failed protection rejects playback readiness and retry uses a fresh key
+  ---
+  duration_ms: 0.639215
+  type: 'test'
+  ...
+# Subtest: native fullscreen keeps one protected video surface with custom controls
+ok 58 - native fullscreen keeps one protected video surface with custom controls
+  ---
+  duration_ms: 0.421279
+  type: 'test'
+  ...
+# Subtest: settings scroll within the frame and time polling does not fight seeking
+ok 59 - settings scroll within the frame and time polling does not fight seeking
+  ---
+  duration_ms: 0.319313
+  type: 'test'
+  ...
+# Subtest: Expo Web promotes the same open dialog without replacing its video
+ok 60 - Expo Web promotes the same open dialog without replacing its video
+  ---
+  duration_ms: 65.665831
+  type: 'test'
+  ...
+# Subtest: Expo Web collapse or unmount restores exact document scrolling styles
+ok 61 - Expo Web collapse or unmount restores exact document scrolling styles
+  ---
+  duration_ms: 36.411123
+  type: 'test'
+  ...
+# Subtest: unsupported or failed top-layer activation returns inline without locking scroll
+ok 62 - unsupported or failed top-layer activation returns inline without locking scroll
+  ---
+  duration_ms: 43.464767
+  type: 'test'
+  ...
+1..62
+# tests 62
+# suites 0
+# pass 48
+# fail 14
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1268.89271

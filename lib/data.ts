@@ -65,6 +65,7 @@ export type Course = {
   units: CourseUnit[];
   readyLessons?: number;
   availableForPurchase?: boolean;
+  enrollmentMode?: "auto" | "open" | "closed";
 };
 
 const moeLogo = (file: string) =>

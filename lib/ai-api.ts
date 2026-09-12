@@ -13,7 +13,12 @@ export function aiJson(value: unknown, init: ResponseInit = {}) {
 }
 
 export function aiError(error: unknown) {
-  if (error instanceof AiPlatformError) return jsonError(error.message, error.status);
+  if (error instanceof AiPlatformError) {
+    const response = jsonError(error.message, error.status, error.code);
+    const retry = "retryAfterSeconds" in error ? Number(error.retryAfterSeconds) : 0;
+    if (Number.isFinite(retry) && retry > 0) response.headers.set("retry-after", String(Math.min(3600, Math.ceil(retry))));
+    return response;
+  }
   return jsonError("تعذر إكمال طلب أدوات مراس. حاول مرة أخرى.", 500);
 }
 

@@ -137,7 +137,7 @@ test("notification links with malformed escaping do not crash navigation", () =>
 test("protected downloads reject external origins before requesting files or credentials", async () => {
   let requested = false;
   const api = apiHarness(async () => { requested = true; });
-  const downloads = load("src/lib/downloads.ts", { "expo-file-system/legacy": {}, "react-native": { Platform: { OS: "web" } }, "@/src/lib/api": api }, { fetch: async () => { requested = true; } });
+  const downloads = load("src/lib/downloads.ts", { "expo-crypto": { randomUUID: () => "test-download" }, "expo-file-system/legacy": {}, "react-native": { Platform: { OS: "web" } }, "@/src/lib/api": api }, { fetch: async () => { requested = true; } });
   await assert.rejects(() => downloads.downloadProtectedFile({ path: "https://attacker.test/private.pdf", fileName: "notes.pdf" }), /غير موثوق/);
   assert.equal(requested, false);
 });

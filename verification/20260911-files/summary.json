@@ -1,0 +1,51 @@
+{
+  "release": "file-scan-fix-20260911",
+  "baseArchive": "maras-admin-completion-20260911.zip",
+  "node": "22.16.0",
+  "availableTypeScript": "5.8.3",
+  "pinnedWebTypeScript": "5.9.3",
+  "newTests": {
+    "total": 96,
+    "passed": 96,
+    "failed": 0,
+    "scope": "real HTTP/TCP protocol and local-file IO; database/Expo test doubles, not AV-engine or real database integration"
+  },
+  "web": {
+    "total": 490,
+    "passed": 480,
+    "failedOrBlocked": 10,
+    "finalLog": "verification/20260911-files/web-final.tap"
+  },
+  "mobile": {
+    "total": 62,
+    "passed": 48,
+    "failedOrBlocked": 14,
+    "finalLog": "verification/20260911-files/mobile-final.tap"
+  },
+  "syntax": {
+    "files": 453,
+    "diagnostics": 0
+  },
+  "limitedTypecheck": {
+    "modules": [
+      "lib/malware-scanner.ts",
+      "lib/storage.ts",
+      "lib/zip.ts"
+    ],
+    "exitCode": 0
+  },
+  "build": "blocked: next not installed",
+  "lint": "blocked: eslint not installed",
+  "fullMobileTypes": "blocked: Expo and Node types unavailable; system compiler differs from pinned version",
+  "actualClamAV": "NOT RUN",
+  "actualPostgresMigration": "NOT RUN",
+  "livePaymentsEmailWhatsAppPushAIStorageVideo": "NOT RUN",
+  "realAndroidIOSBuildAndDeviceTest": "NOT RUN",
+  "sourceInventory": {
+    "apiRoutes": 105,
+    "webPages": 49,
+    "mobileScreenFiles": 39
+  },
+  "network": "registry.npmjs.org DNS failed; offline install ENOTCACHED",
+  "certifiedProductionReady": false
+}

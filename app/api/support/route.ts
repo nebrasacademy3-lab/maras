@@ -7,7 +7,7 @@ import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/l
 import { deleteObject } from "@/lib/storage";
 import { deleteStoredMultipartFiles, parseStoredMultipart, type StoredMultipartFile } from "@/lib/multipart-upload";
 import { createAndSendNotification } from "@/lib/notifications";
-import { scanColumns, scanStoredFile } from "@/lib/file-security";
+import { fileStorageProvider, scanColumns, queuedFileScan } from "@/lib/file-security";
 
 const MAX_FILE_BYTES = 15 * 1024 * 1024;
 const MAX_FILES = 8;
@@ -124,11 +124,11 @@ export async function POST(request: Request) {
     } else values = await readBoundedJsonObject(request, 32 * 1024);
   } catch (error) { return jsonError(error instanceof Error ? error.message : "بيانات الدعم غير صالحة", multipart ? 413 : 400); }
   const discardFiles = () => deleteStoredMultipartFiles(files);
-  const fileScans = new Map<string, Awaited<ReturnType<typeof scanStoredFile>>>();
+  const fileScans = new Map<string, Awaited<ReturnType<typeof queuedFileScan>>>();
   for (const file of files) {
-    const result = await scanStoredFile(file);
+    const result = queuedFileScan();
     fileScans.set(file.objectKey, result);
-    if (result.status === "quarantined") { await discardFiles(); return jsonError("رُفض أحد المرفقات بعد الفحص الأمني", 422); }
+    // Persist as pending; the durable worker scans after commit, outside upload latency.
   }
 
   const ticketId = values.ticketId == null || values.ticketId === "" ? 0 : finiteNumber(values.ticketId);
@@ -154,7 +154,7 @@ export async function POST(request: Request) {
     try {
       replyId = await db.transaction(async (tx) => {
         const [reply] = await tx.insert(supportReplies).values({ ticketId, authorEmail: current.email, authorRole: current.role, body, internal, replyToId, createdAt: now }).returning({ id: supportReplies.id });
-        if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: reply.id, ticketId, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, ...scanColumns(fileScans.get(file.objectKey)!), createdAt: now })));
+        if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: reply.id, ticketId, objectKey: file.objectKey, storageProvider: file.storageProvider, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, ...scanColumns(fileScans.get(file.objectKey)!), createdAt: now })));
         await tx.update(supportTickets).set({
           status: nextStatus,
           assignedTo: isManager(current) ? current.email : ticket.assignedTo,
@@ -194,7 +194,7 @@ export async function POST(request: Request) {
     ticket = await db.transaction(async (tx) => {
       const [created] = await tx.insert(supportTickets).values({ ticketNumber, category, priority, title, message: body || "مرفق", contactChannel, userEmail: current.email, createdAt: now, updatedAt: now }).returning({ id: supportTickets.id, ticketNumber: supportTickets.ticketNumber, status: supportTickets.status });
       const [initialReply] = await tx.insert(supportReplies).values({ ticketId: created.id, authorEmail: current.email, authorRole: current.role, body, createdAt: now }).returning({ id: supportReplies.id });
-      if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: initialReply.id, ticketId: created.id, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, ...scanColumns(fileScans.get(file.objectKey)!), createdAt: now })));
+      if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: initialReply.id, ticketId: created.id, objectKey: file.objectKey, storageProvider: file.storageProvider, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, ...scanColumns(fileScans.get(file.objectKey)!), createdAt: now })));
       return created;
     });
   } catch {
@@ -242,14 +242,14 @@ export async function DELETE(request: Request) {
   const db = getDb();
   const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
-  const files = await db.select({ objectKey: supportReplyFiles.objectKey }).from(supportReplyFiles).where(eq(supportReplyFiles.ticketId, ticketId));
+  const files = await db.select({ objectKey: supportReplyFiles.objectKey, storageProvider: supportReplyFiles.storageProvider }).from(supportReplyFiles).where(eq(supportReplyFiles.ticketId, ticketId));
   await db.transaction(async (tx) => {
     await tx.delete(supportReplyFiles).where(eq(supportReplyFiles.ticketId, ticketId));
     await tx.delete(supportReplies).where(eq(supportReplies.ticketId, ticketId));
     await tx.delete(supportTickets).where(eq(supportTickets.id, ticketId));
     await tx.insert(auditLogs).values({ actorEmail: actor, action: "delete", entityType: "support_ticket", entityId: String(ticketId), beforeJson: JSON.stringify({ ticketNumber: ticket.ticketNumber, userEmail: ticket.userEmail, title: ticket.title }), afterJson: null, ipAddress: clientIp(request) });
   });
-  await Promise.all(files.map((file) => deleteObject(file.objectKey).catch(() => undefined)));
+  await Promise.all(files.map((file) => deleteObject(file.objectKey, fileStorageProvider(file.storageProvider)).catch(() => undefined)));
   return Response.json({ ok: true, deleted: true }, { headers: { "cache-control": "no-store" } });
 }
 

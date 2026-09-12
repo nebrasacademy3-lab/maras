@@ -1,0 +1,340 @@
+TAP version 13
+# Subtest: queue clean is terminal: ordinary access never rescans
+ok 1 - queue clean is terminal: ordinary access never rescans
+  ---
+  duration_ms: 2.186443
+  type: 'test'
+  ...
+# Subtest: queue quarantined is terminal: ordinary access never rescans
+ok 2 - queue quarantined is terminal: ordinary access never rescans
+  ---
+  duration_ms: 0.271648
+  type: 'test'
+  ...
+# Subtest: queue completes scan and persists actual provider, timestamp and attempt count
+ok 3 - queue completes scan and persists actual provider, timestamp and attempt count
+  ---
+  duration_ms: 1.046241
+  type: 'test'
+  ...
+# Subtest: queue atomic lease prevents duplicate scans for concurrent access
+ok 4 - queue atomic lease prevents duplicate scans for concurrent access
+  ---
+  duration_ms: 8.34458
+  type: 'test'
+  ...
+# Subtest: queue respects backoff; scan errors are sanitized and do not release file
+ok 5 - queue respects backoff; scan errors are sanitized and do not release file
+  ---
+  duration_ms: 0.867503
+  type: 'test'
+  ...
+# Subtest: queue expired lease can be recovered; current lease cannot
+ok 6 - queue expired lease can be recovered; current lease cannot
+  ---
+  duration_ms: 0.456907
+  type: 'test'
+  ...
+# Subtest: queue stale positive verdict cannot overwrite an intervening quarantine
+ok 7 - queue stale positive verdict cannot overwrite an intervening quarantine
+  ---
+  duration_ms: 0.57937
+  type: 'test'
+  ...
+# Subtest: queue stale positive verdict cannot release a replaced object
+ok 8 - queue stale positive verdict cannot release a replaced object
+  ---
+  duration_ms: 0.519861
+  type: 'test'
+  ...
+# Subtest: queue deletion during scan returns missing rather than an uncommitted clean verdict
+ok 9 - queue deletion during scan returns missing rather than an uncommitted clean verdict
+  ---
+  duration_ms: 0.753972
+  type: 'test'
+  ...
+# Subtest: queue invalid kinds and identifiers never reach SQL
+ok 10 - queue invalid kinds and identifiers never reach SQL
+  ---
+  duration_ms: 1.273352
+  type: 'test'
+  ...
+# Subtest: queue includes all four categories fairly and uses at most two concurrent scans
+ok 11 - queue includes all four categories fairly and uses at most two concurrent scans
+  ---
+  duration_ms: 14.220875
+  type: 'test'
+  ...
+# Subtest: queue AI status and resource visibility track security outcome
+ok 12 - queue AI status and resource visibility track security outcome
+  ---
+  duration_ms: 0.603136
+  type: 'test'
+  ...
+# Subtest: queue clean resource is not automatically published to students
+ok 13 - queue clean resource is not automatically published to students
+  ---
+  duration_ms: 0.302745
+  type: 'test'
+  ...
+# Subtest: queue manual wake changes only pending unleased records
+ok 14 - queue manual wake changes only pending unleased records
+  ---
+  duration_ms: 0.357547
+  type: 'test'
+  ...
+# Subtest: queue retry delay is bounded and grows after repeated failures
+ok 15 - queue retry delay is bounded and grows after repeated failures
+  ---
+  duration_ms: 0.130897
+  type: 'test'
+  ...
+# Subtest: blocked file response FILE_SCAN_PENDING
+ok 16 - blocked file response FILE_SCAN_PENDING
+  ---
+  duration_ms: 22.200148
+  type: 'test'
+  ...
+# Subtest: blocked file response FILE_STORAGE_MISSING
+ok 17 - blocked file response FILE_STORAGE_MISSING
+  ---
+  duration_ms: 0.60593
+  type: 'test'
+  ...
+# Subtest: blocked file response FILE_QUARANTINED
+ok 18 - blocked file response FILE_QUARANTINED
+  ---
+  duration_ms: 0.562856
+  type: 'test'
+  ...
+# Subtest: clean blocked-response returns null and missing returns 404
+ok 19 - clean blocked-response returns null and missing returns 404
+  ---
+  duration_ms: 0.317086
+  type: 'test'
+  ...
+# Subtest: scanner configuration never declares development uploads clean without an engine
+ok 20 - scanner configuration never declares development uploads clean without an engine
+  ---
+  duration_ms: 2.848287
+  type: 'test'
+  ...
+# Subtest: remote verdict: explicit clean
+ok 21 - remote verdict: explicit clean
+  ---
+  duration_ms: 0.228123
+  type: 'test'
+  ...
+# Subtest: remote verdict: status clean
+ok 22 - remote verdict: status clean
+  ---
+  duration_ms: 0.110346
+  type: 'test'
+  ...
+# Subtest: remote verdict: negative
+ok 23 - remote verdict: negative
+  ---
+  duration_ms: 0.104517
+  type: 'test'
+  ...
+# Subtest: remote verdict: conflicting infected
+ok 24 - remote verdict: conflicting infected
+  ---
+  duration_ms: 0.108063
+  type: 'test'
+  ...
+# Subtest: remote verdict: conflicting threat
+ok 25 - remote verdict: conflicting threat
+  ---
+  duration_ms: 0.146691
+  type: 'test'
+  ...
+# Subtest: remote verdict: false beats status
+ok 26 - remote verdict: false beats status
+  ---
+  duration_ms: 0.09992
+  type: 'test'
+  ...
+# Subtest: remote verdict: error beats clean
+ok 27 - remote verdict: error beats clean
+  ---
+  duration_ms: 0.122755
+  type: 'test'
+  ...
+# Subtest: remote verdict: unknown status
+ok 28 - remote verdict: unknown status
+  ---
+  duration_ms: 0.332629
+  type: 'test'
+  ...
+# Subtest: remote verdict: string boolean
+ok 29 - remote verdict: string boolean
+  ---
+  duration_ms: 0.434703
+  type: 'test'
+  ...
+# Subtest: remote verdict: empty
+ok 30 - remote verdict: empty
+  ---
+  duration_ms: 0.172479
+  type: 'test'
+  ...
+# Subtest: remote verdict: null
+ok 31 - remote verdict: null
+  ---
+  duration_ms: 0.087762
+  type: 'test'
+  ...
+# Subtest: remote verdict: array
+ok 32 - remote verdict: array
+  ---
+  duration_ms: 0.082214
+  type: 'test'
+  ...
+# Subtest: remote engine labels remove control characters and are length-limited
+ok 33 - remote engine labels remove control characters and are length-limited
+  ---
+  duration_ms: 0.389696
+  type: 'test'
+  ...
+# Subtest: actual bounded stream joins bytes without decoding
+ok 34 - actual bounded stream joins bytes without decoding
+  ---
+  duration_ms: 3.531543
+  type: 'test'
+  ...
+# Subtest: actual bounded stream cancels on overflow
+ok 35 - actual bounded stream cancels on overflow
+  ---
+  duration_ms: 0.790897
+  type: 'test'
+  ...
+# Subtest: actual bounded stream cancels stalled reads after abort
+ok 36 - actual bounded stream cancels stalled reads after abort
+  ---
+  duration_ms: 0.421162
+  type: 'test'
+  ...
+# Subtest: remote HTTP sends actual file bytes, trusted token and encoded name
+ok 37 - remote HTTP sends actual file bytes, trusted token and encoded name
+  ---
+  duration_ms: 40.169145
+  type: 'test'
+  ...
+# Subtest: remote HTTP 401 stays pending
+ok 38 - remote HTTP 401 stays pending
+  ---
+  duration_ms: 9.663462
+  type: 'test'
+  ...
+# Subtest: remote HTTP 429 stays pending
+ok 39 - remote HTTP 429 stays pending
+  ---
+  duration_ms: 3.74279
+  type: 'test'
+  ...
+# Subtest: remote HTTP 503 stays pending
+ok 40 - remote HTTP 503 stays pending
+  ---
+  duration_ms: 2.817962
+  type: 'test'
+  ...
+# Subtest: remote HTTP redirects cannot forward document or credentials
+ok 41 - remote HTTP redirects cannot forward document or credentials
+  ---
+  duration_ms: 3.0834
+  type: 'test'
+  ...
+# Subtest: remote empty content never reaches engine
+ok 42 - remote empty content never reaches engine
+  ---
+  duration_ms: 0.242724
+  type: 'test'
+  ...
+# Subtest: remote invalid JSON stays pending
+ok 43 - remote invalid JSON stays pending
+  ---
+  duration_ms: 2.976841
+  type: 'test'
+  ...
+# Subtest: remote oversized verdict is rejected
+ok 44 - remote oversized verdict is rejected
+  ---
+  duration_ms: 2.516229
+  type: 'test'
+  ...
+# Subtest: clamd exact verdict "stream: OK\\u0000"
+ok 45 - clamd exact verdict "stream: OK\\u0000"
+  ---
+  duration_ms: 0.191658
+  type: 'test'
+  ...
+# Subtest: clamd exact verdict "stream: Fixture-Threat FOUND\\u0000"
+ok 46 - clamd exact verdict "stream: Fixture-Threat FOUND\\u0000"
+  ---
+  duration_ms: 0.080161
+  type: 'test'
+  ...
+# Subtest: clamd exact verdict "INSTREAM size limit exceeded. ERROR\\u0000"
+ok 47 - clamd exact verdict "INSTREAM size limit exceeded. ERROR\\u0000"
+  ---
+  duration_ms: 0.101512
+  type: 'test'
+  ...
+# Subtest: clamd exact verdict "OK\\u0000"
+ok 48 - clamd exact verdict "OK\\u0000"
+  ---
+  duration_ms: 0.105669
+  type: 'test'
+  ...
+# Subtest: clamd exact verdict "stream: OK\\u0000unexpected"
+ok 49 - clamd exact verdict "stream: OK\\u0000unexpected"
+  ---
+  duration_ms: 0.040331
+  type: 'test'
+  ...
+# Subtest: actual clamd TCP framing transmits all bytes including multiple 64KiB chunks
+ok 50 - actual clamd TCP framing transmits all bytes including multiple 64KiB chunks
+  ---
+  duration_ms: 3.302339
+  type: 'test'
+  ...
+# Subtest: actual clamd TCP infected response quarantines the submitted object
+ok 51 - actual clamd TCP infected response quarantines the submitted object
+  ---
+  duration_ms: 1.23884
+  type: 'test'
+  ...
+# Subtest: clamd TCP premature success cannot release an incomplete stream
+ok 52 - clamd TCP premature success cannot release an incomplete stream
+  ---
+  duration_ms: 1.104789
+  type: 'test'
+  ...
+# Subtest: clamd TCP truncated connection remains pending
+ok 53 - clamd TCP truncated connection remains pending
+  ---
+  duration_ms: 1.883158
+  type: 'test'
+  ...
+# Subtest: clamd TCP aborted connection cannot become clean
+ok 54 - clamd TCP aborted connection cannot become clean
+  ---
+  duration_ms: 41.822634
+  type: 'test'
+  ...
+# Subtest: clamd readiness probe performs actual PING/PONG exchange
+ok 55 - clamd readiness probe performs actual PING/PONG exchange
+  ---
+  duration_ms: 1.590908
+  type: 'test'
+  ...
+1..55
+# tests 55
+# suites 0
+# pass 55
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 620.72516

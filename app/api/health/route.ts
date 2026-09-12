@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { observeRequest } from "@/lib/observability";
+import { scannerConfig } from "@/lib/malware-scanner";
 import { checkStorageReadiness } from "@/lib/storage";
 
 export const dynamic = "force-dynamic";
@@ -52,7 +53,7 @@ export async function GET(request: Request) {
     const schedulerEnabled = process.env.LIFECYCLE_SCHEDULER_ENABLED?.trim().toLowerCase() !== "false";
     const optionalConfiguration = {
       scheduledTasks: strongSecret("SCHEDULED_TASK_TOKEN") || schedulerEnabled ? "configured" : "missing",
-      malwareScanner: configured("MALWARE_SCAN_URL") ? "configured" : "missing",
+      malwareScanner: ["clamd", "remote"].includes(scannerConfig().mode) ? "configured" : "missing",
     } satisfies Record<string, CheckStatus>;
     const configuration = { ...requiredConfiguration, ...optionalConfiguration } satisfies Record<string, CheckStatus>;
     const requiredConfigurationReady = !production || Object.values(requiredConfiguration).every((status) => status === "configured");

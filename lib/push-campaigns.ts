@@ -29,7 +29,7 @@ function emptyDelivery(error: unknown): PushDeliveryResult {
   };
 }
 
-async function claimDuePushNotifications(limit: number, now: Date): Promise<ClaimedNotification[]> {
+async function claimDuePushNotifications(limit: number, now: Date, scope: { actionUrl?: string } = {}): Promise<ClaimedNotification[]> {
   const db = getDb();
   const claimTime = now.toISOString();
   const staleBefore = new Date(now.getTime() - PROCESSING_LEASE_MS).toISOString();
@@ -56,6 +56,7 @@ async function claimDuePushNotifications(limit: number, now: Date): Promise<Clai
       actionUrl: notificationsDb.actionUrl,
     }).from(notificationsDb).where(and(
       eq(notificationsDb.pushEnabled, true),
+      scope.actionUrl ? eq(notificationsDb.actionUrl, scope.actionUrl) : undefined,
       lt(notificationsDb.pushAttempts, MAX_PUSH_ATTEMPTS),
       or(
         eq(notificationsDb.pushStatus, "pending"),
@@ -92,8 +93,8 @@ async function claimDuePushNotifications(limit: number, now: Date): Promise<Clai
   });
 }
 
-export async function dispatchDuePushNotifications(limit = 50): Promise<CampaignDispatchResult> {
-  const rows = await claimDuePushNotifications(Math.max(1, Math.min(100, limit)), new Date());
+export async function dispatchDuePushNotifications(limit = 50, scope: { actionUrl?: string } = {}): Promise<CampaignDispatchResult> {
+  const rows = await claimDuePushNotifications(Math.max(1, Math.min(100, limit)), new Date(), scope);
 
   const summary: CampaignDispatchResult = { campaigns: 0, attempted: 0, accepted: 0, rejected: 0, invalidated: 0, providerErrors: [] };
   for (const row of rows) {

@@ -1,11 +1,12 @@
 import Busboy from "busboy";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { deleteObject, putObject } from "@/lib/storage";
+import { activeStorageProvider, deleteObject, putObject, type StorageProvider } from "@/lib/storage";
 import { boundedRequestBody } from "@/lib/request-body";
 
 export type StoredMultipartFile = {
   objectKey: string;
+  storageProvider: StorageProvider;
   originalName: string;
   contentType: string;
   sizeBytes: number;
@@ -30,7 +31,7 @@ function safeObjectName(value: string) {
 }
 
 export async function deleteStoredMultipartFiles(files: StoredMultipartFile[]) {
-  await Promise.all(files.map((file) => deleteObject(file.objectKey).catch(() => undefined)));
+  await Promise.all(files.map((file) => deleteObject(file.objectKey, file.storageProvider).catch(() => undefined)));
 }
 
 export async function parseStoredMultipart(request: Request, options: MultipartOptions) {
@@ -40,6 +41,7 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
   const declaredLength = Number(request.headers.get("content-length"));
   if (Number.isFinite(declaredLength) && declaredLength > options.maxTotalBytes + 2 * 1024 * 1024) throw new Error("إجمالي حجم المرفقات أكبر من المسموح");
 
+  const storageProvider = activeStorageProvider();
   const fields: Record<string, string> = {};
   const files: StoredMultipartFile[] = [];
   const uploadTasks: Array<Promise<void>> = [];
@@ -103,8 +105,8 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
     file.once("error", (error) => validator.destroy(error));
     uploadStreams.push({ file, validator });
     const webStream = Readable.toWeb(file.pipe(validator)) as ReadableStream<Uint8Array>;
-    uploadTasks.push(putObject(objectKey, webStream, mimeType).then(() => {
-      files.push({ objectKey, originalName, contentType: mimeType, sizeBytes: fileBytes });
+    uploadTasks.push(putObject(objectKey, webStream, mimeType, storageProvider).then(() => {
+      files.push({ objectKey, storageProvider, originalName, contentType: mimeType, sizeBytes: fileBytes });
     }).catch((error) => {
       failure ||= error instanceof Error ? error.message : `تعذر رفع ${originalName}`;
     }));
