@@ -6,8 +6,7 @@ import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { aiDeepLinks, aiError, aiJson, artifactPayload, clientAiRequestId, messagePayload, quizPayload } from "@/lib/ai-api";
 import { readAiFileBytes, tryAcquireAiFileAction } from "@/lib/ai-files";
 import { generateFileArtifact, generateFileQuiz } from "@/lib/ai-generation";
-import { fileScanService, fileScanBlockedResponse } from "@/lib/file-scan-queue";
-import { readBoundedJsonObject } from "@/lib/request-body";
+import { scanColumns, scanStoredFile } from "@/lib/file-security";
 import { beginAiUsage, finishAiUsage, usagePayload, type AiServiceConfig } from "@/lib/ai-platform";
 import { observeRequest } from "@/lib/observability";
 
@@ -30,17 +29,20 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-file-action", `user:${user.id}`, 20, 60 * 60)) return jsonError("طلبات معالجة كثيرة. حاول لاحقًا.", 429);
     const { id: rawId } = await params;
-    const fileId = Number(rawId);
-    if (!Number.isSafeInteger(fileId) || fileId <= 0) return jsonError("الملف غير صالح");
+    const fileId = Math.floor(Number(rawId));
+    if (!Number.isInteger(fileId) || fileId <= 0) return jsonError("الملف غير صالح");
     let payload: Record<string, unknown>;
-    try { payload = await readBoundedJsonObject(request); } catch { return jsonError("بيانات العملية غير صالحة"); }
+    try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات العملية غير صالحة"); }
     const action = actionValue(payload.action);
     if (!action) return jsonError("اختر تلخيصًا أو ترجمة أو اختبارًا");
     const [file] = await getDb().select().from(aiFiles).where(and(eq(aiFiles.id, fileId), eq(aiFiles.userId, user.id))).limit(1);
     if (!file) return jsonError("الملف غير موجود", 404);
-    const scan = await fileScanService.scanFile("ai", file.id);
-    const blocked = fileScanBlockedResponse(scan);
-    if (blocked) return blocked;
+    if (file.scanStatus !== "clean") {
+      const scan = await scanStoredFile(file);
+      await getDb().update(aiFiles).set({ ...scanColumns(scan), status: scan.status === "clean" ? "ready" : scan.status === "quarantined" ? "quarantined" : "pending_scan", updatedAt: new Date().toISOString() }).where(eq(aiFiles.id, file.id));
+      if (scan.status === "quarantined") return jsonError("الملف محجور لأسباب أمنية", 422);
+      if (scan.status !== "clean") return jsonError("الملف ما زال قيد الفحص الأمني. حاول بعد قليل.", 423);
+    }
     const requestedConversationId = Math.floor(Number(payload.conversationId));
     let conversation = await ownedConversation(user.id, requestedConversationId || file.conversationId || 0);
     if ((requestedConversationId || file.conversationId) && !conversation) return jsonError("المحادثة غير موجودة", 404);

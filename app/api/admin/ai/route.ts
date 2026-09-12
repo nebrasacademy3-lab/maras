@@ -1,11 +1,10 @@
-import { and, asc, count, desc, eq, gte, sql } from "drizzle-orm";
+import { asc, count, desc, eq, gte, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiApiKeys, aiEntitlements, aiServiceSettings, aiSubscriptionOrders, aiUsageEvents, auditLogs, platformSettings, users } from "@/db/schema";
 import { cleanText, isUniqueConstraintError, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest, validEmail } from "@/lib/auth";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { aiKeyFingerprint, decryptAiApiKey, encryptAiApiKey, geminiEnvironmentKeys, maskAiKey, validGeminiApiKey } from "@/lib/ai-keys";
-import { diagnoseAiService } from "@/lib/ai-generation";
 import { AI_SERVICES, isAiService } from "@/lib/ai-contracts";
 import { AiPlatformError, DEFAULT_AI_SETTINGS, getAiMonthlyPrice, getAiServiceSettings } from "@/lib/ai-platform";
 import { ADMIN_PERMISSIONS, hasPermission } from "@/lib/permissions";
@@ -40,9 +39,8 @@ async function audit(request: Request, actor: string, action: string, entityType
 
 function keyPayload(row: typeof aiApiKeys.$inferSelect) {
   let masked = "مفتاح مشفر";
-  let decryptable = true;
-  try { masked = maskAiKey(decryptAiApiKey(row.encryptedKey)); } catch { masked = "تعذر فك المفتاح"; decryptable = false; }
-  return { decryptable, verification: !decryptable ? "decryption_failed" : row.lastSuccessAt ? "previously_verified" : "unverified", id: row.id, label: row.label, projectLabel: row.projectLabel, maskedKey: masked, fingerprint: row.fingerprint.slice(0, 12), priority: row.priority, status: row.status, cooldownUntil: row.cooldownUntil, consecutiveFailures: row.consecutiveFailures, lastUsedAt: row.lastUsedAt, lastSuccessAt: row.lastSuccessAt, lastErrorCode: row.lastErrorCode, lastErrorMessage: geminiErrorMessage(row.lastErrorCode), createdAt: row.createdAt, updatedAt: row.updatedAt };
+  try { masked = maskAiKey(decryptAiApiKey(row.encryptedKey)); } catch { masked = "تعذر فك المفتاح"; }
+  return { id: row.id, label: row.label, projectLabel: row.projectLabel, maskedKey: masked, fingerprint: row.fingerprint.slice(0, 12), priority: row.priority, status: row.status, cooldownUntil: row.cooldownUntil, consecutiveFailures: row.consecutiveFailures, lastUsedAt: row.lastUsedAt, lastSuccessAt: row.lastSuccessAt, lastErrorCode: row.lastErrorCode, lastErrorMessage: geminiErrorMessage(row.lastErrorCode), createdAt: row.createdAt, updatedAt: row.updatedAt };
 }
 
 export async function GET(request: Request) {
@@ -85,35 +83,6 @@ export async function POST(request: Request) {
     const db = getDb();
     const now = new Date().toISOString();
     try {
-      if (action === "testRuntime") {
-        if (!isAiService(payload.service)) return jsonError("اختر الخدمة المراد اختبارها");
-        if (!await checkRateLimit("admin-ai-runtime-check", `user:${guarded.user.id}`, 3, 60)) return jsonError("انتظر دقيقة قبل تكرار فحص الخدمة",429,"AI_DIAGNOSTIC_RATE_LIMITED");
-        const config = (await getAiServiceSettings())[payload.service];
-        try {
-          const diagnostic = await diagnoseAiService(config);
-          await audit(request,guarded.user.email,"runtime_test","ai_service_setting",payload.service,null,diagnostic);
-          return Response.json({ok:true,diagnostic,message:"نجح توليد نص فعلي باستخدام إعدادات الخدمة المحفوظة ومجموعة المفاتيح التشغيلية. فحص رفع الملفات مستقل."},{headers:{"cache-control":"private, no-store"}});
-        } catch (error) {
-          await audit(request,guarded.user.email,"runtime_test","ai_service_setting",payload.service,null,{ok:false,code:error instanceof AiPlatformError?error.code:"AI_RUNTIME_TEST_FAILED"});
-          throw error;
-        }
-      }
-      if (action === "replaceKey") {
-        const id = Number(payload.id); const apiKey = validGeminiApiKey(payload.apiKey);
-        if(!Number.isSafeInteger(id)||id<1||!apiKey)return jsonError("اختر مفتاحًا موجودًا والصق القيمة الجديدة كاملة",400,"AI_KEY_INVALID");
-        if(typeof payload.expectedUpdatedAt!=="string")return jsonError("حدّث بيانات المفاتيح قبل الاستبدال",409,"STALE_RECORD");
-        const actor = guarded.user;
-        const outcome = await db.transaction(async tx=>{
-          const [before]=await tx.select().from(aiApiKeys).where(eq(aiApiKeys.id,id)).limit(1).for("update");
-          if(!before)return {error:"missing"} as const;
-          if(before.updatedAt!==payload.expectedUpdatedAt)return {error:"stale"} as const;
-          const [row]=await tx.update(aiApiKeys).set({encryptedKey:encryptAiApiKey(apiKey),fingerprint:aiKeyFingerprint(apiKey),status:before.status==="disabled"?"disabled":"active",cooldownUntil:null,consecutiveFailures:0,lastUsedAt:null,lastSuccessAt:null,lastErrorCode:null,updatedAt:now}).where(eq(aiApiKeys.id,id)).returning();
-          await tx.insert(auditLogs).values({actorEmail:actor.email,action:"replace_key",entityType:"ai_api_key",entityId:String(id),beforeJson:JSON.stringify({id:before.id,label:before.label,fingerprint:before.fingerprint.slice(0,12)}),afterJson:JSON.stringify({id:row.id,label:row.label,fingerprint:row.fingerprint.slice(0,12),verification:"unverified"}),ipAddress:clientIp(request),createdAt:now});
-          return {key:keyPayload(row)};
-        });
-        if("error" in outcome)return jsonError(outcome.error==="missing"?"المفتاح غير موجود":"عُدل المفتاح من جلسة أخرى. حدّث القائمة أولًا",outcome.error==="missing"?404:409);
-        return Response.json({ok:true,key:outcome.key,message:"حُفظ المفتاح الجديد مشفرًا. اختبر التوليد الفعلي؛ الحفظ وحده لا يثبت صلاحية المزود."},{headers:{"cache-control":"private, no-store"}});
-      }
       if (["listModels", "testConnection", "testGeneration"].includes(action)) {
         if (!await checkRateLimit("admin-ai-provider-check", "user:" + guarded.user.id, 5, 60)) return jsonError("انتظر دقيقة قبل تكرار فحص الاتصال.", 429, "AI_DIAGNOSTIC_RATE_LIMITED");
         let apiKey = "";
@@ -135,12 +104,12 @@ export async function POST(request: Request) {
         if (action !== "listModels" && !model) return jsonError("اختر معرّف النموذج أو الصقه بصيغة models/ متبوعة بالمعرّف.", 400, "AI_MODEL_INVALID");
         try {
           const result = action === "listModels" ? await listGeminiModels(apiKey) : await testGeminiConnection(apiKey, model, action === "testGeneration");
-          if (row && action === "testGeneration") await db.update(aiApiKeys).set({ status: row.status === "disabled" ? "disabled" : "active", cooldownUntil: null, consecutiveFailures: 0, lastErrorCode: null, lastSuccessAt: now, lastUsedAt: now, updatedAt: now }).where(and(eq(aiApiKeys.id, row.id),eq(aiApiKeys.status,row.status),eq(aiApiKeys.fingerprint,row.fingerprint)));
+          if (row && action === "testGeneration") await db.update(aiApiKeys).set({ status: row.status === "disabled" ? "disabled" : "active", cooldownUntil: null, consecutiveFailures: 0, lastErrorCode: null, lastSuccessAt: now, lastUsedAt: now, updatedAt: now }).where(eq(aiApiKeys.id, row.id));
           await audit(request, guarded.user.email, "test", "ai_provider_connection", String(row?.id || payload.source), null, { action, model: model || null, ok: true });
           return Response.json({ ok: true, ...result }, { headers: { "cache-control": "no-store" } });
         } catch (error) {
           if (error instanceof GeminiProviderError) {
-            if (row) await db.update(aiApiKeys).set({ lastErrorCode: error.code, status: row.status === "disabled" ? "disabled" : error.invalidCredential ? "error" : row.status, updatedAt: now }).where(and(eq(aiApiKeys.id, row.id),eq(aiApiKeys.status,row.status),eq(aiApiKeys.fingerprint,row.fingerprint)));
+            if (row) await db.update(aiApiKeys).set({ lastErrorCode: error.code, status: row.status === "disabled" ? "disabled" : error.invalidCredential ? "error" : row.status, updatedAt: now }).where(eq(aiApiKeys.id, row.id));
             await audit(request, guarded.user.email, "test", "ai_provider_connection", String(row?.id || payload.source), null, { action, model: model || null, ok: false, code: error.code, providerStatus: error.providerStatus });
           }
           throw error;

@@ -14,14 +14,12 @@ test("course-request downloads and file lists reject unrelated supervisors as we
   for (const role of ["student", "supervisor", "admin"]) for (const own of [true, false]) {
     const db = database({ courseRequests: [{ id: 3, userId: 4, status: "new" }], courseRequestFiles: [{ id: 2, requestId: 3, userId: 4, scanStatus: "clean", objectKey: "private", contentType: "application/pdf", originalName: "private.pdf" }] });
     let reads = 0;
-    let scans = 0;
-    const deps = { fileScanService: { scanFile: async () => { scans++; return { status: "clean" }; } }, fileScanBlockedResponse: () => null, fileStorageProvider: () => "local", checkRateLimit: async () => true, ...tables, ...api, and, eq, asc: column => column, getDb: () => db, getSessionUser: async () => ({ id: own ? 4 : 5, role }), getObject: async () => { reads++; return { body: new Uint8Array([1]) }; } };
+    const deps = { ...tables, ...api, and, eq, asc: column => column, getDb: () => db, getSessionUser: async () => ({ id: own ? 4 : 5, role }), getObject: async () => { reads++; return { body: new Uint8Array([1]) }; } };
     const fileRoute = await isolated("../app/api/course-requests/files/[fileId]/route.ts", deps);
     const listRoute = await isolated("../app/api/course-requests/[id]/files/route.ts", deps);
     const allowed = own || role === "admin";
     assert.equal((await fileRoute.GET(new Request("https://test/api/course-requests/files/2"), { params: Promise.resolve({ fileId: "2" }) })).status, allowed ? 200 : 404, `${role}: download ownership=${own}`);
     assert.equal(reads, allowed ? 1 : 0);
-    assert.equal(scans, allowed ? 1 : 0, "unauthorized users cannot trigger scans");
     assert.equal((await listRoute.GET(new Request("https://test/api/course-requests/3/files"), { params: Promise.resolve({ id: "3" }) })).status, allowed ? 200 : 404, `${role}: list ownership=${own}`);
     assert.equal((await fileRoute.GET(new Request("https://test/api/course-requests/files/2.9"), { params: Promise.resolve({ fileId: "2.9" }) })).status, 400);
   }

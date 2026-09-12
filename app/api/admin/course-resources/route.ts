@@ -1,11 +1,10 @@
-import { fileScanService } from "@/lib/file-scan-queue";
 import { asc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, catalogCourses, catalogInstitutions, catalogSpecialties, courseResources } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
-import { fileStorageProvider, scanColumns, scanStoredFile } from "@/lib/file-security";
+import { scanColumns, scanStoredFile } from "@/lib/file-security";
 import { deleteStoredMultipartFiles, parseStoredMultipart } from "@/lib/multipart-upload";
 import { ADMIN_PERMISSIONS, hasPermission } from "@/lib/permissions";
 import { deleteObject } from "@/lib/storage";
@@ -205,7 +204,7 @@ export async function POST(request: Request) {
         courseSlug,
         title,
         description,
-        objectKey: file.objectKey, storageProvider: file.storageProvider,
+        objectKey: file.objectKey,
         originalName: file.originalName,
         contentType: file.contentType,
         sizeBytes: file.sizeBytes,
@@ -254,10 +253,14 @@ export async function PATCH(request: Request) {
     const [before] = await db.select().from(courseResources).where(eq(courseResources.id, id)).limit(1);
     if (!before) return jsonError("الملف غير موجود", 404);
     if (action === "rescan") {
-      if (before.scanStatus === "quarantined") return jsonError("الملف محجور أمنيًا. ارفع نسخة نظيفة جديدة بدل تجاوز الحجر.", 409);
-      await fileScanService.scanFile("resource", before.id);
-      const [after] = await db.select().from(courseResources).where(eq(courseResources.id, id)).limit(1);
-      if (!after) return jsonError("الملف غير موجود", 404);
+      const scan = await scanStoredFile(before);
+      const values = {
+        ...scanColumns(scan),
+        studentVisible: scan.status === "clean" ? before.studentVisible : false,
+        status: scan.status === "quarantined" ? "archived" : before.status,
+        updatedAt: now,
+      };
+      const [after] = await db.update(courseResources).set(values).where(eq(courseResources.id, id)).returning();
       await db.insert(auditLogs).values({ actorEmail: guarded.authorization.actor, action: "rescan", entityType: "course_resource", entityId: String(id), beforeJson: json(resourcePayload(before)), afterJson: json(resourcePayload(after)), ipAddress: clientIp(request), createdAt: now });
       return Response.json({ ok: true, resource: resourcePayload(after) }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
     }
@@ -301,7 +304,7 @@ export async function DELETE(request: Request) {
       await tx.delete(courseResources).where(eq(courseResources.id, id));
       await tx.insert(auditLogs).values({ actorEmail: guarded.authorization.actor, action: "delete", entityType: "course_resource", entityId: String(id), beforeJson: json(resourcePayload(before)), afterJson: null, ipAddress: clientIp(request), createdAt: now });
     });
-    await deleteObject(before.objectKey, fileStorageProvider(before.storageProvider)).catch(async (error) => {
+    await deleteObject(before.objectKey).catch(async (error) => {
       await db.insert(auditLogs).values({ actorEmail: guarded.authorization.actor, action: "storage_delete_failed", entityType: "course_resource", entityId: String(id), beforeJson: null, afterJson: json({ error: error instanceof Error ? error.message.slice(0, 300) : "storage_delete_failed" }), ipAddress: clientIp(request), createdAt: new Date().toISOString() });
     });
     return Response.json({ ok: true }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });

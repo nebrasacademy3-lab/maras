@@ -1,4 +1,4 @@
-import { withSessionAdvisoryLock } from "@/lib/advisory-lock";
+import { sql } from "drizzle-orm";
 import { logEvent } from "@/lib/observability";
 
 // Fixed advisory-lock key shared by every server instance so only one of them
@@ -25,17 +25,23 @@ async function runTick() {
   if (!state || state.running) return;
   state.running = true;
   try {
-    const [{ getPool }, { runLifecycleAutomations }, { dispatchDuePushNotifications }] = await Promise.all([
+    const [{ getDb }, { runLifecycleAutomations }, { dispatchDuePushNotifications }] = await Promise.all([
       import("@/db"),
       import("@/lib/lifecycle-automation"),
       import("@/lib/push-campaigns"),
     ]);
-    await withSessionAdvisoryLock(getPool(), SCHEDULER_LOCK_KEY, async () => {
+    const db = getDb();
+    const locked = await db.execute(sql`SELECT pg_try_advisory_lock(${SCHEDULER_LOCK_KEY}) AS locked`);
+    const acquired = Boolean((locked.rows[0] as { locked?: boolean } | undefined)?.locked);
+    if (!acquired) return;
+    try {
       const startedAt = Date.now();
       const lifecycle = await runLifecycleAutomations();
       const push = await dispatchDuePushNotifications(100);
       logEvent("info", "lifecycle.scheduler.tick", { durationMs: Date.now() - startedAt, ...lifecycle, pushAttempted: push.attempted, pushAccepted: push.accepted, pushRejected: push.rejected });
-    });
+    } finally {
+      await db.execute(sql`SELECT pg_advisory_unlock(${SCHEDULER_LOCK_KEY})`).catch(() => undefined);
+    }
   } catch (error) {
     logEvent("warn", "lifecycle.scheduler.failed", { message: error instanceof Error ? error.message : "unknown error" });
   } finally {

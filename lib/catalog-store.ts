@@ -1,4 +1,4 @@
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { catalogCourses, catalogInstitutions, catalogSpecialties, courseAccess, courseReviews, courseUnitsDb, institutionSpecialties, lessonsDb, videoAssets } from "@/db/schema";
 import { courses as staticCourses, institutions as staticInstitutions, type Course, type Institution, type InstitutionType } from "@/lib/data";
@@ -6,7 +6,6 @@ import { getVerifiedInstitutionPrograms } from "@/lib/official-programs";
 import { withCatalogSource } from "@/lib/catalog-sources";
 import type { AcademicProgram } from "@/lib/academic-data";
 import { normalizeAccessDurationDays } from "@/lib/course-access";
-import { enrollmentAvailable, enrollmentMode } from "@/lib/course-enrollment";
 
 const themes: Record<string, string> = {
   "blue-violet": "from-blue-700 to-violet-600",
@@ -16,18 +15,14 @@ const themes: Record<string, string> = {
 };
 
 const CATALOG_CACHE_TTL = 20_000;
-let catalogGeneration = 0;
 let institutionsCache: { expiresAt: number; value: Institution[] } | null = null;
 let coursesCache: { expiresAt: number; value: Course[] } | null = null;
 let institutionsInFlight: Promise<Institution[]> | null = null;
 let coursesInFlight: Promise<Course[]> | null = null;
 
 export function invalidateCatalogCache() {
-  catalogGeneration += 1;
   institutionsCache = null;
   coursesCache = null;
-  institutionsInFlight = null;
-  coursesInFlight = null;
 }
 
 const publicLogo = (slug: string, value: string | null | undefined) => value?.startsWith("r2:") ? `/api/logos/${slug}` : value || undefined;
@@ -52,13 +47,14 @@ function secondsLabel(total: number) {
   return rest ? `${hours} س ${rest} د` : `${hours} ساعات`;
 }
 
-function courseReadiness(units: Course["units"], mode: unknown = "auto", status = "published") {
+function courseReadiness(units: Course["units"]) {
   const lessons = units.flatMap((unit) => unit.lessons);
   const readyLessons = lessons.filter((lesson) => lesson.ready).length;
   return {
     readyLessons,
-    enrollmentMode: enrollmentMode(mode),
-    availableForPurchase: enrollmentAvailable(mode, readyLessons, status),
+    // A published course may open for paid enrollment as soon as its first lesson is ready.
+    // Newly released lessons become available automatically under the same access grant.
+    availableForPurchase: lessons.length > 0 && readyLessons > 0,
   };
 }
 
@@ -66,7 +62,6 @@ export async function getInstitutionsCatalog(includeHidden = false): Promise<Ins
   if (!process.env.DATABASE_URL) return staticInstitutionFallback();
   if (!includeHidden && institutionsCache && institutionsCache.expiresAt > Date.now()) return institutionsCache.value;
   if (!includeHidden && institutionsInFlight) return institutionsInFlight;
-  const generation = catalogGeneration;
   const load = async () => {
   const db = getDb();
   const [rows, specialties, courseRows] = await Promise.all([
@@ -117,13 +112,12 @@ export async function getInstitutionsCatalog(includeHidden = false): Promise<Ins
     }));
   }
   const value = [...merged.values()];
-  if (!includeHidden && generation === catalogGeneration) institutionsCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
+  if (!includeHidden) institutionsCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
   return value;
   };
   if (!includeHidden) {
-    const pending = load();
-    institutionsInFlight = pending;
-    try { return await pending; } finally { if (institutionsInFlight === pending) institutionsInFlight = null; }
+    institutionsInFlight = load();
+    try { return await institutionsInFlight; } finally { institutionsInFlight = null; }
   }
   return load();
 }
@@ -158,7 +152,6 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
   if (!process.env.DATABASE_URL) return staticCourses.map((item) => ({ ...item, rating: 0, ratingsCount: 0, students: 0, instructor: "فريق مراس الأكاديمي", audienceScope: item.audienceScope || "specialty", accessDurationDays: normalizeAccessDurationDays(item.accessDurationDays, item.access), ...courseReadiness(item.units) }));
   if (!includeDraft && coursesCache && coursesCache.expiresAt > Date.now()) return coursesCache.value;
   if (!includeDraft && coursesInFlight) return coursesInFlight;
-  const generation = catalogGeneration;
   const load = async () => {
   const db = getDb();
   const [managed, units, lessons, specialties, institutions, reviews, accessRows, links, readyVideos] = await Promise.all([
@@ -166,9 +159,9 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
     db.select().from(courseUnitsDb).orderBy(asc(courseUnitsDb.position)),
     db.select().from(lessonsDb).orderBy(asc(lessonsDb.position)),
     db.select().from(catalogSpecialties),
-    getInstitutionsCatalog(includeDraft),
+    getInstitutionsCatalog(true),
     db.select().from(courseReviews).where(eq(courseReviews.status, "published")),
-    db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(and(isNull(courseAccess.revokedAt), isNull(courseAccess.suspendedAt), sql`${courseAccess.startsAt}::timestamptz <= now()`, sql`(${courseAccess.expiresAt} IS NULL OR ${courseAccess.expiresAt}::timestamptz > now())`)),
+    db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(and(isNull(courseAccess.revokedAt), isNull(courseAccess.suspendedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, new Date().toISOString())))),
     db.select({ institutionSlug: institutionSpecialties.institutionSlug, specialtySlug: institutionSpecialties.specialtySlug, status: institutionSpecialties.status }).from(institutionSpecialties),
     db.select({ lessonId: videoAssets.lessonId }).from(videoAssets).where(eq(videoAssets.status, "ready")),
   ]);
@@ -204,7 +197,6 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
   const result = new Map<string, Course>();
   for (const item of staticCourses) {
     const row = managedBySlug.get(item.slug);
-    if (!includeDraft && !institutionBySlug.has(row?.institutionSlug || item.universitySlug)) continue;
     const linkedRow = row && validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`) ? row : undefined;
     if (row && (!linkedRow || row.status !== "published") && !includeDraft) continue;
     const liveReviews = reviewsByCourse.get(item.slug) || [];
@@ -248,11 +240,10 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       color: themes[linkedRow.coverTheme] || item.color,
       units: resolvedUnits,
       lessons: liveLessonCount,
-      ...courseReadiness(resolvedUnits, linkedRow.enrollmentMode, linkedRow.status),
+      ...courseReadiness(resolvedUnits),
     } : { ...item, audienceScope: item.audienceScope || "specialty", ...live, ...courseReadiness(item.units) });
   }
   for (const row of managed) {
-    if (!includeDraft && !institutionBySlug.has(row.institutionSlug)) continue;
     if (!validSpecialtyLinks.has(`${row.institutionSlug}:${row.specialtySlug}`)) continue;
     if (result.has(row.slug) || (row.status !== "published" && !includeDraft)) continue;
     const courseUnits = (unitsByCourse.get(row.slug) || []).filter((unit) => includeDraft || unit.status === "published");
@@ -292,17 +283,16 @@ export async function getCoursesCatalog(includeDraft = false): Promise<Course[]>
       access: row.accessLabel,
       accessDurationDays: row.accessDurationDays,
       units: unitRows,
-      ...courseReadiness(unitRows, row.enrollmentMode, row.status),
+      ...courseReadiness(unitRows),
     });
   }
   const value = [...result.values()];
-  if (!includeDraft && generation === catalogGeneration) coursesCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
+  if (!includeDraft) coursesCache = { expiresAt: Date.now() + CATALOG_CACHE_TTL, value };
   return value;
   };
   if (!includeDraft) {
-    const pending = load();
-    coursesInFlight = pending;
-    try { return await pending; } finally { if (coursesInFlight === pending) coursesInFlight = null; }
+    coursesInFlight = load();
+    try { return await coursesInFlight; } finally { coursesInFlight = null; }
   }
   return load();
 }

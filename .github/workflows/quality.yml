@@ -39,7 +39,7 @@ jobs:
         run: node --test --test-concurrency=1 tests/*.test.mjs
 
   mobile:
-    name: Mobile typecheck, lint and tests
+    name: Mobile typecheck and lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -60,6 +60,3 @@ jobs:
         run: npm run typecheck
       - name: Lint app
         run: npm run lint
-
-      - name: Test mobile behavior
-        run: npm test

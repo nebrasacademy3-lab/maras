@@ -1,2 +1,0 @@
-export type ControlOption = {value:string;label:string};
-export type StudentControlsData = {actions:Array<{action:string;group:string;label:string;warning?:string;fields:Array<{key:string;label:string;type:"text"|"textarea"|"number"|"select";required?:boolean;maxLength?:number;min?:number;max?:number;initial?:string;choices?:string;options?:ControlOption[]}>}>;choices:Record<string,ControlOption[]>;profile:Record<string,string>};

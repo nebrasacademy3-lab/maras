@@ -60,10 +60,5 @@ if [[ "${VIDEO_WORKER_ENABLED:-true}" == "true" ]]; then
   node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/video-worker.ts &
 fi
 
-if [[ "${LOCAL_MALWARE_SCANNER_ENABLED:-false}" == "true" ]]; then
-  echo "Starting private file-scanning service..."
-  bash scripts/start-local-scanner.sh &
-fi
-
 echo "Starting Meras Al-Elm on ${HOSTNAME}:${PORT:-3000}"
 exec ./node_modules/.bin/next start --hostname "${HOSTNAME}" --port "${PORT:-3000}"

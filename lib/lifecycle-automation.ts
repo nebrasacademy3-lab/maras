@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { and, desc, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { cartItems, courseAccess, learningTrackInterests, learningTracks, notificationsDb, orders, users } from "@/db/schema";
-import { queueCourseLaunchNotifications } from "@/lib/course-launch-notifications";
+import { cartItems, courseAccess, courseWaitlist, learningTrackInterests, learningTracks, notificationsDb, orders, users } from "@/db/schema";
+import { getCoursesCatalog } from "@/lib/catalog-store";
 import { isInternalDestination } from "@/lib/learning-tracks";
 
 type LifecycleResult = { cartReminders: number; paymentReminders: number; expiryReminders: number; launchNotifications: number };
@@ -22,10 +22,12 @@ export async function runLifecycleAutomations(now = new Date()): Promise<Lifecyc
   const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60_000).toISOString();
   const openStatuses = ["pending", "initiated", "in_progress", "authorized", "verification_pending", "payment_review"];
 
-  const [staleCartRows, pendingOrders, expiringAccess, trackInterestRows] = await Promise.all([
+  const [staleCartRows, pendingOrders, expiringAccess, waitlistRows, courses, trackInterestRows] = await Promise.all([
     db.select().from(cartItems).where(lte(cartItems.createdAt, twoHoursAgo)).orderBy(desc(cartItems.createdAt)).limit(2_000),
     db.select().from(orders).where(and(inArray(orders.status, openStatuses), lte(orders.createdAt, twoHoursAgo))).orderBy(desc(orders.createdAt)).limit(500),
     db.select().from(courseAccess).where(and(isNull(courseAccess.revokedAt), sql`${courseAccess.expiresAt} IS NOT NULL`, lte(courseAccess.expiresAt, new Date(now.getTime() + 14 * 86_400_000).toISOString()))).limit(2_000),
+    db.select().from(courseWaitlist).where(eq(courseWaitlist.status, "active")).orderBy(desc(courseWaitlist.createdAt)).limit(2_000),
+    getCoursesCatalog(),
     db.select({
       interestId: learningTrackInterests.id,
       lastNotifiedVersion: learningTrackInterests.lastNotifiedVersion,
@@ -114,8 +116,29 @@ export async function runLifecycleAutomations(now = new Date()): Promise<Lifecyc
     })) expiryReminders += 1;
   }
 
-  const launchBatch = await queueCourseLaunchNotifications(undefined, 500, now);
-  launchNotifications += launchBatch.queued;
+  const launched = new Map(courses.filter((course) => course.availableForPurchase).map((course) => [course.slug, course]));
+  for (const row of waitlistRows) {
+    const course = launched.get(row.courseSlug);
+    if (!course) continue;
+    await db.transaction(async (tx) => {
+      const [notice] = await tx.insert(notificationsDb).values({
+        userEmail: row.userEmail,
+        audience: "student",
+        title: "المادة التي تنتظرها أصبحت متاحة",
+        body: `فُتح الاشتراك في ${course.title} ونُشر أول درس جاهز للمشاهدة.`,
+        actionUrl: `/courses/${course.slug}`,
+        actionLabel: "عرض المادة",
+        template: "success",
+        dedupeKey: `waitlist:${row.id}:launched`,
+        pushEnabled: true,
+        pushStatus: "pending",
+        startsAt: nowIso,
+        createdAt: nowIso,
+      }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+      await tx.update(courseWaitlist).set({ status: "notified", notifiedAt: nowIso, updatedAt: nowIso }).where(eq(courseWaitlist.id, row.id));
+      if (notice) launchNotifications += 1;
+    });
+  }
 
   for (const row of trackInterestRows) {
     await db.transaction(async (tx) => {

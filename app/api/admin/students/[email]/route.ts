@@ -1,7 +1,6 @@
-import { and, count, desc, eq, gte, inArray, or, sql } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
-  auditLogs,
   aiEntitlements,
   aiSubscriptionOrders,
   aiUsageEvents,
@@ -31,22 +30,17 @@ import {
   users,
 } from "@/db/schema";
 import { jsonError } from "@/lib/api";
-import { validEmail } from "@/lib/auth";
-import { adminControlGuard } from "@/lib/admin-control-guard";
-import { ACADEMIC_LEVELS } from "@/lib/academic-levels";
-import { getAiEntitlement } from "@/lib/ai-platform";
-import { STUDENT_CONTROL_ACTIONS } from "@/lib/student-control-contract";
-import { activeUserAccessWhere } from "@/lib/course-access";
+import { getSessionUser, roleAllowed } from "@/lib/auth";
 import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 import { publicRewardLabel } from "@/lib/referrals";
 
 type Props = { params: Promise<{ email: string }> };
 
 export async function GET(request: Request, { params }: Props) {
-  const guarded = await adminControlGuard(request);
-  if (guarded.response) return guarded.response;
-  const email = (await params).email.trim().toLowerCase();
-  if (!validEmail(email)) return jsonError("البريد غير صالح");
+  const admin = await getSessionUser(request);
+  if (!roleAllowed(admin, ["admin"])) return jsonError("غير مصرح بعرض ملف الطالب", 403);
+  const email = decodeURIComponent((await params).email).trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(email)) return jsonError("البريد غير صالح");
   const db = getDb();
   const [student] = await db.select({
     id: users.id,
@@ -64,7 +58,7 @@ export async function GET(request: Request, { params }: Props) {
     createdAt: users.createdAt,
     updatedAt: users.updatedAt,
   }).from(users).where(eq(users.email, email)).limit(1);
-  if (!student || student.role !== "student") return jsonError("الطالب غير موجود", 404);
+  if (!student) return jsonError("الطالب غير موجود", 404);
 
   const [access, progress, orderRows, invoiceRows, tickets, requests, notices, sessions, accessEvents, courseCatalog, institutionCatalog] = await Promise.all([
     db.select().from(courseAccess).where(eq(courseAccess.userEmail, email)).orderBy(desc(courseAccess.updatedAt)).limit(300),
@@ -106,59 +100,27 @@ export async function GET(request: Request, { params }: Props) {
   const relatedById = new Map(relatedUsers.map((row) => [row.id, row]));
   const couponById = new Map(ownedCoupons.map((coupon) => [coupon.id, coupon]));
 
-  const now = new Date().toISOString();
-  // Summary cards use database aggregates, never lengths of the capped detail lists.
-  const [[accessTotals], [progressTotals], [orderTotals], [ticketTotals], [notificationTotals], [deviceTotals], entitlement, auditTrail] = await Promise.all([
-    db.select({total:count()}).from(courseAccess).where(activeUserAccessWhere(email,now)),
-    db.select({completed:sql<number>`count(*) FILTER (WHERE ${lessonProgress.completed})::int`,watched:sql<number>`coalesce(sum(greatest(${lessonProgress.watchedSeconds},0)),0)::float`,total:count()}).from(lessonProgress).where(eq(lessonProgress.userEmail,email)),
-    db.select({paid:sql<number>`count(*) FILTER (WHERE ${orders.status} IN ('paid','partially_refunded'))::int`,value:sql<number>`coalesce(sum(${orders.total}) FILTER (WHERE ${orders.status} IN ('paid','partially_refunded')),0)::float`,total:count()}).from(orders).where(eq(orders.customerEmail,email)),
-    db.select({open:sql<number>`count(*) FILTER (WHERE ${supportTickets.status} NOT IN ('resolved','closed'))::int`,total:count()}).from(supportTickets).where(eq(supportTickets.userEmail,email)),
-    db.select({unread:sql<number>`count(*) FILTER (WHERE ${notificationsDb.readAt} IS NULL AND (${notificationsDb.expiresAt} IS NULL OR ${notificationsDb.expiresAt}::timestamptz > ${now}::timestamptz) AND (${notificationsDb.startsAt} IS NULL OR ${notificationsDb.startsAt}::timestamptz <= ${now}::timestamptz))::int`,total:count()}).from(notificationsDb).where(eq(notificationsDb.userEmail,email)),
-    db.select({active:sql<number>`count(*) FILTER (WHERE ${pushDevices.status} = 'active')::int`}).from(pushDevices).where(eq(pushDevices.userId,student.id)),
-    getAiEntitlement(student),
-    db.select({id:auditLogs.id,action:auditLogs.action,actorEmail:auditLogs.actorEmail,afterJson:auditLogs.afterJson,createdAt:auditLogs.createdAt}).from(auditLogs).where(and(eq(auditLogs.entityType,"student_control"),eq(auditLogs.entityId,String(student.id)))).orderBy(desc(auditLogs.id)).limit(100),
-  ]);
-  const courseLabels = new Map(courseCatalog.map(row=>[row.slug,row.title]));
-  const option = (value:string|number,label:string) => ({value:String(value),label});
-  const courseOption = (row:{id:number;courseSlug:string}) => option(row.id,courseLabels.get(row.courseSlug)||row.courseSlug);
+  const completedLessons = progress.filter((row) => row.completed).length;
+  const watchedSeconds = progress.reduce((sum, row) => sum + Math.max(0, row.watchedSeconds), 0);
+  const paidOrders = orderRows.filter((row) => ["paid", "partially_refunded"].includes(row.status));
   const relevantCourseSlugs = new Set([...access.map((item) => item.courseSlug), ...progress.map((item) => item.courseSlug), ...items.map((item) => item.courseSlug), ...waitlistRows.map((item) => item.courseSlug), ...favoriteRows.map((item) => item.courseSlug), ...cartRows.map((item) => item.courseSlug)]);
   return Response.json({
     ok: true,
     student,
     summary: {
-      activeSubscriptions: Number(accessTotals.total),
-      completedLessons: Number(progressTotals.completed),
-      watchedSeconds: Number(progressTotals.watched),
-      paidOrders: Number(orderTotals.paid),
-      paidValue: Number(orderTotals.value),
-      openTickets: Number(ticketTotals.open),
-      unreadNotifications: Number(notificationTotals.unread),
+      activeSubscriptions: access.filter((row) => !row.revokedAt && (!row.expiresAt || Date.parse(row.expiresAt) > Date.now())).length,
+      completedLessons,
+      watchedSeconds,
+      paidOrders: paidOrders.length,
+      paidValue: paidOrders.reduce((sum, row) => sum + row.total, 0),
+      openTickets: tickets.filter((row) => !["resolved", "closed"].includes(row.status)).length,
+      unreadNotifications: notices.filter((row) => !row.readAt).length,
       qualifiedReferrals: attributionRows.filter((row) => row.referrerUserId === student.id && row.status === "qualified").length,
       activeRewards: rewardRows.filter((row) => row.status === "active").length,
-      aiActive: entitlement.tier === "subscriber",
-      pushDevices: Number(deviceTotals.active),
+      aiActive: aiEntitlementRows.some((row) => row.status === "active" && (!row.expiresAt || Date.parse(row.expiresAt) > Date.now())),
+      pushDevices: devices.filter((row) => row.status === "active").length,
       lessonNotes: noteCount,
     },
-    generatedAt: now,
-    controls: {
-      actions: STUDENT_CONTROL_ACTIONS,
-      profile: {fullName:student.fullName,phone:student.phone||"",universitySlug:student.universitySlug||"",specialty:student.specialty||"",academicLevel:student.academicLevel||"",expectedUpdatedAt:student.updatedAt},
-      choices: {
-        courses:courseCatalog.map(row=>option(row.slug,`${row.title} · ${row.university}`)),
-        institutions:institutionCatalog.map(row=>option(row.slug,row.name)), levels:ACADEMIC_LEVELS.map(level=>option(level,level)),
-        subscriptions:access.map(row=>option(row.id,`${courseLabels.get(row.courseSlug)||row.courseSlug} · #${row.id}`)),
-        entitlements:aiEntitlementRows.map(row=>option(row.id,`${row.source} · ${row.status} · #${row.id}`)),
-        waitlist:waitlistRows.map(courseOption),tracks:trackInterestRows.map(row=>option(row.id,row.trackTitle)),
-        favorites:favoriteRows.map(courseOption),cart:cartRows.map(courseOption),
-        support:tickets.map(row=>option(row.id,`${row.ticketNumber} · ${row.title}`)),
-        requests:requests.map(row=>option(row.id,`${row.courseName} · #${row.id}`)),
-        notifications:notices.map(row=>option(row.id,`${row.title} · #${row.id}`)),
-        sessions:sessions.map(row=>option(row.id,`${row.deviceLabel||row.platform} · #${row.id}`)),
-        pushDevices:devices.map(row=>option(row.id,`${row.deviceLabel||row.platform} · #${row.id}`)),
-      },
-    },
-    detailWindow: {notice:"القوائم تعرض أحدث السجلات، بينما مؤشرات الاشتراكات والمدفوعات والدروس والدعم والإشعارات تُحسب من جميع سجلات الطالب.",limits:{subscriptions:300,progress:1000,orders:300,support:200,requests:200,notifications:300,waitlist:100,trackInterests:100,sessions:100,audit:100},totals:{progress:Number(progressTotals.total),orders:Number(orderTotals.total),support:Number(ticketTotals.total),notifications:Number(notificationTotals.total)}},
-    auditTrail: auditTrail.map(row=>{let reason="";try{reason=String(JSON.parse(row.afterJson||"{}").reason||"");}catch{}return {id:row.id,action:row.action,actorEmail:row.actorEmail,reason,createdAt:row.createdAt};}),
     catalog: {
       institution: institutionCatalog.find((row) => row.slug === student.universitySlug) || null,
       courses: courseCatalog
@@ -191,5 +153,5 @@ export async function GET(request: Request, { params }: Props) {
     refunds: refundRows.map((row) => ({ id: row.id, requestNumber: row.requestNumber, orderNumber: row.orderNumber, amountMinor: row.amountMinor, currency: row.currency, status: row.status, reason: row.reason, createdAt: row.createdAt, completedAt: row.completedAt })),
     favorites: favoriteRows,
     cart: cartRows,
-  }, { headers: { "cache-control": "private, no-store", "x-content-type-options":"nosniff" } });
+  }, { headers: { "cache-control": "no-store" } });
 }

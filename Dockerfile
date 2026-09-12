@@ -14,16 +14,13 @@ RUN npm run build
 FROM node:22-bookworm-slim AS runtime
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg clamav-daemon clamav-freshclam ca-certificates tini && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME=0.0.0.0
 ENV UPLOAD_DIR=/data/uploads
-ENV LOCAL_MALWARE_SCANNER_ENABLED=true
-ENV CLAMD_SOCKET=/tmp/meras-clamav/clamd.sock
-ENV FILE_SCAN_SCHEDULER_ENABLED=true
 
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/.next ./.next
@@ -42,5 +39,4 @@ RUN find /app/scripts -type f -name "*.sh" -exec chmod 755 {} \; && mkdir -p /da
 USER node
 
 EXPOSE 3000
-ENTRYPOINT ["/usr/bin/tini", "-g", "--"]
 CMD ["./scripts/start-railway.sh"]

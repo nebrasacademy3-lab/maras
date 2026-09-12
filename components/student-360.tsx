@@ -26,8 +26,6 @@ import {
   Smartphone,
   UserRound,
 } from "lucide-react";
-import { StudentControls } from "@/components/student-controls";
-import type { StudentControlsData } from "@/lib/student-control-contract";
 import { AdminRegisteredDevices } from "@/components/admin-registered-devices";
 import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
@@ -214,9 +212,6 @@ type Session = {
 
 type Student360Response = {
   ok: boolean;
-  controls?: StudentControlsData;
-  detailWindow?: {notice:string};
-  auditTrail?: Array<{id:number;action:string;actorEmail:string;reason:string;createdAt:string}>;
   error?: string;
   student: Student;
   summary: {
@@ -295,7 +290,7 @@ const labels: Record<string, string> = {
   banner: "شريط إعلاني",
   modal: "نافذة منبثقة",
   all: "كل مواضع العرض",
-  delivered: "قبله مزود الإشعارات",
+  delivered: "تم التسليم",
   queued: "في الطابور",
   sent: "تم الإرسال",
   web: "ويب",
@@ -493,7 +488,6 @@ export function Student360({ email }: { email: string }) {
       <div className={styles.grid}>
         <section className={styles.panel} id="profile">
           <PanelHead icon={UserRound} title="بيانات الطالب" copy="الهوية والحالة الدراسية والتحقق من الحساب" />
-          <StudentControls email={data.student.email} controls={data.controls} group="profile" onChanged={load} />
           <div className={styles.profileGrid}>
             {[
               ["البريد الإلكتروني", data.student.email, true],
@@ -510,12 +504,11 @@ export function Student360({ email }: { email: string }) {
 
         <section className={styles.panel} id="subscriptions">
           <PanelHead icon={ShieldCheck} title="الاشتراكات والوصول" copy="حالة كل مادة وسجل الإجراءات الإدارية والشرائية" count={data.subscriptions.length} />
-          <StudentControls email={data.student.email} controls={data.controls} group="subscriptions" onChanged={load} />
           {data.subscriptions.length ? <div className={styles.cardGrid}>{data.subscriptions.map((subscription) => {
             const state = subscriptionState(subscription);
             const events = data.accessEvents.filter((event) => event.accessId === subscription.id || (!event.accessId && event.courseSlug === subscription.courseSlug)).slice(0, 20);
             return <article className={styles.card} key={subscription.id}>
-              <div className={styles.cardHead}><span><h3><Link href={`/admin/courses/${encodeURIComponent(subscription.courseSlug)}`}>{courseName(subscription.courseSlug)}</Link></h3><p><bdi className={styles.ltr}>{subscription.courseSlug}</bdi></p></span><span className={styles.badge} data-tone={tone(state)}>{label(state)}</span></div>
+              <div className={styles.cardHead}><span><h3>{courseName(subscription.courseSlug)}</h3><p><bdi className={styles.ltr}>{subscription.courseSlug}</bdi></p></span><span className={styles.badge} data-tone={tone(state)}>{label(state)}</span></div>
               <div className={styles.facts}>
                 <span className={styles.fact}><span>مصدر الوصول</span><strong>{label(subscription.source)}</strong></span>
                 <span className={styles.fact}><span>بدأ في</span><strong>{safeDate(subscription.startsAt, false)}</strong></span>
@@ -544,7 +537,6 @@ export function Student360({ email }: { email: string }) {
 
         <section className={`${styles.panel} ${styles.half}`} id="requests">
           <PanelHead icon={FileClock} title="طلبات المواد" copy="كل طلبات تجهيز المواد وحالتها" count={data.requests.length} />
-          <StudentControls email={data.student.email} controls={data.controls} group="requests" onChanged={load} />
           {data.requests.length ? <div className={styles.list}>{data.requests.map((request) => <article className={styles.listItem} key={request.id}><span><strong>{request.courseName}</strong><small>{request.university} · {request.specialty} · {safeDate(request.createdAt)}</small></span><span className={styles.badge} data-tone={tone(request.status)}>{label(request.status)}</span>{request.notes && <p>{request.notes}</p>}<p>{request.attachmentsCount.toLocaleString("ar-SA")} مرفق{request.preparedCourseSlug ? ` · جُهزت كمادة ${courseName(request.preparedCourseSlug)}` : ""}{request.notify ? " · الإشعار عند الجاهزية مفعّل" : ""}</p></article>)}</div> : <Empty>لا توجد طلبات مواد.</Empty>}
         </section>
 
@@ -576,7 +568,6 @@ export function Student360({ email }: { email: string }) {
 
         <section className={`${styles.panel} ${styles.half}`} id="ai">
           <PanelHead icon={Bot} title="أدوات مراس" copy="الاستحقاقات والاشتراكات المدفوعة واستخدام آخر 30 يومًا" count={data.ai?.entitlements.length || 0} />
-          <StudentControls email={data.student.email} controls={data.controls} group="ai" onChanged={load} />
           {data.ai && (data.ai.entitlements.length || data.ai.orders.length || data.ai.usage.length) ? <div className={styles.list}>
             {data.ai.entitlements.map((row) => <article className={styles.listItem} key={`ent-${row.id}`}><span><strong>{label(row.source)}</strong><small>من {safeDate(row.startsAt, false)} · {row.expiresAt ? `حتى ${safeDate(row.expiresAt, false)}` : "مفتوح"}{row.createdBy ? ` · بواسطة ${row.createdBy}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
             {data.ai.orders.map((row) => <article className={styles.listItem} key={`ai-order-${row.id}`}><span><strong>اشتراك مدفوع <bdi className={styles.ltr}>{row.orderNumber}</bdi></strong><small>{money(row.amount, row.currency)} · {safeDate(row.paidAt || row.createdAt)}{row.entitlementExpiresAt ? ` · حتى ${safeDate(row.entitlementExpiresAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
@@ -586,10 +577,9 @@ export function Student360({ email }: { email: string }) {
 
         <section className={`${styles.panel} ${styles.half}`} id="interest">
           <PanelHead icon={Route} title="الاهتمام وقوائم الانتظار" copy="المسارات التي سجل اهتمامه بها والمواد التي ينتظر إتاحتها، مع المفضلة والسلة" count={(data.trackInterests?.length || 0) + (data.waitlist?.length || 0)} />
-          <StudentControls email={data.student.email} controls={data.controls} group="interest" onChanged={load} />
           {(data.trackInterests?.length || data.waitlist?.length || data.favorites?.length || data.cart?.length) ? <div className={styles.list}>
             {data.trackInterests?.map((row) => <article className={styles.listItem} key={`track-${row.id}`}><i className={styles.sessionIcon}><Route size={16} /></i><span><strong>{row.trackTitle}</strong><small>مسار {label(row.trackStatus)} · سُجل {safeDate(row.createdAt, false)} · {row.lastNotifiedVersion > 0 ? "أُبلغ بالإطلاق" : "لم يُبلغ بعد"}</small></span><span className={styles.badge} data-tone={row.status === "active" ? "success" : "warning"}>{row.status === "active" ? "مهتم" : "ألغى"}</span></article>)}
-            {data.waitlist?.map((row) => <article className={styles.listItem} key={`wait-${row.id}`}><i className={styles.sessionIcon}><BellRing size={16} /></i><span><strong><Link href={`/admin/courses/${encodeURIComponent(row.courseSlug)}`}>{courseName(row.courseSlug)}</Link></strong><small>قائمة انتظار · {safeDate(row.createdAt, false)}{row.notifiedAt ? ` · أُبلغ ${safeDate(row.notifiedAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
+            {data.waitlist?.map((row) => <article className={styles.listItem} key={`wait-${row.id}`}><i className={styles.sessionIcon}><BellRing size={16} /></i><span><strong>{courseName(row.courseSlug)}</strong><small>قائمة انتظار · {safeDate(row.createdAt, false)}{row.notifiedAt ? ` · أُبلغ ${safeDate(row.notifiedAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
             {data.favorites?.length ? <article className={styles.listItem}><i className={styles.sessionIcon}><Heart size={16} /></i><span><strong>المفضلة ({data.favorites.length.toLocaleString("ar-SA")})</strong><small>{data.favorites.map((row) => courseName(row.courseSlug)).join("، ")}</small></span></article> : null}
             {data.cart?.length ? <article className={styles.listItem}><i className={styles.sessionIcon}><ShoppingCart size={16} /></i><span><strong>السلة ({data.cart.length.toLocaleString("ar-SA")})</strong><small>{data.cart.map((row) => courseName(row.courseSlug)).join("، ")}</small></span></article> : null}
           </div> : <Empty>لا توجد اهتمامات أو قوائم انتظار أو عناصر في المفضلة والسلة.</Empty>}
@@ -597,19 +587,16 @@ export function Student360({ email }: { email: string }) {
 
         <section className={`${styles.panel} ${styles.half}`} id="support">
           <PanelHead icon={Headphones} title="الدعم" copy="التذاكر والمحادثات وحالة المعالجة" count={data.support.length} />
-          <StudentControls email={data.student.email} controls={data.controls} group="support" onChanged={load} />
           {data.support.length ? <div className={styles.list}>{data.support.map((ticket) => <article className={styles.listItem} key={ticket.id}><span><strong>{ticket.title}</strong><small><bdi className={styles.ltr}>{ticket.ticketNumber}</bdi> · {label(ticket.category)} · {safeDate(ticket.createdAt)}</small></span><span className={styles.badge} data-tone={tone(ticket.status)}>{label(ticket.status)}</span><p>{ticket.message}</p>{ticket.replies.length > 0 && <details className={styles.details}><summary>{ticket.replies.length.toLocaleString("ar-SA")} ردود</summary>{ticket.replies.map((reply) => <div className={styles.reply} key={reply.id}><strong>{reply.authorRole === "student" ? "الطالب" : "فريق مراس"}{reply.internal ? " · ملاحظة داخلية" : ""}</strong><p>{reply.body}</p><small>{safeDate(reply.createdAt)}</small></div>)}</details>}</article>)}</div> : <Empty>لا توجد تذاكر دعم.</Empty>}
         </section>
 
         <section className={`${styles.panel} ${styles.half}`} id="notifications">
           <PanelHead icon={Bell} title="الإشعارات" copy="حالة القراءة والإرسال الفوري وموضع العرض" count={data.notifications.length} />
-          <StudentControls email={data.student.email} controls={data.controls} group="notifications" onChanged={load} />
           {data.notifications.length ? <div className={styles.list}>{data.notifications.map((notice) => <article className={`${styles.listItem} ${!notice.readAt ? styles.notificationUnread : ""}`} key={notice.id}><span><strong>{notice.title}</strong><small>{safeDate(notice.createdAt)} · {label(notice.presentation)}</small></span><span className={styles.badge} data-tone={notice.readAt ? "success" : "warning"}>{notice.readAt ? "مقروء" : "غير مقروء"}</span><p>{notice.body}</p><p>{notice.pushEnabled ? `إشعار فوري: ${label(notice.pushStatus)} · ${notice.pushAttempts.toLocaleString("ar-SA")} محاولة` : "إشعار داخل المنصة فقط"}{notice.actionLabel ? ` · الإجراء: ${notice.actionLabel}` : ""}</p></article>)}</div> : <Empty>لا توجد إشعارات مخصصة لهذا الطالب.</Empty>}
         </section>
 
         <section className={styles.panel} id="sessions">
           <PanelHead icon={Laptop} title="الجلسات والأجهزة" copy="تسجيل الجهاز دائم؛ أما الجلسة فتنتهي بالخروج أو انتهاء الصلاحية" count={data.sessions.length} />
-          <StudentControls email={data.student.email} controls={data.controls} group="sessions" onChanged={load} />
           <AdminRegisteredDevices email={data.student.email} onChanged={load} />
           {data.sessions.length ? <div className={styles.list}>{data.sessions.map((session) => {
             const state = sessionState(session);
@@ -618,7 +605,6 @@ export function Student360({ email }: { email: string }) {
           })}</div> : <Empty>لا توجد جلسات مسجلة.</Empty>}
           {data.pushDevices?.length ? <div className={styles.list}><p>أجهزة الإشعارات الفورية ({data.pushDevices.filter((row) => row.status === "active").length.toLocaleString("ar-SA")} نشط):</p>{data.pushDevices.map((device) => <article className={styles.listItem} key={`push-${device.id}`}><i className={styles.sessionIcon}><Smartphone size={16} /></i><span><strong>{device.deviceLabel || device.platform}</strong><small>{label(device.platform)} · آخر ظهور {safeDate(device.lastSeenAt)}</small></span><span className={styles.badge} data-tone={tone(device.status)}>{label(device.status)}</span></article>)}</div> : null}
         </section>
-        <section className={styles.panel} id="audit"><PanelHead icon={FileClock} title="سجل إجراءات ملف الطالب" copy="أحدث 100 إجراء موثق؛ السجل غير قابل للتحرير من ملف الطالب" count={data.auditTrail?.length||0}/>{data.detailWindow&&<p>{data.detailWindow.notice}</p>}{data.auditTrail?.length?<div className={styles.list}>{data.auditTrail.map(row=><article className={styles.listItem} key={row.id}><span><strong>{data.controls?.actions.find(action=>action.action===row.action)?.label||row.action}</strong><small>{row.actorEmail} · {safeDate(row.createdAt)}</small></span><p>{row.reason}</p></article>)}</div>:<Empty>لا توجد إجراءات جديدة مسجلة عبر مركز التحكم بعد.</Empty>}</section>
       </div>
     </div>
   </main>;
