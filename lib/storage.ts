@@ -176,14 +176,14 @@ async function getLocalObject(key: string, range?: ObjectRange): Promise<StoredO
   return { body: Readable.toWeb(stream) as ReadableStream<Uint8Array>, size: range ? end - start + 1 : details.size, etag };
 }
 
-export async function getObject(key: string, range?: ObjectRange, provider: StorageProvider = activeStorageProvider()): Promise<StoredObject | null> {
+export async function getObject(key: string, range?: ObjectRange, provider: StorageProvider = activeStorageProvider(), signal?: AbortSignal): Promise<StoredObject | null> {
   normalizedObjectKey(key);
   if (provider === "local") return getLocalObject(key, range);
   const config = s3Config();
   if (!config) return null;
   const headers: Record<string, string> = {};
   if (range) headers.range = `bytes=${range.offset}-${range.offset + range.length - 1}`;
-  const response = await s3Request("GET", s3ObjectUrl(config, key), sha256(""), { headers }, headers);
+  const response = await s3Request("GET", s3ObjectUrl(config, key), sha256(""), { headers, signal }, headers);
   if (response.status === 404 || !response.body) return null;
   const contentLength = Number(response.headers.get("content-length"));
   return { body: response.body, size: Number.isSafeInteger(contentLength) && contentLength >= 0 ? contentLength : range?.length || 0, etag: response.headers.get("etag") || `"${sha256(key).slice(0, 24)}"`, contentType: response.headers.get("content-type") || undefined };

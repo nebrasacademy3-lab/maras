@@ -63,12 +63,29 @@ function json(response, status, value) {
 export function createScannerServer({ token, scan = bytes => scanClamd(bytes, { socketPath: process.env.CLAMD_SOCKET, host: process.env.CLAMD_HOST, port: Number(process.env.CLAMD_PORT) || 3310 }), maxBytes = MAX_FILE_BYTES, concurrency = 2 } = {}) {
   if (typeof token !== "string" || token.length < 32 || /replace.?with|change.?me|example.?secret/i.test(token)) throw new Error("MALWARE_SCAN_TOKEN must be a strong secret of at least 32 characters");
   let active = 0;
+  let readiness;
+  let readinessExpiresAt = 0;
   const server = createServer(async (request, response) => {
+    // Railway healthchecks cannot attach a bearer token. Only this bounded,
+    // content-free probe is public; attachments still require the token.
+    if (request.method === "GET" && request.url === "/ready") {
+      if (!readiness || Date.now() >= readinessExpiresAt) {
+        if (active >= concurrency) return json(response, 503, { ok: false });
+        active += 1;
+        readinessExpiresAt = Infinity;
+        readiness = Promise.resolve().then(() => scan(Buffer.from("Meras scanner readiness probe")))
+          .then(result => result.status === "clean" && result.clean === true && !result.threat)
+          .catch(() => false)
+          .finally(() => { active -= 1; readinessExpiresAt = Date.now() + 2000; });
+      }
+      const ok = await readiness;
+      return json(response, ok ? 200 : 503, { ok });
+    }
     if (!authorized(request.headers.authorization, token)) return json(response, 401, { error: "unauthorized" });
     if (request.method === "GET" && request.url === "/health") {
       if (active >= concurrency) return json(response, 503, { ok: false, error: "scanner_busy" });
       active += 1;
-      try { const result = await scan(Buffer.from("Meras scanner readiness probe")); json(response, result.clean ? 200 : 503, { ok: result.clean, engine: "clamav" }); }
+      try { const result = await scan(Buffer.from("Meras scanner readiness probe")); const ok = result.status === "clean" && result.clean === true && !result.threat; json(response, ok ? 200 : 503, { ok, engine: "clamav" }); }
       catch { json(response, 503, { ok: false, error: "clamd_unavailable" }); }
       finally { active -= 1; }
       return;
@@ -103,8 +120,14 @@ export function createScannerServer({ token, scan = bytes => scanClamd(bytes, { 
   server.keepAliveTimeout = 5_000;
   return server;
 }
+export function listenScanner(server, port = Number(process.env.PORT) || 3001) {
+  // Legacy Railway private networks resolve service names to IPv6 only.
+  // IPv6 also accepts IPv4-mapped addresses on Railway/Linux and Windows.
+  return server.listen({ port, host: "::", ipv6Only: false });
+}
+
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const server = createScannerServer({ token: process.env.MALWARE_SCAN_TOKEN });
-  server.listen(Number(process.env.PORT) || 3001, "0.0.0.0");
+  listenScanner(server);
   process.once("SIGTERM", () => server.close(() => process.exit(0)));
 }

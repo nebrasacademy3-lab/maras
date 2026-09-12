@@ -1,7 +1,7 @@
-import { and, asc, count, eq, isNull, lte, or } from "drizzle-orm";
+import { and, asc, count, eq, isNull, lte, or, sql } from "drizzle-orm";
 import { getDb, getPool } from "@/db";
 import { aiFiles, courseRequestFiles, courseResources, supportReplyFiles } from "@/db/schema";
-import { scanColumns, scannerConfigured, scanStoredFile } from "@/lib/file-security";
+import { scanColumns, scannerConfigured, scannerConfigurationError, scanStoredFile } from "@/lib/file-security";
 
 const FILE_SCAN_LOCK = 7_412_009_114;
 const sources = { request: courseRequestFiles, support: supportReplyFiles, resource: courseResources, ai: aiFiles } as const;
@@ -19,7 +19,7 @@ export async function fileScanOverview() {
     ]);
     return { source, counts: counts.map(row => ({ status: row.status, total: Number(row.total) })), rows };
   }));
-  return { configured: scannerConfigured(), groups };
+  return { configured: scannerConfigured(), configurationError: scannerConfigurationError(), groups };
 }
 
 export async function retryFileScan(source: ScanSource, id: number) {
@@ -28,8 +28,8 @@ export async function retryFileScan(source: ScanSource, id: number) {
   return Boolean(row);
 }
 
-export async function runFileScanBatch(limit = 5) {
-  const summary = { scanned: 0, clean: 0, quarantined: 0, pending: 0, busy: false, configured: scannerConfigured() };
+export async function runFileScanBatch(limit = 5, target?: { source: ScanSource; id: number }) {
+  const summary = { scanned: 0, clean: 0, quarantined: 0, pending: 0, skipped: 0, busy: false, configured: scannerConfigured(), configurationError: scannerConfigurationError(), results: [] as Array<{ source: ScanSource; id: number; status: "clean" | "quarantined" | "pending"; error: string | null }> };
   if (!summary.configured) return summary;
   const connection = await getPool().connect();
   let acquired = false;
@@ -38,9 +38,9 @@ export async function runFileScanBatch(limit = 5) {
     if (!acquired) return { ...summary, busy: true };
     const db = getDb();
     const now = new Date().toISOString();
-    const bounded = Math.max(1, Math.min(10, Math.floor(limit)));
-    const groups = await Promise.all(Object.entries(sources).map(async ([source, table]) => {
-      const rows = await db.select().from(table).where(and(eq(table.scanStatus, "pending"), or(isNull(table.scanNextAttemptAt), lte(table.scanNextAttemptAt, now)))).orderBy(asc(table.scanLastAttemptAt), asc(table.createdAt), asc(table.id)).limit(bounded);
+    const bounded = Math.max(1, Math.min(10, Number.isFinite(limit) ? Math.floor(limit) : 1));
+    const groups = await Promise.all(Object.entries(sources).filter(([source]) => !target || source === target.source).map(async ([source, table]) => {
+      const rows = await db.select().from(table).where(and(eq(table.scanStatus, "pending"), target ? eq(table.id, target.id) : or(isNull(table.scanNextAttemptAt), lte(table.scanNextAttemptAt, now)))).orderBy(sql`${table.scanLastAttemptAt} asc nulls first`, asc(table.createdAt), asc(table.id)).limit(bounded);
       return rows.map(row => ({ source: source as ScanSource, row }));
     }));
     const candidates = groups.flat().sort((a, b) => (a.row.scanLastAttemptAt || "").localeCompare(b.row.scanLastAttemptAt || "") || a.row.createdAt.localeCompare(b.row.createdAt) || a.row.id - b.row.id).slice(0, bounded);
@@ -49,16 +49,20 @@ export async function runFileScanBatch(limit = 5) {
       const attemptedAt = new Date().toISOString();
       const attempts = row.scanAttempts + 1;
       // Persist backoff before external IO, including if the process dies mid-scan.
-      await db.update(table).set({ scanAttempts: attempts, scanLastAttemptAt: attemptedAt, scanNextAttemptAt: new Date(Date.now() + scanRetryDelayMs(attempts)).toISOString() }).where(and(eq(table.id, row.id), eq(table.objectKey, row.objectKey), eq(table.scanStatus, "pending")));
+      const claimed = await db.update(table).set({ scanAttempts: attempts, scanLastAttemptAt: attemptedAt, scanNextAttemptAt: new Date(Date.now() + scanRetryDelayMs(attempts)).toISOString() }).where(and(eq(table.id, row.id), eq(table.objectKey, row.objectKey), eq(table.scanStatus, "pending"))).returning({ id: table.id });
+      if (!claimed.length) { summary.skipped += 1; continue; }
       const result = await scanStoredFile(row);
       const changes = { ...scanColumns(result), scanNextAttemptAt: result.status === "pending" ? new Date(Date.now() + scanRetryDelayMs(attempts)).toISOString() : null };
+      let persisted: Array<{ id: number }>;
       if (source === "resource") {
-        await db.update(courseResources).set({ ...changes, ...(result.status === "quarantined" ? { studentVisible: false, status: "archived" } : {}), updatedAt: new Date().toISOString() }).where(and(eq(courseResources.id, row.id), eq(courseResources.objectKey, row.objectKey), eq(courseResources.scanStatus, "pending")));
+        persisted = await db.update(courseResources).set({ ...changes, ...(result.status === "quarantined" ? { studentVisible: false, status: "archived" } : {}), updatedAt: new Date().toISOString() }).where(and(eq(courseResources.id, row.id), eq(courseResources.objectKey, row.objectKey), eq(courseResources.scanStatus, "pending"))).returning({ id: courseResources.id });
       } else if (source === "ai") {
-        await db.update(aiFiles).set({ ...changes, status: result.status === "clean" ? "ready" : result.status === "quarantined" ? "quarantined" : "pending_scan", updatedAt: new Date().toISOString() }).where(and(eq(aiFiles.id, row.id), eq(aiFiles.objectKey, row.objectKey), eq(aiFiles.scanStatus, "pending")));
+        persisted = await db.update(aiFiles).set({ ...changes, status: result.status === "clean" ? "ready" : result.status === "quarantined" ? "quarantined" : "pending_scan", updatedAt: new Date().toISOString() }).where(and(eq(aiFiles.id, row.id), eq(aiFiles.objectKey, row.objectKey), eq(aiFiles.scanStatus, "pending"))).returning({ id: aiFiles.id });
       } else {
-        await db.update(table).set(changes).where(and(eq(table.id, row.id), eq(table.objectKey, row.objectKey), eq(table.scanStatus, "pending")));
+        persisted = await db.update(table).set(changes).where(and(eq(table.id, row.id), eq(table.objectKey, row.objectKey), eq(table.scanStatus, "pending"))).returning({ id: table.id });
       }
+      if (!persisted.length) { summary.skipped += 1; continue; }
+      summary.results.push({ source, id: row.id, status: result.status, error: result.error });
       summary.scanned += 1;
       summary[result.status] += 1;
     }
