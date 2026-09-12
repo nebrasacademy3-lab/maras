@@ -7,11 +7,27 @@ export function startFileScanScheduler() {
     const state = globalThis.__merasFileScanScheduler;
     if (!state || state.running) return;
     state.running = true;
-    try {
-      const summary = await runFileScanBatch(5);
-      if (summary.scanned) logEvent("info", "files.scan.completed", summary);
-    } catch { logEvent("warn", "files.scan.failed", { code: "scan_worker_failed" }); }
-    finally { state.running = false; }
+  try {
+  const summary = await runFileScanBatch(5);
+
+  if (summary.scanned) {
+    logEvent("info", "files.scan.completed", {
+      scanned: summary.scanned,
+      clean: summary.clean,
+      quarantined: summary.quarantined,
+      pending: summary.pending,
+      skipped: summary.skipped,
+      busy: summary.busy,
+      configured: summary.configured,
+      configurationError: summary.configurationError,
+      resultsCount: summary.results.length,
+    });
+  }
+} catch {
+  logEvent("warn", "files.scan.failed", {
+    code: "scan_worker_failed",
+  });
+}
   };
   const timer = setInterval(() => { void tick(); }, 60_000);
   timer.unref?.();
