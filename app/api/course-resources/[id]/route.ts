@@ -5,7 +5,6 @@ import { jsonError } from "@/lib/api";
 import { checkRateLimit } from "@/lib/auth";
 import { authorizeCourseResourceRequest, safeAttachmentDisposition } from "@/lib/course-resource-access";
 import { getObject } from "@/lib/storage";
-import { fileStorageProvider } from "@/lib/file-security";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,7 +23,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const authorization = await authorizeCourseResourceRequest(request, resource.courseSlug);
   if (!authorization.ok) return authorization.response;
   if (!await checkRateLimit("course-resource-download", `user:${authorization.user.id}`, 40, 60)) return jsonError("طلبات تنزيل كثيرة. حاول بعد دقيقة.", 429);
-  const object = await getObject(resource.objectKey, undefined, fileStorageProvider(resource.storageProvider));
+  const object = await getObject(resource.objectKey);
   if (!object) return jsonError("تعذر العثور على الملف المخزن", 404);
   return new Response(object.body, {
     headers: {

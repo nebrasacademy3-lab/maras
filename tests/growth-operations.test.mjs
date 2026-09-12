@@ -9,8 +9,7 @@ test("waitlist is persisted, lifecycle-notified, and converted after payment", a
   assert.match(schema, /courseWaitlist = pgTable\("course_waitlist"/);
   assert.match(route, /waitlist_join/);
   assert.match(lifecycle, /launchNotifications/);
-  assert.match(lifecycle, /queueCourseLaunchNotifications/);
-  assert.match(await read("lib/course-launch-notifications.ts"), /المادة التي تنتظرها أصبحت متاحة/);
+  assert.match(lifecycle, /المادة التي تنتظرها أصبحت متاحة/);
   assert.match(webhook, /fulfillPaidOrderTx/);
   assert.match(fulfillment, /status: "converted"/);
 });
@@ -29,10 +28,9 @@ test("bundle, refund and settlement governance are server-side", async () => {
 
 test("attachments fail closed until a production malware scan succeeds", async () => {
   const [scanner, supportFile, requestZip, health] = await Promise.all([read("lib/file-security.ts"), read("app/api/support/files/[id]/route.ts"), read("app/api/admin/course-requests/[id]/download/route.ts"), read("app/api/health/route.ts")]);
-  assert.match(scanner, /config.mode === "unconfigured"/);
-  assert.doesNotMatch(scanner, /development-signature-check/);
+  assert.match(scanner, /NODE_ENV === "production"/);
   assert.match(scanner, /status: "pending"/);
-  assert.match(supportFile, /fileScanBlockedResponse/);
+  assert.match(supportFile, /الفحص الأمني/);
   assert.match(requestZip, /scanStatus !== "clean"/);
   assert.match(health, /malwareScanner/);
 });

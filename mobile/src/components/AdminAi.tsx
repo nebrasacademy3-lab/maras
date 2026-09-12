@@ -1,4 +1,3 @@
-import { AdminAiDiagnostics } from "@/src/components/AdminAiDiagnostics";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import React, { useMemo, useState } from "react";
@@ -68,7 +67,6 @@ export function AdminAi({ onStepUpRequired, users = [] }: { onStepUpRequired?: (
     <SearchPicker label="أقسام أدوات مراس" value={section} placeholder="اختر القسم" items={[{ key: "services", label: "الخدمات" }, { key: "keys", label: "المفاتيح" }, { key: "plans", label: "الاشتراكات" }, { key: "usage", label: "الاستخدام" }]} onSelect={(item) => setSection(item.key as typeof section)} />
     {feedback ? <Text style={[styles.feedback, { color: feedback.startsWith("تم") || feedback.startsWith("أضيف") ? colors.success : colors.danger }]}>{feedback}</Text> : null}
 
-    {(section === "keys" || section === "services") ? <AdminAiDiagnostics keys={data.keys} onChanged={()=>query.refetch()} onStepUpRequired={onStepUpRequired}/> : null}
     {section === "services" ? <>
       <SectionTitle title="الخدمات والحدود" subtitle="يمكن إيقاف كل خدمة أو تغيير نموذجها وحدود المجاني والمشترك" />
       <View style={styles.list}>{data.settings.map((setting) => <ServiceCard key={setting.service} setting={setting} busy={busy} mutate={mutate} />)}</View>

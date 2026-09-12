@@ -7,10 +7,8 @@ const read = (path) => readFile(new URL(path, root), "utf8");
 
 test("student 360 API is admin-only and returns every operational domain", async () => {
   const route = await read("app/api/admin/students/[email]/route.ts");
-  assert.match(route, /adminControlGuard\(request\)/);
-  assert.match(await read("lib/admin-control-guard.ts"), /roleAllowed\(user, \["admin"\]\)/);
-  assert.match(route, /\(await params\)\.email/);
-  assert.doesNotMatch(route, /decodeURIComponent/);
+  assert.match(route, /roleAllowed\(admin, \["admin"\]\)/);
+  assert.match(route, /decodeURIComponent\(\(await params\)\.email\)/);
   for (const table of [
     "courseAccess",
     "lessonProgress",
@@ -27,7 +25,7 @@ test("student 360 API is admin-only and returns every operational domain", async
   for (const domain of ["summary", "catalog", "subscriptions", "accessEvents", "progress", "orders", "requests", "support", "notifications", "sessions"]) {
     assert.match(route, new RegExp(`${domain}[,:]`));
   }
-  assert.match(route, /"cache-control": "private, no-store"/);
+  assert.match(route, /"cache-control": "no-store"/);
 });
 
 test("student 360 page requires an administrator and keeps profiles out of search", async () => {

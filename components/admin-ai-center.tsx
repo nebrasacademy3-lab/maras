@@ -8,7 +8,6 @@ import {
   Sparkles, Users, X,
 } from "lucide-react";
 import type { AiService } from "@/lib/ai-contracts";
-import { AdminAiDiagnostics } from "./admin-ai-diagnostics";
 import { AdminGeminiConnection } from "./admin-gemini-connection";
 import type { GeminiModelOption } from "@/lib/gemini-config";
 import { AdminCenterNav } from "@/components/admin-center-nav";
@@ -17,7 +16,7 @@ import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./admin-ai-center.module.css";
 
 type ServiceSetting = { service: AiService; enabled: boolean; model: string; freeMonthlyLimit: number; subscriberMonthlyLimit: number; maxOutputTokens: number; maxFileBytes: number; temperature: number; instructions: string };
-type Provider = { updatedAt:string; decryptable?:boolean; id: number; label: string; projectLabel: string | null; maskedKey: string; fingerprint: string; priority: number; status: string; cooldownUntil: string | null; consecutiveFailures: number; lastUsedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; lastErrorMessage?: string };
+type Provider = { id: number; label: string; projectLabel: string | null; maskedKey: string; fingerprint: string; priority: number; status: string; cooldownUntil: string | null; consecutiveFailures: number; lastUsedAt: string | null; lastSuccessAt: string | null; lastErrorCode: string | null; lastErrorMessage?: string };
 type Entitlement = { id: number; userId: number; email: string; fullName: string; source: string; status: string; startsAt: string; expiresAt: string | null; createdBy: string | null };
 type Usage = { service: string; status: string; total: number };
 type SubscriptionOrder = { id: number; orderNumber: string; userId: number; customerEmail: string; customerName: string; amount: number; currency: string; status: string; paidAt: string | null; entitlementExpiresAt: string | null; createdAt: string };
@@ -87,7 +86,7 @@ export function AdminAiCenter({ adminName }: { adminName: string }) {
   const usageTotal = useMemo(() => data?.usage.filter((row) => row.status === "succeeded").reduce((sum, row) => sum + row.total, 0) || 0, [data]);
   const failedTotal = useMemo(() => data?.usage.filter((row) => row.status === "failed" || row.status === "billable_failed").reduce((sum, row) => sum + row.total, 0) || 0, [data]);
   const activeEntitlements = data?.entitlements.filter((item) => item.status === "active").length || 0;
-  const activeProviders = (data?.keys.filter((key) => key.status === "active" && key.decryptable !== false && (!key.cooldownUntil || Date.parse(key.cooldownUntil) <= loadedAt)).length || 0) + (data?.environmentKeyCount || 0);
+  const activeProviders = (data?.keys.filter((key) => key.status === "active" && (!key.cooldownUntil || Date.parse(key.cooldownUntil) <= loadedAt)).length || 0) + (data?.environmentKeyCount || 0);
 
   return <main className={styles.page} dir="rtl"><div className={styles.shell}>
     <AdminCenterNav />
@@ -109,8 +108,6 @@ export function AdminAiCenter({ adminName }: { adminName: string }) {
 
     {busy==="load"&&!data ? <div className={styles.loading}><LoaderCircle className={styles.spin} size={28}/><span>يجري تحميل مركز أدوات مراس…</span></div> : null}
     {!data&&busy!=="load" ? <div className={styles.empty}><CircleAlert size={27}/><p>{notice?.text || "تعذر تحميل مركز أدوات مراس."}</p><button className={styles.saveButton} onClick={()=>void load()}><RefreshCw size={16}/> إعادة المحاولة</button></div> : null}
-
-    {data&&(tab==="providers"||tab==="services") ? <AdminAiDiagnostics keys={data.keys} onChanged={()=>load(true)}/> : null}
 
     {data&&tab==="overview" ? <section className={styles.overview}>
       <div className={styles.healthCard}><header><div><small>حالة المنظومة</small><h2>إعدادات الخدمات وحالة التفعيل</h2></div><span><ShieldCheck size={21}/> مفاتيح مخفية</span></header><div className={styles.healthGrid}>{data.settings.map((service)=><article key={service.service}><span className={service.enabled?styles.online:styles.offline}/><div><b>{serviceNames[service.service]}</b><small>{service.model}</small></div><em>{service.enabled?"مفعّلة":"متوقفة"}</em></article>)}</div><p>عند وصول مفتاح إلى حد 429 أو خطأ مؤقت، ينتقل الطلب تلقائيًا إلى مزود متاح مع فترة تهدئة للمفتاح المتعثر.</p></div>

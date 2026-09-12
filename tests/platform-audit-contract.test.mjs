@@ -36,8 +36,8 @@ test("checkout serializes matching carts and gives Tap a bounded redirect lifeti
   assert.match(checkout, /transaction: \{ expiry: \{ period: CHECKOUT_EXPIRY_MINUTES, type: "MINUTE" \} \}/);
 });
 
-test("cart and payment obey server enrollment policy; default remains ready-lesson based", () => {
-  assert.match(catalogStore, /enrollmentAvailable\(mode, readyLessons, status\)/);
+test("published courses require at least one ready lesson before cart or payment", () => {
+  assert.match(catalogStore, /lessons\.length > 0 && readyLessons > 0/);
   assert.doesNotMatch(catalogStore, /readyLessons === lessons\.length/);
   assert.match(cart, /!course\.availableForPurchase/);
   assert.match(checkout, /selected\.filter\(\(course\) => !course\.availableForPurchase\)/);

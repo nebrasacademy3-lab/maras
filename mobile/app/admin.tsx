@@ -10,7 +10,6 @@ import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, View } from 
 import { RegisteredDevices } from "@/src/components/RegisteredDevices";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AdminAi } from "@/src/components/AdminAi";
-import { AdminCourseAudience } from "@/src/components/AdminCourseAudience";
 import { AdminFinance, AdminLearningTracks, AdminOperations, AdminStudentProfile } from "@/src/components/AdminCenters";
 import { AdminReferrals } from "@/src/components/AdminReferrals";
 import { AppearanceSettings } from "@/src/components/AppearanceSettings";
@@ -35,8 +34,8 @@ type AdminData = {
   services: Record<string, boolean>;
   users: { id: number; fullName: string; email: string; phone: string | null; role: string; status: string; universitySlug: string | null; specialty: string | null; academicLevel: string | null; profileCompletedAt: string | null; deviceCount?: number; sessions?: { id: number; deviceId: string | null; deviceLabel: string; platform: string; ipAddress: string | null; lastSeenAt: string; expiresAt: string; createdAt: string }[] }[];
   deviceLimit: number;
-  requests: { id: number; userId?: number | null; courseName: string; university: string; specialty: string; courseUrl?: string | null; status: string; preparedCourseSlug?: string | null; attachmentsCount: number; createdAt: string; student?: { fullName: string; email: string; phone: string | null; universitySlug: string | null; specialty: string | null; academicLevel: string | null; status: string } | null; files?: { id: number; originalName: string; contentType: string; sizeBytes: number; scanStatus?: string; createdAt: string }[] }[];
-  tickets: { id: number; ticketNumber: string; title: string; message: string; userEmail: string | null; contactChannel?: string; status: string; createdAt: string; student?: { fullName: string; email: string; phone: string | null; universitySlug: string | null; specialty: string | null; academicLevel: string | null; status: string } | null; replies?: { id: number; body: string; authorRole?: string; authorEmail?: string; internal?: boolean; replyToId?: number | null; createdAt: string; files?: { id: number; originalName: string; contentType: string; sizeBytes: number; scanStatus?: string; createdAt: string }[] }[] }[];
+  requests: { id: number; userId?: number | null; courseName: string; university: string; specialty: string; courseUrl?: string | null; status: string; preparedCourseSlug?: string | null; attachmentsCount: number; createdAt: string; student?: { fullName: string; email: string; phone: string | null; universitySlug: string | null; specialty: string | null; academicLevel: string | null; status: string } | null; files?: { id: number; originalName: string; contentType: string; sizeBytes: number; createdAt: string }[] }[];
+  tickets: { id: number; ticketNumber: string; title: string; message: string; userEmail: string | null; contactChannel?: string; status: string; createdAt: string; student?: { fullName: string; email: string; phone: string | null; universitySlug: string | null; specialty: string | null; academicLevel: string | null; status: string } | null; replies?: { id: number; body: string; authorRole?: string; authorEmail?: string; internal?: boolean; replyToId?: number | null; createdAt: string; files?: { id: number; originalName: string; contentType: string; sizeBytes: number; createdAt: string }[] }[] }[];
   institutions: (Institution & { status: string })[];
   courses: (Course & { status: string; specialtySlug: string; coverTheme: string })[];
   specialties: { slug: string; name: string; description: string; status: string }[];
@@ -188,7 +187,7 @@ export default function Admin() {
     {tab === "staff" && <StaffAdmin data={data} colors={colors} refresh={refresh} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "requests" && <Requests rows={data.requests} courses={data.courses} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "support" && <Support rows={data.tickets} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
-    {tab === "catalog" && <CatalogAdmin data={data} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} onStepUpRequired={stepUpRequired} onOpenStudent={(email)=>{setProfileEmail(email);setTab("users");}} />}
+    {tab === "catalog" && <CatalogAdmin data={data} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
     {tab === "commerce" && <Commerce data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "finance" && <AdminFinance onStepUpRequired={stepUpRequired} />}
     {tab === "operations" && <AdminOperations onStepUpRequired={stepUpRequired} />}
@@ -364,8 +363,7 @@ function Support({ rows, colors, mutate, refresh, onDelete }: { rows: AdminData[
   </>;
 }
 
-function CatalogAdmin({ data, colors, mutate, refresh, onDelete, onOpenStudent, onStepUpRequired }: { data: AdminData; colors: Colors; mutate: Mutate; refresh: () => Promise<void>; onDelete: DeleteEntity; onOpenStudent:(email:string)=>void; onStepUpRequired:(message:string)=>void }) {
-  const [audienceSlug,setAudienceSlug]=useState("");
+function CatalogAdmin({ data, colors, mutate, refresh, onDelete }: { data: AdminData; colors: Colors; mutate: Mutate; refresh: () => Promise<void>; onDelete: DeleteEntity }) {
   const { t } = useLanguage();
   const [institution, setInstitution] = useState({ slug: "", name: "", nameEn: "", region: "", type: "حكومية", domain: "", logoUrl: "" });
   const [logo, setLogo] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
@@ -432,9 +430,6 @@ function CatalogAdmin({ data, colors, mutate, refresh, onDelete, onOpenStudent, 
     } finally { setVideoBusy(false); }
   };
   return <>
-    <SectionTitle title="المشتركون وتنبيهات الإتاحة" subtitle="أعداد دقيقة وقائمة كاملة بصفحات، مع فتح ملف الطالب مباشرة"/>
-    <SearchPicker label="إدارة مشتركي مادة" value={audienceSlug} placeholder="ابحث عن المادة" items={data.courses.map(row=>({key:row.slug,label:row.title,detail:row.university}))} onSelect={row=>setAudienceSlug(row.key)}/>
-    {audienceSlug?<AdminCourseAudience key={audienceSlug} slug={audienceSlug} onOpenStudent={onOpenStudent} onStepUpRequired={onStepUpRequired}/>:null}
     <SectionTitle title="طريقة مشاهدة المحتوى" subtitle="يُفرض الاختيار من خادم البث، بينما يبقى الدرس التجريبي متاحًا في الويب والتطبيق" />
     <Card><ChoiceRow values={["both", "app_only", "web_only"]} selected={data.settings.content_view_mode || "both"} onSelect={(value) => void mutate({ action: "saveSettings", values: { content_view_mode: value } }, "تم تحديث طريقة مشاهدة المحتوى")} colors={colors} labels={{ both: "الويب والتطبيق", app_only: "التطبيق فقط", web_only: "الويب فقط" }} /></Card>
     <SectionTitle title="رفع فيديو درس" subtitle="يحسب الخادم مدة MP4/MOV/WebM/MKV/AVI تلقائيًا ويحدّث مدة الدرس" />

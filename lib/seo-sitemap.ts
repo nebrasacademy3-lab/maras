@@ -13,23 +13,11 @@ export function buildPublicSitemap(courses: Course[], institutions: Institution[
     const lastModified = validModifiedDate(course.updatedAt);
     entries.push({ url: seoUrl(`/courses/${seoSegment(course.slug)}`), ...(lastModified ? { lastModified } : {}) });
   }
-  const shared = new Map<string, { count: number; lastModified?: Date }>();
-  const specific = new Map<string, { count: number; lastModified?: Date }>();
-  for (const course of published) {
-    const map = course.audienceScope === "institution" ? shared : specific;
-    const key = course.audienceScope === "institution" ? course.universitySlug : JSON.stringify([course.universitySlug, course.specialtySlug]);
-    const existing = map.get(key) || { count: 0 };
-    const date = validModifiedDate(course.updatedAt);
-    existing.count++;
-    if (date && (!existing.lastModified || date > existing.lastModified)) existing.lastModified = date;
-    map.set(key, existing);
-  }
   for (const specialty of specialties) {
     if (!visible.has(specialty.institutionSlug)) continue;
-    const common = shared.get(specialty.institutionSlug);
-    const exact = specific.get(JSON.stringify([specialty.institutionSlug, specialty.slug]));
-    if (!common?.count && !exact?.count) continue;
-    const dates = [validModifiedDate(specialty.updatedAt), common?.lastModified, exact?.lastModified].filter((date): date is Date => Boolean(date));
+    const rows = published.filter((course) => course.universitySlug === specialty.institutionSlug && (course.audienceScope === "institution" || course.specialtySlug === specialty.slug));
+    if (!rows.length) continue;
+    const dates = [specialty.updatedAt, ...rows.map((course) => course.updatedAt)].map(validModifiedDate).filter((date): date is Date => Boolean(date));
     const lastModified = dates.length ? new Date(Math.max(...dates.map((date) => date.getTime()))) : undefined;
     entries.push({ url: seoUrl(`/universities/${seoSegment(specialty.institutionSlug)}/specialties/${seoSegment(specialty.slug)}`), ...(lastModified ? { lastModified } : {}) });
   }

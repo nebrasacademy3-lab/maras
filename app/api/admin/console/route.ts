@@ -21,9 +21,6 @@ import { deleteAdminEntity, DeletionPolicyError, type AdminDeletionType } from "
 import { accessExpiryIso, normalizeAccessDurationDays } from "@/lib/course-access";
 import { ADMIN_PERMISSIONS, hasPermission, type AdminPermission } from "@/lib/permissions";
 import { isSocialSettingKey, normalizeSocialUrl, normalizeWhatsappNumber } from "@/lib/social-links";
-import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
-import { ENROLLMENT_MODES, enrollmentMode } from "@/lib/course-enrollment";
-import { queueCourseLaunchNotifications } from "@/lib/course-launch-notifications";
 
 async function authorize(request: Request, delegatedPermission?: AdminPermission) {
   const user = await getSessionUser(request);
@@ -170,7 +167,7 @@ export async function GET(request: Request) {
     }),
     deviceLimit: 2,
     orders: orderRows,
-    requests: requestRows.map((request) => ({ ...request, student: request.userId ? (() => { const student = studentRows.find((user) => user.id === request.userId); return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null; })() : null, files: requestFileRows.filter((file) => file.requestId === request.id).map((file) => ({ id: file.id, requestId: file.requestId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, scanStatus: file.scanStatus, createdAt: file.createdAt })) })),
+    requests: requestRows.map((request) => ({ ...request, student: request.userId ? (() => { const student = studentRows.find((user) => user.id === request.userId); return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null; })() : null, files: requestFileRows.filter((file) => file.requestId === request.id).map((file) => ({ id: file.id, requestId: file.requestId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })),
     tickets: ticketRows.map((ticket) => {
       const ticketReplies = replyRows
         .filter((reply) => reply.ticketId === ticket.id)
@@ -179,7 +176,7 @@ export async function GET(request: Request) {
           ...reply,
           files: supportFileRows
             .filter((file) => file.replyId === reply.id)
-            .map((file) => ({ id: file.id, replyId: file.replyId, ticketId: file.ticketId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, scanStatus: file.scanStatus, createdAt: file.createdAt })),
+            .map((file) => ({ id: file.id, replyId: file.replyId, ticketId: file.ticketId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })),
         }));
       const first = ticketReplies[0];
       const legacyAttachmentOnly = first && !first.body?.trim() && first.authorRole === "student" && first.files.length > 0;
@@ -219,7 +216,7 @@ export async function POST(request: Request) {
   const machineAuthorized = isAdminRequest(request);
   if (!machineAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   let payload: Record<string, unknown>;
-  try { payload = await readBoundedJsonObject(request, 256 * 1024); } catch (error) { return jsonError("بيانات غير صالحة أو أكبر من المسموح", error instanceof RequestBodyTooLargeError ? 413 : 400); }
+  try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
   const action = cleanText(payload.action, 50);
   const delegatedPermission = action === "deleteEntity"
     ? ADMIN_PERMISSIONS.RECORDS_DELETE
@@ -234,11 +231,6 @@ export async function POST(request: Request) {
   if (!await checkRateLimit("admin-console-write", identity, 60, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
   const now = new Date().toISOString();
-  if (["updateUser", "grantAccess", "updateAccess", "revokeUserSession", "saveSupervisorAssignment", "saveSettings"].includes(action)) {
-    if (!authorization.user) return jsonError("هذا الإجراء يتطلب حسابًا إداريًا موثقًا، وليس مفتاح الأتمتة.", 403);
-    try { await requireAdminStepUp(request, authorization.user); }
-    catch (error) { return error instanceof AdminMfaError ? jsonError(error.message, error.status, error.code) : jsonError("مطلوب تحقق إداري إضافي", 403); }
-  }
 
   if (action === "deleteEntity") {
     if (!authorization.user || !await hasPermission(authorization.user, ADMIN_PERMISSIONS.RECORDS_DELETE)) return jsonError("غير مصرح بتنفيذ الحذف", 403);
@@ -372,7 +364,6 @@ export async function POST(request: Request) {
     const [specialtyLink] = await db.select().from(institutionSpecialties).where(and(eq(institutionSpecialties.institutionSlug, institutionSlug), eq(institutionSpecialties.specialtySlug, specialtySlug), eq(institutionSpecialties.status, "published"))).limit(1);
     if (!specialtyLink) return jsonError("التخصص غير مربوط بهذه الجهة");
     const [before] = await db.select().from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
-    if (payload.enrollmentMode !== undefined && !(ENROLLMENT_MODES as readonly unknown[]).includes(payload.enrollmentMode)) return jsonError("حالة فتح الاشتراك غير صالحة");
     const values = {
       slug, institutionSlug, specialtySlug, title,
       titleEn: cleanText(payload.titleEn, 160), code: cleanText(payload.code, 50) || null,
@@ -382,13 +373,12 @@ export async function POST(request: Request) {
       accessDurationDays: normalizeAccessDurationDays(payload.accessDurationDays, cleanText(payload.accessLabel, 80)),
       sourceUrl: cleanText(payload.sourceUrl, 500) || before?.sourceUrl || null,
       verifiedAt: cleanText(payload.verifiedAt, 30) || before?.verifiedAt || null,
-      status, audienceScope, enrollmentMode: enrollmentMode(payload.enrollmentMode ?? before?.enrollmentMode), featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
+      status, audienceScope, featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
     };
     await db.insert(catalogCourses).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogCourses.slug, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "course", slug, before, values);
-    const launch = await queueCourseLaunchNotifications(slug).catch(() => ({ queued: 0, processed: 0, hasMore: true, retryScheduled: true }));
-    return Response.json({ ok: true, course: values, launch, message: launch.queued ? `تم الحفظ وإضافة ${launch.queued} تنبيه إتاحة إلى طابور الإرسال` : "تم حفظ المادة" }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ ok: true, course: values });
   }
 
   if (action === "saveUnit") {
@@ -443,25 +433,8 @@ export async function POST(request: Request) {
     const [before] = await db.select().from(users).where(eq(users.id, id)).limit(1);
     if (!before) return jsonError("المستخدم غير موجود", 404);
     if (before.email === authorization.actor && (status !== "active" || role !== "admin")) return jsonError("لا يمكنك تعطيل صلاحية حسابك الإداري الحالي");
-    const outcome = await db.transaction(async tx => {
-      // Serialize administrator role changes to prevent concurrent removal of the last active admin.
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(7412009114)`);
-      const [current] = await tx.select({ role: users.role, status: users.status }).from(users).where(eq(users.id, id)).limit(1).for("update");
-      if (!current) return "missing";
-      if (current.role === "admin" && current.status === "active" && (role !== "admin" || status !== "active")) {
-        const [activeAdmins] = await tx.select({ total: count() }).from(users).where(and(eq(users.role, "admin"), eq(users.status, "active")));
-        if (Number(activeAdmins.total) <= 1) return "last_admin";
-      }
-      await tx.update(users).set({ status, role, updatedAt: now }).where(eq(users.id, id));
-      if (status !== "active" || role !== current.role) {
-        await tx.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, id), isNull(authSessions.revokedAt)));
-        await tx.update(pushDevices).set({ status: "revoked" }).where(eq(pushDevices.userId, id));
-      }
-      await tx.insert(auditLogs).values({ actorEmail: authorization.actor, action: "update", entityType: "user", entityId: String(id), beforeJson: JSON.stringify(current), afterJson: JSON.stringify({ status, role }), ipAddress: clientIp(request), createdAt: now });
-      return "saved";
-    });
-    if (outcome === "missing") return jsonError("المستخدم لم يعد موجودًا",404);
-    if (outcome === "last_admin") return jsonError("لا يمكن إيقاف أو إزالة صلاحية آخر مدير نشط",409);
+    await db.update(users).set({ status, role, updatedAt: now }).where(eq(users.id, id));
+    await audit(request, authorization.actor, "update", "user", String(id), { status: before.status, role: before.role }, { status, role });
     return Response.json({ ok: true });
   }
 
@@ -698,11 +671,9 @@ export async function POST(request: Request) {
     if (!before) return jsonError("التذكرة غير موجودة", 404);
     await db.update(supportTickets).set({ status, assignedTo: authorization.actor, updatedAt: now }).where(eq(supportTickets.id, id));
     if (reply) await db.insert(supportReplies).values({ ticketId: id, authorEmail: authorization.actor, authorRole: authorization.user?.role || "admin", body: reply, internal: payload.internal === true, createdAt: now });
-    const publicReply = Boolean(reply) && payload.internal !== true;
-    // Internal notes never leave the admin workspace through a notification preview.
-    if (before.userEmail && (publicReply || before.status !== status)) {
-      const title = publicReply ? "رد جديد من دعم مراس" : "تحديث تذكرة الدعم";
-      const body = publicReply ? reply.slice(0, 240) : `تغيرت حالة التذكرة ${before.ticketNumber} إلى «${supportStatusArabic[status] || status}».`;
+    if (before.userEmail && (reply || before.status !== status)) {
+      const title = reply ? "رد جديد من دعم مراس" : "تحديث تذكرة الدعم";
+      const body = reply ? reply.slice(0, 240) : `تغيرت حالة التذكرة ${before.ticketNumber} إلى «${supportStatusArabic[status] || status}».`;
       await createAndSendNotification({
         values: { userEmail: before.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة", createdAt: now },
         target: { userEmail: before.userEmail },

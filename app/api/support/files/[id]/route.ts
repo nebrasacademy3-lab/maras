@@ -1,16 +1,14 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
-import { checkRateLimit, getSessionUser } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth";
 import { getObject } from "@/lib/storage";
-import { fileStorageProvider } from "@/lib/file-security";
-import { fileScanService, fileScanBlockedResponse } from "@/lib/file-scan-queue";
 import { jsonError } from "@/lib/api";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const current = await getSessionUser(request);
   if (!current) return jsonError("سجّل الدخول أولًا", 401);
-  const id = Number((await params).id);
+  const id = Math.floor(Number((await params).id));
   if (!Number.isSafeInteger(id) || id <= 0) return jsonError("المرفق غير صالح", 400);
   const db = getDb();
   const [file] = await db.select().from(supportReplyFiles).where(eq(supportReplyFiles.id, id)).limit(1);
@@ -20,11 +18,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!ticket || (!manager && ticket.userEmail !== current.email)) return jsonError("غير مصرح", 403);
   const [reply] = await db.select({ internal: supportReplies.internal, ticketId: supportReplies.ticketId }).from(supportReplies).where(eq(supportReplies.id, file.replyId)).limit(1);
   if (!reply || reply.ticketId !== file.ticketId || (!manager && reply.internal)) return jsonError("المرفق غير موجود", 404);
-  if (!await checkRateLimit("protected-file-download", `user:${current.id}`, 40, 60)) return jsonError("طلبات تنزيل كثيرة؛ حاول بعد دقيقة.", 429);
-  const scan = await fileScanService.scanFile("support", file.id);
-  const blocked = fileScanBlockedResponse(scan);
-  if (blocked) return blocked;
-  const object = await getObject(file.objectKey, undefined, fileStorageProvider(file.storageProvider));
+  if (file.scanStatus === "quarantined") return jsonError("المرفق غير متاح لأسباب أمنية", 404);
+  if (file.scanStatus !== "clean") return jsonError("المرفق قيد الفحص الأمني", 423);
+  const object = await getObject(file.objectKey);
   if (!object) return jsonError("الملف غير موجود في التخزين", 404);
   const inline = new URL(request.url).searchParams.get("inline") === "1" && (file.contentType.startsWith("image/") || file.contentType.startsWith("audio/"));
   const headers = new Headers({

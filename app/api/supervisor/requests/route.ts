@@ -13,7 +13,7 @@ export async function GET(request:Request){
   const db=getDb();let rows:Array<typeof courseRequests.$inferSelect>;
   if(user!.role==="admin")rows=await db.select().from(courseRequests).orderBy(desc(courseRequests.createdAt)).limit(150);
   else{const assignments=await db.select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId,user!.id),eq(supervisorAssignments.active,true)));const candidates=await db.select().from(courseRequests).where(or(eq(courseRequests.assignedSupervisorId,user!.id),eq(courseRequests.status,"new"))).orderBy(desc(courseRequests.createdAt)).limit(150);rows=candidates.filter((row)=>row.assignedSupervisorId===user!.id||(row.status==="new"&&assignments.some((scope)=>(!scope.institutionSlug||scope.institutionSlug===row.universitySlug)&&(!scope.specialty||scope.specialty===row.specialty)))).slice(0,100);}
-  const ids=rows.map((row)=>row.id);const files=ids.length?await db.select({id:courseRequestFiles.id,requestId:courseRequestFiles.requestId,originalName:courseRequestFiles.originalName,sizeBytes:courseRequestFiles.sizeBytes,contentType:courseRequestFiles.contentType,scanStatus:courseRequestFiles.scanStatus}).from(courseRequestFiles).where(inArray(courseRequestFiles.requestId,ids)):[];
+  const ids=rows.map((row)=>row.id);const files=ids.length?await db.select({id:courseRequestFiles.id,requestId:courseRequestFiles.requestId,originalName:courseRequestFiles.originalName,sizeBytes:courseRequestFiles.sizeBytes,contentType:courseRequestFiles.contentType}).from(courseRequestFiles).where(inArray(courseRequestFiles.requestId,ids)):[];
   return Response.json({ok:true,requests:rows.map((row)=>({...row,files:files.filter((file)=>file.requestId===row.id)}))},{headers:{"cache-control":"no-store"}});
 }
 
