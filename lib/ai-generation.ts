@@ -157,3 +157,19 @@ export async function generateFileQuiz(input: {
 export function publicQuizQuestion(question: StoredQuizQuestion) {
   return { id: question.id, type: question.type, question: question.question, choices: question.choices };
 }
+
+/** Provider/model/schema probe through the SAME saved-config key pool as student tools.
+ * Deliberately uses a tiny text fixture, not a student's files, and does not alter student quotas.
+ * This does not certify file upload, malware scanning, billing or every possible source document.
+ */
+export async function diagnoseAiService(config: AiServiceConfig) {
+  if (!config.enabled) throw new AiPlatformError("AI_SERVICE_DISABLED", "الخدمة متوقفة من الإدارة. فعّلها قبل اختبارها.", 409);
+  const fixture = "Educational fixture: A triangle has three sides. A square has four sides.";
+  const prompt = config.service === "quiz" ? `${fixture} Generate exactly one multiple-choice question from this text with four distinct choices, correctIndex starting at zero, a brief explanation, translatedExplanation null, and scientificTerms an empty array.`
+    : config.service === "translation" ? `Translate this short educational text into Arabic: ${fixture}`
+    : config.service === "summary" ? `Summarize this short educational text in one Arabic sentence: ${fixture}`
+    : "أجب بجملة عربية قصيرة: كم ضلعًا للمثلث؟";
+  const result = await generateGeminiContent({ config, systemInstruction: `${BASE_SYSTEM}\n${config.instructions}`, contents: [{role:"user",parts:[{text:prompt}]}], ...(config.service === "quiz" ? {responseSchema:quizSchema as unknown as Record<string,unknown>} : {}) });
+  if(config.service === "quiz") parseQuiz(result.text,1);
+  return {service:config.service,model:result.model,keyId:result.keyId,generationVerified:true,structuredOutputVerified:config.service === "quiz",inputTokens:result.inputTokens,outputTokens:result.outputTokens,outputCharacters:result.text.length,scope:"saved_service_config_key_pool_and_text_generation",checkedAt:new Date().toISOString()};
+}

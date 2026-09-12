@@ -17,6 +17,7 @@ async function isolated(file, dependencies = {}) {
 class AiPlatformError extends Error { constructor(code, message, status = 400) { super(message); this.code = code; this.status = status; } }
 const platform = { AiPlatformError };
 const config = await isolated("../lib/gemini-config.ts");
+const policy = await isolated("../lib/gemini-request-policy.ts");
 const errors = await isolated("../lib/gemini-errors.ts", platform);
 const legacy = "AIza" + "synthetic_not_real_".repeat(2);
 const modern = "AQ." + "synthetic_not_real_".repeat(30) + ".signature";
@@ -111,7 +112,7 @@ async function runtime(sequence, environment = {}) {
   const rows = [modern, legacy].map((key, index) => ({ id: index + 1, encryptedKey: keys.encryptAiApiKey(key), fingerprint: keys.aiKeyFingerprint(key), priority: index, lastUsedAt: null, cooldownUntil: null }));
   const db = { select: () => ({ from: () => ({ where: () => ({ orderBy: async () => rows }) }) }), update: () => ({ set: values => ({ where: async () => { updates.push(values); } }) }) };
   const p = await provider(async (url, init) => { calls.push({ url: String(url), init }); return sequence(calls.length); });
-  const compiledModule = await isolated("../lib/gemini.ts", { ...platform, ...config, ...errors, ...keys, ...p, createHash: crypto.createHash, asc: () => true, eq: () => true, getDb: () => db, aiApiKeys: {}, process: { env: environment } });
+  const compiledModule = await isolated("../lib/gemini.ts", { ...platform, ...config, ...errors, ...keys, ...p, ...policy, and:()=>true, createHash: crypto.createHash, asc: () => true, eq: () => true, getDb: () => db, aiApiKeys: {}, process: { env: environment } });
   return { ...compiledModule, updates, calls };
 }
 const generation = { config: { model: model.name, temperature: 0.2, maxOutputTokens: 4096 }, systemInstruction: "Test only", contents: [{ role: "user", parts: [{ text: "OK" }] }] };
@@ -122,10 +123,19 @@ test("403 rotates to the next key without disabling credentials; request model i
   assert.equal(r.updates[0].status, "active"); assert.equal(r.updates[0].lastErrorCode, "AI_PERMISSION_DENIED");
   assert.equal(r.updates[1].lastErrorCode, null);
 });
-test("invalid-key signals disable only that key while model failures do not rotate or disable the pool", async () => {
+test("invalid-key signals disable only that key; model failures try alternate project keys without disabling them", async () => {
   const invalid = await runtime(index => index === 1 ? Response.json({ error: { details: [{ reason: "API_KEY_INVALID" }] } }, { status: 400 }) : Response.json(answer));
   await invalid.generateGeminiContent(generation); assert.equal(invalid.updates[0].status, "error"); assert.equal(invalid.calls.length, 2);
   const missing = await runtime(() => Response.json({ error: {} }, { status: 404 }));
   await assert.rejects(missing.generateGeminiContent(generation), error => error.code === "AI_MODEL_UNAVAILABLE");
-  assert.equal(missing.calls.length, 1); assert.equal(missing.updates[0].status, "active"); assert.equal(missing.updates[0].cooldownUntil, null);
+  assert.equal(missing.calls.length, 2); assert.equal(missing.updates[0].status, "active"); assert.equal(missing.updates[0].cooldownUntil, null);
+});
+
+test("quiz JSON Schema reaches Google's responseJsonSchema field on the real runtime path",async()=>{
+ const r=await runtime(()=>Response.json(answer));const schema={type:"object",properties:{answer:{type:["string","null"]}},additionalProperties:false};
+ await r.generateGeminiContent({...generation,responseSchema:schema});
+ const request=JSON.parse(r.calls[0].init.body);
+ assert.deepEqual(request.generationConfig.responseJsonSchema,schema);
+ assert.equal(request.generationConfig.responseSchema,undefined);
+ assert.equal(request.generationConfig.responseMimeType,"application/json");
 });

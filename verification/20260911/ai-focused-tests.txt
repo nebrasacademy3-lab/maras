@@ -1,0 +1,160 @@
+TAP version 13
+# Subtest: admin save accepts modern dotted key, encrypts it, and returns/audits masked data only
+ok 1 - admin save accepts modern dotted key, encrypts it, and returns/audits masked data only
+  ---
+  duration_ms: 123.040213
+  type: 'test'
+  ...
+# Subtest: models/ service settings round-trip through actual config reader without falling back
+ok 2 - models/ service settings round-trip through actual config reader without falling back
+  ---
+  duration_ms: 129.271658
+  type: 'test'
+  ...
+# Subtest: key storage configuration errors retain precise sanitized code instead of blaming a valid key
+ok 3 - key storage configuration errors retain precise sanitized code instead of blaming a valid key
+  ---
+  duration_ms: 66.32426
+  type: 'test'
+  ...
+# Subtest: provider checks require permission, administrative step-up and their own rate limit before accessing Google
+ok 4 - provider checks require permission, administrative step-up and their own rate limit before accessing Google
+  ---
+  duration_ms: 183.444329
+  type: 'test'
+  ...
+# Subtest: saved-key generation checks use decrypted key internally and recover old error status without exposing it
+ok 5 - saved-key generation checks use decrypted key internally and recover old error status without exposing it
+  ---
+  duration_ms: 52.439239
+  type: 'test'
+  ...
+# Subtest: diagnostic errors expose safe category/retry delay; metadata success never claims generation
+ok 6 - diagnostic errors expose safe category/retry delay; metadata success never claims generation
+  ---
+  duration_ms: 66.75711
+  type: 'test'
+  ...
+# Subtest: modern dotted auth keys survive validation, authenticated encryption and all environment formats
+ok 7 - modern dotted auth keys survive validation, authenticated encryption and all environment formats
+  ---
+  duration_ms: 5.371573
+  type: 'test'
+  ...
+# Subtest: model identifiers normalize resources without allowing a URL, query, escaped slash or path traversal
+ok 8 - model identifiers normalize resources without allowing a URL, query, escaped slash or path traversal
+  ---
+  duration_ms: 0.49285
+  type: 'test'
+  ...
+# Subtest: credentials use only Google's header on a fixed endpoint and redirects are forbidden
+ok 9 - credentials use only Google's header on a fixed endpoint and redirects are forbidden
+  ---
+  duration_ms: 86.49811
+  type: 'test'
+  ...
+# Subtest: error classifications separate valid-key permission, model, quota and billing failures without raw provider data
+ok 10 - error classifications separate valid-key permission, model, quota and billing failures without raw provider data
+  ---
+  duration_ms: 2.243262
+  type: 'test'
+  ...
+# Subtest: model discovery follows bounded pages and returns only generateContent-capable normalized models
+ok 11 - model discovery follows bounded pages and returns only generateContent-capable normalized models
+  ---
+  duration_ms: 48.938657
+  type: 'test'
+  ...
+# Subtest: metadata checks do not generate; explicit generation test sends only a bounded generic prompt
+ok 12 - metadata checks do not generate; explicit generation test sends only a bounded generic prompt
+  ---
+  duration_ms: 23.849734
+  type: 'test'
+  ...
+# Subtest: malformed provider responses and thought-only/safety/token-limit outputs produce useful safe failures
+ok 13 - malformed provider responses and thought-only/safety/token-limit outputs produce useful safe failures
+  ---
+  duration_ms: 125.401547
+  type: 'test'
+  ...
+# Subtest: 403 rotates to the next key without disabling credentials; request model is normalized
+ok 14 - 403 rotates to the next key without disabling credentials; request model is normalized
+  ---
+  duration_ms: 66.880633
+  type: 'test'
+  ...
+# Subtest: invalid-key signals disable only that key; model failures try alternate project keys without disabling them
+ok 15 - invalid-key signals disable only that key; model failures try alternate project keys without disabling them
+  ---
+  duration_ms: 96.685734
+  type: 'test'
+  ...
+# Subtest: quiz JSON Schema reaches Google's responseJsonSchema field on the real runtime path
+ok 16 - quiz JSON Schema reaches Google's responseJsonSchema field on the real runtime path
+  ---
+  duration_ms: 31.020423
+  type: 'test'
+  ...
+# Subtest: waitlist is persisted, lifecycle-notified, and converted after payment
+ok 17 - waitlist is persisted, lifecycle-notified, and converted after payment
+  ---
+  duration_ms: 14.39294
+  type: 'test'
+  ...
+# Subtest: bundle, refund and settlement governance are server-side
+ok 18 - bundle, refund and settlement governance are server-side
+  ---
+  duration_ms: 4.231957
+  type: 'test'
+  ...
+# Subtest: attachments fail closed until a production malware scan succeeds
+ok 19 - attachments fail closed until a production malware scan succeeds
+  ---
+  duration_ms: 1.823527
+  type: 'test'
+  ...
+# Subtest: operations center exposes funnel, cohorts, SLA and automation queues
+ok 20 - operations center exposes funnel, cohorts, SLA and automation queues
+  ---
+  duration_ms: 2.406076
+  type: 'test'
+  ...
+# Subtest: invoice is printable and protected by account ownership
+ok 21 - invoice is printable and protected by account ownership
+  ---
+  duration_ms: 3.812918
+  type: 'test'
+  ...
+# Subtest: student 360 API is admin-only and returns every operational domain
+ok 22 - student 360 API is admin-only and returns every operational domain
+  ---
+  duration_ms: 7.040461
+  type: 'test'
+  ...
+# Subtest: student 360 page requires an administrator and keeps profiles out of search
+ok 23 - student 360 page requires an administrator and keeps profiles out of search
+  ---
+  duration_ms: 1.588255
+  type: 'test'
+  ...
+# Subtest: student profile renders every 360 section and safely encodes its API request
+ok 24 - student profile renders every 360 section and safely encodes its API request
+  ---
+  duration_ms: 2.960527
+  type: 'test'
+  ...
+# Subtest: admin dashboard links students and the two administration centers
+ok 25 - admin dashboard links students and the two administration centers
+  ---
+  duration_ms: 2.800419
+  type: 'test'
+  ...
+1..25
+# tests 25
+# suites 0
+# pass 25
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1229.066752

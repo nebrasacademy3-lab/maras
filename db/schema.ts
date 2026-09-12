@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -96,16 +96,21 @@ export const courseRequestFiles = pgTable("course_request_files", {
   requestId: integer("request_id").notNull(),
   userId: integer("user_id").notNull(),
   objectKey: text("object_key").notNull(),
+  storageProvider: text("storage_provider").notNull().default("legacy"),
   originalName: text("original_name").notNull(),
   contentType: text("content_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
   scanStatus: text("scan_status").notNull().default("pending"),
+  scanAttempts: integer("scan_attempts").notNull().default(0),
+  scanNextAttemptAt: text("scan_next_attempt_at"),
+  scanLeaseToken: text("scan_lease_token"),
+  scanLeaseUntil: text("scan_lease_until"),
   scanProvider: text("scan_provider"),
   scannedAt: text("scanned_at"),
   scanError: text("scan_error"),
   quarantineReason: text("quarantine_reason"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_request_files_object_unique").on(table.objectKey), index("course_request_files_request_idx").on(table.requestId)]);
+}, (table) => [index("course_request_files_scan_queue_idx").on(table.scanStatus, table.scanNextAttemptAt, table.scanLeaseUntil), uniqueIndex("course_request_files_object_unique").on(table.objectKey), index("course_request_files_request_idx").on(table.requestId)]);
 
 export const supportTickets = pgTable("support_tickets", {
   id: serial("id").primaryKey(),
@@ -198,7 +203,7 @@ export const courseAccess = pgTable("course_access", {
   revokedAt: text("revoked_at"),
   revocationReason: text("revocation_reason"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_access_user_course_unique").on(table.userEmail, table.courseSlug), index("course_access_course_idx").on(table.courseSlug)]);
+}, (table) => [uniqueIndex("course_access_user_course_unique").on(table.userEmail, table.courseSlug), index("course_access_course_idx").on(table.courseSlug), index("course_access_course_user_idx").on(table.courseSlug,table.userEmail)]);
 
 export const courseAccessEvents = pgTable("course_access_events", {
   id: serial("id").primaryKey(),
@@ -235,7 +240,7 @@ export const auditLogs = pgTable("audit_logs", {
   afterJson: text("after_json"),
   ipAddress: text("ip_address"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("audit_actor_idx").on(table.actorEmail), index("audit_entity_idx").on(table.entityType, table.entityId)]);
+}, (table) => [index("audit_actor_idx").on(table.actorEmail), index("audit_entity_idx").on(table.entityType, table.entityId), index("audit_created_idx").on(table.createdAt)]);
 
 export const videoAssets = pgTable("video_assets", {
   id: serial("id").primaryKey(),
@@ -360,6 +365,7 @@ export const catalogCourses = pgTable("catalog_courses", {
   institutionSlug: text("institution_slug").notNull(),
   specialtySlug: text("specialty_slug").notNull(),
   audienceScope: text("audience_scope").notNull().default("specialty"),
+  enrollmentMode: text("enrollment_mode").notNull().default("auto"),
   title: text("title").notNull(),
   titleEn: text("title_en").notNull().default(""),
   code: text("code"),
@@ -391,6 +397,7 @@ export const courseResources = pgTable("course_resources", {
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
   objectKey: text("object_key").notNull(),
+  storageProvider: text("storage_provider").notNull().default("legacy"),
   originalName: text("original_name").notNull(),
   contentType: text("content_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
@@ -398,6 +405,10 @@ export const courseResources = pgTable("course_resources", {
   status: text("status").notNull().default("active"),
   sortOrder: integer("sort_order").notNull().default(0),
   scanStatus: text("scan_status").notNull().default("pending"),
+  scanAttempts: integer("scan_attempts").notNull().default(0),
+  scanNextAttemptAt: text("scan_next_attempt_at"),
+  scanLeaseToken: text("scan_lease_token"),
+  scanLeaseUntil: text("scan_lease_until"),
   scanProvider: text("scan_provider"),
   scannedAt: text("scanned_at"),
   scanError: text("scan_error"),
@@ -405,7 +416,7 @@ export const courseResources = pgTable("course_resources", {
   createdBy: text("created_by"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [
+}, (table) => [index("course_resources_scan_queue_idx").on(table.scanStatus, table.scanNextAttemptAt, table.scanLeaseUntil),
   uniqueIndex("course_resources_object_unique").on(table.objectKey),
   index("course_resources_course_idx").on(table.courseSlug, table.status, table.studentVisible, table.sortOrder),
   index("course_resources_scan_idx").on(table.scanStatus, table.status),
@@ -813,19 +824,25 @@ export const supportReplyFiles = pgTable("support_reply_files", {
   replyId: integer("reply_id").notNull(),
   ticketId: integer("ticket_id").notNull(),
   objectKey: text("object_key").notNull(),
+  storageProvider: text("storage_provider").notNull().default("legacy"),
   originalName: text("original_name").notNull(),
   contentType: text("content_type").notNull(),
   sizeBytes: integer("size_bytes").notNull(),
   scanStatus: text("scan_status").notNull().default("pending"),
+  scanAttempts: integer("scan_attempts").notNull().default(0),
+  scanNextAttemptAt: text("scan_next_attempt_at"),
+  scanLeaseToken: text("scan_lease_token"),
+  scanLeaseUntil: text("scan_lease_until"),
   scanProvider: text("scan_provider"),
   scannedAt: text("scanned_at"),
   scanError: text("scan_error"),
   quarantineReason: text("quarantine_reason"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("support_reply_files_object_unique").on(table.objectKey), index("support_reply_files_reply_idx").on(table.replyId), index("support_reply_files_ticket_idx").on(table.ticketId)]);
+}, (table) => [index("support_reply_files_scan_queue_idx").on(table.scanStatus, table.scanNextAttemptAt, table.scanLeaseUntil), uniqueIndex("support_reply_files_object_unique").on(table.objectKey), index("support_reply_files_reply_idx").on(table.replyId), index("support_reply_files_ticket_idx").on(table.ticketId)]);
 
 export const courseWaitlist = pgTable("course_waitlist", {
   id: serial("id").primaryKey(),
+  activationVersion: integer("activation_version").notNull().default(1),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   source: text("source").notNull().default("course_page"),
@@ -834,7 +851,7 @@ export const courseWaitlist = pgTable("course_waitlist", {
   convertedAt: text("converted_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_waitlist_user_course_unique").on(table.userEmail, table.courseSlug), index("course_waitlist_course_status_idx").on(table.courseSlug, table.status)]);
+}, (table) => [uniqueIndex("course_waitlist_user_course_unique").on(table.userEmail, table.courseSlug), index("course_waitlist_course_status_idx").on(table.courseSlug, table.status), index("course_waitlist_dispatch_idx").on(table.status,table.courseSlug,table.createdAt,table.id)]);
 
 export const learningTracks = pgTable("learning_tracks", {
   id: serial("id").primaryKey(),
@@ -1076,13 +1093,17 @@ export const aiFiles = pgTable("ai_files", {
   sizeBytes: integer("size_bytes").notNull(),
   status: text("status").notNull().default("ready"),
   scanStatus: text("scan_status").notNull().default("pending"),
+  scanAttempts: integer("scan_attempts").notNull().default(0),
+  scanNextAttemptAt: text("scan_next_attempt_at"),
+  scanLeaseToken: text("scan_lease_token"),
+  scanLeaseUntil: text("scan_lease_until"),
   scanProvider: text("scan_provider"),
   scannedAt: text("scanned_at"),
   scanError: text("scan_error"),
   quarantineReason: text("quarantine_reason"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("ai_files_object_unique").on(table.objectKey), index("ai_files_user_idx").on(table.userId, table.createdAt), index("ai_files_conversation_idx").on(table.conversationId, table.createdAt)]);
+}, (table) => [index("ai_files_scan_queue_idx").on(table.scanStatus, table.scanNextAttemptAt, table.scanLeaseUntil), uniqueIndex("ai_files_object_unique").on(table.objectKey), index("ai_files_user_idx").on(table.userId, table.createdAt), index("ai_files_conversation_idx").on(table.conversationId, table.createdAt)]);
 
 export const aiMessages = pgTable("ai_messages", {
   id: serial("id").primaryKey(),
@@ -1148,3 +1169,14 @@ export const aiQuizAttempts = pgTable("ai_quiz_attempts", {
   total: integer("total").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [index("ai_quiz_attempts_quiz_idx").on(table.quizId, table.userId, table.createdAt)]);
+
+/** Prevent duplicate administrative grants/messages after retries or a lost response. */
+export const adminOperations = pgTable("admin_operations", {
+  operationId: text("operation_id").primaryKey(),
+  actorUserId: integer("actor_user_id").notNull().references(() => users.id),
+  studentUserId: integer("student_user_id").notNull().references(() => users.id),
+  action: text("action").notNull(),
+  requestHash: text("request_hash").notNull(),
+  resultJson: text("result_json").notNull(),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [index("admin_operations_student_created_idx").on(table.studentUserId, table.createdAt)]);

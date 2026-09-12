@@ -11,12 +11,12 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
-import * as Linking from "expo-linking";
+import { downloadProtectedFile } from "@/src/lib/downloads";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { absoluteUrl, apiUpload, ApiError, getApiToken } from "@/src/lib/api";
+import { absoluteUrl, apiUpload, ApiError, getApiToken, getApiDeviceHeaders } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import type { SupportFile, SupportReply, SupportTicket } from "@/src/types";
@@ -33,7 +33,7 @@ type Props = {
 function isImage(file: SupportFile) { return file.contentType.startsWith("image/"); }
 function isAudio(file: SupportFile) { return file.contentType.startsWith("audio/"); }
 function formatBytes(bytes: number) { if (!bytes) return ""; if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
-function authHeaders(): Record<string, string> { const token = getApiToken(); return token ? { authorization: `Bearer ${token}` } : {}; }
+function authHeaders(): Record<string, string> { const token = getApiToken(); return { "x-meras-client": "mobile-v1", "x-meras-platform": Platform.OS, ...getApiDeviceHeaders("/api/support/files/1"), ...(token ? { authorization: `Bearer ${token}` } : {}) }; }
 
 function AudioAttachment({ file, mine }: { file: SupportFile; mine: boolean }) {
   const { colors } = useTheme();
@@ -48,25 +48,22 @@ function AudioAttachment({ file, mine }: { file: SupportFile; mine: boolean }) {
   </View>;
 }
 
-async function downloadFile(file: SupportFile) {
-  const base = FileSystem.documentDirectory || FileSystem.cacheDirectory;
-  if (!base) throw new Error("مساحة التخزين غير متاحة");
-  const dir = `${base}meras-support/`;
-  await FileSystem.makeDirectoryAsync(dir, { intermediates: true }).catch(() => undefined);
-  const safeName = `${file.id}-${file.originalName}`.replace(/[\\/:*?"<>|]/g, "-");
-  const result = await FileSystem.downloadAsync(absoluteUrl(`/api/support/files/${file.id}`), `${dir}${safeName}`, { headers: authHeaders() });
-  return result.uri;
+async function downloadFile(file: SupportFile, openAfterDownload = false) {
+  if (file.scanStatus === "quarantined") throw new ApiError("المرفق محجور لأسباب أمنية ولا يمكن تنزيله.", 404);
+  return downloadProtectedFile({ path: `/api/support/files/${file.id}`, fileName: file.originalName, mimeType: file.contentType, openAfterDownload });
 }
 
 function Attachment({ file, mine, onFeedback }: { file: SupportFile; mine: boolean; onFeedback: (value: string) => void }) {
   const { colors } = useTheme();
   const [busy, setBusy] = useState(false);
   const open = async () => {
+    if (busy) return;
     setBusy(true);
-    try { const uri = await downloadFile(file); await Linking.openURL(uri); }
-    catch { onFeedback("تم حفظ الملف داخل مساحة تطبيق مراس، لكن تعذر فتحه تلقائيًا على هذا الجهاز."); }
+    try { const result = await downloadFile(file, true); if (result.action === "stored") onFeedback("تم تنزيل الملف داخل مساحة التطبيق، لكن المشاركة غير متاحة على هذا الجهاز."); }
+    catch (error) { onFeedback(error instanceof Error ? error.message : "تعذر تنزيل المرفق."); }
     finally { setBusy(false); }
   };
+  if (file.scanStatus !== "clean") return <Pressable disabled={busy || file.scanStatus === "quarantined"} onPress={() => void open()} style={[styles.documentRow, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="shield-half-outline" size={20} color={colors.primary}/><Text style={{ color: colors.text, textAlign: "right", flex: 1 }}>{file.originalName} — {file.scanStatus === "quarantined" ? "محجور أمنيًا" : busy ? "جارٍ التحقق والتنزيل…" : "قيد الفحص؛ اضغط للتحقق والتنزيل"}</Text></Pressable>;
   if (isImage(file)) return <View style={styles.imageAttachment}>
     <Image source={{ uri: absoluteUrl(`/api/support/files/${file.id}?inline=1`), headers: authHeaders() }} style={styles.chatImage} contentFit="cover" transition={120} />
     <Pressable onPress={() => void open()} style={[styles.imageDownload, { backgroundColor: "rgba(0,0,0,.55)" }]}>{busy ? <ActivityIndicator color="#FFF" size="small" /> : <Ionicons name="download-outline" size={16} color="#FFF" />}</Pressable>
@@ -152,9 +149,14 @@ export function SupportChat({ ticket, viewer, onReload, onFeedback }: Props) {
     if (!allFiles.length || downloadingAll) return;
     setDownloadingAll(true); setFeedback("");
     try {
-      await Promise.all(allFiles.map((file) => downloadFile(file)));
-      say(`تم حفظ ${allFiles.length} مرفق داخل مساحة تطبيق مراس.`);
-    } catch { say("تعذر تنزيل بعض المرفقات. يمكنك تنزيل كل ملف منفردًا."); }
+      let saved = 0;
+      const errors: string[] = [];
+      for (const file of allFiles) {
+        try { await downloadFile(file); saved++; }
+        catch (error) { errors.push(error instanceof Error ? error.message : "تعذر تنزيل مرفق"); }
+      }
+      say(`تم تنزيل ${saved} من ${allFiles.length} مرفق.${errors.length ? ` ${errors[0]}` : ""}`);
+    } catch { say("تعذر تنزيل المرفقات. لم يتم تأكيد حفظ جميع الملفات."); }
     finally { setDownloadingAll(false); }
   };
 

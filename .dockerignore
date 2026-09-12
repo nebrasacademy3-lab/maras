@@ -12,3 +12,6 @@ mobile
 *.zip
 .git
 .gitignore
+
+verification
+*.sha256

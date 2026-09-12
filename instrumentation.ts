@@ -10,9 +10,14 @@ export async function register() {
     try {
       const { startLifecycleScheduler } = await import("./lib/lifecycle-scheduler");
       startLifecycleScheduler();
+
     } catch (caught) {
       logEvent("warn", "lifecycle.scheduler.unavailable", { errorType: caught instanceof Error ? caught.name : "UnknownError" });
     }
+    try {
+      const { startFileScanScheduler } = await import("./lib/file-scan-scheduler");
+      startFileScanScheduler();
+    } catch { logEvent("warn", "files.scheduler.unavailable", { code: "scanner_scheduler_unavailable" }); }
   }
 }
 

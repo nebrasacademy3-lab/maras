@@ -16,6 +16,8 @@ export const ADMIN_CENTERS: ReadonlyArray<{ href: string; label: string; icon: L
   { href: "/admin/referrals", label: "الإحالات والهدايا", icon: Gift, description: "المستويات والكوبونات والمراجعة" },
   { href: "/admin/partners", label: "الشركاء والاعتمادات", icon: Handshake, description: "الشعارات والموافقات وحالة النشر" },
   { href: "/admin/ai", label: "أدوات مراس", icon: Bot, description: "المفاتيح والخدمات والاشتراكات" },
+  { href: "/admin/files", label: "أمان المرفقات", icon: FileStack, description: "حالة المحرك والمرفقات المعلقة وإعادة الفحص" },
+  { href: "/admin/seo", label: "جاهزية البحث", icon: Search, description: "تهيئة الفهرسة والصفحات العامة" },
   { href: "/admin/security", label: "أمان الحساب", icon: LockKeyhole, description: "المصادقة الإضافية والتحقق الإداري" },
 ];
 

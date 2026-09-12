@@ -1,4 +1,5 @@
 "use client";
+import { ProtectedFileDownload } from "@/components/protected-file-download";
 
 /* eslint-disable @next/next/no-img-element -- authenticated support attachments cannot use the public Next image optimizer */
 
@@ -15,7 +16,7 @@ function isImage(file:SupportChatFile){return file.contentType.startsWith("image
 function isAudio(file:SupportChatFile){return file.contentType.startsWith("audio/");}
 function fileReady(file:SupportChatFile){return !file.scanStatus||file.scanStatus==="clean";}
 function fileStateLabel(file:SupportChatFile){return file.scanStatus==="quarantined"?"المرفق محجوز لأسباب أمنية":"المرفق قيد الفحص الأمني";}
-function PendingFile({file}:{file:SupportChatFile}){return <span className="support-chat-file-pending" title={fileStateLabel(file)}><ShieldAlert size={14}/><span>{file.originalName}</span><small>{fileStateLabel(file)}</small></span>;}
+function PendingFile({file}:{file:SupportChatFile}){return <span className="support-chat-file-pending" title={fileStateLabel(file)}><ShieldAlert size={14}/><ProtectedFileDownload path={fileUrl(file)} name={file.originalName} scanStatus={file.scanStatus}/></span>;}
 function fileUrl(file:SupportChatFile, inline=false){return `/api/support/files/${file.id}${inline?"?inline=1":""}`;}
 
 function downloadAll(files:SupportChatFile[]){

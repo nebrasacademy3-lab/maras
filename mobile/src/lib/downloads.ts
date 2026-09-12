@@ -1,6 +1,7 @@
 import * as FileSystem from "expo-file-system/legacy";
+import { randomUUID } from "expo-crypto";
 import { Platform } from "react-native";
-import { apiRequestUrl, ApiError, getApiToken } from "@/src/lib/api";
+import { apiRequestUrl, ApiError, getApiToken, getApiDeviceHeaders } from "@/src/lib/api";
 
 export type ProtectedDownloadResult = {
   action: "opened" | "saved" | "shared" | "stored" | "cancelled";
@@ -28,22 +29,23 @@ function safeFileName(value: string) {
   return `${Array.from(stem).slice(0, Math.max(1, 120 - extensionLength)).join("")}${extension}`;
 }
 
-function authHeaders(): Record<string, string> {
+function authHeaders(path: string): Record<string, string> {
   const token = getApiToken();
   return {
     "x-meras-client": "mobile-v1",
     "x-meras-platform": Platform.OS,
+    ...getApiDeviceHeaders(path),
     ...(token ? { authorization: `Bearer ${token}` } : {}),
   };
 }
 
 async function downloadInBrowser(path: string, fileName: string): Promise<ProtectedDownloadResult> {
-  const response = await fetch(apiRequestUrl(path).toString(), { credentials: "include", headers: authHeaders() });
+  const response = await fetch(apiRequestUrl(path).toString(), { credentials: "include", headers: authHeaders(path), redirect: "error", signal: AbortSignal.timeout(120_000) });
   if (!response.ok) {
     let message = `تعذر تنزيل الملف من الخادم (HTTP ${response.status}).`;
     try {
       const payload = await response.json() as { error?: string };
-      if (payload.error) message = payload.error;
+      if (typeof payload.error === "string") message = payload.error.slice(0, 1000);
     } catch { /* Keep the HTTP error when the response is not JSON. */ }
     throw new ApiError(message, response.status);
   }
@@ -99,16 +101,34 @@ export async function downloadProtectedFile({
 
   const baseDirectory = FileSystem.cacheDirectory || FileSystem.documentDirectory;
   if (!baseDirectory) throw new ApiError("تعذر الوصول إلى مساحة تخزين التطبيق.", 0);
-  const downloadDirectory = `${baseDirectory}meras-downloads/`;
-  await FileSystem.makeDirectoryAsync(downloadDirectory, { intermediates: true }).catch(() => undefined);
+  const downloadDirectory = `${baseDirectory}meras-downloads/${randomUUID()}/`;
+  try { await FileSystem.makeDirectoryAsync(downloadDirectory, { intermediates: true }); }
+  catch { throw new ApiError("تعذر إنشاء مجلد التنزيل. تحقق من مساحة التخزين وصلاحيات التطبيق.", 0); }
 
-  const result = await FileSystem.downloadAsync(
+  let result: Awaited<ReturnType<typeof FileSystem.downloadAsync>>;
+  try { result = await FileSystem.downloadAsync(
     apiRequestUrl(path).toString(),
     `${downloadDirectory}${encodeURIComponent(safeName)}`,
-    { headers: authHeaders() },
-  );
+    { headers: authHeaders(path) },
+  ); } catch {
+    await FileSystem.deleteAsync(downloadDirectory, { idempotent: true }).catch(() => undefined);
+    throw new ApiError("انقطع تنزيل الملف. تحقق من الشبكة وحاول مجددًا.", 0);
+  }
   if (result.status < 200 || result.status >= 300) {
-    throw new ApiError(`تعذر تنزيل الملف من الخادم (HTTP ${result.status}).`, result.status);
+    let message = `تعذر تنزيل الملف من الخادم (HTTP ${result.status}).`;
+    let code: string | undefined;
+    let retryAfterSeconds: number | undefined;
+    try {
+      const info = await FileSystem.getInfoAsync(result.uri);
+      if (info.exists && !info.isDirectory && info.size <= 16 * 1024) {
+        const payload = JSON.parse(await FileSystem.readAsStringAsync(result.uri)) as Record<string, unknown>;
+        if (typeof payload.error === "string") message = payload.error.slice(0, 1000);
+        if (typeof payload.code === "string") code = payload.code;
+        if (typeof payload.retryAfterSeconds === "number") retryAfterSeconds = payload.retryAfterSeconds;
+      }
+    } catch { /* Preserve the HTTP error when there is no small JSON error body. */ }
+    await FileSystem.deleteAsync(downloadDirectory, { idempotent: true }).catch(() => undefined);
+    throw new ApiError(message, result.status, { code, retryAfterSeconds });
   }
 
   if (androidDirectoryUri) {

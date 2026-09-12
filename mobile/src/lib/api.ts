@@ -33,6 +33,15 @@ export function setApiToken(token: string | null) { const next = token || ""; if
 export function getApiToken() { return sessionToken; }
 export function setAdminStepUpToken(token: string | null) { adminStepUpToken = token || ""; }
 export function setApiDeviceIdentity(value: { id: string; label: string; platform: string } | null) { deviceIdentity = value; }
+/** The native download stack must identify the same device/session as JSON API calls. */
+export function getApiDeviceHeaders(path: string): Record<string, string> {
+  const url = apiRequestUrl(path);
+  return {
+    ...(deviceIdentity ? { "x-meras-device-id": deviceIdentity.id, "x-meras-device-label": safeHeaderText(deviceIdentity.label), "x-meras-platform": deviceIdentity.platform } : {}),
+    ...(adminStepUpToken && url.pathname.startsWith("/api/admin/") ? { "x-meras-admin-stepup": adminStepUpToken } : {}),
+  };
+}
+
 
 export class ApiError extends Error {
   status: number;

@@ -16,7 +16,7 @@ const CHANNEL_KEYS: Record<string, readonly (readonly unknown[])[]> = {
   notifications: [["notifications"], ["dashboard"]],
   requests: [["dashboard"], ["supervisor-requests"]],
   supervisor: [["supervisor-workspace"], ["supervisor-requests"]],
-  admin: [["admin-console"], ["admin-referrals"], ["admin-ai"], ["admin-bundles"], ["admin-mfa-status"], ["admin-finance"], ["admin-operations"], ["admin-learning-tracks"], ["admin-student"]],
+  admin: [["admin-console"], ["admin-referrals"], ["admin-ai"], ["admin-bundles"], ["admin-mfa-status"], ["admin-finance"], ["admin-operations"], ["admin-learning-tracks"], ["admin-student"], ["admin-course-audience"]],
 };
 
 function invalidateChannels(queryClient: ReturnType<typeof useQueryClient>, changed: string[]) {

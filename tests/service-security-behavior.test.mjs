@@ -24,7 +24,7 @@ test("reviewed student and staff mutations reject null, arrays and excessive JSO
     ["reviews", ["POST"]], ["coupons/validate", ["POST"]], ["video/session", ["POST"]], ["admin/staff", ["POST"]], ["admin/compliance", ["POST"]],
   ];
   for (const [endpoint, methods] of endpoints) {
-    const route = await isolated(`../app/api/${endpoint}/route.ts`, trusted);
+    const route = await isolated(`../app/api/${endpoint}/route.ts`, { ...trusted, ...(endpoint === "waitlist" ? { getSessionUser: async () => ({ id: 9, role: "student", email: "student@example.test" }) } : {}) });
     for (const method of methods) for (const payload of ["null", "[]", '{"large":"' + "x".repeat(40_000) + '"}']) {
       const result = await route[method](new Request(`https://test/api/${endpoint}`, { method, body: payload }));
       assert.ok([400, 413].includes(result.status), `${method} ${endpoint} returned ${result.status}`);
@@ -47,7 +47,7 @@ test("support attachment download enforces reply visibility and ownership before
     const rows = new Map([[tables.supportReplyFiles, [file]], [tables.supportTickets, [{ userEmail: "owner@example.test" }]], [tables.supportReplies, [{ internal: scenario.internal, ticketId: scenario.replyTicket || 77 }]]]);
     const inspected = [];
     const db = { select: () => ({ from(table) { return { where(clause) { inspected.push(clause); return { limit: async () => rows.get(table) || [] }; } }; } }) };
-    const route = await isolated("../app/api/support/files/[id]/route.ts", { ...tables, jsonError, getDb: () => db, eq: (column, value) => ({ column, value }), getSessionUser: async () => ({ role: scenario.role, email: scenario.email }), getObject: async () => { reads += 1; return { body: new Uint8Array([1]) }; } });
+    const route = await isolated("../app/api/support/files/[id]/route.ts", { fileScanService: { scanFile: async () => ({ status: file.scanStatus }) }, fileScanBlockedResponse: result => result.status === "clean" ? null : jsonError("pending", 423), fileStorageProvider: () => "local", checkRateLimit: async () => true, ...tables, jsonError, getDb: () => db, eq: (column, value) => ({ column, value }), getSessionUser: async () => ({ role: scenario.role, email: scenario.email }), getObject: async () => { reads += 1; return { body: new Uint8Array([1]) }; } });
     const result = await route.GET(new Request("https://test/api/support/files/11"), { params: Promise.resolve({ id: "11" }) });
     assert.equal(result.status, scenario.status, JSON.stringify(scenario));
     assert.equal(reads, scenario.status === 200 ? 1 : 0);
