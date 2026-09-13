@@ -148,29 +148,207 @@ function Content({data,mutate,refresh,onDelete}:{data:ConsoleData;mutate:(p:Reco
 <SearchableSelect name="unitId" required><option value="">اختر</option>{units.map((unit)=><option key={unit.id} value={unit.id}>{unit.title}</option>)}</SearchableSelect>
 </label><label>معرّف الدرس<input name="id" placeholder="يُنشأ تلقائيًا من العنوان" pattern="[A-Za-z0-9._-]{2,100}" dir="ltr"/></label><label>العنوان<input name="title" required/></label><label>الوصف (اختياري)<textarea name="description" placeholder="وصف مختصر للدرس"/></label><p className="live-hint">تُحسب مدة الدرس تلقائيًا من ملف الفيديو عند رفعه.</p><label className="live-check"><input name="freePreview" type="checkbox"/> درس تجريبي مجاني</label><button className="button button-primary">حفظ الدرس</button></form><h2>رفع فيديو خاص</h2><VideoUpload lessons={lessons} courseSlug={selected} reload={refresh}/></aside></div></> }
 
-function readBrowserVideoDuration(file:File){return new Promise<number>((resolve)=>{const url=URL.createObjectURL(file);const video=document.createElement("video");let settled=false;const finish=(value=0)=>{if(settled)return;settled=true;window.clearTimeout(timer);video.removeAttribute("src");video.load();URL.revokeObjectURL(url);resolve(Number.isFinite(value)&&value>0?Math.round(value):0);};const timer=window.setTimeout(()=>finish(),15000);video.preload="metadata";video.muted=true;video.playsInline=true;video.onloadedmetadata=()=>{if(Number.isFinite(video.duration)&&video.duration>0)finish(video.duration);else{video.currentTime=1e10;video.ontimeupdate=()=>finish(video.duration);}};video.onerror=()=>finish();video.src=url;video.load();});}
 
-function VideoUpload({lessons,courseSlug,reload}:{lessons:LessonRow[];courseSlug:string;reload:()=>Promise<void>}){
-  const[message,setMessage]=useState("");
-  const[busy,setBusy]=useState(false);
-  const[progress,setProgress]=useState<UploadProgress|null>(null);
-  const abortRef=useRef<AbortController|null>(null);
-  const submit=async(event:React.FormEvent<HTMLFormElement>)=>{
-    event.preventDefault();setBusy(true);setMessage("");
-    const element=event.currentTarget;const form=new FormData(element);const file=form.get("file");const lessonId=String(form.get("lessonId")||"");
-    if(!(file instanceof File)){setMessage("اختر ملف فيديو صالحًا");setBusy(false);return;}
-    setMessage("جارٍ قراءة مدة الفيديو تلقائيًا...");const durationSeconds=await readBrowserVideoDuration(file);
-    const fallbackType=/\.mov$/i.test(file.name)?"video/quicktime":/\.webm$/i.test(file.name)?"video/webm":/\.mkv$/i.test(file.name)?"video/x-matroska":/\.avi$/i.test(file.name)?"video/x-msvideo":"video/mp4";
-    const controller=new AbortController();abortRef.current=controller;setProgress({loaded:0,total:file.size,percent:0,bytesPerSecond:0,remainingSeconds:null});
-    try{
-      const result=await uploadWithProgress<{ok?:boolean;asset?:{durationSeconds?:number|null}}>({url:"/api/admin/videos",body:file,headers:{"content-type":file.type||fallbackType,"x-meras-course":courseSlug,"x-meras-lesson":lessonId,...(durationSeconds?{"x-meras-duration-seconds":String(durationSeconds)}:{})},timeoutMs:30*60_000,signal:controller.signal,onProgress:setProgress});
-      const savedDuration=result.asset?.durationSeconds||durationSeconds;setMessage(savedDuration?`تم رفع الفيديو وحساب مدته تلقائيًا: ${Math.floor(savedDuration/60)}:${String(savedDuration%60).padStart(2,"0")}`:"تم رفع الفيديو وربطه بالدرس؛ سيستخدم الخادم بيانات المدة المتاحة");element.reset();await reload();
-    }catch(caught){setMessage(caught instanceof Error?caught.message:"تعذر الاتصال بالخادم أثناء الرفع");}
-    finally{abortRef.current=null;setProgress(null);setBusy(false);}
+function VideoUpload({
+  lessons,
+  courseSlug,
+  reload,
+}: {
+  lessons: LessonRow[];
+  courseSlug: string;
+  reload: () => Promise<void>;
+}) {
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [progress, setProgress] = useState<UploadProgress | null>(null);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    setBusy(true);
+    setMessage("");
+
+    const element = event.currentTarget;
+    const form = new FormData(element);
+    const file = form.get("file");
+    const lessonId = String(form.get("lessonId") || "");
+
+    if (!(file instanceof File)) {
+      setMessage("اختر ملف فيديو صالحًا");
+      setBusy(false);
+      return;
+    }
+
+    const fallbackType = /\.mov$/i.test(file.name)
+      ? "video/quicktime"
+      : /\.webm$/i.test(file.name)
+        ? "video/webm"
+        : /\.mkv$/i.test(file.name)
+          ? "video/x-matroska"
+          : /\.avi$/i.test(file.name)
+            ? "video/x-msvideo"
+            : "video/mp4";
+
+    const contentType = file.type || fallbackType;
+    const controller = new AbortController();
+
+    abortRef.current = controller;
+
+    setProgress({
+      loaded: 0,
+      total: file.size,
+      percent: 0,
+      bytesPerSecond: 0,
+      remainingSeconds: null,
+    });
+
+    try {
+      setMessage("جارٍ تجهيز الرفع المباشر...");
+
+      const params = new URLSearchParams({
+        courseSlug,
+        lessonId,
+        contentType,
+        sizeBytes: String(file.size),
+      });
+
+      const presignResponse = await fetch(
+        `/api/admin/videos/direct?${params.toString()}`,
+        {
+          credentials: "same-origin",
+          signal: controller.signal,
+        },
+      );
+
+      const presign = await presignResponse.json() as {
+        error?: string;
+        uploadUrl?: string;
+        objectKey?: string;
+      };
+
+      if (!presignResponse.ok || !presign.uploadUrl || !presign.objectKey) {
+        throw new Error(presign.error || "تعذر تجهيز الرفع المباشر");
+      }
+
+      setMessage("جارٍ رفع الفيديو مباشرة إلى التخزين...");
+
+      await uploadWithProgress({
+        url: presign.uploadUrl,
+        method: "PUT",
+        body: file,
+        withCredentials: false,
+        headers: {
+          "content-type": contentType,
+        },
+        timeoutMs: 30 * 60_000,
+        signal: controller.signal,
+        onProgress: setProgress,
+      });
+
+      setMessage("جارٍ ربط الفيديو بالدرس...");
+
+      const completeResponse = await fetch("/api/admin/videos/direct", {
+        method: "POST",
+        credentials: "same-origin",
+        signal: controller.signal,
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          courseSlug,
+          lessonId,
+          objectKey: presign.objectKey,
+          contentType,
+          sizeBytes: file.size,
+          durationSeconds: 0,
+        }),
+      });
+
+      const result = await completeResponse.json() as {
+        error?: string;
+        asset?: {
+          durationSeconds?: number | null;
+        };
+      };
+
+      if (!completeResponse.ok) {
+        throw new Error(result.error || "تعذر ربط الفيديو بالدرس");
+      }
+
+      const duration = result.asset?.durationSeconds || 0;
+
+      setMessage(
+        duration
+          ? `تم رفع الفيديو مباشرة: ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`
+          : "تم رفع الفيديو وربطه بالدرس",
+      );
+
+      element.reset();
+      await reload();
+    } catch (caught) {
+      setMessage(
+        caught instanceof Error
+          ? caught.message
+          : "تعذر الاتصال أثناء الرفع",
+      );
+    } finally {
+      abortRef.current = null;
+      setProgress(null);
+      setBusy(false);
+    }
   };
-  return <form onSubmit={submit}><label>الدرس
-<SearchableSelect name="lessonId" required><option value="">اختر</option>{lessons.map((lesson)=><option value={lesson.id} key={lesson.id}>{lesson.title}</option>)}</SearchableSelect>
-</label><label className="live-file"><Upload size={18}/><span>اختر ملف الفيديو (حتى 200MB · رفع تدفقي)</span><input name="file" type="file" accept="video/*,.mkv,.avi,.mov" required/></label>{busy&&progress&&<div className="upload-progress-card"><div><span style={{width:`${progress.percent}%`}}/></div><small>{uploadProgressLabel(progress)}</small><button type="button" onClick={()=>abortRef.current?.abort()}><X size={14}/> إلغاء الرفع</button></div>}<button className="button button-soft" disabled={busy}>{busy?"جارٍ رفع الفيديو...":"رفع إلى المخزن الخاص"}</button>{message&&<p className="live-hint">{message}</p>}</form>
+
+  return (
+    <form onSubmit={submit}>
+      <label>
+        الدرس
+        <SearchableSelect name="lessonId" required>
+          <option value="">اختر</option>
+          {lessons.map((lesson) => (
+            <option value={lesson.id} key={lesson.id}>
+              {lesson.title}
+            </option>
+          ))}
+        </SearchableSelect>
+      </label>
+
+      <label className="live-file">
+        <Upload size={18} />
+        <span>اختر ملف الفيديو حتى 200MB · رفع مباشر سريع</span>
+        <input
+          name="file"
+          type="file"
+          accept="video/*,.mkv,.avi,.mov"
+          required
+        />
+      </label>
+
+      {busy && progress && (
+        <div className="upload-progress-card">
+          <div>
+            <span style={{ width: `${progress.percent}%` }} />
+          </div>
+
+          <small>{uploadProgressLabel(progress)}</small>
+
+          <button
+            type="button"
+            onClick={() => abortRef.current?.abort()}
+          >
+            <X size={14} />
+            إلغاء الرفع
+          </button>
+        </div>
+      )}
+
+      <button className="button button-soft" disabled={busy}>
+        {busy ? "جارٍ رفع الفيديو..." : "رفع إلى المخزن الخاص"}
+      </button>
+
+      {message && <p className="live-hint">{message}</p>}
+    </form>
+  );
 }
 
 function Users({data,query,mutate,setDialog,role,onDelete}:{data:ConsoleData;query:string;mutate:(p:Record<string,unknown>,s?:string)=>Promise<boolean>;setDialog:(d:Dialog)=>void;role:"student"|"staff";onDelete:(entityType:string,entityId:string|number,label:string,impact:string)=>void}){const rows=data.users.filter((row)=>role==="student"?row.role==="student":row.role!=="student").filter((row)=>includesQuery(query,row.fullName,row.email,row.phone,row.specialty,row.academicLevel,...row.sessions.map((session)=>session.deviceLabel)));return <section className="admin-panel data-panel"><Table headers={["المستخدم","الدور","الجامعة والتخصص","الأجهزة","الحالة","إجراءات"]}>{rows.map((row)=><div className="live-table-row" key={row.id}><span className="live-entity"><i>{row.fullName[0]}</i><b>{row.fullName}<small>{row.email} · {row.phone||"بدون جوال"}</small></b></span>
