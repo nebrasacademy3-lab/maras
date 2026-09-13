@@ -15,9 +15,6 @@ function getStorageConfig(): StorageConfig {
   const bucket = process.env.S3_BUCKET?.trim();
   const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim();
   const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim();
-  const region = process.env.S3_REGION?.trim() || "auto";
-  const forcePathStyle =
-    process.env.S3_FORCE_PATH_STYLE?.trim().toLowerCase() === "true";
 
   if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
     throw new Error("S3 storage is not configured");
@@ -27,8 +24,10 @@ function getStorageConfig(): StorageConfig {
     bucket,
     client: new S3Client({
       endpoint,
-      region,
-      forcePathStyle,
+      region: "auto",
+      forcePathStyle: false,
+      requestChecksumCalculation: "WHEN_REQUIRED",
+      responseChecksumValidation: "WHEN_REQUIRED",
       credentials: {
         accessKeyId,
         secretAccessKey,
