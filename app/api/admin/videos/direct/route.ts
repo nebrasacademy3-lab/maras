@@ -209,7 +209,7 @@ export async function GET(request: Request) {
     `${crypto.randomUUID()}.${extensionFor(contentType)}`;
 
   try {
-    const uploadUrl = await createDirectUploadUrl(objectKey);
+    const uploadUrl = await createDirectUploadUrl(objectKey, contentType);
 
     return Response.json({
       ok: true,

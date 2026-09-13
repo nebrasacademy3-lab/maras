@@ -56,6 +56,7 @@ function isMissingObject(error: unknown) {
 
 export async function createDirectUploadUrl(
   key: string,
+  contentType: string,
   expiresIn = 900,
 ) {
   const { client, bucket } = getStorageConfig();
@@ -63,10 +64,12 @@ export async function createDirectUploadUrl(
   const command = new PutObjectCommand({
     Bucket: bucket,
     Key: key,
+    ContentType: contentType,
   });
 
   return getSignedUrl(client, command, {
     expiresIn: Math.min(Math.max(expiresIn, 60), 900),
+    signableHeaders: new Set(["content-type"]),
   });
 }
 
