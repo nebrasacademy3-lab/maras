@@ -1,0 +1,23 @@
+{
+    "CORSRules":  [
+                      {
+                          "MaxAgeSeconds":  3600,
+                          "AllowedHeaders":  [
+                                                 "*"
+                                             ],
+                          "AllowedOrigins":  [
+                                                 "https://marasalelm.com",
+                                                 "https://www.marasalelm.com",
+                                                 "https://marase.up.railway.app"
+                                             ],
+                          "ExposeHeaders":  [
+                                                "ETag"
+                                            ],
+                          "AllowedMethods":  [
+                                                 "PUT",
+                                                 "GET",
+                                                 "HEAD"
+                                             ]
+                      }
+                  ]
+}
