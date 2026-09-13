@@ -13,7 +13,7 @@ const contentSecurityPolicy = [
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "media-src 'self' blob:",
-  "connect-src 'self' https://api.tap.company https://*.tap.company",
+  "connect-src 'self' https://api.tap.company https://*.tap.company https://*.t3.storageapi.dev",
   "frame-src 'self' https://*.tap.company",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
