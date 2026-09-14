@@ -7,13 +7,14 @@ import { usePushNotifications } from "@/src/hooks/usePushNotifications";
 import { AppProviders } from "@/src/providers/AppProviders";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
+import { NotificationProvider } from "@/src/providers/NotificationProvider";
 
 
 function Runtime() {
   const { dark } = useTheme();
   const { isRTL, direction } = useLanguage();
   usePushNotifications();
-  return <><StatusBar style={dark ? "light" : "dark"} /><AnnouncementCampaign /><Stack screenOptions={{ headerShown: false, animation: isRTL ? "slide_from_left" : "slide_from_right", contentStyle: { direction, backgroundColor: dark ? "#050B18" : "#F7F9FD" } }} /><AssistantFab /></>;
+  return <NotificationProvider><StatusBar style={dark ? "light" : "dark"} /><AnnouncementCampaign /><Stack screenOptions={{ headerShown: false, animation: isRTL ? "slide_from_left" : "slide_from_right", contentStyle: { direction, backgroundColor: dark ? "#050B18" : "#F7F9FD" } }} /><AssistantFab /></NotificationProvider>;
 }
 
 export default function RootLayout() { return <AppProviders><Runtime /></AppProviders>; }

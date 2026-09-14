@@ -34,9 +34,15 @@ async function notifyCatalogDiscovery(paths: string[]) {
   catch { console.error("[seo] Catalog saved; discovery queue unavailable"); }
 }
 
+function isConfiguredSuperAdmin(user: { email: string; role: string } | null | undefined) {
+  if (!user || user.role !== "admin") return false;
+  const configured = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  return configured ? user.email.toLowerCase() === configured : process.env.NODE_ENV !== "production";
+}
+
 async function authorize(request: Request, delegatedPermission?: AdminPermission) {
   const user = await getSessionUser(request);
-  if (roleAllowed(user, ["admin"])) return { actor: user!.email, user };
+  if (roleAllowed(user, ["admin"]) && isConfiguredSuperAdmin(user)) return { actor: user!.email, user };
   if (user && delegatedPermission && await hasPermission(user, delegatedPermission)) return { actor: user.email, user };
   if (isAdminRequest(request)) return { actor: "admin-api-token", user: null };
   return null;
@@ -86,14 +92,23 @@ const supportStatusArabic: Record<string, string> = {
 };
 
 export async function GET(request: Request) {
-  const authorization = await authorize(request);
+  const query = new URL(request.url).searchParams;
+  const compactMobile = query.get("client") === "mobile";
+  const view = query.get("view") || "overview";
+  const viewPermission: AdminPermission | undefined = view === "orders" || view === "subscriptions" || view === "finance"
+    ? ADMIN_PERMISSIONS.FINANCE_VIEW
+    : view === "students" || view === "staff"
+      ? ADMIN_PERMISSIONS.STUDENTS_MANAGE
+      : view === "content" || view === "institutions" || view === "specialties" || view === "courses"
+        ? ADMIN_PERMISSIONS.CATALOG_MANAGE
+        : view === "support" || view === "requests" || view === "reviews"
+          ? ADMIN_PERMISSIONS.SUPPORT_MANAGE
+          : undefined;
+  const authorization = await authorize(request, viewPermission);
   if (!authorization) return jsonError("غير مصرح", 403);
   const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
   if (!await checkRateLimit("admin-console-read", identity, 30, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
-  const query = new URL(request.url).searchParams;
-  const compactMobile = query.get("client") === "mobile";
-  const view = query.get("view") || "overview";
   const page = adminPage(query.get("page"));
   const needle = (query.get("q") || "").trim().slice(0, 160);
   const pattern = `%${needle.replace(/[\\%_]/g, "\\$&")}%`;

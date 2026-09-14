@@ -3,7 +3,7 @@ import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { analyticsEvents, couponUses, couponsDb, referralAttributions, referralCodes, referralTiers, userRewards } from "@/db/schema";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
-import { cleanText, jsonError } from "@/lib/api";
+import { cleanText, jsonError, requestOrigin } from "@/lib/api";
 import { getCoursesCatalog } from "@/lib/catalog-store";
 import { ensureReferralCode, publicRewardLabel, referralProgram } from "@/lib/referrals";
 
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
   const couponById = new Map(coupons.map((coupon) => [coupon.id, coupon]));
   const courseTitles = new Map((await getCoursesCatalog()).map((course) => [course.slug, course.title]));
   const courseTitle = (slug: string | null) => (slug ? courseTitles.get(slug) || null : null);
-  const origin = (process.env.APP_URL?.trim() || new URL(request.url).origin).replace(/\/$/, "");
+  const origin = requestOrigin(request).replace(/\/$/, "");
 
   return noStore({
     ok: true,

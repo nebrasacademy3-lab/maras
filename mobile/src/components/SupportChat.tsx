@@ -19,6 +19,7 @@ import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { absoluteUrl, apiUpload, ApiError, getApiToken } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
+import { useNotifications } from "@/src/providers/NotificationProvider";
 import type { SupportFile, SupportReply, SupportTicket } from "@/src/types";
 
 type PickedFile = { uri: string; name: string; type: string; size: number };
@@ -81,6 +82,7 @@ function Attachment({ file, mine, onFeedback }: { file: SupportFile; mine: boole
 }
 
 export function SupportChat({ ticket, viewer, onReload, onFeedback }: Props) {
+  const { info } = useNotifications();
   const { colors } = useTheme();
   const { locale, direction, rowDirection, startAlignment, language } = useLanguage();
   const scroll = useRef<ScrollView>(null);
@@ -123,7 +125,7 @@ export function SupportChat({ ticket, viewer, onReload, onFeedback }: Props) {
         return;
       }
       const permission = await AudioModule.requestRecordingPermissionsAsync();
-      if (!permission.granted) { Alert.alert(language === "ar" ? "إذن الميكروفون" : "Microphone permission", language === "ar" ? "اسمح لمراس باستخدام الميكروفون لإرسال رسالة صوتية." : "Allow Meras to use the microphone to send a voice message."); return; }
+      if (!permission.granted) { info(language === "ar" ? "إذن الميكروفون" : "Microphone permission", language === "ar" ? "اسمح لمراس باستخدام الميكروفون لإرسال رسالة صوتية." : "Allow Meras to use the microphone to send a voice message."); return; }
       await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
       await recorder.prepareToRecordAsync();
       recorder.record();

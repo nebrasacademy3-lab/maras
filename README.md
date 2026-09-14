@@ -39,6 +39,7 @@ npm run db:migrate
 | `CATALOG_SEED_MODE` | استخدم `core` للإنتاج السريع، أو `full` لتوليد قوالب موسعة كثيرة. |
 | `VIDEO_SIGNING_SECRET` | سر عشوائي طويل لتوقيع جلسات مشاهدة الفيديو. |
 | `ADMIN_API_TOKEN` و`ADMIN_UPLOAD_TOKEN` | رموز خدمات محدودة؛ الإجراءات البشرية الحساسة تتطلب جلسة مدير وMFA. |
+| `SUPER_ADMIN_EMAIL` | البريد الوحيد الذي يملك الإدارة العليا وإدارة الموظفين والصلاحيات؛ إلزامي في الإنتاج، وبدونه تُحجب صلاحيات المدير الأعلى. |
 | `TAP_SECRET_KEY` و`TAP_PUBLIC_KEY` و`TAP_MERCHANT_ID` | إعداد الدفع عند تفعيل Tap. |
 | `OPENAI_API_KEY` و`OPENAI_API_URL` و`ASSISTANT_MODEL` | المساعد العام السياقي الاختياري؛ بدونها يعمل محرك المعرفة العربي المحلي المتجدد. |
 | `RESEND_API_KEY` و`EMAIL_FROM` | رسائل استعادة كلمة المرور الاختيارية. |

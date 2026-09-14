@@ -15,10 +15,21 @@ export const ADMIN_PERMISSIONS = {
   SECURITY_MANAGE_SELF: "security.manage_self",
   AI_MANAGE: "ai.manage",
   REFERRALS_MANAGE: "referrals.manage",
+  CATALOG_MANAGE: "catalog.manage",
+  STUDENTS_MANAGE: "students.manage",
+  SUPPORT_MANAGE: "support.manage",
   ROADMAP_MANAGE: "roadmap.manage",
 } as const;
 
 export type AdminPermission = typeof ADMIN_PERMISSIONS[keyof typeof ADMIN_PERMISSIONS];
+
+export function isSuperAdmin(user: { email: string; role: string } | null | undefined) {
+  if (!user || user.role !== "admin") return false;
+  const configured = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
+  if (configured) return user.email.toLowerCase() === configured;
+  // Never silently elevate every administrator in production.
+  return process.env.NODE_ENV !== "production";
+}
 
 // This is deliberately finite rather than a wildcard. It keeps the existing
 // built-in admin account usable before custom roles are seeded, without making
@@ -26,7 +37,7 @@ export type AdminPermission = typeof ADMIN_PERMISSIONS[keyof typeof ADMIN_PERMIS
 const BUILT_IN_ADMIN_PERMISSIONS = new Set<AdminPermission>(Object.values(ADMIN_PERMISSIONS));
 
 export async function permissionsForUser(user: SessionUser): Promise<Set<string>> {
-  if (user.role === "admin") return new Set(BUILT_IN_ADMIN_PERMISSIONS);
+  if (user.role === "admin" && isSuperAdmin(user)) return new Set(BUILT_IN_ADMIN_PERMISSIONS);
 
   try {
     const rows = await getDb()

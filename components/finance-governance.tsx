@@ -6,6 +6,7 @@ import { CheckCircle2, FileSpreadsheet, LoaderCircle, RotateCcw, ShieldCheck, XC
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { currencyMinorDigits } from "@/lib/settlements";
 import styles from "./finance-governance.module.css";
+import { useNotifications } from "@/components/notification-center";
 
 export type RefundPrefill = { orderNumber: string; amount: number; reason?: string; nonce: number };
 
@@ -19,6 +20,7 @@ const money=(minor:number,currency="SAR")=>new Intl.NumberFormat("ar-SA",{style:
 const settlementIssues=(lines:Settlement["lines"])=>Object.entries(lines.filter((line)=>line.status!=="matched").reduce((counts,line)=>({...counts,[line.status]:(counts[line.status]||0)+line.count}),{} as Record<string,number>)).map(([status,count])=>`${settlementIssueLabel[status]||status}: ${count.toLocaleString("ar-SA")}`).join(" · ");
 
 export function FinanceGovernance({ prefill, refreshKey = 0 }: { prefill?: RefundPrefill | null; refreshKey?: number } = {}) {
+  const { confirm } = useNotifications();
   const [refunds, setRefunds] = useState<RefundRow[]>([]);
   const [settlements, setSettlements] = useState<Settlement[]>([]);
   const [loading, setLoading] = useState(true);
@@ -102,7 +104,7 @@ export function FinanceGovernance({ prefill, refreshKey = 0 }: { prefill?: Refun
             <small>{approved.length}/2 موافقات · المنشئ: <bdi dir="ltr">{row.requestedByEmail}</bdi></small>
             {approved.length > 0 && <small className={styles.approvals}>الموافقون: {approved.map((item) => item.approverEmail).join("، ")}</small>}
             {["pending", "first_approved", "provider_failed", "approved_pending_provider"].includes(row.status) && <div>
-              <button disabled={Boolean(busy)} onClick={() => { if (window.confirm("تأكيد اعتماد هذا الاسترداد؟ لا يجوز أن يكون الموافق هو منشئ الطلب.")) void refundAction({ action: "approve", id: row.id }, `approve-${row.id}`); }}><CheckCircle2 size={14} /> اعتماد</button>
+              <button disabled={Boolean(busy)} onClick={() => void confirm({ title: "اعتماد طلب الاسترداد", message: "تأكيد اعتماد هذا الاسترداد؟ لا يجوز أن يكون الموافق هو منشئ الطلب.", confirmLabel: "اعتماد الطلب" }).then((answer) => { if (answer) void refundAction({ action: "approve", id: row.id }, `approve-${row.id}`); })}><CheckCircle2 size={14} /> اعتماد</button>
               <button className={styles.reject} disabled={Boolean(busy)} onClick={() => { const note = window.prompt("اكتب سبب رفض طلب الاسترداد"); if (note?.trim()) void refundAction({ action: "reject", id: row.id, note }, `reject-${row.id}`); }}><XCircle size={14} /> رفض</button>
             </div>}
           </article>;

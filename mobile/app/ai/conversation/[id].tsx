@@ -10,6 +10,7 @@ import { AppButton, Card, EmptyState, LoadingState, Screen, SectionTitle } from 
 import { api, ApiError, jsonBody } from "@/src/lib/api";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
+import { useNotifications } from "@/src/providers/NotificationProvider";
 
 type AiMessage = { id: number; conversationId: number; role: "user" | "assistant"; service: "chat" | "summary" | "translation" | "quiz"; content: string; fileId: number | null; model: string | null; createdAt: string };
 type AiFile = { id: number; conversationId: number | null; originalName: string; contentType: string; sizeBytes: number; status: string; scanStatus: string; createdAt: string };
@@ -23,6 +24,7 @@ export default function AiConversationScreen() {
   const id = Number(Array.isArray(params.id) ? params.id[0] : params.id);
   const { user } = useAuth();
   const { colors } = useTheme();
+  const { confirm } = useNotifications();
   const queryClient = useQueryClient();
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -47,13 +49,10 @@ export default function AiConversationScreen() {
     finally { setSending(false); }
   };
 
-  const remove = () => Alert.alert("حذف المحادثة", "سيُحذف السجل والنتائج المرتبطة بهذه المحادثة من حسابك. هل أنت متأكد؟", [
-    { text: "إلغاء", style: "cancel" },
-    { text: "حذف", style: "destructive", onPress: () => void (async () => {
+  const remove = () => void confirm({ title: "حذف المحادثة", message: "سيُحذف السجل والنتائج المرتبطة بهذه المحادثة من حسابك. هل أنت متأكد؟", confirmLabel: "حذف", danger: true }).then((answer) => { if (!answer) return; return (async () => {
       try { await api(`/api/ai/conversations/${id}`, { method: "DELETE" }); await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }); router.replace("/(tabs)/ai"); }
       catch (reason) { setError(reason instanceof ApiError ? reason.message : "تعذر حذف المحادثة"); }
-    })() },
-  ]);
+    })(); });
 
   const data = query.data;
   return <Screen keyboard>
