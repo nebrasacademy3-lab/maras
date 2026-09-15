@@ -20,8 +20,11 @@ const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "star
 const worker = spawn(process.execPath, ["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/ai-worker.ts"], { env, stdio: ["ignore", openSync(".data/study-worker.log", "w"), "inherit"] });
 try {
   let ready = false;
-  for (let i = 0; i < 60; i++) { try { await fetch("http://127.0.0.1:3100/login", { signal: AbortSignal.timeout(2000) }); ready = true; break; } catch { await new Promise(r => setTimeout(r, 1000)); } }
-  if (!ready) throw new Error("Synthetic web server did not start");
+  for (let i = 0; i < 60; i++) { try { const response = await fetch("http://127.0.0.1:3100/login", { signal: AbortSignal.timeout(2000) }); if (response.ok) { ready = true; break; } } catch { /* The isolated server may still be starting. */ } await new Promise(r => setTimeout(r, 1000)); }
+  if (!ready) throw new Error("Synthetic web server did not start successfully");
+  const response = await fetch("http://127.0.0.1:3100/about", { signal: AbortSignal.timeout(30000) });
+  const html = await response.text();
+  console.log("PUBLIC_CANONICAL_DIAGNOSTIC", JSON.stringify({ status: response.status, expected: env.NEXT_PUBLIC_SITE_URL, canonicalTags: html.match(/<link\b[^>]*rel=["']canonical["'][^>]*>/g) || [] }));
   await run(["scripts/qa-study-browser.mjs"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-browser.mjs"]);
 } finally { server.kill("SIGTERM"); worker.kill("SIGTERM"); }
