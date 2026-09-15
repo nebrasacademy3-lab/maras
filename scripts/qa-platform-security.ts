@@ -10,10 +10,10 @@ if (process.env.DATABASE_URL && process.env.DATABASE_URL !== local.url) throw ne
 if (process.env.S3_BUCKET || process.env.BUCKET || process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEYS || process.env.RESEND_API_KEY || process.env.TAP_SECRET_KEY) throw new Error("No live credentials permitted");
 const origin = "https://maras-qa.example";
 Object.assign(process.env, { DATABASE_URL: local.url, DATABASE_SSL: "false", APP_URL: origin, NEXT_PUBLIC_SITE_URL: origin, UPLOAD_DIR: `${process.cwd()}/.data/uploads`, SESSION_SECRET: randomBytes(40).toString("hex"), ADMIN_MFA_ENCRYPTION_KEY: randomBytes(32).toString("hex"), REFERRAL_HASH_SALT: randomBytes(32).toString("hex"), AUTO_SEED_CATALOG: "false", RUN_DB_MIGRATIONS: "false" });
-const [{ getDb, closeDb }, s, auth, mfa, account, staff, resourceApi, loginApi, mobileLogin, mfaApi, mobileMfaApi, accountApi, referralsApi, referralRedirect, ref, registerApi, storage] = await Promise.all([
+const [{ getDb, closeDb }, s, auth, mfa, account, staff, resourceApi, loginApi, mobileLogin, mfaApi, mobileMfaApi, accountApi, referralsApi, referralRedirect, ref, registerApi, storage, adminMfaApi] = await Promise.all([
   import("../db"), import("../db/schema"), import("../lib/auth"), import("../lib/admin-mfa"), import("../lib/account-mfa"),
   import("../app/api/admin/staff/route"), import("../app/api/admin/course-resources/route"), import("../app/api/auth/login/route"), import("../app/api/mobile/auth/login/route"),
-  import("../app/api/auth/mfa/route"), import("../app/api/mobile/auth/mfa/route"), import("../app/api/account/mfa/route"), import("../app/api/referrals/route"), import("../app/r/[code]/route"), import("../lib/referrals"), import("../app/api/auth/register/route"), import("../lib/storage"),
+  import("../app/api/auth/mfa/route"), import("../app/api/mobile/auth/mfa/route"), import("../app/api/account/mfa/route"), import("../app/api/referrals/route"), import("../app/r/[code]/route"), import("../lib/referrals"), import("../app/api/auth/register/route"), import("../lib/storage"), import("../app/api/admin/security/mfa/route"),
 ]);
 const db = getDb(); const now = new Date().toISOString(); const nonce = randomUUID().slice(0, 8);
 const fixture = JSON.parse(readFileSync(".data/qa-fixtures.json", "utf8")) as { users: { id: number; role: string; token: string; deviceId: string; email: string }[] };
@@ -40,6 +40,34 @@ globalThis.fetch = async () => { throw new Error("Live network calls are disable
 let ownerFactorId: number | null = null;
 try {
   const a = await makeUser("mfa"), staffUser = await makeUser("staff", "supervisor"), blocked = await makeUser("blocked", "supervisor"), referrer = await makeUser("referrer");
+  const enrollmentStaff = await makeUser("admin-mfa", "supervisor");
+  const enrollmentSession = await auth.createSession(enrollmentStaff.id, req("/api/admin/security/mfa"));
+  const priorEnrollmentSession = await auth.createSession(enrollmentStaff.id, req("/api/auth/login", "", undefined, { "x-meras-device-id": `qa-old-enrollment-${nonce}` }));
+  const setupAction = (body: unknown) => adminMfaApi.POST(req("/api/admin/security/mfa", enrollmentSession.token, body));
+  assert.equal((await setupAction({ action: "setup" })).status, 403);
+  assert.equal((await setupAction({ action: "setup", password: "incorrect-synthetic-password" })).status, 403);
+  assert.equal((await db.select().from(s.adminMfaFactors).where(eq(s.adminMfaFactors.userId, enrollmentStaff.id))).length, 0);
+  const adminSetupResponse = await setupAction({ action: "setup", password });
+  assert.equal(adminSetupResponse.status, 201);
+  const adminSetup = await adminSetupResponse.json() as { secret: string };
+  const adminCounter = Math.floor(Date.now() / 30_000);
+  const setupCode = mfa.totpCodeForCounter(adminSetup.secret, adminCounter - 1);
+  assert.equal((await setupAction({ action: "verify", code: setupCode })).status, 403);
+  const adminEnableResponse = await setupAction({ action: "verify", code: setupCode, password });
+  assert.equal(adminEnableResponse.status, 200);
+  const adminEnabled = await adminEnableResponse.json() as { recoveryCodes: string[]; stepUpValid: boolean };
+  assert.equal(adminEnabled.recoveryCodes.length, 10); assert.equal(adminEnabled.stepUpValid, true);
+  assert.equal((await auth.getSessionUser(req("/api/profile", enrollmentSession.token)))?.id, enrollmentStaff.id);
+  assert.equal(await auth.getSessionUser(req("/api/profile", priorEnrollmentSession.token)), null);
+  pass("admin MFA rejects missing/wrong passwords before creating factors; verified enrollment issues ten recovery codes and revokes other sessions");
+  const disableCode = mfa.totpCodeForCounter(adminSetup.secret, adminCounter);
+  assert.equal((await setupAction({ action: "disable", code: disableCode, password: "wrong-synthetic-password" })).status, 403);
+  assert.equal((await account.accountMfaStatus(enrollmentStaff.id)).enabled, true);
+  const adminDisableResponse = await setupAction({ action: "disable", code: disableCode, password });
+  assert.equal(adminDisableResponse.status, 200); assert.match(adminDisableResponse.headers.get("set-cookie")!, /Max-Age=0/);
+  assert.equal((await account.accountMfaStatus(enrollmentStaff.id)).enabled, false);
+  assert.equal((await account.accountMfaStatus(enrollmentStaff.id)).recoveryCodesRemaining, 0);
+  pass("admin disable requires current password and TOTP, clears recovery codes and the session-bound step-up cookie");
   const enrollmentRequest = req("/api/account/mfa");
   const first = await auth.createSession(a.id, enrollmentRequest);
   const second = await auth.createSession(a.id, req("/api/auth/login", "", undefined, { "x-meras-device-id": `qa-second-${nonce}` }));
@@ -163,7 +191,14 @@ try {
   pass("account security audits record actions without authentication secrets");
   // Keep a non-owner viewer account for browser permission/empty-state checks.
   await db.insert(s.staffPermissions).values({ userId: blocked.id, permission: "catalog.view", grantedBy: owner.id });
-  writeFileSync(".data/qa-security-fixtures.json", JSON.stringify({ origin: "http://127.0.0.1:3100", supervisor: { id: blocked.id, email: blocked.email, token: bs.token } }));
+  const enrollmentFixtures: Record<string, { id: number; token: string; password: string }> = {};
+  for (const name of ["chromium", "firefox", "webkit"]) {
+    const viewer = await makeUser(`browser-enroll-${name}`, "supervisor");
+    await db.insert(s.staffPermissions).values({ userId: viewer.id, permission: "catalog.view", grantedBy: owner.id });
+    const session = await auth.createSession(viewer.id, req("/api/admin/security/mfa"));
+    enrollmentFixtures[name] = { id: viewer.id, token: session.token, password };
+  }
+  writeFileSync(".data/qa-security-fixtures.json", JSON.stringify({ origin: "http://127.0.0.1:3100", supervisor: { id: blocked.id, email: blocked.email, token: bs.token }, enrollment: enrollmentFixtures }));
   const report = { passed: checks.length, checks, database: "isolated loopback PostgreSQL", liveRequests: 0, deviceCoverage: "controller-level web/native protocol, not physical devices" };
   writeFileSync(".data/qa-security-report.json", JSON.stringify(report, null, 2)); console.log(JSON.stringify(report, null, 2));
 } finally {

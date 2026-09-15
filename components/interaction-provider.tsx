@@ -39,6 +39,8 @@ function InteractionDialog({ item, settle }: { item: InteractionRequest; settle:
   const [input, setInput] = useState(item.options.defaultValue || "");
   const [code, setCode] = useState("");
   const [secret, setSecret] = useState("");
+  const [password, setPassword] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [setup, setSetup] = useState(item.options.message === "setup");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -58,10 +60,12 @@ function InteractionDialog({ item, settle }: { item: InteractionRequest; settle:
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!isMfa) { settle(item.kind === "prompt" ? input.trim() : true); return; }
+    if (recoveryCodes.length) { setRecoveryCodes([]); settle(true); return; }
     setBusy(true); setError("");
     try {
-      if (setup && !secret) { const result = await securityAction("setup"); setSecret(result.secret); return; }
-      const result = await securityAction(setup ? "verify" : "stepUp", { code });
+      if (setup && !secret) { const result = await securityAction("setup", { password }); setSecret(result.secret); return; }
+      const result = await securityAction(setup ? "verify" : "stepUp", { code, ...(setup ? { password } : {}) });
+      if (result.recoveryCodes?.length && result.stepUpValid) { setRecoveryCodes(result.recoveryCodes); setSecret(""); setPassword(""); setCode(""); return; }
       if (result.stepUpValid) { settle(true); return; }
       if (setup) { setSetup(false); setSecret(""); setCode(""); setError("تم تفعيل المصادقة. أدخل الرمز التالي من التطبيق لتأكيد العملية."); }
       else settle(true);
@@ -74,11 +78,13 @@ function InteractionDialog({ item, settle }: { item: InteractionRequest; settle:
       <h2 id="interaction-title">{item.options.title || "تأكيد العملية"}</h2>
       <p id="interaction-description">{isMfa ? "تأكيد إضافي لحماية حسابك. تبقى بياناتك التي أدخلتها محفوظة في الصفحة، وتُستكمل العملية بعد نجاح التحقق." : item.options.message}</p>
       {item.kind === "prompt" && <label className={styles.label}>{item.options.inputLabel}<textarea autoFocus maxLength={1000} value={input} onChange={event => setInput(event.target.value)} /></label>}
-      {isMfa && setup && <p className={styles.hint}>اربط تطبيق المصادقة بحسابك أولًا. لا تشارك مفتاح الإعداد أو الرمز مع أي شخص.</p>}
+      {isMfa && setup && !recoveryCodes.length && <p className={styles.hint}>اربط تطبيق المصادقة بحسابك أولًا. لا تشارك مفتاح الإعداد أو الرمز مع أي شخص.</p>}
+      {isMfa && setup && !recoveryCodes.length && <label className={styles.label}>كلمة المرور الحالية<input required type="password" autoComplete="current-password" maxLength={128} value={password} onChange={event => setPassword(event.target.value)} /></label>}
+      {recoveryCodes.length > 0 && <div className={styles.secret}><strong>احفظ رموز استعادة الحساب</strong><p>لن تظهر مرة أخرى. كل رمز يُستخدم مرة واحدة؛ احفظها خارج جهازك ولا تشاركها. العملية الأصلية لم تُنفّذ بعد.</p><code dir="ltr" style={{ whiteSpace: "pre-wrap" }}>{recoveryCodes.join("\n")}</code><button type="button" className="button button-ghost" onClick={() => void navigator.clipboard.writeText(recoveryCodes.join("\n")).catch(() => setError("انسخ الرموز يدويًا"))}>نسخ رموز الاستعادة</button></div>}
       {secret && <div className={styles.secret}><span>مفتاح الإعداد — أضفه إلى تطبيق المصادقة</span><code dir="ltr">{secret}</code><button type="button" className="button button-ghost" onClick={() => void navigator.clipboard.writeText(secret).catch(() => setError("انسخ المفتاح يدويًا من الحقل أعلاه"))}>نسخ المفتاح</button></div>}
-      {isMfa && (!setup || secret) && <label className={styles.label}>رمز تطبيق المصادقة<input autoFocus required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={event => setCode(event.target.value.replace(/[^0-9]/g, ""))} dir="ltr" placeholder="000000" /></label>}
+      {isMfa && !recoveryCodes.length && (!setup || secret) && <label className={styles.label}>رمز تطبيق المصادقة<input autoFocus required inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={code} onChange={event => setCode(event.target.value.replace(/[^0-9]/g, ""))} dir="ltr" placeholder="000000" /></label>}
       {error && <p className={styles.error} role="alert">{error}</p>}
-      <footer className={styles.actions}><button type="submit" disabled={busy} className={`button button-primary ${!isMfa && item.options.destructive ? styles.danger : ""}`}>{busy ? "جارٍ التحقق…" : isMfa ? setup && !secret ? "إعداد المصادقة" : "تحقق ومتابعة" : item.options.confirmLabel || "تأكيد"}</button><button type="button" disabled={busy} className="button button-ghost" onClick={() => settle(false)}>إلغاء والعودة</button></footer>
+      <footer className={styles.actions}><button type="submit" disabled={busy} className={`button button-primary ${!isMfa && item.options.destructive ? styles.danger : ""}`}>{busy ? "جارٍ التحقق…" : recoveryCodes.length ? "حفظت الرموز، متابعة العملية" : isMfa ? setup && !secret ? "إعداد المصادقة" : "تحقق ومتابعة" : item.options.confirmLabel || "تأكيد"}</button><button type="button" disabled={busy} className="button button-ghost" onClick={() => settle(false)}>إلغاء والعودة</button></footer>
     </form>
   </dialog>;
 }

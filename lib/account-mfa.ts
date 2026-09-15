@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from "node:crypto";
 import { and, count, desc, eq, gt, isNull, lt, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { accountMfaChallenges, accountMfaRecoveryCodes, adminMfaFactors, auditLogs, authSessions } from "@/db/schema";
-import { browserDeviceCookie, checkRateLimit, clientIp, createOpaqueToken, hashOpaqueToken, requestSessionToken, sessionDeviceIdentity, type SessionUser } from "@/lib/auth";
+import { accountMfaChallenges, accountMfaRecoveryCodes, adminMfaFactors, auditLogs, authSessions, users } from "@/db/schema";
+import { browserDeviceCookie, checkRateLimit, clientIp, createOpaqueToken, hashOpaqueToken, requestSessionToken, sessionDeviceIdentity, verifyPassword, type SessionUser } from "@/lib/auth";
 import { AdminMfaError, consumeTotp, decryptAdminMfaSecret, matchedTotpCounter } from "@/lib/admin-mfa";
 
 type Tx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
@@ -68,25 +68,14 @@ export async function verifyLoginMfaTx(tx: Tx, userId: number, deviceId: string,
   await tx.update(accountMfaChallenges).set({ usedAt: now }).where(eq(accountMfaChallenges.tokenHash, tokenHash));
   return true;
 }
-export async function issueRecoveryCodes(user: SessionUser) {
-  const codes = Array.from({ length: 10 }, () => randomBytes(10).toString("hex").toUpperCase().match(/.{1,5}/g)!.join("-"));
-  await getDb().transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${user.id})`);
-    await tx.delete(accountMfaRecoveryCodes).where(eq(accountMfaRecoveryCodes.userId, user.id));
-    await tx.insert(accountMfaRecoveryCodes).values(codes.map(code => ({ userId: user.id, codeHash: recoveryHash(code) })));
-  });
-  return codes;
-}
-/** Preserve the session that enrolled MFA and invalidate all other existing credentials. */
-export async function secureEnrolledSession(user: SessionUser, request: Request) {
-  const tokenHash = await hashOpaqueToken(requestSessionToken(request));
-  const now = new Date().toISOString();
-  await getDb().transaction(async tx => {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(${user.id})`);
-    await tx.update(authSessions).set({ mfaVerifiedAt: now }).where(and(eq(authSessions.userId, user.id), eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
-    await tx.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, user.id), ne(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt)));
-    await tx.update(accountMfaChallenges).set({ usedAt: now }).where(and(eq(accountMfaChallenges.userId, user.id), isNull(accountMfaChallenges.usedAt)));
-  });
+/** Reauthenticate before enrolling or changing an account's second factor. */
+export async function requireMfaPassword(user: SessionUser, value: unknown) {
+  const password = typeof value === "string" ? value : "";
+  const [account] = await getDb().select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, user.id)).limit(1);
+  if (!account?.passwordHash) throw new AdminMfaError("PASSWORD_REQUIRED", "عيّن كلمة مرور للحساب من إعدادات الأمان أو استعادة كلمة المرور أولًا", 409);
+  if (!password || password.length > 128 || !await verifyPassword(password, account.passwordHash)) {
+    throw new AdminMfaError("PASSWORD_INVALID", "كلمة المرور الحالية غير صحيحة", 403);
+  }
 }
 export async function auditMfa(user: SessionUser, request: Request, action: string) {
   await getDb().insert(auditLogs).values({ actorEmail: user.email, action: `account.mfa.${action}`, entityType: "account_security", entityId: String(user.id), ipAddress: clientIp(request), afterJson: JSON.stringify({ action }) });

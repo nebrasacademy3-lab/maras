@@ -17,6 +17,9 @@ if (names.some(name => !engines[name])) throw new Error("Unknown browser engine"
 const reports = [];
 const cookie = token => ({ name: "meras_session", value: token, domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" });
 async function assertFits(page, label) {
+  // The live sync stream is intentionally long-lived; networkidle is not a readiness signal.
+  await page.locator("h1").first().waitFor({ state: "visible" });
+  await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
   const measure = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
   assert.ok(measure.scroll <= measure.width + 2, `${label}: horizontal overflow ${measure.scroll}/${measure.width}`);
 }
@@ -31,8 +34,10 @@ try {
       const page = await context.newPage(); page.on("pageerror", error => errors.push(error.message));
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
-        const response = await page.goto(origin + path, { waitUntil: "networkidle" }); assert.equal(response.status(), 200, path);
-        assert.ok(await page.locator("h1").count(), `${path} main heading`);
+        const response = await page.goto(origin + path, { waitUntil: "domcontentloaded" }); assert.equal(response.status(), 200, path);
+        await page.locator("h1").first().waitFor({ state: "visible" });
+        await page.waitForFunction(() => Boolean(document.documentElement.dataset.palette));
+        await page.locator('link[rel="canonical"]').waitFor({ state: "attached" });
         assert.ok((await page.locator('link[rel="canonical"]').getAttribute("href")).startsWith("https://maras-qa.example/"));
         for (const width of [320, 390, 768, 1440]) {
           await page.setViewportSize({ width, height: width < 500 ? 844 : 1000 });
@@ -40,7 +45,7 @@ try {
         }
       }
       checks.push("eight public routes render headings and canonical URLs; 320/390/768/1440px have no page overflow");
-      await page.goto(origin + "/faq", { waitUntil: "networkidle" });
+      await page.goto(origin + "/faq", { waitUntil: "domcontentloaded" });
       const count = await page.locator("details").count(); assert.equal(count, 35);
       const schemaContent = await page.locator('script[type="application/ld+json"]').allTextContents();
       assert.ok(schemaContent.some(value => { const row = JSON.parse(value); return row["@type"] === "FAQPage" && row.mainEntity.length === count; }));
@@ -49,18 +54,43 @@ try {
       checks.push("35 rendered FAQ answers match structured data and search filters the real visible content");
       for (const theme of ["light", "dark"]) {
         await page.evaluate(value => localStorage.setItem("meras-theme", value), theme);
-        await page.reload({ waitUntil: "networkidle" });
+        await page.reload({ waitUntil: "domcontentloaded" });
         await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, theme === "dark");
         await page.screenshot({ path: `${dir}/faq-${theme}.png`, fullPage: true, animations: "disabled" });
-        await page.goto(origin + "/about", { waitUntil: "networkidle" });
+        await page.goto(origin + "/about", { waitUntil: "domcontentloaded" });
         await page.screenshot({ path: `${dir}/about-${theme}.png`, fullPage: true, animations: "disabled" });
         await page.setViewportSize({ width: 390, height: 844 }); await assertFits(page, `about/${theme}/phone`);
         await page.screenshot({ path: `${dir}/about-${theme}-phone.png`, fullPage: true, animations: "disabled" });
         await page.setViewportSize({ width: 1440, height: 1000 });
-        await page.goto(origin + "/faq", { waitUntil: "networkidle" });
+        await page.goto(origin + "/faq", { waitUntil: "domcontentloaded" });
       }
       checks.push("public light/dark theme persists across navigation; desktop and phone screenshots captured");
       await context.close();
+      const enrollmentFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8")).enrollment[name];
+      const enrolling = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
+      await enrolling.addCookies([cookie(enrollmentFixture.token)]);
+      const security = await enrolling.newPage(); security.on("pageerror", error => errors.push(error.message));
+      await security.goto(origin + "/admin/security", { waitUntil: "domcontentloaded" });
+      const securityCard = security.locator("article").first();
+      await securityCard.getByLabel("كلمة المرور الحالية — مطلوبة للإعداد والتعطيل").fill(enrollmentFixture.password);
+      const setupReply = security.waitForResponse(response => response.url().endsWith("/api/admin/security/mfa") && response.request().method() === "POST");
+      await securityCard.getByRole("button", { name: "بدء الإعداد الآمن" }).click();
+      const setupResponse = await setupReply; assert.equal(setupResponse.status(), 201);
+      const setupPayload = await setupResponse.json();
+      await securityCard.getByLabel("رمز المصادقة المكون من ستة أرقام").fill(mfa.totpCodeForCounter(setupPayload.secret, Math.floor(Date.now() / 30_000)));
+      const verifyReply = security.waitForResponse(response => response.url().endsWith("/api/admin/security/mfa") && response.request().method() === "POST");
+      await securityCard.getByRole("button", { name: "تفعيل الحماية", exact: true }).click();
+      const verifyResponse = await verifyReply; assert.equal(verifyResponse.status(), 200);
+      const verifyPayload = await verifyResponse.json(); assert.equal(verifyPayload.recoveryCodes.length, 10);
+      const stored = await db.select({ codeHash: schema.accountMfaRecoveryCodes.codeHash }).from(schema.accountMfaRecoveryCodes).where(eq(schema.accountMfaRecoveryCodes.userId, enrollmentFixture.id));
+      assert.equal(stored.length, 10); assert.ok(stored.every(row => !verifyPayload.recoveryCodes.includes(row.codeHash)));
+      await securityCard.getByRole("button", { name: "حفظت الرموز، إخفاؤها" }).click();
+      assert.equal(await securityCard.getByLabel("كلمة المرور الحالية — مطلوبة للإعداد والتعطيل").inputValue(), "");
+      await assertFits(security, "admin/security/enrolled/phone");
+      // Only capture after the secret and recovery codes have been cleared from the UI.
+      await security.screenshot({ path: `${dir}/security-enrolled-phone.png`, fullPage: true, animations: "disabled" });
+      await enrolling.close();
+      checks.push("admin enrollment UI reauthenticates with a password, enables TOTP and displays recovery codes once before clearing sensitive fields");
       // The fixture owner never has a production factor: refuse to alter pre-existing factor data.
       const existing = await db.select({ id: schema.adminMfaFactors.id }).from(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.userId, owner.id));
       assert.equal(existing.length, 0, "browser QA must not touch a pre-existing owner factor");
@@ -69,7 +99,7 @@ try {
       await db.update(schema.authSessions).set({ mfaVerifiedAt: now }).where(eq(schema.authSessions.tokenHash, createHash("sha256").update(owner.token).digest("hex")));
       const admin = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } }); await admin.addCookies([cookie(owner.token)]);
       const editor = await admin.newPage(); editor.on("pageerror", error => errors.push(error.message));
-      await editor.goto(origin + "/admin/staff", { waitUntil: "networkidle" });
+      await editor.goto(origin + "/admin/staff", { waitUntil: "domcontentloaded" });
       await editor.getByRole("button", { name: "إضافة مشرف", exact: true }).click();
       const uniqueEmail = `qa-browser-${name}-${randomBytes(5).toString("hex")}@example.test`;
       await editor.getByLabel("الاسم الكامل", { exact: true }).fill("مشرف اختبار المتصفح");
@@ -90,7 +120,7 @@ try {
       checks.push("real staff mutation pauses for MFA, cancellation preserves fields and writes nothing; verified retry creates exactly one supervisor");
       await editor.setViewportSize({ width: 390, height: 844 }); await assertFits(editor, "admin/staff/phone");
       await editor.screenshot({ path: `${dir}/staff-phone.png`, fullPage: true, animations: "disabled" });
-      await editor.goto(origin + "/admin/content", { waitUntil: "networkidle" });
+      await editor.goto(origin + "/admin/content", { waitUntil: "domcontentloaded" });
       const title = editor.getByLabel("عنوان الصفحة", { exact: true }); await title.fill("عنوان اختبار لم ينشر — مراس العلم");
       await editor.getByRole("button", { name: "نشر التغييرات", exact: true }).click();
       await editor.getByRole("dialog", { name: "نشر محتوى الصفحات؟" }).getByRole("button", { name: "إلغاء والعودة" }).click();
@@ -100,7 +130,7 @@ try {
       await admin.close();
       const viewerFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8"));
       const viewer = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await viewer.addCookies([cookie(viewerFixture.supervisor.token)]);
-      const viewerPage = await viewer.newPage(); await viewerPage.goto(origin + "/admin", { waitUntil: "networkidle" });
+      const viewerPage = await viewer.newPage(); await viewerPage.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
       assert.equal(await viewerPage.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').count(), 0);
       assert.equal((await viewer.request.get(origin + "/api/admin/staff")).status(), 403);
       assert.equal((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status(), 403);

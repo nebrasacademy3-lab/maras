@@ -1,4 +1,4 @@
-import { secureEnrolledSession, auditMfa } from "@/lib/account-mfa";
+import { changeAccountMfa, auditMfa, requireMfaPassword } from "@/lib/account-mfa";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
@@ -8,8 +8,7 @@ import {
   beginAdminTotpSetup,
   createAdminStepUp,
   issueVerifiedAdminStepUp,
-  disableAdminTotp,
-  verifyAdminTotpSetup,
+  clearAdminStepUpCookie,
 } from "@/lib/admin-mfa";
 
 export const dynamic = "force-dynamic";
@@ -72,8 +71,10 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (["setup", "verify", "disable"].includes(action)) await requireMfaPassword(user, payload.password);
     if (action === "setup") {
       const setup = await beginAdminTotpSetup(user, cleanText(payload.label, 80));
+      await auditMfa(user, request, "setup");
       return Response.json({ ok: true, ...setup }, { status: 201, headers: RESPONSE_HEADERS });
     }
 
@@ -86,12 +87,12 @@ export async function POST(request: Request) {
     }
 
     if (action === "verify") {
-      const status = await verifyAdminTotpSetup(user, code);
-      await secureEnrolledSession(user, request);
-      await auditMfa(user, request, "enabled");
+      // Factor activation, session invalidation, recovery codes and audit commit atomically.
+      const changed = await changeAccountMfa(user, request, code, "verify");
+      const status = await adminMfaStatus(user);
       if (!status.factor) return jsonError("تعذر إكمال التفعيل", 500);
       const stepUp = issueVerifiedAdminStepUp(user, request, status.factor.id);
-      return Response.json({ ok: true, ...status, stepUpValid: true, stepUpExpiresAt: stepUp.expiresAt, ...(request.headers.get("x-meras-client") === "mobile-v1" ? { stepUpToken: stepUp.token } : {}) }, { headers: { ...RESPONSE_HEADERS, "set-cookie": stepUp.cookie } });
+      return Response.json({ ...changed, ...status, stepUpValid: true, stepUpExpiresAt: stepUp.expiresAt, ...(request.headers.get("x-meras-client") === "mobile-v1" ? { stepUpToken: stepUp.token } : {}) }, { headers: { ...RESPONSE_HEADERS, "set-cookie": stepUp.cookie } });
     }
     if (action === "stepUp") {
       const stepUp = await createAdminStepUp(user, request, code);
@@ -100,11 +101,9 @@ export async function POST(request: Request) {
       });
     }
     if (action === "disable") {
-      const disabled = await disableAdminTotp(user, request, code);
-      await secureEnrolledSession(user, request);
-      await auditMfa(user, request, "disabled");
+      await changeAccountMfa(user, request, code, "disable");
       return Response.json({ ok: true, enabled: false, stepUpValid: false }, {
-        headers: { ...RESPONSE_HEADERS, "set-cookie": disabled.cookie },
+        headers: { ...RESPONSE_HEADERS, "set-cookie": clearAdminStepUpCookie(request) },
       });
     }
     return jsonError("إجراء المصادقة غير معروف", 404);

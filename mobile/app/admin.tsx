@@ -609,23 +609,30 @@ type MobileMfaStatus = { enabled:boolean; pendingSetup:boolean; stepUpValid:bool
 function MobileAdminSecurity({ colors }:{ colors:Colors }) {
   const mfa = useQuery({ queryKey:["admin-mfa-status"], queryFn:()=>api<MobileMfaStatus>("/api/admin/security/mfa"), staleTime:10_000, retry:0 });
   const [code,setCode] = useState("");
+  const [password,setPassword] = useState("");
+  const [recoveryCodes,setRecoveryCodes] = useState<string[]>([]);
   const [setup,setSetup] = useState<{secret:string;otpauthUri:string}|null>(null);
   const [feedback,setFeedback] = useState("");
   const [busy,setBusy] = useState(false);
   const submit = async (action:"setup"|"verify"|"stepUp"|"disable") => {
+    if (action === "disable") {
+      const confirmed = await new Promise<boolean>(resolve => Alert.alert("تعطيل المصادقة الإضافية؟", "ستُلغى رموز الاستعادة والجلسات الأخرى.", [{ text: "إلغاء", style: "cancel", onPress: () => resolve(false) }, { text: "تعطيل", style: "destructive", onPress: () => resolve(true) }], { onDismiss: () => resolve(false) }));
+      if (!confirmed) return;
+    }
     setBusy(true); setFeedback("");
     try {
+      if (action !== "stepUp" && !password) throw new ApiError("أدخل كلمة المرور الحالية قبل تغيير إعداد المصادقة.", 400);
       if (action !== "setup" && !/^\d{6}$/.test(code)) throw new ApiError("أدخل رمزًا صحيحًا من 6 أرقام.", 400);
-      const result = await api<MobileMfaStatus & { secret?:string;otpauthUri?:string;stepUpToken?:string }>("/api/admin/security/mfa", { method:"POST", body:jsonBody(action === "setup" ? { action, label:"تطبيق المصادقة — الجوال" } : { action, code }) });
+      const result = await api<MobileMfaStatus & { secret?:string;otpauthUri?:string;stepUpToken?:string;recoveryCodes?:string[] }>("/api/admin/security/mfa", { method:"POST", body:jsonBody({ action, code, ...(action !== "stepUp" ? { password } : {}), ...(action === "setup" ? { label:"تطبيق المصادقة — الجوال" } : {}) }) });
       if (action === "setup" && result.secret && result.otpauthUri) {
         setSetup({ secret:result.secret, otpauthUri:result.otpauthUri });
         setFeedback("أضف المفتاح إلى تطبيق المصادقة، ثم أدخل أول رمز يظهر لك.");
       } else if (action === "verify") {
-        setSetup(null); setCode(""); setFeedback("تم تفعيل المصادقة الإضافية بنجاح."); await mfa.refetch();
+        setSetup(null); setCode(""); setPassword(""); setRecoveryCodes(result.recoveryCodes || []); setAdminStepUpToken(result.stepUpToken || null); setFeedback("تم تفعيل المصادقة. احفظ رموز الاستعادة المعروضة الآن."); await mfa.refetch();
       } else if (action === "stepUp") {
         setAdminStepUpToken(result.stepUpToken || null); setCode(""); setFeedback("تم تأكيد هويتك للعمليات الحساسة لمدة ساعة."); await mfa.refetch();
       } else {
-        setAdminStepUpToken(null); setCode(""); setSetup(null); setFeedback("تم تعطيل المصادقة الإضافية لهذا الحساب."); await mfa.refetch();
+        setAdminStepUpToken(null); setCode(""); setSetup(null); setPassword(""); setRecoveryCodes([]); setFeedback("تم تعطيل المصادقة الإضافية لهذا الحساب."); await mfa.refetch();
       }
     } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر إكمال إجراء الأمان."); }
     finally { setBusy(false); }
@@ -638,6 +645,8 @@ function MobileAdminSecurity({ colors }:{ colors:Colors }) {
     <Card style={styles.dataCard}>
       <View style={styles.dataHead}><Text style={[styles.role,{color:status.enabled?colors.success:colors.warning}]}>{status.enabled?"مفعّلة":"تحتاج إعدادًا"}</Text><Text style={[styles.dataTitle,{color:colors.text}]}>رمز تحقق متغير TOTP</Text></View>
       <Text style={[styles.dataMeta,{color:colors.textSoft}]}>استخدم تطبيق مصادقة موثوقًا. المفتاح مشفّر على الخادم ولا يظهر مجددًا بعد التفعيل.</Text>
+      <Field label="كلمة المرور الحالية — للإعداد والتعطيل" value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" maxLength={128}/>
+      {recoveryCodes.length > 0 ? <View style={styles.securitySetup}><Text selectable style={[styles.dataMeta,{color:colors.textSoft}]}>احفظ رموز استعادة الحساب؛ لن تظهر مرة أخرى. كل رمز يُستخدم مرة واحدة.</Text><Text selectable style={[styles.securitySecret,{color:colors.text}]}>{recoveryCodes.join("\n")}</Text><AppButton title="حفظت الرموز، إخفاؤها" variant="soft" onPress={()=>setRecoveryCodes([])}/></View> : null}
       {!status.enabled ? <AppButton title={status.pendingSetup?"إنشاء مفتاح إعداد جديد":"بدء إعداد المصادقة"} icon="key-outline" loading={busy} onPress={()=>void submit("setup")}/> : null}
       {setup ? <View style={[styles.securitySetup,{backgroundColor:colors.surfaceAlt,borderColor:colors.border}]}><Text style={[styles.dataMeta,{color:colors.textSoft}]}>مفتاح الإعداد — احفظه الآن</Text><Text selectable style={[styles.securitySecret,{color:colors.text}]}>{setup.secret}</Text><AppButton title="فتح تطبيق المصادقة" variant="soft" icon="open-outline" onPress={()=>void Linking.openURL(setup.otpauthUri).catch(()=>setFeedback("انسخ المفتاح يدويًا إلى تطبيق المصادقة."))}/></View> : null}
       {(setup || status.enabled) ? <Field label={status.enabled?"رمز المصادقة الحالي":"رمز التفعيل الأول"} value={code} onChangeText={(value)=>setCode(value.replace(/[^0-9]/g,"").slice(0,6))} keyboardType="number-pad"/> : null}

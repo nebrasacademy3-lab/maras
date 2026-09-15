@@ -1,9 +1,6 @@
-import { eq } from "drizzle-orm";
-import { getDb } from "@/db";
-import { users } from "@/db/schema";
-import { getSessionUser, sameOriginRequest, checkRateLimit, verifyPassword } from "@/lib/auth";
+import { getSessionUser, sameOriginRequest, checkRateLimit } from "@/lib/auth";
 import { AdminMfaError, adminMfaConfigured, beginAdminTotpSetup } from "@/lib/admin-mfa";
-import { accountMfaStatus, auditMfa, changeAccountMfa } from "@/lib/account-mfa";
+import { accountMfaStatus, auditMfa, changeAccountMfa, requireMfaPassword } from "@/lib/account-mfa";
 import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 import { jsonError } from "@/lib/api";
 const headers = { "cache-control": "private, no-store", "x-content-type-options": "nosniff" };
@@ -20,11 +17,8 @@ export async function POST(request: Request) {
   if (!await checkRateLimit("account-mfa-manage", String(user.id), 8, 300)) return jsonError("محاولات كثيرة؛ حاول بعد خمس دقائق", 429);
   try {
     const payload = await readBoundedJsonObject(request, 4096);
-    const password = typeof payload.password === "string" ? payload.password : "";
     const code = typeof payload.code === "string" ? payload.code.trim() : "";
-    const [account] = await getDb().select({ passwordHash: users.passwordHash }).from(users).where(eq(users.id, user.id));
-    if (!account?.passwordHash) return jsonError("عيّن كلمة مرور للحساب من إعدادات الأمان أو استعادة كلمة المرور أولًا", 409, "PASSWORD_REQUIRED");
-    if (password.length > 128 || !await verifyPassword(password, account.passwordHash)) return jsonError("كلمة المرور الحالية غير صحيحة", 403);
+    await requireMfaPassword(user, payload.password);
     if (payload.action === "setup") {
       const setup = await beginAdminTotpSetup(user);
       await auditMfa(user, request, "setup");

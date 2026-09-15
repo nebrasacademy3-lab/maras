@@ -22,7 +22,7 @@ type SecurityStatus = {
 };
 
 type SetupMaterial = { secret: string; otpauthUri: string };
-type ApiResult = Partial<SecurityStatus & SetupMaterial> & { ok?: boolean; code?: string; error?: string };
+type ApiResult = Partial<SecurityStatus & SetupMaterial> & { ok?: boolean; code?: string; error?: string; recoveryCodes?: string[] };
 
 const EMPTY_STATUS: SecurityStatus = {
   enabled: false,
@@ -43,6 +43,8 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
   const [status, setStatus] = useState<SecurityStatus>(EMPTY_STATUS);
   const [setup, setSetup] = useState<SetupMaterial | null>(null);
   const [code, setCode] = useState("");
+  const [password, setPassword] = useState("");
+  const [recoveryCodes, setRecoveryCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
   const [notice, setNotice] = useState<{ kind: "success" | "error"; text: string } | null>(null);
@@ -72,6 +74,7 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
   }, [refresh]);
 
   async function submit(action: "setup" | "verify" | "stepUp" | "disable") {
+    if (action !== "stepUp" && !password) { setNotice({ kind: "error", text: "أدخل كلمة المرور الحالية قبل تغيير إعداد المصادقة." }); return; }
     if (action !== "setup" && !/^\d{6}$/.test(code)) {
       setNotice({ kind: "error", text: "أدخل الرمز المكون من 6 أرقام من تطبيق المصادقة." });
       return;
@@ -84,7 +87,7 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ action, code }),
+        body: JSON.stringify({ action, code, ...(action !== "stepUp" ? { password } : {}) }),
       });
       const result = await response.json() as ApiResult;
       if (!response.ok) throw new Error(result.error || "تعذر إكمال العملية.");
@@ -95,8 +98,8 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
         setNotice({ kind: "success", text: "أضف المفتاح إلى تطبيق المصادقة، ثم أدخل أول رمز للتفعيل." });
       } else if (action === "verify") {
         setSetup(null);
-        setCode("");
-        setNotice({ kind: "success", text: "تم تفعيل المصادقة الإضافية بنجاح." });
+        setCode(""); setPassword(""); setRecoveryCodes(result.recoveryCodes || []);
+        setNotice({ kind: "success", text: "تم تفعيل المصادقة الإضافية. احفظ رموز الاستعادة المعروضة الآن." });
         await refresh();
       } else if (action === "stepUp") {
         setCode("");
@@ -105,7 +108,7 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
       } else {
         setSetup(null);
         setCode("");
-        setStatus(EMPTY_STATUS);
+        setStatus(EMPTY_STATUS); setPassword(""); setRecoveryCodes([]);
         setNotice({ kind: "success", text: "تم تعطيل المصادقة الإضافية." });
       }
     } catch (error) {
@@ -150,6 +153,8 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
               <div><h2>تطبيق المصادقة</h2><p>متوافق مع Google Authenticator وMicrosoft Authenticator و1Password وما شابهها.</p></div>
             </div>
 
+            {!loading && <label className={styles.passwordField}><span>كلمة المرور الحالية — مطلوبة للإعداد والتعطيل</span><input type="password" autoComplete="current-password" maxLength={128} value={password} onChange={event => setPassword(event.target.value)} /></label>}
+            {recoveryCodes.length > 0 && <div className={styles.flow}><strong>احفظ رموز الاستعادة؛ لن تظهر مجددًا</strong><p>كل رمز يُستخدم مرة واحدة. احتفظ بها خارج جهازك ولا تشاركها.</p><pre className={styles.recoveryCodes} dir="ltr">{recoveryCodes.join("\n")}</pre><button type="button" className={styles.primaryButton} onClick={() => void navigator.clipboard.writeText(recoveryCodes.join("\n")).catch(() => setNotice({ kind: "error", text: "انسخ الرموز يدويًا" }))}>نسخ رموز الاستعادة</button><button type="button" className="button button-ghost" onClick={() => setRecoveryCodes([])}>حفظت الرموز، إخفاؤها</button></div>}
             {loading ? (
               <div className={styles.loading}><LoaderCircle className={styles.spin} size={24} /> جارٍ تحميل حالة الأمان…</div>
             ) : !status.enabled ? (
@@ -183,7 +188,7 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
                   <ShieldCheck size={25} />
                   <div><strong>{status.factor?.label || "تطبيق المصادقة"}</strong><span>مفعّل منذ {readableDate(status.factor?.verifiedAt || null)}</span></div>
                 </div>
-                <div className={styles.step}><b><LockKeyhole size={16} /></b><span>للسماح بالعمليات الحساسة خلال الدقائق العشر القادمة، أدخل رمزًا جديدًا.</span></div>
+                <div className={styles.step}><b><LockKeyhole size={16} /></b><span>للسماح بالعمليات الحساسة خلال الساعة القادمة، أدخل رمزًا جديدًا.</span></div>
                 <CodeField code={code} setCode={setCode} />
                 <div className={styles.actions}>
                   <button type="button" className={styles.primaryButton} onClick={() => void submit("stepUp")} disabled={Boolean(busy)}>
