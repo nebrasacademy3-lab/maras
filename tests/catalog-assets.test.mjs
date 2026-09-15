@@ -47,7 +47,7 @@ test("source contracts preserve automatic IDs and optional descriptions", async 
   assert.match(templates, /export function courseSlug/);
   assert.match(templates, /export function lessonId/);
   assert.match(consoleRoute, /const suppliedId = cleanText\(payload\.id, 100\)/);
-  assert.match(consoleRoute, /const id = suppliedId \|\| lessonId\(courseSlug, position \+ 1, title\)/);
+  assert.match(consoleRoute, /const id = suppliedId \|\| automaticIdentifier\(title, "lesson", 100\)/);
   assert.match(consoleRoute, /const description = cleanText\(payload\.description, 2000\)/);
   assert.match(schema, /coverImageUrl: text\("cover_image_url"\)/);
   assert.match(schema, /description: text\("description"\)\.notNull\(\)\.default\(""\)/);

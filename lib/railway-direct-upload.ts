@@ -24,8 +24,9 @@ function getStorageConfig(): StorageConfig {
     bucket,
     client: new S3Client({
       endpoint,
-      region: "auto",
-      forcePathStyle: false,
+      region: process.env.S3_REGION?.trim() || "auto",
+      forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
+      maxAttempts: 3,
       requestChecksumCalculation: "WHEN_REQUIRED",
       responseChecksumValidation: "WHEN_REQUIRED",
       credentials: {

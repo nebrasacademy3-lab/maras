@@ -1,3 +1,4 @@
+import { automaticIdentifier } from "@/lib/public-identifiers";
 import { asc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, courseBundleItems, courseBundles, orders } from "@/db/schema";
@@ -67,8 +68,8 @@ function optionalDate(value: unknown, label: string) {
   return new Date(timestamp).toISOString();
 }
 
-async function bundleInput(payload: Record<string, unknown>): Promise<BundleInput> {
-  const slug = requiredSlug(payload.slug, "معرّف الباقة");
+async function bundleInput(payload: Record<string, unknown>, create = false): Promise<BundleInput> {
+  const slug = requiredSlug(create && !cleanText(payload.slug, 120) ? automaticIdentifier(cleanText(payload.title, 120), "bundle", 120) : payload.slug, "معرّف الباقة");
   const title = cleanText(payload.title, 120);
   if (title.length < 2) throw new BundleInputError("اسم الباقة مطلوب");
   const description = cleanText(payload.description, 1_000);
@@ -180,7 +181,7 @@ export async function POST(request: Request) {
   const guarded = await guard(request, true);
   if (guarded.response || !guarded.authorization) return guarded.response;
   try {
-    const input = await bundleInput(await requestPayload(request));
+    const input = await bundleInput(await requestPayload(request), true);
     const now = new Date().toISOString();
     const created = await getDb().transaction(async (tx) => {
       const [bundle] = await tx.insert(courseBundles).values({ ...bundleValues(input, now), createdAt: now }).returning();

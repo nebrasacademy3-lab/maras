@@ -107,12 +107,12 @@ test("malformed provider responses and thought-only/safety/token-limit outputs p
 });
 
 async function runtime(sequence, environment = {}) {
-  const updates = [], calls = [];
+  const updates = [], calls = [], gates = [];
   const rows = [modern, legacy].map((key, index) => ({ id: index + 1, encryptedKey: keys.encryptAiApiKey(key), fingerprint: keys.aiKeyFingerprint(key), priority: index, lastUsedAt: null, cooldownUntil: null }));
   const db = { select: () => ({ from: () => ({ where: () => ({ orderBy: async () => rows }) }) }), update: () => ({ set: values => ({ where: async () => { updates.push(values); } }) }) };
   const p = await provider(async (url, init) => { calls.push({ url: String(url), init }); return sequence(calls.length); });
-  const compiledModule = await isolated("../lib/gemini.ts", { ...platform, ...config, ...errors, ...keys, ...p, createHash: crypto.createHash, asc: () => true, eq: () => true, getDb: () => db, aiApiKeys: {}, process: { env: environment } });
-  return { ...compiledModule, updates, calls };
+  const compiledModule = await isolated("../lib/gemini.ts", { ...platform, ...config, ...errors, ...keys, ...p, createHash: crypto.createHash, asc: () => true, eq: () => true, getDb: () => db, aiApiKeys: {}, acquireAiProviderSlot: async () => { gates.push("acquire"); return async () => { gates.push("release"); }; }, deferAiProvider: async delay => gates.push(delay), process: { env: environment } });
+  return { ...compiledModule, updates, calls, gates };
 }
 const generation = { config: { model: model.name, temperature: 0.2, maxOutputTokens: 4096 }, systemInstruction: "Test only", contents: [{ role: "user", parts: [{ text: "OK" }] }] };
 test("403 rotates to the next key without disabling credentials; request model is normalized", async () => {
@@ -159,4 +159,16 @@ test("runtime service diagnostic uses actual generation helpers with stored serv
   disabled=true;
   const response=await route.POST(new Request("https://meras.example/api/admin/ai",{method:"POST",body:JSON.stringify({action:"testRuntime",service:"chat"})}));
   assert.equal(response.status,409);assert.equal(calls.length,4);
+});
+
+
+test("429 respects a project-wide cooldown and never rotates through more keys", async () => {
+  const r = await runtime(() => Response.json({ error: { message: "Too many requests" } }, { status: 429, headers: { "retry-after": "90" } }));
+  await assert.rejects(r.generateGeminiContent(generation), error => error.code === "AI_RATE_LIMITED");
+  assert.equal(r.calls.length, 1);
+  assert.deepEqual(r.gates, ["acquire", 90, "release"]);
+});
+test("a truncated token-limit response is rejected even when text is present", async () => {
+  const p = await provider(async () => Response.json(answer));
+  assert.throws(() => p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "incomplete translation" }] }, finishReason: "MAX_TOKENS" }] }), error => error.code === "AI_OUTPUT_TOKEN_LIMIT");
 });

@@ -7,6 +7,7 @@ import type { Course } from "@/lib/data";
 import { SecureVideoPlayer, type VideoSeekRequest } from "./secure-video-player";
 import { BrandLogo } from "./brand-logo";
 import { ThemeToggle } from "./theme-provider";
+import { LessonStudyTools } from "./study-file-tools";
 import resourceStyles from "./learning-room-resources.module.css";
 
 type VideoNote = { id: number; lessonId: string; body: string; timestampSeconds: number; createdAt: string; updatedAt: string };
@@ -236,7 +237,7 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
     <header className="learning-header">
       <div><button className="learning-menu" onClick={() => setSidebar(!sidebar)} aria-label="إظهار المحتوى"><Menu size={19} /></button><BrandLogo compact /><i /><Link href={`/courses/${course.slug}`}>{course.title}</Link></div>
       <div className="learning-progress-head"><span>{progress}%</span><i><b style={{ width: `${progress}%` }} /></i><small>{completed.size} من {allLessons.length} درسًا</small></div>
-      <div><span className="secure-session"><ShieldCheck size={15} /> جلسة محمية</span><ThemeToggle compact /><Link href="/dashboard" className="learning-avatar">م</Link></div>
+      <div><span className="secure-session"><ShieldCheck size={15} /> جلسة محمية</span><ThemeToggle compact /><Link href="/dashboard" className="learning-dashboard">العودة للوحة الطالب</Link></div>
     </header>
     <div className={`learning-layout ${sidebar ? "" : "sidebar-closed"}`}>
       <aside className="lesson-sidebar">
@@ -255,6 +256,7 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
         <div className="lesson-toolbar"><div><span>الوحدة {course.units.findIndex((unit) => unit.lessons.some((lesson) => lesson.id === activeLesson.id)) + 1}{watched[activeLesson.id] > 5 && !completed.has(activeLesson.id) ? ` · توقفت عند ${formatNoteTime(watched[activeLesson.id])}` : ""}</span><h1>{activeLesson.title}</h1></div><button onClick={markCompleted} disabled={!progressLoaded} className={completed.has(activeLesson.id) ? "completed" : ""}>{completed.has(activeLesson.id) ? <CheckCircle2 size={18} /> : <span />}{completed.has(activeLesson.id) ? "مكتمل" : "تحديد كمكتمل"}</button></div>
         {completionMessage && <p className="notes-feedback">{completionMessage}</p>}
         <div className="lesson-navigation"><button disabled={currentIndex === 0} onClick={() => go(-1)}><ChevronRight size={17} /><span><small>السابق</small><strong>{allLessons[currentIndex - 1]?.title || "—"}</strong></span></button><button disabled={currentIndex === allLessons.length - 1} onClick={() => go(1)}><span><small>التالي</small><strong>{allLessons[currentIndex + 1]?.title || "—"}</strong></span><ChevronLeft size={17} /></button></div>
+        <LessonStudyTools key={activeLesson.id} courseSlug={course.slug} lessonId={activeLesson.id}/>
         <div className="lesson-tabs">
           <button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}><BookOpen size={16} /> نظرة عامة</button>
           <button className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}><NotebookPen size={16} /> ملاحظاتي</button>

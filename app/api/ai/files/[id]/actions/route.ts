@@ -1,96 +1,62 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiArtifacts, aiConversations, aiFiles, aiMessages, aiQuizzes } from "@/db/schema";
-import { cleanText, jsonError } from "@/lib/api";
+import { aiConversations, aiFiles } from "@/db/schema";
+import { jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
-import { aiDeepLinks, aiError, aiJson, artifactPayload, clientAiRequestId, messagePayload, quizPayload } from "@/lib/ai-api";
-import { readAiFileBytes, tryAcquireAiFileAction } from "@/lib/ai-files";
-import { generateFileArtifact, generateFileQuiz } from "@/lib/ai-generation";
+import { aiError, aiJson, clientAiRequestId } from "@/lib/ai-api";
+import { tryAcquireAiFileAction } from "@/lib/ai-files";
+import { fileActionOptions, runAiFileAction } from "@/lib/ai-file-actions";
+import { enqueueAiFileJob, fileJobPayload } from "@/lib/ai-file-jobs";
 import { scanColumns, scanStoredFile } from "@/lib/file-security";
-import { beginAiUsage, finishAiUsage, usagePayload, type AiServiceConfig } from "@/lib/ai-platform";
+import { isNativeAppRequest } from "@/lib/mobile-api";
 import { observeRequest } from "@/lib/observability";
 
-type Action = "summary" | "translation" | "quiz";
-
-function actionValue(value: unknown): Action | null {
-  return value === "summary" || value === "translation" || value === "quiz" ? value : null;
-}
-
-async function ownedConversation(userId: number, id: number) {
-  if (!id) return null;
-  const [row] = await getDb().select().from(aiConversations).where(and(eq(aiConversations.id, id), eq(aiConversations.userId, userId), eq(aiConversations.status, "active"))).limit(1);
-  return row || null;
-}
-
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  return observeRequest(request, "ai.files.action", async (requestId) => {
+  return observeRequest(request, "ai.files.action", async requestId => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
-    if (!await checkRateLimit("ai-file-action", `user:${user.id}`, 20, 60 * 60)) return jsonError("طلبات معالجة كثيرة. حاول لاحقًا.", 429);
-    const { id: rawId } = await params;
-    const fileId = Math.floor(Number(rawId));
-    if (!Number.isInteger(fileId) || fileId <= 0) return jsonError("الملف غير صالح");
+    if (!await checkRateLimit("ai-file-action", `user:${user.id}`, 60, 60 * 60)) return jsonError("طلبات معالجة كثيرة. حاول لاحقًا.", 429);
+    const fileId = Number((await params).id);
+    if (!Number.isSafeInteger(fileId) || fileId <= 0) return jsonError("الملف غير صالح");
     let payload: Record<string, unknown>;
     try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات العملية غير صالحة"); }
-    const action = actionValue(payload.action);
-    if (!action) return jsonError("اختر تلخيصًا أو ترجمة أو اختبارًا");
-    const [file] = await getDb().select().from(aiFiles).where(and(eq(aiFiles.id, fileId), eq(aiFiles.userId, user.id))).limit(1);
-    if (!file) return jsonError("الملف غير موجود", 404);
-    if (file.scanStatus !== "clean") {
-      const scan = await scanStoredFile(file);
-      await getDb().update(aiFiles).set({ ...scanColumns(scan), status: scan.status === "clean" ? "ready" : scan.status === "quarantined" ? "quarantined" : "pending_scan", updatedAt: new Date().toISOString() }).where(eq(aiFiles.id, file.id));
-      if (scan.status === "quarantined") return jsonError("الملف محجور لأسباب أمنية", 422);
-      if (scan.status !== "clean") return jsonError("الملف ما زال قيد الفحص الأمني. حاول بعد قليل.", 423);
-    }
-    const requestedConversationId = Math.floor(Number(payload.conversationId));
-    let conversation = await ownedConversation(user.id, requestedConversationId || file.conversationId || 0);
-    if ((requestedConversationId || file.conversationId) && !conversation) return jsonError("المحادثة غير موجودة", 404);
-    if (!conversation) {
-      const now = new Date().toISOString();
-      [conversation] = await getDb().insert(aiConversations).values({ userId: user.id, title: file.originalName.slice(0, 100), kind: action, status: "active", createdAt: now, updatedAt: now }).returning();
-      await getDb().update(aiFiles).set({ conversationId: conversation.id, updatedAt: now }).where(eq(aiFiles.id, file.id));
-    }
-    const releaseAction = tryAcquireAiFileAction(user.id);
-    if (!releaseAction) return jsonError("توجد معالجة ملف أخرى قيد التنفيذ. انتظر اكتمالها ثم أعد المحاولة.", 429);
-    let reservation: Awaited<ReturnType<typeof beginAiUsage>> | null = null;
-    let providerStarted = false;
+    if (!payload || !["summary", "translation", "quiz"].includes(String(payload.action))) return jsonError("اختر تلخيصًا أو ترجمة أو اختبارًا");
+    const action = payload.action as "summary" | "translation" | "quiz";
+    const [original] = await getDb().select().from(aiFiles).where(and(eq(aiFiles.id, fileId), eq(aiFiles.userId, user.id))).limit(1);
+    if (!original) return jsonError("الملف غير موجود", 404);
+    let file = original;
     try {
-      reservation = await beginAiUsage({ requestId: clientAiRequestId(user.id, requestId, payload.requestId), user, service: action, conversationId: conversation.id, fileId: file.id });
-      const bytes = await readAiFileBytes(file, reservation.config.maxFileBytes);
-      if (action === "quiz") {
-        const questionCount = Math.max(5, Math.min(20, Math.floor(Number(payload.questionCount)) || 10));
-        const language = cleanText(payload.language, 60) || "العربية";
-        providerStarted = true;
-        const generated = await generateFileQuiz({ config: reservation.config as AiServiceConfig, bytes, contentType: file.contentType, originalName: file.originalName, questionCount, language });
-        const saved = await getDb().transaction(async (tx) => {
-          const now = new Date().toISOString();
-          const [quiz] = await tx.insert(aiQuizzes).values({ userId: user.id, conversationId: conversation!.id, fileId: file.id, title: generated.quiz.title, language, questionsJson: JSON.stringify(generated.quiz.questions), model: generated.result.model, createdAt: now, updatedAt: now }).returning();
-          const [message] = await tx.insert(aiMessages).values({ conversationId: conversation!.id, userId: user.id, role: "assistant", service: "quiz", content: `أنشأت لك اختبار «${generated.quiz.title}» من ${generated.quiz.questions.length} أسئلة.`, fileId: file.id, model: generated.result.model, usageJson: JSON.stringify({ inputTokens: generated.result.inputTokens, outputTokens: generated.result.outputTokens, quizId: quiz.id }), createdAt: now }).returning();
-          await tx.update(aiConversations).set({ title: generated.quiz.title, kind: "quiz", updatedAt: now }).where(eq(aiConversations.id, conversation!.id));
-          return { quiz, message };
-        });
-        await finishAiUsage({ eventId: reservation.eventId, status: "succeeded", keyId: generated.result.keyId, model: generated.result.model, inputTokens: generated.result.inputTokens, outputTokens: generated.result.outputTokens });
-        return aiJson({ ok: true, action, quiz: quizPayload(saved.quiz), message: messagePayload(saved.message), usage: usagePayload({ service: action, ...reservation }), deepLink: aiDeepLinks({ conversationId: conversation.id, quizId: saved.quiz.id }).quiz });
+      if (file.sourceResourceId === null && file.scanStatus !== "clean") {
+        const scan = await scanStoredFile(file);
+        [file] = await getDb().update(aiFiles).set({ ...scanColumns(scan), status: scan.status === "clean" ? "ready" : scan.status === "quarantined" ? "quarantined" : "pending_scan", updatedAt: new Date().toISOString() }).where(eq(aiFiles.id, file.id)).returning();
+        if (scan.status !== "clean") return jsonError(scan.status === "quarantined" ? "الملف محجور لأسباب أمنية" : "الملف قيد الفحص الأمني. حاول بعد قليل.", scan.status === "quarantined" ? 422 : 423);
       }
-      const targetLanguage = cleanText(payload.targetLanguage, 60) || "العربية";
-      providerStarted = true;
-      const generated = await generateFileArtifact({ action, config: reservation.config, bytes, contentType: file.contentType, originalName: file.originalName, targetLanguage });
-      const title = action === "summary" ? `ملخص ${file.originalName}` : `ترجمة ${file.originalName} إلى ${targetLanguage}`;
-      const saved = await getDb().transaction(async (tx) => {
+      const conversation = await getDb().transaction(async tx => {
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-file-conversation:${file.id}`}))`);
+        const [currentFile] = await tx.select().from(aiFiles).where(eq(aiFiles.id, file.id)).limit(1);
+        const requestedId = Number(payload.conversationId) || currentFile?.conversationId || 0;
+        if (requestedId) {
+          const [existing] = await tx.select().from(aiConversations).where(and(eq(aiConversations.id, requestedId), eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"))).limit(1);
+          if (existing) return existing;
+          if (payload.conversationId) return null;
+        }
         const now = new Date().toISOString();
-        const [artifact] = await tx.insert(aiArtifacts).values({ userId: user.id, conversationId: conversation!.id, fileId: file.id, kind: action, title: title.slice(0, 180), content: generated.text, metadataJson: action === "translation" ? JSON.stringify({ targetLanguage }) : null, model: generated.model, createdAt: now }).returning();
-        const [message] = await tx.insert(aiMessages).values({ conversationId: conversation!.id, userId: user.id, role: "assistant", service: action, content: generated.text, fileId: file.id, model: generated.model, usageJson: JSON.stringify({ inputTokens: generated.inputTokens, outputTokens: generated.outputTokens, artifactId: artifact.id }), createdAt: now }).returning();
-        await tx.update(aiConversations).set({ title: title.slice(0, 120), kind: action, updatedAt: now }).where(eq(aiConversations.id, conversation!.id));
-        return { artifact, message };
+        const [created] = await tx.insert(aiConversations).values({ userId: user.id, title: file.originalName.slice(0, 100), kind: action, status: "active", createdAt: now, updatedAt: now }).returning();
+        await tx.update(aiFiles).set({ conversationId: created.id, updatedAt: now }).where(eq(aiFiles.id, file.id));
+        return created;
       });
-      await finishAiUsage({ eventId: reservation.eventId, status: "succeeded", keyId: generated.keyId, model: generated.model, inputTokens: generated.inputTokens, outputTokens: generated.outputTokens });
-      return aiJson({ ok: true, action, artifact: artifactPayload(saved.artifact), message: messagePayload(saved.message), usage: usagePayload({ service: action, ...reservation }), deepLink: aiDeepLinks({ conversationId: conversation.id }).conversation });
-    } catch (error) {
-      if (reservation) await finishAiUsage({ eventId: reservation.eventId, status: "failed", billable: providerStarted, errorCode: error instanceof Error ? error.name : "UNKNOWN" }).catch(() => undefined);
-      return aiError(error);
-    } finally {
-      releaseAction();
-    }
+      if (!conversation) return jsonError("المحادثة غير موجودة", 404);
+      const input = { user, file, conversationId: conversation.id, action, options: fileActionOptions(payload), requestId: clientAiRequestId(user.id, requestId, payload.requestId), client: isNativeAppRequest(request) ? "app" as const : "web" as const };
+      // Explicit opt-in preserves the synchronous response contract for previously installed apps.
+      if (payload.async === true) {
+        const job = await enqueueAiFileJob(input);
+        return aiJson({ ok: true, job: fileJobPayload(job) }, { status: job.status === "succeeded" ? 200 : 202, headers: { "retry-after": "5" } });
+      }
+      const release = tryAcquireAiFileAction(user.id);
+      if (!release) return jsonError("توجد معالجة أخرى قيد التنفيذ. حاول بعد قليل.", 429);
+      try { return aiJson(await runAiFileAction({ ...input, fileId })); }
+      finally { release(); }
+    } catch (error) { return aiError(error); }
   });
 }

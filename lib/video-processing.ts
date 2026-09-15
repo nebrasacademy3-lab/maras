@@ -68,6 +68,11 @@ export async function enqueueVideoProcessing(assetId: number, force = false) {
 async function claimJob(identity: string): Promise<ClaimedJob | null> {
   const now = new Date().toISOString();
   return getDb().transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('meras-video-worker-capacity'))`);
+    const configured = Number(process.env.VIDEO_WORKER_MAX_ACTIVE || 1);
+    const limit = Number.isFinite(configured) ? Math.max(1, Math.min(8, Math.floor(configured))) : 1;
+    const active = asRows<{ active: number }>(await tx.execute(sql`SELECT count(*)::int AS active FROM video_processing_jobs WHERE status = 'processing' AND locked_at::timestamptz > CURRENT_TIMESTAMP - INTERVAL '30 minutes'`));
+    if ((active[0]?.active || 0) >= limit) return null;
     const selected = asRows<{ id: number; asset_id: number; attempts: number; max_attempts: number }>(await tx.execute(sql`
       SELECT id, asset_id, attempts, max_attempts
       FROM video_processing_jobs
@@ -91,10 +96,10 @@ async function claimJob(identity: string): Promise<ClaimedJob | null> {
 async function probeSource(filename: string, ffprobePath: string): Promise<ProbeResult> {
   const { stdout } = await execFileAsync(ffprobePath, ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-show_entries", "format=duration", "-of", "json", filename], { timeout: 60_000, windowsHide: true, maxBuffer: 2 * 1024 * 1024 });
   const parsed = JSON.parse(stdout) as { streams?: { width?: number; height?: number }[]; format?: { duration?: string } };
-  const width = Math.max(2, Math.floor(Number(parsed.streams?.[0]?.width) || 0));
-  const height = Math.max(2, Math.floor(Number(parsed.streams?.[0]?.height) || 0));
+  const width = Math.floor(Number(parsed.streams?.[0]?.width) || 0);
+  const height = Math.floor(Number(parsed.streams?.[0]?.height) || 0);
   const duration = Math.max(0, Number(parsed.format?.duration) || 0);
-  if (!width || !height) throw new Error("تعذر التحقق من أبعاد الفيديو الأصلي");
+  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width < 2 || height < 2 || width > 16384 || height > 16384) throw new Error("تعذر التحقق من أبعاد الفيديو الأصلي");
   return { width, height, duration };
 }
 
@@ -120,13 +125,18 @@ function outputWidth(source: ProbeResult, height: number) {
   return Math.max(2, scaled - (scaled % 2));
 }
 
+function encoderThreads() {
+  const value = Number(process.env.VIDEO_FFMPEG_THREADS || 2);
+  return String(Number.isFinite(value) ? Math.max(1, Math.min(16, Math.floor(value))) : 2);
+}
+
 async function transcodeProfile(sourceFile: string, directory: string, profile: Profile, ffmpegPath: string) {
   await mkdir(directory, { recursive: true });
   await runFfmpeg(ffmpegPath, [
-    "-i", sourceFile,
+    "-threads", encoderThreads(), "-filter_threads", encoderThreads(), "-i", sourceFile,
     "-map", "0:v:0", "-map", "0:a:0?",
     "-vf", `scale=-2:${profile.height}:flags=lanczos`,
-    "-c:v", "libx264", "-preset", process.env.VIDEO_FFMPEG_PRESET?.trim() || "medium", "-profile:v", "main", "-pix_fmt", "yuv420p",
+    "-c:v", "libx264", "-threads", encoderThreads(), "-preset", process.env.VIDEO_FFMPEG_PRESET?.trim() || "medium", "-profile:v", "main", "-pix_fmt", "yuv420p",
     "-b:v", `${profile.bitrateKbps}k`, "-maxrate", `${Math.round(profile.bitrateKbps * 1.07)}k`, "-bufsize", `${profile.bitrateKbps * 2}k`,
     "-g", "48", "-keyint_min", "48", "-sc_threshold", "0",
     "-c:a", "aac", "-b:a", `${profile.audioKbps}k`, "-ac", "2", "-ar", "48000",

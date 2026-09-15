@@ -17,7 +17,7 @@ import { sendPushNotification } from "@/lib/push";
 import { dispatchDuePushNotifications } from "@/lib/push-campaigns";
 import { syncCatalogTemplates } from "@/lib/catalog-sync";
 import { syncOfficialInstitutionPrograms } from "@/lib/catalog-official-sync";
-import { courseSlug, institutionSlug as makeInstitutionSlug, lessonId, specialtySlug } from "@/lib/catalog-templates";
+import { automaticIdentifier } from "@/lib/public-identifiers";
 import { deleteAdminEntity, DeletionPolicyError, type AdminDeletionType } from "@/lib/admin-deletion";
 import { accessExpiryIso, normalizeAccessDurationDays, effectiveAccessRows } from "@/lib/course-access";
 import { ADMIN_PERMISSIONS, hasPermission, type AdminPermission } from "@/lib/permissions";
@@ -348,7 +348,7 @@ export async function POST(request: Request) {
   if (action === "saveInstitution") {
     const name = cleanText(payload.name, 140);
     const suppliedSlug = cleanText(payload.slug, 80).toLowerCase();
-    const slug = suppliedSlug || makeInstitutionSlug(name);
+    const slug = suppliedSlug || automaticIdentifier(name, "university");
     const nameEn = cleanText(payload.nameEn, 140);
     const region = cleanText(payload.region, 80);
     const type = cleanText(payload.type, 30);
@@ -364,8 +364,13 @@ export async function POST(request: Request) {
     if (logoUrl && !safeUrl(logoUrl) && !logoUrl.startsWith("r2:")) return jsonError("رابط الشعار يجب أن يبدأ بـ https");
     if (directorySourceUrl && !safeUrl(directorySourceUrl)) return jsonError("رابط المصدر يجب أن يبدأ بـ https");
     const [before] = await db.select().from(catalogInstitutions).where(eq(catalogInstitutions.slug, slug)).limit(1);
+    const creating = payload.intent === "create" || !suppliedSlug;
+    if (creating && before) return jsonError("المعرّف مستخدم مسبقًا. اختر معرّفًا آخر أو اتركه فارغًا للتوليد التلقائي.", 409);
     const values = { slug, name, nameEn, region, type, domain: domain || null, logoUrl: logoUrl || before?.logoUrl || null, directorySourceUrl: directorySourceUrl || before?.directorySourceUrl || null, verificationStatus: verificationStatus === "pending-review" && before?.verificationStatus === "official-directory" ? "official-directory" : verificationStatus, aliasesJson: aliasesJson ?? before?.aliasesJson ?? "[]", status, featured: payload.featured === true, sortOrder: Number.isFinite(finiteNumber(payload.sortOrder)) ? Math.floor(finiteNumber(payload.sortOrder)) : 0, updatedAt: now };
-    await db.insert(catalogInstitutions).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
+    if (creating) {
+      const created = await db.insert(catalogInstitutions).values({ ...values, createdAt: now }).onConflictDoNothing().returning({ key: catalogInstitutions.slug });
+      if (!created.length) return jsonError("المعرّف مستخدم مسبقًا. اختر معرّفًا آخر.", 409);
+    } else await db.insert(catalogInstitutions).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogInstitutions.slug, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "institution", slug, before, values);
     await notifyCatalogDiscovery(["/", "/universities", `/universities/${seoSegment(slug)}`, "/courses"]);
@@ -375,7 +380,7 @@ export async function POST(request: Request) {
   if (action === "saveSpecialty") {
     const name = cleanText(payload.name, 140);
     const suppliedSlug = cleanText(payload.slug, 80).toLowerCase();
-    const slug = suppliedSlug || specialtySlug(name);
+    const slug = suppliedSlug || automaticIdentifier(name, "specialty");
     const description = cleanText(payload.description, 1000);
     const sourceUrl = cleanText(payload.sourceUrl, 500);
     const verifiedAt = cleanText(payload.verifiedAt, 30);
@@ -388,8 +393,13 @@ export async function POST(request: Request) {
     if (sourceUrl && !safeUrl(sourceUrl)) return jsonError("رابط مصدر التخصص يجب أن يبدأ بـ https");
     if (institutionSlug && !await getInstitutionCatalog(institutionSlug, true)) return jsonError("الجهة غير موجودة");
     const [before] = await db.select().from(catalogSpecialties).where(eq(catalogSpecialties.slug, slug)).limit(1);
+    const creating = payload.intent === "create" || !suppliedSlug;
+    if (creating && before) return jsonError("المعرّف مستخدم مسبقًا. اختر معرّفًا آخر أو اتركه فارغًا للتوليد التلقائي.", 409);
     const values = { slug, name, description, sourceUrl: sourceUrl || before?.sourceUrl || null, verifiedAt: verifiedAt || before?.verifiedAt || null, verificationStatus, faculty, degree, status, updatedAt: now };
-    await db.insert(catalogSpecialties).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogSpecialties.slug, set: values });
+    if (creating) {
+      const created = await db.insert(catalogSpecialties).values({ ...values, createdAt: now }).onConflictDoNothing().returning({ key: catalogSpecialties.slug });
+      if (!created.length) return jsonError("المعرّف مستخدم مسبقًا. اختر معرّفًا آخر.", 409);
+    } else await db.insert(catalogSpecialties).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogSpecialties.slug, set: values });
     if (institutionSlug) await db.insert(institutionSpecialties).values({ institutionSlug, specialtySlug: slug, status: "published", sortOrder: 0 }).onConflictDoUpdate({ target: [institutionSpecialties.institutionSlug, institutionSpecialties.specialtySlug], set: { status: "published" } });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "specialty", slug, before, { ...values, institutionSlug });
@@ -409,12 +419,14 @@ export async function POST(request: Request) {
     const coverImageUrl = cleanText(payload.coverImageUrl, 1000);
     const [specialty] = await db.select().from(catalogSpecialties).where(eq(catalogSpecialties.slug, specialtySlug)).limit(1);
     if (!specialty) return jsonError("أنشئ التخصص أو اربطه أولًا");
-    const slug = suppliedSlug || courseSlug(institutionSlug, specialty.name, title);
+    const slug = suppliedSlug || automaticIdentifier(title, "course");
     if (!validSlug(slug) || title.length < 3 || !await getInstitutionCatalog(institutionSlug, true) || !validSlug(specialtySlug) || !Number.isFinite(price) || price < 0 || price > 50_000 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من بيانات المادة وربطها");
     if (coverImageUrl && !safeUrl(coverImageUrl) && !coverImageUrl.startsWith("r2:")) return jsonError("رابط غلاف المادة يجب أن يبدأ بـ https");
     const [specialtyLink] = await db.select().from(institutionSpecialties).where(and(eq(institutionSpecialties.institutionSlug, institutionSlug), eq(institutionSpecialties.specialtySlug, specialtySlug), eq(institutionSpecialties.status, "published"))).limit(1);
     if (!specialtyLink) return jsonError("التخصص غير مربوط بهذه الجهة");
     const [before] = await db.select().from(catalogCourses).where(eq(catalogCourses.slug, slug)).limit(1);
+    const creating = payload.intent === "create" || !suppliedSlug;
+    if (creating && before) return jsonError("المعرّف مستخدم مسبقًا. اختر معرّفًا آخر أو اتركه فارغًا للتوليد التلقائي.", 409);
     const values = {
       slug, institutionSlug, specialtySlug, title,
       titleEn: cleanText(payload.titleEn, 160), code: cleanText(payload.code, 50) || null,
@@ -426,7 +438,10 @@ export async function POST(request: Request) {
       verifiedAt: cleanText(payload.verifiedAt, 30) || before?.verifiedAt || null,
       status, audienceScope, featured: payload.featured === true, coverTheme: cleanText(payload.coverTheme, 40) || "blue-violet", updatedAt: now,
     };
-    await db.insert(catalogCourses).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogCourses.slug, set: values });
+    if (creating) {
+      const created = await db.insert(catalogCourses).values({ ...values, createdAt: now }).onConflictDoNothing().returning({ key: catalogCourses.slug });
+      if (!created.length) return jsonError("المعرّف مستخدم مسبقًا. اختر معرّفًا آخر.", 409);
+    } else await db.insert(catalogCourses).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: catalogCourses.slug, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "course", slug, before, values);
     await notifyCatalogDiscovery(["/", "/courses", "/bundles", `/courses/${seoSegment(slug)}`, `/universities/${seoSegment(institutionSlug)}`, `/universities/${seoSegment(institutionSlug)}/specialties/${seoSegment(specialtySlug)}`]);
@@ -467,13 +482,19 @@ export async function POST(request: Request) {
     const description = cleanText(payload.description, 2000);
     const status = cleanText(payload.status, 20) || "draft";
     const position = Math.max(0, Math.floor(finiteNumber(payload.position) || 0));
-    const id = suppliedId || lessonId(courseSlug, position + 1, title);
-    if (!validSlug(courseSlug) || !validSlug(id) || !unitId || title.length < 2 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من بيانات الدرس");
+    const id = suppliedId || automaticIdentifier(title, "lesson", 100);
+    if (!validSlug(courseSlug) || !/^[a-z0-9][a-z0-9._-]{1,99}$/i.test(id) || !unitId || title.length < 2 || !["draft", "published", "hidden"].includes(status)) return jsonError("تحقق من بيانات الدرس");
     const [unit] = await db.select().from(courseUnitsDb).where(and(eq(courseUnitsDb.id, unitId), eq(courseUnitsDb.courseSlug, courseSlug))).limit(1);
     if (!unit) return jsonError("الوحدة لا تتبع هذه المادة");
     const [before] = await db.select().from(lessonsDb).where(eq(lessonsDb.id, id)).limit(1);
+    const creating = payload.intent === "create" || !suppliedId;
+    if (creating && before) return jsonError("المعرّف مستخدم مسبقًا. اختر معرّفًا آخر أو اتركه فارغًا للتوليد التلقائي.", 409);
+    if (before && before.courseSlug !== courseSlug) return jsonError("معرّف الدرس يتبع مادة أخرى؛ اختر معرّفًا مختلفًا.", 409);
     const values = { id, courseSlug, unitId, title, description: description || before?.description || "", position, durationSeconds: Math.max(0, Math.floor(finiteNumber(payload.durationSeconds) || 0)), freePreview: payload.freePreview === true, status, videoAssetId: before?.videoAssetId || null, updatedAt: now };
-    await db.insert(lessonsDb).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: lessonsDb.id, set: values });
+    if (creating) {
+      const created = await db.insert(lessonsDb).values({ ...values, createdAt: now }).onConflictDoNothing().returning({ key: lessonsDb.id });
+      if (!created.length) return jsonError("المعرّف مستخدم مسبقًا. اختر معرّفًا آخر.", 409);
+    } else await db.insert(lessonsDb).values({ ...values, createdAt: before?.createdAt || now }).onConflictDoUpdate({ target: lessonsDb.id, set: values });
     invalidateCatalogCache();
     await audit(request, authorization.actor, before ? "update" : "create", "lesson", id, before, values);
     await notifyCatalogDiscovery(["/courses", "/bundles", `/courses/${seoSegment(courseSlug)}`]);

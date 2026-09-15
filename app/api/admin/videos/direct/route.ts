@@ -156,6 +156,12 @@ async function authorize(request: Request) {
   return { user, tokenAuthorized };
 }
 
+async function supervisorMayUpload(access: { tokenAuthorized: boolean; user: { id: number; role: string } | null }, course: { universitySlug: string; audienceScope?: string; specialty: string }) {
+  if (access.tokenAuthorized || access.user?.role !== "supervisor") return true;
+  const assignments = await getDb().select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId, access.user.id), eq(supervisorAssignments.active, true)));
+  return assignments.some(assignment => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !assignment.specialty : !assignment.specialty || assignment.specialty === course.specialty));
+}
+
 export async function GET(request: Request) {
   const access = await authorize(request);
 
@@ -190,6 +196,8 @@ export async function GET(request: Request) {
   )) {
     return jsonError("تعذر مطابقة المادة أو الدرس", 404);
   }
+
+  if (!await supervisorMayUpload(access, course)) return jsonError("هذه المادة غير مسندة لهذا المشرف", 403);
 
   const [existingLesson] = await getDb()
     .select({ id: lessonsDb.id })
@@ -285,30 +293,7 @@ export async function POST(request: Request) {
     return jsonError("تعذر مطابقة المادة أو الدرس", 404);
   }
 
-  if (!access.tokenAuthorized && access.user?.role === "supervisor") {
-    const assignments = await getDb()
-      .select()
-      .from(supervisorAssignments)
-      .where(and(
-        eq(supervisorAssignments.supervisorId, access.user.id),
-        eq(supervisorAssignments.active, true),
-      ));
-
-    const mayEdit = assignments.some((assignment) =>
-      (!assignment.institutionSlug ||
-        assignment.institutionSlug === course.universitySlug) &&
-      (
-        course.audienceScope === "institution"
-          ? !assignment.specialty
-          : !assignment.specialty ||
-            assignment.specialty === course.specialty
-      )
-    );
-
-    if (!mayEdit) {
-      return jsonError("هذه المادة غير مسندة لهذا المشرف", 403);
-    }
-  }
+  if (!await supervisorMayUpload(access, course)) return jsonError("هذه المادة غير مسندة لهذا المشرف", 403);
 
   const db = getDb();
 
@@ -353,7 +338,6 @@ export async function POST(request: Request) {
     return jsonError("محتوى الفيديو لا يطابق نوع الملف", 400);
   }
 
-  let committed = false;
 
   try {
     const durationSeconds =
@@ -367,7 +351,7 @@ export async function POST(request: Request) {
 
     const now = new Date().toISOString();
 
-    const { asset, replacedAssets } = await db.transaction(async (tx) => {
+    const { asset, replacedAssets, reused } = await db.transaction(async (tx) => {
       await tx.execute(
         sql`SELECT pg_advisory_xact_lock(hashtext(${`video-upload:${courseSlug}:${lessonId}`}))`,
       );
@@ -378,12 +362,19 @@ export async function POST(request: Request) {
           objectKey: videoAssets.objectKey,
           storageProvider: videoAssets.storageProvider,
           derivativesPrefix: videoAssets.derivativesPrefix,
+          status: videoAssets.status,
+          durationSeconds: videoAssets.durationSeconds,
+          processingStatus: videoAssets.processingStatus,
+          processingProgress: videoAssets.processingProgress,
         })
         .from(videoAssets)
         .where(and(
           eq(videoAssets.courseSlug, courseSlug),
           eq(videoAssets.lessonId, lessonId),
         ));
+
+      const sameUpload = previous.find(item => item.objectKey === objectKey && item.storageProvider === "s3");
+      if (sameUpload) return { asset: sameUpload, replacedAssets: [], reused: true };
 
       const [created] = await tx
         .insert(videoAssets)
@@ -434,10 +425,13 @@ export async function POST(request: Request) {
           ));
       }
 
-      return { asset: created, replacedAssets: previous };
+      return { asset: created, replacedAssets: previous, reused: false };
     });
 
-    committed = true;
+    if (reused) {
+      const summary = await videoProcessingSummary(asset.id).catch(() => null);
+      return Response.json({ ok: true, reused: true, asset: summary || asset }, { headers: { "cache-control": "no-store" } });
+    }
 
     const processing = await enqueueVideoProcessing(asset.id).catch(
       async () => {
@@ -510,10 +504,8 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch {
-    if (!committed) {
-      await deleteObject(objectKey, "s3").catch(() => undefined);
-    }
-
-    return jsonError("تعذر تثبيت الفيديو", 500);
+    // Keep the already-uploaded object for an idempotent finalize retry. Deleting here
+    // could remove the live source committed by another concurrent retry.
+    return jsonError("تعذر تثبيت الفيديو. أعد محاولة الربط دون إعادة رفع الملف.", 500);
   }
 }

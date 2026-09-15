@@ -60,5 +60,10 @@ if [[ "${VIDEO_WORKER_ENABLED:-true}" == "true" ]]; then
   node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/video-worker.ts &
 fi
 
+if [[ "${AI_WORKER_ENABLED:-true}" == "true" ]]; then
+  echo "Starting bounded study-tools queue worker..."
+  node --import ./scripts/ai-worker-runtime.mjs --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/ai-worker.ts &
+fi
+
 echo "Starting Meras Al-Elm on ${HOSTNAME}:${PORT:-3000}"
 exec ./node_modules/.bin/next start --hostname "${HOSTNAME}" --port "${PORT:-3000}"

@@ -19,6 +19,7 @@ import { useLanguage } from "@/src/providers/LanguageProvider";
 import type { Catalog } from "@/src/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createCaptureLease, inlinePlayerHeight, playerBackAction, playerStageLayout } from "@/src/lib/player-layout";
+import { LessonStudyTools } from "@/src/components/study-file-tools";
 import { playbackSnapshot, progressFromSnapshot } from "@/src/lib/playback-progress";
 
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -510,6 +511,7 @@ export default function LessonPlayer() {
         </View>
         <Text style={[styles.lessonTitle, { color: colors.text }]}>{lesson.title}</Text>
         <Text style={[styles.protection, { color: colors.textSoft }]}><Ionicons name="shield-checkmark-outline" size={14} color={colors.success} /> بث محمي · عرض كامل بدون قص · حفظ تقدم تلقائي</Text>
+        <LessonStudyTools key={`${courseSlug}.${lessonId}`} courseSlug={courseSlug} lessonId={lessonId}/>
         <Card style={styles.notes}>
           <Text style={[styles.notesTitle, { color: colors.text }]}>ملاحظات مرتبطة بالفيديو</Text>
           <Text style={[styles.noteTimeHint, { color: colors.primary }]}>اللحظة الحالية: {formatTime(time)}</Text>

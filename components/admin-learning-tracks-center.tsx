@@ -143,7 +143,7 @@ export function AdminLearningTracksCenter({ adminName }:{ adminName:string }) {
       <div className={styles.editorHeading}><div><span>{editingId?"تعديل المسار":"مسار جديد"}</span><h2>{editingId?form.title||"بيانات المسار":"أضف ما ستطلقه مراس لاحقًا"}</h2></div>{editingId?<button type="button" onClick={reset}><X size={15}/> إلغاء</button>:null}</div>
       <div className={styles.formGrid}>
         <label>اسم المسار<input value={form.title} onChange={(event)=>setForm({...form,title:event.target.value})} placeholder="مثال: تقوية الإنجليزية"/></label>
-        <label>المعرّف الإنجليزي<input dir="ltr" value={form.slug} onChange={(event)=>setForm({...form,slug:event.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,"-")})} placeholder="english-boost"/></label>
+        <label>المعرّف (يدوي أو تلقائي عند الإضافة)<input dir="ltr" value={form.slug} onChange={(event)=>setForm({...form,slug:event.target.value.toLowerCase().replace(/[^a-z0-9._-]/g,"-")})} placeholder="اتركه فارغًا لتوليده تلقائيًا"/></label>
         <label className={styles.wide}>العنوان المختصر<input value={form.subtitle} onChange={(event)=>setForm({...form,subtitle:event.target.value})} placeholder="ما الذي سيحصل عليه الطالب؟"/></label>
         <label className={styles.wide}>الوصف<textarea value={form.description} onChange={(event)=>setForm({...form,description:event.target.value})} placeholder="وصف واضح ومختصر للمسار ومحتواه المتوقع."/></label>
         <label>التصنيف<SearchableSelect value={form.category} onChange={(event)=>setForm({...form,category:event.target.value as TrackCategory})}>{Object.entries(categoryLabel).map(([value,label])=><option key={value} value={value}>{label}</option>)}</SearchableSelect></label>

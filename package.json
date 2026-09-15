@@ -26,7 +26,10 @@
     "qa:store": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/qa-store-check.ts",
     "admin:bootstrap": "node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/bootstrap-admin.ts",
     "qa:build": "node scripts/qa-build.mjs",
-    "release:package": "node scripts/package-release.mjs"
+    "release:package": "node scripts/package-release.mjs",
+    "ai:worker": "node --import ./scripts/ai-worker-runtime.mjs --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/ai-worker.ts",
+    "ai:worker:once": "node --import ./scripts/ai-worker-runtime.mjs --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/ai-worker.ts --once",
+    "qa:study-tools": "node --import ./scripts/ai-worker-runtime.mjs --import tsx scripts/qa-study-tools.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1131.0",

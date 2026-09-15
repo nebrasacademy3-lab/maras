@@ -1,3 +1,5 @@
+import { GeminiProviderError } from "@/lib/gemini-errors";
+import { AiBusyError } from "@/lib/ai-work-control";
 import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiConversations, aiMessages } from "@/db/schema";
@@ -48,7 +50,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         deepLink: aiDeepLinks({ conversationId }).conversation,
       });
     } catch (error) {
-      if (reservation) await finishAiUsage({ eventId: reservation.eventId, status: "failed", billable: providerStarted, errorCode: error instanceof Error ? error.name : "UNKNOWN" }).catch(() => undefined);
+      if (reservation) await finishAiUsage({ eventId: reservation.eventId, status: "failed", billable: providerStarted && !(error instanceof AiBusyError) && !(error instanceof GeminiProviderError && [400, 401, 403, 404, 429].includes(error.providerStatus)), errorCode: error instanceof Error ? error.name : "UNKNOWN" }).catch(() => undefined);
       return aiError(error);
     }
   });
