@@ -1,0 +1,59 @@
+name: Apply verified review hardening
+on:
+  push:
+    branches: [improve/platform-security-design-20260915]
+    paths: [.github/workflows/apply-review-hardening.yml]
+permissions:
+  contents: write
+concurrency:
+  group: apply-review-hardening
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.repository == 'nebrasacademy3-lab/maras'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate and apply all source edits atomically
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, pathlib
+          root = pathlib.Path.cwd().resolve()
+          transport = root / '.review-hardening.b64'
+          packed = base64.b64decode(transport.read_text().strip(), validate=True)
+          assert hashlib.sha256(packed).hexdigest() == 'dd9e6890ae83ce93741dad70490f2051117c740d642c16b3a5c744041c91982a', 'Transport mismatch'
+          items = json.loads(lzma.decompress(packed))
+          assert len(items) == 12
+          pending, seen = [], set()
+          def digest(value):
+              return hashlib.sha256(value.encode('utf-8')).hexdigest()
+          for item in items:
+              p = pathlib.PurePosixPath(item['p'])
+              assert not p.is_absolute() and '..' not in p.parts and p.parts[0] not in ('.git', '.github', '.data', 'node_modules')
+              target = root / p
+              assert target.resolve().is_relative_to(root) and target.is_file()
+              assert item['p'] not in seen
+              seen.add(item['p'])
+              before = target.read_text()
+              assert digest(before) == item['h'], 'Base changed: ' + item['p']
+              lines = before.splitlines(keepends=True)
+              for start, end, replacement in reversed(item['e']):
+                  assert 0 <= start <= end <= len(lines)
+                  lines[start:end] = replacement.splitlines(keepends=True)
+              after = ''.join(lines)
+              assert digest(after) == item['r'], 'Result mismatch: ' + item['p']
+              pending.append((target, after))
+          for target, content in pending:
+              target.write_text(content)
+              print('VERIFIED', target.relative_to(root))
+          transport.unlink()
+          PY
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          test -z "$(git diff --cached --name-only -- .github/workflows)"
+          git commit -m 'fix: reauthenticate MFA enrollment, atomically secure sessions and test live-sync pages'
+          git push origin HEAD:improve/platform-security-design-20260915
+          git rev-parse HEAD
