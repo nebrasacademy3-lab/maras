@@ -163,8 +163,6 @@ test("admin step-up remains valid for one hour, expires at its boundary, and bin
   assert.ok(await admin.validAdminStepUp(browserRequest(issued.token), user));
   const native = new Request("https://meras.example/api/admin/console", { headers: { authorization: "Bearer " + session, "x-meras-client": "mobile-v1", "x-meras-admin-stepup": issued.token } });
   assert.ok(await admin.validAdminStepUp(native, user), "native bearer uses the same session binding");
-  const legacy = new Request("https://meras.example/api/admin/console", { headers: { authorization: "Bearer " + session, "x-meras-admin-stepup": issued.token } });
-  assert.ok(await admin.validAdminStepUp(legacy, user), "legacy admin step-up headers remain valid without the mobile client marker");
   const different = new Request("https://meras.example/api/admin/console", { headers: { cookie: "meras_session=different-session; meras_admin_stepup=" + issued.token } });
   assert.equal(await admin.validAdminStepUp(different, user), null);
   assert.equal(await admin.validAdminStepUp(browserRequest(issued.token), { ...user, id: 8 }), null);

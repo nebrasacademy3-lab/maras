@@ -33,7 +33,6 @@ let adminStepUpToken = "";
 let deviceIdentity: { id: string; label: string; platform: string } | null = null;
 export function setApiToken(token: string | null) { const next = token || ""; if (sessionToken !== next) adminStepUpToken = ""; sessionToken = next; }
 export function getApiToken() { return sessionToken; }
-export function getAdminStepUpToken() { return adminStepUpToken; }
 export function setAdminStepUpToken(token: string | null) { adminStepUpToken = token || ""; }
 export function setApiDeviceIdentity(value: { id: string; label: string; platform: string } | null) { deviceIdentity = value; }
 

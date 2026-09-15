@@ -142,28 +142,6 @@ test("protected downloads reject external origins before requesting files or cre
   assert.equal(requested, false);
 });
 
-
-
-test("protected downloads keep the active session and step-up token on native requests", async () => {
-  let headers = {};
-  const api = apiHarness(async () => ({ ok: true, text: async () => "{}" }));
-  api.setApiToken("session-private");
-  api.setAdminStepUpToken("legacy-stepup");
-  const downloads = load("src/lib/downloads.ts", {
-    "expo-file-system/legacy": {
-      cacheDirectory: "file:///cache/",
-      documentDirectory: "file:///documents/",
-      makeDirectoryAsync: async () => {},
-      downloadAsync: async (_url, _path, options) => { headers = options.headers; return { status: 200, uri: "file:///tmp/invoice.html" }; },
-    },
-    "react-native": { Platform: { OS: "ios" } },
-    "@/src/lib/api": api,
-  }, { fetch: async () => { throw new Error("unexpected browser fetch"); } });
-  const result = await downloads.downloadProtectedFile({ path: "/api/invoices/123/download", fileName: "invoice.html", openAfterDownload: false });
-  assert.equal(result.action, "stored");
-  assert.equal(headers["authorization"], "Bearer session-private");
-  assert.equal(headers["x-meras-admin-stepup"], "legacy-stepup");
-});
 function authHarness(api, identity = async () => {}) {
   const states = [];
   let index = 0;
