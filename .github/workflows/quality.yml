@@ -50,20 +50,21 @@ jobs:
         run: npm run build
       - name: Run contracts and smoke tests
         run: node --test --test-concurrency=1 tests/*.test.mjs
-
-      - name: Install isolated browser
-        run: node node_modules/playwright/cli.js install --with-deps chromium
-      - name: Verify lesson tools with synthetic PostgreSQL and browser
+      - name: Install isolated browser engines
+        run: node node_modules/playwright/cli.js install --with-deps chromium firefox webkit
+      - name: Verify platform security and responsive interfaces
         env:
           QA_DATABASE_URL: postgresql://maras_qa:synthetic-ci-only@127.0.0.1:55439/maras_qa
+          QA_BROWSERS: chromium,firefox,webkit
         run: node scripts/qa-study-ci.mjs
       - name: Keep non-secret visual evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: study-tools-visual-qa
+          name: platform-visual-qa
           path: |
             .data/study-browser/
+            .data/platform-browser/
             .data/study-server.log
             .data/study-worker.log
           retention-days: 7
@@ -90,6 +91,5 @@ jobs:
         run: npm run typecheck
       - name: Lint app
         run: npm run lint
-
       - name: Test app behavior
         run: npm test
