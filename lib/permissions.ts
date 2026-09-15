@@ -1,55 +1,27 @@
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { rolePermissions, roles, userRoles } from "@/db/schema";
+import { staffPermissions } from "@/db/schema";
 import { getSessionUser, type SessionUser } from "@/lib/auth";
-
-export const ADMIN_PERMISSIONS = {
-  FINANCE_VIEW: "finance.view",
-  FINANCE_EXPORT: "finance.export",
-  FINANCE_MANAGE: "finance.manage",
-  NOTIFICATIONS_MANAGE: "notifications.manage",
-  NOTIFICATIONS_DISPATCH: "notifications.dispatch",
-  RECORDS_DELETE: "records.delete",
-  COMPLIANCE_VIEW: "compliance.view",
-  COMPLIANCE_MANAGE: "compliance.manage",
-  SECURITY_MANAGE_SELF: "security.manage_self",
-  AI_MANAGE: "ai.manage",
-  REFERRALS_MANAGE: "referrals.manage",
-  ROADMAP_MANAGE: "roadmap.manage",
-} as const;
-
-export type AdminPermission = typeof ADMIN_PERMISSIONS[keyof typeof ADMIN_PERMISSIONS];
-
-// This is deliberately finite rather than a wildcard. It keeps the existing
-// built-in admin account usable before custom roles are seeded, without making
-// an unknown future capability implicitly available.
-const BUILT_IN_ADMIN_PERMISSIONS = new Set<AdminPermission>(Object.values(ADMIN_PERMISSIONS));
+import { ADMIN_PERMISSIONS, OWNER_ONLY, permissionsCover, requiredRoutePermissions, type AdminPermission } from "@/lib/staff-policy";
+export { ADMIN_PERMISSIONS, type AdminPermission } from "@/lib/staff-policy";
 
 export async function permissionsForUser(user: SessionUser): Promise<Set<string>> {
-  if (user.role === "admin") return new Set(BUILT_IN_ADMIN_PERMISSIONS);
-
-  try {
-    const rows = await getDb()
-      .select({ permission: rolePermissions.permission })
-      .from(userRoles)
-      .innerJoin(roles, eq(userRoles.roleId, roles.id))
-      .innerJoin(rolePermissions, eq(rolePermissions.roleId, roles.id))
-      .where(eq(userRoles.userId, user.id));
-    return new Set(rows.map((row) => row.permission));
-  } catch (error) {
-    console.error("[permissions] lookup failed", error instanceof Error ? error.message : "unknown error");
-    return new Set();
-  }
+  if (user.isPlatformOwner && user.role === "admin") return new Set(Object.values(ADMIN_PERMISSIONS));
+  if (user.role !== "supervisor") return new Set();
+  const rows = await getDb().select({ permission: staffPermissions.permission }).from(staffPermissions).where(eq(staffPermissions.userId, user.id));
+  return new Set([ADMIN_PERMISSIONS.SECURITY_MANAGE_SELF, ...rows.map(row => row.permission).filter(permission => Object.values(ADMIN_PERMISSIONS).includes(permission as AdminPermission) && !OWNER_ONLY.has(permission))]);
 }
-
 export async function hasPermission(user: SessionUser | null, permission: AdminPermission) {
   if (!user) return false;
-  const permissions = await permissionsForUser(user);
-  return permissions.has(permission);
+  return permissionsCover(await permissionsForUser(user), [permission]);
 }
-
 export async function authorizePermission(request: Request, permission: AdminPermission) {
   const user = await getSessionUser(request);
-  if (!await hasPermission(user, permission)) return null;
-  return user;
+  return await hasPermission(user, permission) ? user : null;
+}
+export async function staffRequestAllowed(user: SessionUser, request: Request) {
+  if (user.isPlatformOwner && user.role === "admin") return true;
+  if (user.role !== "supervisor") return false;
+  const required = requiredRoutePermissions(new URL(request.url).pathname, request.method);
+  return required !== null && permissionsCover(await permissionsForUser(user), required);
 }

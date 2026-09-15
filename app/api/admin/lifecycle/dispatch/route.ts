@@ -8,7 +8,7 @@ export async function POST(request: Request) {
   return observeRequest(request, "lifecycle.dispatch", async () => {
     const machineAuthorized = isScheduledTaskRequest(request);
     const user = machineAuthorized ? null : await getSessionUser(request);
-    if (!machineAuthorized && (!roleAllowed(user, ["admin"]) || !sameOriginRequest(request))) {
+    if (!machineAuthorized && (!roleAllowed(user, ["admin", "supervisor"]) || !sameOriginRequest(request))) {
       return jsonError("غير مصرح بتشغيل الأتمتة", 403);
     }
 

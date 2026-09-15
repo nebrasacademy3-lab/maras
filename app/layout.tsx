@@ -8,6 +8,7 @@ import "./brand-premium.css";
 import "./admin-premium.css";
 import "./motion.css";
 import "./navigation.css";
+import { InteractionProvider } from "@/components/interaction-provider";
 import { ThemeProvider } from "@/components/theme-provider";
 import { DeferredEnhancements } from "@/components/deferred-enhancements";
 import { AnnouncementCampaign } from "@/components/announcement-campaign";
@@ -59,7 +60,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="ar" dir="rtl" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(structuredData) }} /></head>
-      <body><ThemeProvider><RealtimeSync><PlatformAnalytics /><AnnouncementCampaign />{children}<DeferredEnhancements /></RealtimeSync></ThemeProvider></body>
+      <body><ThemeProvider><InteractionProvider><RealtimeSync><PlatformAnalytics /><AnnouncementCampaign />{children}<DeferredEnhancements /></RealtimeSync></InteractionProvider></ThemeProvider></body>
     </html>
   );
 }

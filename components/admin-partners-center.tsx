@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/lib/interaction-events";
+import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import Image from "next/image";
@@ -75,7 +77,7 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
     if (!silent) setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/admin/partners", { cache: "no-store", credentials: "same-origin" });
+      const response = await adminFetch("/api/admin/partners", { cache: "no-store", credentials: "same-origin" });
       const result = await response.json().catch(() => ({})) as { partners?: Partner[]; error?: string };
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(result.error || "تعذر تحميل الشركاء والاعتمادات");
@@ -175,7 +177,7 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
     if (file) body.set("file", file);
     setSaving(true);
     try {
-      const response = await fetch("/api/admin/partners", { method: "POST", credentials: "same-origin", body });
+      const response = await adminFetch("/api/admin/partners", { method: "POST", credentials: "same-origin", body });
       const result = await response.json().catch(() => ({})) as { error?: string };
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(result.error || "تعذر حفظ السجل");
@@ -190,12 +192,12 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
   };
 
   const deletePartner = async (partner: Partner) => {
-    if (!window.confirm("هل تريد حذف «" + partner.name + "» نهائيًا؟ سيُحذف الشعار المرفوع معه.")) return;
+    if (!await confirmAction("هل تريد حذف «" + partner.name + "» نهائيًا؟ سيُحذف الشعار المرفوع معه.")) return;
     setDeletingId(partner.id);
     setMessage("");
     setError("");
     try {
-      const response = await fetch("/api/admin/partners", {
+      const response = await adminFetch("/api/admin/partners", {
         method: "DELETE", credentials: "same-origin",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ id: partner.id }),

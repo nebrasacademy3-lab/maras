@@ -15,7 +15,7 @@ async function isolated(path, dependencies) {
   } finally { delete globalThis[key]; }
 }
 function database(initial = {}) {
-  const names = ["users", "emailVerificationCodes", "authSessions", "passwordResetTokens", "pushDevices"];
+  const names = ["users", "emailVerificationCodes", "authSessions", "passwordResetTokens", "pushDevices", "accountMfaChallenges"];
   const tables = Object.fromEntries(names.map(name => [name, new Proxy({ tableName: name }, { get: (target, key) => key in target ? target[key] : { table: name, key } })]));
   const rows = Object.fromEntries(names.map(name => [name, structuredClone(initial[name] || [])]));
   const read = (column, row) => typeof column === "object" && column && "key" in column ? row[column.key] : column;

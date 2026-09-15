@@ -8,7 +8,7 @@ import { createStoredZip } from "@/lib/zip";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser(request);
-  if (!roleAllowed(user, ["admin"])) return jsonError("غير مصرح", 403);
+  if (!roleAllowed(user, ["admin", "supervisor"])) return jsonError("غير مصرح", 403);
   const id = Number((await params).id);
   if (!Number.isInteger(id) || id <= 0) return jsonError("الطلب غير صالح");
   const db = getDb();

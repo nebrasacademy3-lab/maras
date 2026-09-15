@@ -1,5 +1,8 @@
 "use client";
+import { confirmAction } from "@/lib/interaction-events";
+import { adminFetch } from "@/lib/admin-client";
 
+import { AccountMfaPanel } from "@/components/account-mfa-panel";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Check, Clipboard, KeyRound, LoaderCircle, LockKeyhole, ShieldAlert, ShieldCheck, Smartphone } from "lucide-react";
@@ -46,7 +49,7 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
 
   const refresh = useCallback(async () => {
     try {
-      const response = await fetch("/api/admin/security/mfa", { cache: "no-store", credentials: "same-origin" });
+      const response = await adminFetch("/api/admin/security/mfa", { cache: "no-store", credentials: "same-origin" });
       const result = await response.json() as ApiResult;
       if (!response.ok) throw new Error(result.error || "تعذر تحميل إعدادات الأمان.");
       setStatus({
@@ -73,11 +76,11 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
       setNotice({ kind: "error", text: "أدخل الرمز المكون من 6 أرقام من تطبيق المصادقة." });
       return;
     }
-    if (action === "disable" && !window.confirm("هل تريد تعطيل المصادقة الإضافية لهذا الحساب؟")) return;
+    if (action === "disable" && !await confirmAction("هل تريد تعطيل المصادقة الإضافية لهذا الحساب؟")) return;
     setBusy(action);
     setNotice(null);
     try {
-      const response = await fetch("/api/admin/security/mfa", {
+      const response = await adminFetch("/api/admin/security/mfa", {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json" },
@@ -208,6 +211,7 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
             </ul>
           </aside>
         </section>
+        <AccountMfaPanel />
       </div>
     </main>
   );

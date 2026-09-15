@@ -8,11 +8,13 @@ export function extendAccessExpiry(expiresAt: string | null, days: number, now: 
 }
 
 export function adminUserTransitionError(
-  before: { id: number; role: string; status: string },
+  before: { id: number; role: string; status: string; isPlatformOwner?: boolean },
   next: { role: string; status: string },
   actorId: number | null,
   activeAdminCount: number,
 ) {
+  if (before.isPlatformOwner && (next.role !== "admin" || next.status !== "active")) return "لا يمكن تغيير دور المدير الأعلى أو تعطيله";
+  if (!before.isPlatformOwner && next.role === "admin" && before.role !== "admin") return "يُضاف أعضاء الإدارة كمشرفين بصلاحيات محددة فقط";
   const removesAdmin = next.role !== "admin" || next.status !== "active";
   if (before.id === actorId && removesAdmin) return "لا يمكنك تعطيل صلاحية حسابك الإداري الحالي";
   if (before.role === "admin" && before.status === "active" && removesAdmin && activeAdminCount <= 1) return "لا يمكن تعطيل آخر مدير نشط للمنصة";

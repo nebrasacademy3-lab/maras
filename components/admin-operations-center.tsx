@@ -1,4 +1,5 @@
 "use client";
+import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -48,7 +49,7 @@ export function AdminOperationsCenter({adminName}:{adminName:string}) {
     if(!silent){setLoading(true);setMessage("");}
     lastLoad.current=Date.now();
     const endpoint=tab==="analytics"?`/api/admin/analytics?days=${days}${course?`&course=${encodeURIComponent(course)}`:""}`:tab==="support"?"/api/admin/support/metrics":tab==="automation"?"/api/admin/operations/summary":"/api/admin/compliance";
-    try{const response=await fetch(endpoint,{credentials:"same-origin",cache:"no-store",signal});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"تعذر تحميل البيانات");if(tab==="analytics")setAnalytics(payload);else if(tab==="support")setSupport(payload);else if(tab==="automation")setOperations(payload);else setCompliance(payload);}
+    try{const response=await adminFetch(endpoint,{credentials:"same-origin",cache:"no-store",signal});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"تعذر تحميل البيانات");if(tab==="analytics")setAnalytics(payload);else if(tab==="support")setSupport(payload);else if(tab==="automation")setOperations(payload);else setCompliance(payload);}
     catch(error){if(error instanceof DOMException&&error.name==="AbortError")return;setMessage(error instanceof Error?error.message:"تعذر التحميل");}
     finally{if(!signal?.aborted)setLoading(false);}
   },[tab,days,course]);
@@ -59,8 +60,8 @@ export function AdminOperationsCenter({adminName}:{adminName:string}) {
     void load(undefined,true);
   });
 
-  const saveCompliance=async()=>{if(!editing)return;setMessage("");const response=await fetch("/api/admin/compliance",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(editing)});const payload=await response.json();if(isAdminStepUpResponse(response)){setMessage(ADMIN_STEP_UP_MESSAGE);return;}if(!response.ok){setMessage(payload.error||"تعذر الحفظ");return;}setEditing(null);setMessage("تم حفظ بند الامتثال");await load(undefined,true);};
-  const runOperation=async(endpoint:string,label:string)=>{setMessage("");const response=await fetch(endpoint,{method:"POST",credentials:"same-origin"});const payload=await response.json() as TaskResult&{error?:string};if(isAdminStepUpResponse(response)){setMessage(ADMIN_STEP_UP_MESSAGE);return;}if(!response.ok){setMessage(payload.error||"تعذر تشغيل المهمة");return;}setMessage(describeTask(label,payload));await load(undefined,true);};
+  const saveCompliance=async()=>{if(!editing)return;setMessage("");const response=await adminFetch("/api/admin/compliance",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(editing)});const payload=await response.json();if(isAdminStepUpResponse(response)){setMessage(ADMIN_STEP_UP_MESSAGE);return;}if(!response.ok){setMessage(payload.error||"تعذر الحفظ");return;}setEditing(null);setMessage("تم حفظ بند الامتثال");await load(undefined,true);};
+  const runOperation=async(endpoint:string,label:string)=>{setMessage("");const response=await adminFetch(endpoint,{method:"POST",credentials:"same-origin"});const payload=await response.json() as TaskResult&{error?:string};if(isAdminStepUpResponse(response)){setMessage(ADMIN_STEP_UP_MESSAGE);return;}if(!response.ok){setMessage(payload.error||"تعذر تشغيل المهمة");return;}setMessage(describeTask(label,payload));await load(undefined,true);};
 
   return <main className={styles.page}><div className={styles.shell}>
     <AdminCenterNav />

@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/lib/interaction-events";
+import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -52,7 +54,7 @@ export function AdminLearningTracksCenter({ adminName }:{ adminName:string }) {
   const load = useCallback(async(signal?:AbortSignal)=>{
     lastLoad.current=Date.now();
     try {
-      const response=await fetch("/api/admin/learning-tracks",{cache:"no-store",credentials:"same-origin",signal});
+      const response=await adminFetch("/api/admin/learning-tracks",{cache:"no-store",credentials:"same-origin",signal});
       const payload=await response.json() as {tracks?:Track[];error?:string};
       if(!response.ok) throw new Error(payload.error||"تعذر تحميل المسارات");
       setTracks(payload.tracks||[]);
@@ -76,7 +78,7 @@ export function AdminLearningTracksCenter({ adminName }:{ adminName:string }) {
   async function openInterests(track:Track){
     setInterestTrack(track);setInterests(null);
     try {
-      const response=await fetch(`/api/admin/learning-tracks?track=${track.id}`,{cache:"no-store",credentials:"same-origin"});
+      const response=await adminFetch(`/api/admin/learning-tracks?track=${track.id}`,{cache:"no-store",credentials:"same-origin"});
       const payload=await response.json() as {interests?:Interest[];error?:string};
       if(!response.ok) throw new Error(payload.error||"تعذر تحميل المهتمين");
       setInterests(payload.interests||[]);
@@ -107,7 +109,7 @@ export function AdminLearningTracksCenter({ adminName }:{ adminName:string }) {
   async function mutate(method:"POST"|"PATCH",body:Record<string,unknown>,success:string){
     setSaving(true);setNotice(null);
     try {
-      const response=await fetch("/api/admin/learning-tracks",{method,credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
+      const response=await adminFetch("/api/admin/learning-tracks",{method,credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(body)});
       const payload=await response.json() as {error?:string;code?:string};
       if(isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if(!response.ok) throw new Error(payload.error||"تعذر حفظ المسار");
@@ -121,7 +123,7 @@ export function AdminLearningTracksCenter({ adminName }:{ adminName:string }) {
     if(ok){setEditingId(null);setForm(emptyForm);}
   }
   async function archive(track:Track){
-    if(!window.confirm("أرشفة «"+track.title+"»؟ سيختفي من الواجهة مع الاحتفاظ بسجل المهتمين.")) return;
+    if(!await confirmAction("أرشفة «"+track.title+"»؟ سيختفي من الواجهة مع الاحتفاظ بسجل المهتمين.")) return;
     await mutate("PATCH",{...track,status:"archived",position:track.position},"تمت أرشفة المسار دون حذف سجل الاهتمامات.");
   }
 

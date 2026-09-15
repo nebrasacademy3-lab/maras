@@ -10,7 +10,7 @@ import { adminPage } from "@/lib/admin-operations";
 type Props = { params: Promise<{ slug: string }> };
 export async function GET(request: Request, { params }: Props) {
   const admin = await getSessionUser(request);
-  if (!roleAllowed(admin, ["admin"])) return jsonError("غير مصرح بعرض بيانات المشتركين", 403);
+  if (!roleAllowed(admin, ["admin", "supervisor"])) return jsonError("غير مصرح بعرض بيانات المشتركين", 403);
   if (!await checkRateLimit("admin-course-roster", `user:${admin!.id}`, 60, 60)) return jsonError("طلبات كثيرة. حاول بعد دقيقة", 429);
   const { slug } = await params;
   const course = await getCourseCatalog(slug, true);

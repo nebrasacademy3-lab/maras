@@ -5,9 +5,9 @@ import test from "node:test";
 const root = new URL("..", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-test("student 360 API is admin-only and returns every operational domain", async () => {
+test("student 360 API requires staff authorization and redacts domains without grants", async () => {
   const route = await read("app/api/admin/students/[email]/route.ts");
-  assert.match(route, /roleAllowed\(admin, \["admin"\]\)/);
+  assert.match(route, /roleAllowed\(admin, \["admin", "supervisor"\]\)/);
   assert.match(route, /decodeURIComponent\(\(await params\)\.email\)/);
   for (const table of [
     "courseAccess",
@@ -54,10 +54,12 @@ test("admin dashboard links students and the two administration centers", async 
     read("app/admin-premium.css"),
   ]);
   assert.match(dashboard, /href=\{`\/admin\/students\/\$\{encodeURIComponent\(row\.email\)\}`\}>ملف 360/);
-  assert.match(dashboard, /href="\/admin\/finance"/);
-  assert.match(dashboard, /href="\/admin\/operations"/);
-  assert.match(dashboard, /المركز المالي/);
-  assert.match(dashboard, /التشغيل والتحليلات/);
+  assert.ok(dashboard.includes("/admin/finance"));
+  assert.ok(dashboard.includes("/admin/operations"));
+  const centers = await read("components/admin-center-nav.tsx");
+  assert.match(centers, /المركز المالي/);
+  assert.match(centers, /التشغيل والتحليلات/);
+  assert.match(dashboard, /canVisit\(center.href\)/);
   assert.match(premiumCss, /\.student-profile-link/);
   assert.match(premiumCss, /\.admin-center-links/);
 });

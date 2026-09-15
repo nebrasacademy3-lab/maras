@@ -1,3 +1,5 @@
+import { permissionsForUser } from "@/lib/permissions";
+import { permissionsCover } from "@/lib/staff-policy";
 import { and, count, desc, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
@@ -41,7 +43,7 @@ type Props = { params: Promise<{ email: string }> };
 
 export async function GET(request: Request, { params }: Props) {
   const admin = await getSessionUser(request);
-  if (!roleAllowed(admin, ["admin"])) return jsonError("غير مصرح بعرض ملف الطالب", 403);
+  if (!roleAllowed(admin, ["admin", "supervisor"])) return jsonError("غير مصرح بعرض ملف الطالب", 403);
   if (!await checkRateLimit("student-360-read", `user:${admin!.id}`, 60, 60)) return jsonError("طلبات كثيرة، حاول بعد دقيقة", 429);
   let email: string;
   try { email = decodeURIComponent((await params).email).trim().toLowerCase(); } catch { return jsonError("البريد غير صالح"); }
@@ -50,8 +52,11 @@ export async function GET(request: Request, { params }: Props) {
   const pageFor = (key: string) => adminPage(query.get(`${key}Page`));
   const offset = (key: string) => pageFor(key).offset;
   if (!/^\S+@\S+\.\S+$/.test(email)) return jsonError("البريد غير صالح");
+  const grants = await permissionsForUser(admin!);
+  const can = (permission: string) => permissionsCover(grants, [permission]);
   const db = getDb();
   const [student] = await db.select({
+    mfaEnabled: sql<boolean>`EXISTS (SELECT 1 FROM admin_mfa_factors mf WHERE mf.user_id = ${users.id} AND mf.verified_at IS NOT NULL AND mf.disabled_at IS NULL)`,
     id: users.id,
     email: users.email,
     phone: users.phone,
@@ -66,7 +71,7 @@ export async function GET(request: Request, { params }: Props) {
     lastLoginAt: users.lastLoginAt,
     createdAt: users.createdAt,
     updatedAt: users.updatedAt,
-  }).from(users).where(eq(users.email, email)).limit(1);
+  }).from(users).where(and(eq(users.email, email), eq(users.role, "student"))).limit(1);
   if (!student) return jsonError("الطالب غير موجود", 404);
 
   const notificationVisibility = and(or(eq(notificationsDb.userEmail, email), and(isNull(notificationsDb.userEmail), or(eq(notificationsDb.audience, student.role), eq(notificationsDb.audience, "public")))), or(eq(notificationsDb.presentation, "inbox"), eq(notificationsDb.presentation, "all")), or(isNull(notificationsDb.startsAt), lte(notificationsDb.startsAt, now)), or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now)));
@@ -148,8 +153,9 @@ export async function GET(request: Request, { params }: Props) {
   const countKeys = ["subscriptions", "progress", "orders", "support", "requests", "notifications", "sessions", "accessEvents", "referrals", "rewards", "coupons", "ai", "aiOrders", "waitlist", "tracks", "pushDevices", "favorites", "cart"];
   const pagination = Object.fromEntries(countKeys.map((key, index) => [key, { ...pageFor(key), total: Number(counterRows[index][0]?.total || 0) }]));
   const effectiveAccess = await effectiveAccessRows(access, now);
-  return Response.json({
+  const result = {
     ok: true,
+    permissions: [...grants],
     student,
     generatedAt: now,
     pagination,
@@ -199,5 +205,16 @@ export async function GET(request: Request, { params }: Props) {
     refunds: refundRows.map((row) => ({ id: row.id, requestNumber: row.requestNumber, orderNumber: row.orderNumber, amountMinor: row.amountMinor, currency: row.currency, status: row.status, reason: row.reason, createdAt: row.createdAt, completedAt: row.completedAt })),
     favorites: favoriteRows,
     cart: cartRows,
-  }, { headers: { "cache-control": "no-store" } });
+  };
+  const redactPages = (...keys: string[]) => { for (const key of keys) if (result.pagination[key]) result.pagination[key].total = 0; };
+  if (!can("finance.view")) { result.orders = []; result.refunds = []; result.ai.orders = []; result.summary.paidOrders = 0; result.summary.paidValue = 0; redactPages("orders", "refunds", "aiOrders"); }
+  if (!can("subscriptions.manage")) { result.subscriptions = []; result.accessEvents = []; result.summary.activeSubscriptions = 0; redactPages("subscriptions", "accessEvents"); }
+  if (!can("support.manage")) { result.support = []; result.summary.openTickets = 0; redactPages("support"); }
+  if (!can("requests.manage")) { result.requests = []; redactPages("requests"); }
+  if (!can("notifications.manage")) { result.notifications = []; result.summary.unreadNotifications = 0; redactPages("notifications"); }
+  if (!can("students.manage")) { result.sessions = []; result.pushDevices = []; result.summary.pushDevices = 0; redactPages("sessions", "pushDevices"); }
+  if (!can("referrals.manage")) { result.referrals = { code: null, referredBy: [], referred: [], rewards: [], coupons: [] }; result.summary.qualifiedReferrals = 0; result.summary.activeRewards = 0; redactPages("referrals", "rewards", "coupons"); }
+  if (!can("ai.manage")) { result.ai = { entitlements: [], orders: [], usage: [] }; result.summary.aiActive = false; redactPages("ai", "aiOrders"); }
+  if (!can("catalog.view")) { result.catalog.courses = []; result.catalog.institutions = []; }
+  return Response.json(result, { headers: { "cache-control": "no-store" } });
 }

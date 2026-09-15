@@ -11,7 +11,7 @@ import { readBoundedJsonObject } from "@/lib/request-body";
 type Context = { params: Promise<{ email: string }> };
 async function authorize(request: Request, mutation: boolean) {
   const admin = await getSessionUser(request);
-  if (!admin || admin.role !== "admin") return { error: jsonError("غير مصرح بإدارة أجهزة الطالب", 403), admin: null };
+  if (!admin || !["admin", "supervisor"].includes(admin.role)) return { error: jsonError("غير مصرح بإدارة أجهزة الطالب", 403), admin: null };
   if (mutation && !sameOriginRequest(request) && !isNativeAppRequest(request)) return { error: jsonError("تعذر التحقق من مصدر الطلب", 403), admin: null };
   if (!await checkRateLimit(mutation ? "admin-device-replace" : "admin-devices", String(admin.id), mutation ? 20 : 90, 60)) return { error: jsonError("محاولات كثيرة. حاول بعد دقيقة.", 429), admin: null };
   if (mutation) {

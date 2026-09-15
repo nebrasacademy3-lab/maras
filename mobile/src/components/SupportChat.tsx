@@ -1,3 +1,4 @@
+import { MerasAlert as Alert } from "@/src/lib/interaction-events";
 import { Ionicons } from "@expo/vector-icons";
 import {
   AudioModule,
@@ -13,7 +14,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
 import * as Linking from "expo-linking";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
 import { absoluteUrl, apiUpload, ApiError, getApiToken } from "@/src/lib/api";

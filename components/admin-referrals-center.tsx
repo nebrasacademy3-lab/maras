@@ -1,4 +1,5 @@
 "use client";
+import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -50,7 +51,7 @@ export function AdminReferralsCenter({ adminName, initialSearch = "", initialTab
       const params = new URLSearchParams();
       if (query) params.set("search", query);
       if (nextPage > 1) params.set("page", String(nextPage));
-      const response = await fetch(`/api/admin/referrals${params.size ? `?${params}` : ""}`, { cache: "no-store", credentials: "same-origin" });
+      const response = await adminFetch(`/api/admin/referrals${params.size ? `?${params}` : ""}`, { cache: "no-store", credentials: "same-origin" });
       const result = await response.json() as AdminData & { error?: string };
       if (!response.ok) throw new Error(result.error || "تعذر تحميل مركز الإحالات");
       setPage(nextPage);
@@ -71,7 +72,7 @@ export function AdminReferralsCenter({ adminName, initialSearch = "", initialTab
   const mutate = async (key: string, method: "POST" | "PATCH", body: Record<string, unknown>) => {
     setBusy(key); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/admin/referrals", { method, credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      const response = await adminFetch("/api/admin/referrals", { method, credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json() as { error?: string };
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(result.error || "تعذر حفظ التغييرات");

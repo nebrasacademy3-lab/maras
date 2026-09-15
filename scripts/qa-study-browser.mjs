@@ -9,7 +9,7 @@ const request = (path, token) => fetch(origin + path, { headers: token ? { cooki
 assert.equal((await request(`/api/ai/jobs/${fixture.study.jobId}`, b.token)).status, 404);
 assert.equal((await request(`/api/ai/artifacts/${fixture.study.artifactId}/download`, b.token)).status, 404);
 assert.equal((await request(`/api/ai/artifacts/${fixture.study.artifactId}/download`, a.token)).status, 200);
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({ headless: true, ...(process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
 mkdirSync(".data/study-browser", { recursive: true });
 const checks = [];
 try {

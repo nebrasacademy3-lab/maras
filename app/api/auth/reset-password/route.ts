@@ -1,7 +1,7 @@
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { authSessions, emailVerificationCodes, passwordResetTokens, pushDevices, users } from "@/db/schema";
+import { accountMfaChallenges, authSessions, emailVerificationCodes, passwordResetTokens, pushDevices, users } from "@/db/schema";
 import { checkRateLimit, clientIp, hashOpaqueToken, hashPassword, sameOriginRequest, validPassword } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 
@@ -33,6 +33,7 @@ export async function POST(request: Request) {
     )).returning({ userId: passwordResetTokens.userId });
     if (!claimed) return false;
     await tx.update(users).set({ passwordHash, updatedAt: now }).where(eq(users.id, claimed.userId));
+    await tx.update(accountMfaChallenges).set({ usedAt: now }).where(and(eq(accountMfaChallenges.userId, claimed.userId), isNull(accountMfaChallenges.usedAt)));
     await tx.update(passwordResetTokens).set({ usedAt: now }).where(and(eq(passwordResetTokens.userId, claimed.userId), isNull(passwordResetTokens.usedAt)));
     await tx.update(emailVerificationCodes).set({ usedAt: now }).where(and(eq(emailVerificationCodes.userId, claimed.userId), isNull(emailVerificationCodes.usedAt)));
     await tx.update(authSessions).set({ revokedAt: now }).where(eq(authSessions.userId, claimed.userId));

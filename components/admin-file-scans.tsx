@@ -1,4 +1,5 @@
 "use client";
+import { adminFetch } from "@/lib/admin-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AdminCenterNav } from "@/components/admin-center-nav";
 import { AdminMfaNotice, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
@@ -19,7 +20,7 @@ export function AdminFileScans() {
   const running = useRef(false);
   const load = useCallback(async () => {
     try {
-      const response = await fetch("/api/admin/files/scan", { cache: "no-store", credentials: "same-origin" });
+      const response = await adminFetch("/api/admin/files/scan", { cache: "no-store", credentials: "same-origin" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "تعذر تحميل الملفات");
       setData(result); setError("");
@@ -31,7 +32,7 @@ export function AdminFileScans() {
     if (running.current) return;
     running.current = true; setBusy(true); setError(""); setNotice(null); setStepUp(false);
     try {
-      const response = await fetch("/api/admin/files/scan", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const response = await adminFetch("/api/admin/files/scan", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       if (isAdminStepUpResponse(response)) { setStepUp(true); return; }
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "تعذر تشغيل الفحص");

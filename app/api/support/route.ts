@@ -1,3 +1,5 @@
+import { hasPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
+import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -19,9 +21,6 @@ const allowedTypes = new Set([
   "audio/mp4", "audio/m4a", "audio/x-m4a", "audio/aac", "audio/mpeg", "audio/webm", "audio/3gpp",
 ]);
 
-function isManager(user: Awaited<ReturnType<typeof getSessionUser>>) {
-  return Boolean(user && (user.role === "admin" || user.role === "supervisor"));
-}
 
 function hasValidSignature(type: string, bytes: Uint8Array) {
   if (type === "application/pdf") return bytes.length >= 5 && String.fromCharCode(...bytes.slice(0, 5)) === "%PDF-";
@@ -92,7 +91,7 @@ async function notifySupportTeam(ticket: TicketRow, body: string) {
       data: { route: "/admin" },
     }),
     createAndSendNotification({
-      values: { audience: "supervisor", title, body: text, actionUrl: "/supervisor", actionLabel: "فتح الدعم" },
+      values: { audience: "supervisor", title: "تحديث خدمة الدعم", body: "تتوفر متابعة جديدة للمشرفين المخولين بإدارة الدعم فقط.", actionUrl: "/admin?view=support", actionLabel: "فتح الدعم" },
       target: { audience: "supervisor" },
       data: { route: "/supervisor" },
     }),
@@ -102,6 +101,7 @@ async function notifySupportTeam(ticket: TicketRow, body: string) {
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
+  const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
   if (!current) return jsonError("سجّل الدخول أولًا للدعم", 401);
   if (!await checkRateLimit("support-write", `${current.id}:${clientIp(request)}`, 60, 60 * 60)) return jsonError("تم إرسال طلبات كثيرة. حاول لاحقًا.", 429);
   const db = getDb();
@@ -137,18 +137,18 @@ export async function POST(request: Request) {
   if (ticketId) {
     const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
     if (!ticket) { await discardFiles(); return jsonError("التذكرة غير موجودة", 404); }
-    if (!isManager(current) && ticket.userEmail !== current.email) { await discardFiles(); return jsonError("غير مصرح", 403); }
+    if (!manager && ticket.userEmail !== current.email) { await discardFiles(); return jsonError("غير مصرح", 403); }
     if (!body && !files.length) { await discardFiles(); return jsonError("اكتب رسالة أو أرفق ملفًا"); }
-    const internal = isManager(current) && (values.internal === true || values.internal === "true");
+    const internal = manager && (values.internal === true || values.internal === "true");
     const requestedReplyToId = values.replyToId == null || values.replyToId === "" ? 0 : finiteNumber(values.replyToId);
     if (!Number.isSafeInteger(requestedReplyToId) || requestedReplyToId < 0) { await discardFiles(); return jsonError("معرّف الرسالة غير صالح"); }
     let replyToId: number | null = null;
     if (requestedReplyToId > 0) {
       const [target] = await db.select({ id: supportReplies.id, ticketId: supportReplies.ticketId, internal: supportReplies.internal }).from(supportReplies).where(eq(supportReplies.id, requestedReplyToId)).limit(1);
-      if (!target || target.ticketId !== ticketId || (!isManager(current) && target.internal)) { await discardFiles(); return jsonError("الرسالة التي تريد الرد عليها غير متاحة", 400); }
+      if (!target || target.ticketId !== ticketId || (!manager && target.internal)) { await discardFiles(); return jsonError("الرسالة التي تريد الرد عليها غير متاحة", 400); }
       replyToId = target.id;
     }
-    const nextStatus = !isManager(current) && ["closed", "resolved"].includes(ticket.status) ? "open" : ticket.status;
+    const nextStatus = !manager && ["closed", "resolved"].includes(ticket.status) ? "open" : ticket.status;
     let replyId = 0;
     const now = new Date().toISOString();
     try {
@@ -157,8 +157,8 @@ export async function POST(request: Request) {
         if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: reply.id, ticketId, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, ...scanColumns(fileScans.get(file.objectKey)!), createdAt: now })));
         await tx.update(supportTickets).set({
           status: nextStatus,
-          assignedTo: isManager(current) ? current.email : ticket.assignedTo,
-          firstResponseAt: isManager(current) && !internal ? sql`COALESCE(${supportTickets.firstResponseAt}, ${now})` : ticket.firstResponseAt,
+          assignedTo: manager ? current.email : ticket.assignedTo,
+          firstResponseAt: manager && !internal ? sql`COALESCE(${supportTickets.firstResponseAt}, ${now})` : ticket.firstResponseAt,
           updatedAt: now,
         }).where(eq(supportTickets.id, ticketId));
         return reply.id;
@@ -167,7 +167,7 @@ export async function POST(request: Request) {
       await discardFiles();
       return jsonError("تعذر حفظ رسالة الدعم أو مرفقاتها", 500);
     }
-    if (ticket.userEmail && isManager(current) && !internal) {
+    if (ticket.userEmail && manager && !internal) {
       const title = "رد جديد من دعم مراس";
       const text = body.slice(0, 240) || (files.some((file) => file.contentType.startsWith("audio/")) ? "أرسل فريق مراس رسالة صوتية" : "أُضيف مرفق جديد إلى تذكرتك");
       await createAndSendNotification({
@@ -175,7 +175,7 @@ export async function POST(request: Request) {
         target: { userEmail: ticket.userEmail },
         data: { route: "/support", ticketId },
       });
-    } else if (!isManager(current)) {
+    } else if (!manager) {
       await notifySupportTeam(ticket, body || (files.some((file) => file.contentType.startsWith("audio/")) ? "رسالة صوتية" : "مرفق جديد"));
     }
     return Response.json({ ok: true, replyId, status: nextStatus }, { headers: { "cache-control": "no-store" } });
@@ -208,9 +208,10 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   const current = await getSessionUser(request);
+  const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
   if (!current && !isAdminRequest(request)) return jsonError("سجّل الدخول لمتابعة التذاكر", 401);
   const db = getDb();
-  const manager = current?.role === "admin" || current?.role === "supervisor" || isAdminRequest(request);
+
   const tickets = manager
     ? await db.select().from(supportTickets).orderBy(desc(supportTickets.updatedAt)).limit(300)
     : current
@@ -231,9 +232,13 @@ export async function GET(request: Request) {
 export async function DELETE(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
-  const machineAuthorized = isAdminRequest(request);
-  if (!machineAuthorized && !isManager(current)) return jsonError("غير مصرح بحذف التذاكر", 403);
-  const actor = current?.email || "admin-api-token";
+  const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
+  if (!current || !manager || !await hasPermission(current, ADMIN_PERMISSIONS.RECORDS_DELETE)) return jsonError("غير مصرح بحذف التذاكر", 403);
+  try { await requireAdminStepUp(request, current!); } catch (error) {
+    if (error instanceof AdminMfaError) return jsonError(error.message, error.status, error.code);
+    return jsonError("تعذر التحقق من صلاحية الحذف", 503);
+  }
+  const actor = current!.email;
   if (!await checkRateLimit("support-delete", `${actor}:${clientIp(request)}`, 10, 60 * 60)) return jsonError("طلبات حذف كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
   try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات غير صالحة"); }
@@ -256,6 +261,7 @@ export async function DELETE(request: Request) {
 export async function PATCH(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
+  const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
   if (!current) return jsonError("سجّل الدخول أولًا", 401);
   let payload: Record<string, unknown>;
   try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات غير صالحة"); }
@@ -265,7 +271,7 @@ export async function PATCH(request: Request) {
   const db = getDb();
   const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
-  if (!isManager(current) && ticket.userEmail !== current.email) return jsonError("غير مصرح", 403);
+  if (!manager && ticket.userEmail !== current.email) return jsonError("غير مصرح", 403);
   if (action === "rate") {
     if (ticket.userEmail !== current.email || !["resolved", "closed"].includes(ticket.status)) return jsonError("يمكن تقييم تذكرة مغلقة تخص حسابك فقط", 403);
     const rating = finiteNumber(payload.rating);
@@ -274,11 +280,11 @@ export async function PATCH(request: Request) {
     await db.update(supportTickets).set({ satisfactionRating: rating, satisfactionComment: comment, updatedAt: new Date().toISOString() }).where(eq(supportTickets.id, ticketId));
     return Response.json({ ok: true, rating }, { headers: { "cache-control": "no-store" } });
   }
-  if (action === "close" && !isManager(current)) return jsonError("إغلاق التذكرة من صلاحية المشرف", 403);
+  if (action === "close" && !manager) return jsonError("إغلاق التذكرة من صلاحية المشرف", 403);
   const status = action === "close" ? "closed" : "open";
   const now = new Date().toISOString();
-  await db.update(supportTickets).set({ status, resolvedAt: action === "close" ? now : null, updatedAt: now, assignedTo: isManager(current) ? current.email : ticket.assignedTo }).where(eq(supportTickets.id, ticketId));
-  if (ticket.userEmail && isManager(current)) {
+  await db.update(supportTickets).set({ status, resolvedAt: action === "close" ? now : null, updatedAt: now, assignedTo: manager ? current.email : ticket.assignedTo }).where(eq(supportTickets.id, ticketId));
+  if (ticket.userEmail && manager) {
     const title = status === "closed" ? "أُغلقت تذكرة الدعم" : "أُعيد فتح تذكرة الدعم";
     const body = `${ticket.ticketNumber}: ${status === "closed" ? "تم إنهاء المحادثة ويمكنك إعادة فتحها عند الحاجة." : "أصبحت المحادثة مفتوحة من جديد."}`;
     await createAndSendNotification({

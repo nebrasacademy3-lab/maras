@@ -7,12 +7,14 @@ const source = await readFile(new URL("../app/api/auth/reset-password/route.ts",
 
 async function resetScenario() {
   const table = name => Object.fromEntries(["userId", "tokenHash", "usedAt", "expiresAt", "id", "passwordHash", "revokedAt"].map(key => [key, key]).concat([["name", name]]));
+  const accountMfaChallenges = table("mfaChallenges");
   const passwordResetTokens = table("tokens");
   const users = table("users");
   const authSessions = table("sessions");
   const pushDevices = table("pushDevices");
   const emailVerificationCodes = table("emailCodes");
   const state = {
+    mfaChallenges: [{userId: 1, usedAt: null}, {userId: 2, usedAt: null}],
     tokens: [
       { userId: 1, tokenHash: "a".repeat(43), usedAt: null, expiresAt: "2099-01-01T00:00:00.000Z" },
       { userId: 1, tokenHash: "b".repeat(43), usedAt: null, expiresAt: "2099-01-01T00:00:00.000Z" },
@@ -54,7 +56,7 @@ async function resetScenario() {
     },
   };
   const deps = {
-    getDb: () => db, passwordResetTokens, users, authSessions, pushDevices, emailVerificationCodes,
+    getDb: () => db, accountMfaChallenges, passwordResetTokens, users, authSessions, pushDevices, emailVerificationCodes,
     and: (...predicates) => row => predicates.every(predicate => predicate(row)),
     eq: (key, value) => row => row[key] === value,
     gt: (key, value) => row => row[key] > value,

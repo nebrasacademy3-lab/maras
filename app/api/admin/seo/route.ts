@@ -18,7 +18,7 @@ function revision(row?: { value: string; updatedAt: string }) { return row ? cre
 function response(value: unknown, status = 200) { return Response.json(value, { status, headers: { "Cache-Control": "private, no-store" } }); }
 async function authorize(request: Request, write = false) {
   const user = await getSessionUser(request);
-  if (!roleAllowed(user, ["admin"])) return null;
+  if (!roleAllowed(user, ["admin", "supervisor"])) return null;
   if (write && !sameOriginRequest(request)) return null;
   if (!await checkRateLimit(write ? "seo-write" : "seo-read", `user:${user!.id}`, write ? 20 : 60, 60)) return false;
   return user!;

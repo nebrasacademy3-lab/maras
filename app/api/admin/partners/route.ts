@@ -25,7 +25,7 @@ async function authorize(request: Request) {
   if (isAdminRequest(request)) return { actor: "admin-api-token", userId: 0 };
   if (!sameOriginRequest(request)) return null;
   const user = await getSessionUser(request);
-  return roleAllowed(user, ["admin"]) ? { actor: user!.email, userId: user!.id } : null;
+  return roleAllowed(user, ["admin", "supervisor"]) ? { actor: user!.email, userId: user!.id } : null;
 }
 
 function output(row: typeof platformPartners.$inferSelect) {

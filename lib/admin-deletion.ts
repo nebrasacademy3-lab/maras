@@ -149,6 +149,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
     const targetId = Number(input.entityId);
     if (!Number.isSafeInteger(targetId) || targetId <= 0) throw new DeletionPolicyError("معرّف المستخدم غير صالح.");
     const [target] = await db.select().from(users).where(eq(users.id, targetId)).limit(1);
+    if (target?.isPlatformOwner) throw new DeletionPolicyError("لا يمكن حذف حساب المدير الأعلى");
     if (!target) throw new DeletionPolicyError("المستخدم غير موجود.");
     before = { id: target.id, email: target.email, role: target.role, status: target.status };
     if (target.email === input.actor) throw new DeletionPolicyError("لا يمكنك حذف حسابك الإداري الحالي.");
@@ -227,6 +228,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"active-admin-membership"}))`);
       const targetId = Number(input.entityId);
       const [row] = await tx.select().from(users).where(eq(users.id, targetId)).limit(1);
+      if (row?.isPlatformOwner) throw new DeletionPolicyError("لا يمكن حذف حساب المدير الأعلى");
       if (!row) throw new DeletionPolicyError("المستخدم غير موجود.");
       if (row.role === "admin" && row.status === "active") {
         const activeAdmins = await tx.select({ id: users.id }).from(users).where(and(eq(users.role, "admin"), eq(users.status, "active")));

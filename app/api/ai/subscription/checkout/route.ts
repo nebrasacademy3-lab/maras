@@ -70,7 +70,7 @@ export async function POST(request: Request) {
     if (created.kind === "existing") return replay(created.row);
 
     const row = created.row;
-    const siteOrigin = (process.env.APP_URL || requestOrigin(request)).replace(/\/$/, "");
+    const siteOrigin = requestOrigin(request);
     const nameParts = user.fullName.split(/\s+/);
     const localPhone = user.phone!.replace(/^\+?966/, "").replace(/^0/, "");
     let response: Response;

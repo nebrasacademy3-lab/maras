@@ -1,3 +1,4 @@
+import { publicOrigin } from "@/lib/public-origin";
 import { timingSafeEqual } from "node:crypto";
 
 function secretEquals(expected: string, actual: string) {
@@ -46,9 +47,8 @@ export function isUniqueConstraintError(error: unknown) {
 }
 
 export function requestOrigin(request: Request) {
-  const configured = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "");
-  if (configured) return configured;
-  return new URL(request.url).origin;
+  void request;
+  return publicOrigin();
 }
 
 function requestHasSecret(request: Request, expected: string | undefined, directHeader: string) {

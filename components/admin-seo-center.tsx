@@ -1,4 +1,5 @@
 "use client";
+import { adminFetch } from "@/lib/admin-client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AdminCenterNav } from "@/components/admin-center-nav";
@@ -16,7 +17,7 @@ export function AdminSeoCenter({ adminName }: { adminName: string }) {
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/admin/seo?q=${encodeURIComponent(query)}&page=${page}`, { cache: "no-store", signal });
+      const response = await adminFetch(`/api/admin/seo?q=${encodeURIComponent(query)}&page=${page}`, { cache: "no-store", signal });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "تعذر تحميل التقرير");
       if (!signal?.aborted) { setReport(data); setError(""); }
@@ -30,7 +31,7 @@ export function AdminSeoCenter({ adminName }: { adminName: string }) {
     if (!selected) return;
     setBusy(true); setError(""); setMessage("");
     try {
-      const response = await fetch("/api/admin/seo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "save", path: selected.path, title, description, version: selected.version }) });
+      const response = await adminFetch("/api/admin/seo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "save", path: selected.path, title, description, version: selected.version }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "تعذر الحفظ");
       setMessage(data.queued ? "حُفظت البيانات وأضيفت الصفحة لطابور إشعار محركات البحث." : "حُفظت البيانات. تظهر في الصفحة العامة عند الطلب التالي.");
@@ -40,7 +41,7 @@ export function AdminSeoCenter({ adminName }: { adminName: string }) {
   const dispatch = async () => {
     setBusy(true); setStepUp(false); setMessage(""); setError("");
     try {
-      const response = await fetch("/api/admin/seo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "dispatch" }) });
+      const response = await adminFetch("/api/admin/seo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "dispatch" }) });
       const data = await response.json();
       if (response.status === 428) { setStepUp(true); return; }
       if (!response.ok) throw new Error(data.error || "تعذر الإرسال");

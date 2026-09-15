@@ -24,7 +24,7 @@ async function harness(file, name, props, overrides = {}) {
     useRealtimeSync: () => undefined, styles: new Proxy({}, { get: (_target, name) => name }), Link: "a", AdminMfaNotice: "mfa", isAdminStepUpResponse: () => false,
     React: { createElement: (type, properties, ...children) => ({ type, props: properties || {}, children }), Fragment: "fragment" },
     window: { setTimeout, clearTimeout, matchMedia: () => ({ matches: false }) },
-    uploadProgressLabel: () => "Uploading", ...overrides,
+    uploadProgressLabel: () => "Uploading", adminFetch: overrides.adminFetch || overrides.fetch, ...overrides,
   };
   const key = "__uiRace" + crypto.randomUUID().replaceAll("-", "");
   globalThis[key] = dependencies;

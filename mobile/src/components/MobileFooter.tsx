@@ -1,8 +1,10 @@
+import { router } from "expo-router";
+import { MerasAlert as Alert } from "@/src/lib/interaction-events";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { useQuery } from "@tanstack/react-query";
 import React from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { api } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -32,6 +34,7 @@ export function MobileFooter() {
   ].filter((item): item is { key: string; label: string; value: string; verifyUrl: string } => Boolean(item));
   return <View style={[styles.footer, { direction, borderTopColor: colors.border }]}>
     <BrandLogo width={132} />
+    <View style={{ flexDirection: "row-reverse", flexWrap: "wrap", gap: 14, justifyContent: "center", paddingVertical: 12 }}>{[{page:"about",label:"عن مراس ولماذا تختارها"},{page:"faq",label:"الأسئلة الشائعة"}].map(item=><Pressable key={item.page} accessibilityRole="link" onPress={()=>router.push({pathname:"/information",params:{page:item.page}})} style={{minHeight:44,justifyContent:"center"}}><Text style={{color:colors.primary,fontSize:14,fontWeight:"700"}}>{item.label}</Text></Pressable>)}</View>
     <Text style={[styles.copy, { color: colors.textSoft }]}>{settings?.footer_description || "شرح جامعتك، وخطوتك التالية في التعلّم."}</Text>
     {settings && (settings.ios_app_url || settings.android_app_url) ? <View style={styles.storeSection}><Text style={[styles.storeTitle, { color: colors.text }]}>{settings.app_download_title}</Text><Text style={[styles.storeCopy, { color: colors.textSoft }]}>{settings.app_download_description}</Text><View style={[styles.stores, { flexDirection: rowDirection }]}>{settings.ios_app_url ? <Pressable onPress={() => Linking.openURL(settings.ios_app_url)} style={({ pressed }) => [styles.store, { flexDirection: rowDirection, opacity: pressed ? .72 : 1 }]}><Ionicons name="logo-apple" size={20} color="#FFF" /><View><Text style={styles.storeSmall}>حمّل التطبيق من</Text><Text style={styles.storeName}>App Store</Text></View></Pressable> : null}{settings.android_app_url ? <Pressable onPress={() => Linking.openURL(settings.android_app_url)} style={({ pressed }) => [styles.store, { flexDirection: rowDirection, opacity: pressed ? .72 : 1 }]}><Ionicons name="logo-google-playstore" size={20} color="#FFF" /><View><Text style={styles.storeSmall}>حمّل التطبيق من</Text><Text style={styles.storeName}>Google Play</Text></View></Pressable> : null}</View></View> : null}
     {settings && <View style={[styles.actions, { flexDirection: rowDirection }]}>

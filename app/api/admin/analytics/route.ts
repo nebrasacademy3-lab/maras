@@ -8,7 +8,7 @@ const actorExpression = sql<string>`COALESCE(${analyticsEvents.userEmail}, ${ana
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
-  if (!roleAllowed(user, ["admin"])) return jsonError("غير مصرح بعرض التحليلات", 403);
+  if (!roleAllowed(user, ["admin", "supervisor"])) return jsonError("غير مصرح بعرض التحليلات", 403);
   const url = new URL(request.url);
   const days = Math.min(365, Math.max(1, Number(url.searchParams.get("days")) || 30));
   const courseSlug = cleanText(url.searchParams.get("course"), 120).replace(/[^A-Za-z0-9_-]/g, "");

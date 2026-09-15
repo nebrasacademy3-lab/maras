@@ -1,9 +1,11 @@
+import { seoPureDependencies } from "./helpers/pure-source.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
 
 async function isolated(path, dependencies = {}) {
+  dependencies = await seoPureDependencies(dependencies);
   const source = await readFile(new URL(path, import.meta.url), "utf8");
   const key = "__seoTest" + crypto.randomUUID().replaceAll("-", "");
   globalThis[key] = dependencies;

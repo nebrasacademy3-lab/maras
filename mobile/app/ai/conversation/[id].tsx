@@ -1,8 +1,9 @@
+import { MerasAlert as Alert } from "@/src/lib/interaction-events";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
-import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { Pressable, StyleSheet, View } from "react-native";
 import { StudyArtifactDownload } from "@/src/components/study-file-tools";
 import { AppHeader } from "@/src/components/AppHeader";
 import { ScaledText as Text } from "@/src/components/ScaledText";

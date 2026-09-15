@@ -21,6 +21,9 @@ function safeReturnTo() {
 }
 
 export function LoginForm() {
+  const [mfaRequired, setMfaRequired] = useState(false);
+  const [mfaCode, setMfaCode] = useState("");
+  const [recovery, setRecovery] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -28,6 +31,7 @@ export function LoginForm() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const timer = window.setTimeout(() => {
+      if (params.get("mfa") === "1") setMfaRequired(true);
       if (params.get("reset") === "success") setNotice("تم تحديث كلمة المرور بنجاح، سجّل الدخول بكلمة المرور الجديدة.");
       else if (params.get("session") === "expired") setNotice("انتهت جلستك، سجّل الدخول من جديد للمتابعة.");
     }, 0);
@@ -39,14 +43,15 @@ export function LoginForm() {
     setError("");
     const form = new FormData(event.currentTarget);
     try {
-      const response = await fetch("/api/auth/login", {
+      const response = await fetch(mfaRequired ? "/api/auth/mfa" : "/api/auth/login", {
         method: "POST",
         credentials: "same-origin",
         headers: { "content-type": "application/json", ...webDeviceHeaders() },
-        body: JSON.stringify({ identifier: form.get("identifier"), password: form.get("password"), remember: form.get("remember") === "on" }),
+        body: JSON.stringify(mfaRequired ? { code: mfaCode } : { identifier: form.get("identifier"), password: form.get("password"), remember: form.get("remember") === "on" }),
       });
       const data = await readAuthResponse(response);
       if (!response.ok) throw new Error(data.error || "تعذر تسجيل الدخول");
+      if ((data as { mfaRequired?: boolean }).mfaRequired) { setMfaRequired(true); setLoading(false); return; }
       const returnTo = safeReturnTo();
       if (returnTo && !["/onboarding", "/complete-profile", "/verify-email"].includes((data.next || "").split("?")[0])) window.location.assign(returnTo);
       else {
@@ -59,6 +64,7 @@ export function LoginForm() {
       setLoading(false);
     }
   };
+  if (mfaRequired) return <form className="auth-form" onSubmit={submit} data-testid="mfa-login"><div className="auth-heading"><span><ShieldCheck size={24} /> التحقق الإضافي</span><h1>خطوة أخيرة لحماية حسابك</h1><p>{recovery ? "أدخل أحد رموز الاستعادة الخاصة بك. يُستخدم كل رمز مرة واحدة." : "أدخل الرمز الحالي من تطبيق المصادقة المرتبط بحسابك."}</p></div><label className="form-label">{recovery ? "رمز الاستعادة" : "رمز المصادقة"}<input name="mfaCode" autoFocus required value={mfaCode} onChange={event => setMfaCode(event.target.value)} inputMode={recovery ? "text" : "numeric"} maxLength={recovery ? 28 : 6} autoComplete="one-time-code" dir="ltr" placeholder={recovery ? "XXXXX-XXXXX-XXXXX-XXXXX" : "000000"} /></label>{error && <p className="form-error" role="alert">{error}</p>}<button className="button button-primary auth-submit" disabled={loading}>{loading ? "جارٍ التحقق…" : "تحقق وتابع"}</button><button type="button" className="button button-ghost" disabled={loading} onClick={() => { setRecovery(!recovery); setMfaCode(""); setError(""); }}>{recovery ? "استخدم تطبيق المصادقة" : "فقدت الجهاز؟ استخدم رمز استعادة"}</button><button type="button" className="back-step" disabled={loading} onClick={() => { setMfaRequired(false); setMfaCode(""); setError(""); }}>العودة لتسجيل الدخول</button><p className="auth-security-note">لا تشارك الرمز أو مفتاح الإعداد مع أي شخص، بما في ذلك الدعم.</p></form>;
   return <form className="auth-form" onSubmit={submit}>
     <div className="auth-heading"><span>مرحبًا بعودتك 👋</span><h1>سجّل دخولك إلى مراس</h1><p>أكمل من آخر درس، وتابع موادك ومشترياتك من مكان واحد.</p></div>
     {notice && <p className="auth-success" role="status">{notice}</p>}

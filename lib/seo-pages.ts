@@ -1,3 +1,4 @@
+import { specialtyIsIndexable } from "@/lib/seo-eligibility";
 import type { Course, Institution } from "@/lib/data";
 import type { PublicCourseBundle } from "@/lib/course-bundles";
 import type { PublicSpecialty } from "@/lib/seo-catalog";
@@ -12,6 +13,7 @@ export const SEO_STATIC_PAGES: SeoPage[] = [
   { path: "/bundles", title: "باقات المواد الجامعية", description: "استعرض باقات المواد المتاحة في مراس العلم، وقارن المواد المشمولة والأسعار والتوفير قبل إضافتها إلى السلة.", kind: "دليل" },
   { path: "/tools", title: "أدوات مراس للمذاكرة بالذكاء الاصطناعي", description: "تعرف على أدوات مراس لتلخيص الملفات وترجمة المحتوى وإنشاء اختبارات تدريبية ومناقشة موضوعات الدراسة، مع حدود الاستخدام والأسعار الحالية.", kind: "عام" },
   { path: "/about", title: "عن مراس العلم", description: "تعرف على منصة مراس العلم، وطريقة تنظيم الشروحات الجامعية حسب الجامعة والتخصص، وخيارات المذاكرة والدعم المتاحة للطلاب.", kind: "عام" },
+  { path: "/why-maras", title: "لماذا تختار مراس العلم؟", description: "تعرف على تجربة مراس في الشروحات والملفات وأدوات المذاكرة، وخيارات متابعة الطلبات وحماية الحساب والوضوح قبل الاشتراك.", kind: "عام" },
   { path: "/faq", title: "الأسئلة الشائعة عن مراس العلم", description: "إجابات عن تجربة الدروس والاشتراك وصلاحية المواد والباقات وأدوات المذاكرة والتنبيهات والدعم في منصة مراس العلم.", kind: "مساعدة" },
   { path: "/how-it-works", title: "كيف تعمل مراس؟", description: "تعرف على رحلة الطالب من البحث عن المادة واستعراض الدروس إلى الاشتراك والتعلم داخل منصة مراس العلم.", kind: "مساعدة" },
   { path: "/contact", title: "تواصل معنا", description: "تواصل مع فريق مراس العلم للاستفسارات والمساعدة بشأن حسابك والمواد الجامعية والاشتراكات.", kind: "مساعدة" },
@@ -40,7 +42,7 @@ export function buildSeoPages(courses: Course[], institutions: Institution[], sp
   for (const course of published) pages.push({ path: `/courses/${seoSegment(course.slug)}`, title: `${course.title} — ${course.university}`, description: courseSeoDescription(course), image: course.coverImage || "/og.png", kind: "مادة" });
   for (const specialty of specialties) {
     const institution = visible.get(specialty.institutionSlug);
-    if (!institution || !published.some((course) => course.universitySlug === institution.slug && (course.audienceScope === "institution" || course.specialtySlug === specialty.slug))) continue;
+    if (!institution || !specialtyIsIndexable(specialty.description, published.filter((course) => course.universitySlug === institution.slug && (course.audienceScope === "institution" || course.specialtySlug === specialty.slug)).length)) continue;
     pages.push({ path: `/universities/${seoSegment(institution.slug)}/specialties/${seoSegment(specialty.slug)}`, title: `${specialty.name} في ${institution.name}`, description: `مواد وشروحات تخصص ${specialty.name} لطلاب ${institution.name} على منصة مراس العلم. ${specialty.description}`, kind: "تخصص" });
   }
   for (const bundle of bundles) if (bundle.courseSlugs.length >= 2 && bundle.courseSlugs.every((slug) => published.some((course) => course.slug === slug && course.availableForPurchase))) {

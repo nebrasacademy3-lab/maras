@@ -1,3 +1,4 @@
+import { nativeToast, requestNativeAdminMfa } from "@/src/lib/interaction-events";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { resolveStoreMode } from "@/src/lib/store-commerce";
@@ -68,6 +69,24 @@ export function apiRequestUrl(path: string) {
 export type ApiRequestInit = RequestInit & { timeoutMs?: number };
 
 export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
+  const startedToken = sessionToken;
+  const pathname = apiRequestUrl(path).pathname;
+  const managed = pathname.startsWith("/api/admin/") && !pathname.startsWith("/api/admin/security/");
+  const mutation = managed && !["GET", "HEAD"].includes((init.method || "GET").toUpperCase()) && !pathname.includes("/videos");
+  try { const result = await apiOnce<T>(path, init); if (mutation) nativeToast("تم تنفيذ العملية بنجاح", "success"); return result; }
+  catch (error) {
+    if (managed && !(typeof ReadableStream !== "undefined" && init.body instanceof ReadableStream) && error instanceof ApiError && error.status === 428 && ["MFA_STEP_UP_REQUIRED", "MFA_SETUP_REQUIRED"].includes(error.code || "")) {
+      if (await requestNativeAdminMfa(error.code === "MFA_SETUP_REQUIRED") && sessionToken === startedToken && !init.signal?.aborted) {
+        const result = await apiOnce<T>(path, init);
+        nativeToast("تم تنفيذ العملية بنجاح", "success");
+        return result;
+      }
+    }
+    if (mutation && error instanceof ApiError && error.status !== 428) nativeToast(error.message, "error");
+    throw error;
+  }
+}
+async function apiOnce<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   const url = apiRequestUrl(path);
   if (!DIRECT_COMMERCE_ENABLED && url.pathname === "/api/checkout") {
     throw new ApiError("استخدم شراء التطبيق من المتجر في هذه النسخة.", 403);

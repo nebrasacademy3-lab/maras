@@ -1,3 +1,4 @@
+import { hasPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { supportReplyFiles, supportReplies, supportTickets } from "@/db/schema";
@@ -14,7 +15,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const [file] = await db.select().from(supportReplyFiles).where(eq(supportReplyFiles.id, id)).limit(1);
   if (!file) return jsonError("المرفق غير موجود", 404);
   const [ticket] = await db.select({ userEmail: supportTickets.userEmail }).from(supportTickets).where(eq(supportTickets.id, file.ticketId)).limit(1);
-  const manager = current.role === "admin" || current.role === "supervisor";
+  const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
   if (!ticket || (!manager && ticket.userEmail !== current.email)) return jsonError("غير مصرح", 403);
   const [reply] = await db.select({ internal: supportReplies.internal, ticketId: supportReplies.ticketId }).from(supportReplies).where(eq(supportReplies.id, file.replyId)).limit(1);
   if (!reply || reply.ticketId !== file.ticketId || (!manager && reply.internal)) return jsonError("المرفق غير موجود", 404);
