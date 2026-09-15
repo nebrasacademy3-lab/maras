@@ -1,0 +1,33 @@
+name: Isolated validation toolchains
+on:
+  push:
+    branches: [improve/learning-tools-20260915]
+    paths: [.github/workflows/isolated-toolchain.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      matrix:
+        target: [web, mobile]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install and archive exact dependencies
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          if [ "$TARGET" = mobile ]; then cd mobile; fi
+          npm ci --no-audit --no-fund
+          tar -czf "/tmp/maras-${TARGET}-dependencies.tar.gz" node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maras-${{ matrix.target }}-dependencies
+          path: /tmp/maras-${{ matrix.target }}-dependencies.tar.gz
+          retention-days: 1
