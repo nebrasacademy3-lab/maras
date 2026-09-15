@@ -28,6 +28,7 @@ type CatalogCourse = {
 type Resource = {
   id: number;
   courseSlug: string;
+  lessonId: string | null;
   title: string;
   description: string;
   originalName: string;
@@ -47,7 +48,7 @@ type Resource = {
 };
 
 type Notice = { tone: "ok" | "error" | "info"; text: string };
-type EditState = { title: string; description: string; sortOrder: string; status: Resource["status"]; studentVisible: boolean };
+type EditState = { lessonId: string; title: string; description: string; sortOrder: string; status: Resource["status"]; studentVisible: boolean };
 
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 const acceptedFiles = ".pdf,.docx,.pptx,.xlsx,.png,.jpg,.jpeg,.webp,.txt,.csv";
@@ -79,6 +80,7 @@ function fileTypeLabel(contentType: string) {
 
 export function AdminCourseResourcesCenter({ adminName }: { adminName: string }) {
   const [courses, setCourses] = useState<CatalogCourse[]>([]);
+  const [lessons, setLessons] = useState<Array<{ id: string; title: string }>>([]);
   const [resources, setResources] = useState<Resource[]>([]);
   const [selectedSlug, setSelectedSlug] = useState("");
   const [query, setQuery] = useState("");
@@ -112,9 +114,10 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
     setLoadingResources(true);
     try {
       const response = await fetch(`/api/admin/course-resources?course=${encodeURIComponent(courseSlug)}`, { cache: "no-store", credentials: "same-origin", signal });
-      const payload = await response.json() as { resources?: Resource[]; courses?: CatalogCourse[]; error?: string };
+      const payload = await response.json() as { resources?: Resource[]; lessons?: Array<{ id: string; title: string }>; courses?: CatalogCourse[]; error?: string };
       if (!response.ok) throw new Error(payload.error || "تعذر تحميل ملفات المادة");
       setResources(payload.resources || []);
+      setLessons(payload.lessons || []);
       if (payload.courses) setCourses(payload.courses);
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
@@ -189,7 +192,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
 
   function beginEdit(resource: Resource) {
     setEditingId(resource.id);
-    setEditState({ title: resource.title, description: resource.description, sortOrder: String(resource.sortOrder), status: resource.status, studentVisible: resource.studentVisible });
+    setEditState({ lessonId: resource.lessonId || "", title: resource.title, description: resource.description, sortOrder: String(resource.sortOrder), status: resource.status, studentVisible: resource.studentVisible });
     setNotice(null);
   }
 
@@ -198,6 +201,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
       title: values.title ?? resource.title,
       description: values.description ?? resource.description,
       sortOrder: Number(values.sortOrder ?? resource.sortOrder),
+      lessonId: values.lessonId ?? resource.lessonId,
       status: values.status ?? resource.status,
       studentVisible: values.studentVisible ?? resource.studentVisible,
     };
@@ -292,6 +296,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
             <div className={styles.sectionHeading}><div><span><Upload size={16} /> ملف جديد</span><h3>أضف مادة مساندة للطلاب</h3><p>PDF وWord وPowerPoint وExcel والصور والنصوص فقط، بحد أقصى 25 ميجابايت.</p></div><ShieldCheck size={27} /></div>
             <div className={styles.formGrid}>
               <label>العنوان الظاهر للطالب<input name="title" maxLength={160} placeholder="مثال: ملخص الوحدة الأولى" /></label>
+              <label>ربط الملف بدرس<select name="lessonId" defaultValue=""><option value="">ملف مشترك لكل دروس المادة</option>{lessons.map(lesson => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}</select></label>
               <label>الترتيب<input name="sortOrder" type="number" min="0" max="10000" defaultValue="0" /></label>
               <label className={styles.wide}>وصف مختصر<textarea name="description" maxLength={1000} placeholder="اشرح محتوى الملف وكيف يستفيد منه الطالب." /></label>
               <label className={`${styles.filePicker} ${styles.wide}`}><Upload size={20} /><span><b>اختر الملف من جهازك</b><small>لن يظهر للطلاب قبل اجتياز الفحص الأمني.</small></span><input ref={fileInput} name="file" type="file" required accept={acceptedFiles} /></label>
@@ -307,6 +312,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
               <div className={styles.sectionHeading}><div><span><Pencil size={16} /> تعديل الملف</span><h3>{resource.title}</h3></div><button type="button" onClick={() => { setEditingId(null); setEditState(null); }}><X size={16} /> إلغاء</button></div>
               <div className={styles.formGrid}>
                 <label>العنوان<input required minLength={2} maxLength={160} value={editState.title} onChange={(event) => setEditState({ ...editState, title: event.target.value })} /></label>
+                <label>الدرس<select value={editState.lessonId} onChange={event => setEditState({ ...editState, lessonId: event.target.value })}><option value="">مشترك لكل الدروس</option>{lessons.map(lesson => <option key={lesson.id} value={lesson.id}>{lesson.title}</option>)}</select></label>
                 <label>الترتيب<input type="number" min="0" max="10000" value={editState.sortOrder} onChange={(event) => setEditState({ ...editState, sortOrder: event.target.value })} /></label>
                 <label className={styles.wide}>الوصف<textarea maxLength={1000} value={editState.description} onChange={(event) => setEditState({ ...editState, description: event.target.value })} /></label>
                 <label>الحالة<SearchableSelect value={editState.status} onChange={(event) => setEditState({ ...editState, status: event.target.value as Resource["status"], studentVisible: event.target.value === "archived" ? false : editState.studentVisible })}><option value="active">نشط</option><option value="archived">مؤرشف</option></SearchableSelect></label>

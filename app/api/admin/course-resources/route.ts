@@ -1,6 +1,6 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { auditLogs, catalogCourses, catalogInstitutions, catalogSpecialties, courseResources } from "@/db/schema";
+import { auditLogs, catalogCourses, catalogInstitutions, catalogSpecialties, courseResources, lessonsDb } from "@/db/schema";
 import { cleanText, isAdminRequest, jsonError } from "@/lib/api";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
@@ -60,6 +60,14 @@ function safeSlug(value: unknown) {
   return slug;
 }
 
+async function linkedLesson(value: unknown, courseSlug: string) {
+  const id = cleanText(value, 160);
+  if (!id) return null;
+  const [lesson] = await getDb().select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.id, id), eq(lessonsDb.courseSlug, courseSlug))).limit(1);
+  if (!lesson) throw new ResourceInputError("الدرس المحدد لا يتبع هذه المادة");
+  return lesson.id;
+}
+
 function integer(value: unknown, label: string, minimum: number, maximum: number) {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed < minimum || parsed > maximum) throw new ResourceInputError(`${label} غير صالح`);
@@ -74,6 +82,7 @@ function resourcePayload(row: typeof courseResources.$inferSelect) {
   return {
     id: row.id,
     courseSlug: row.courseSlug,
+    lessonId: row.lessonId,
     title: row.title,
     description: row.description,
     originalName: row.originalName,
@@ -129,13 +138,14 @@ export async function GET(request: Request) {
   const selectedCourse = cleanText(new URL(request.url).searchParams.get("course"), 120).toLowerCase();
   if (selectedCourse && !/^[a-z0-9][a-z0-9._-]*$/.test(selectedCourse)) return jsonError("معرّف المادة غير صالح");
   const db = getDb();
-  const [courseRows, institutionRows, specialtyRows, resourceRows] = await Promise.all([
+  const [courseRows, institutionRows, specialtyRows, resourceRows, lessonRows] = await Promise.all([
     db.select().from(catalogCourses).orderBy(asc(catalogCourses.institutionSlug), asc(catalogCourses.specialtySlug), asc(catalogCourses.title)),
     db.select({ slug: catalogInstitutions.slug, name: catalogInstitutions.name }).from(catalogInstitutions),
     db.select({ slug: catalogSpecialties.slug, name: catalogSpecialties.name }).from(catalogSpecialties),
     selectedCourse
       ? db.select().from(courseResources).where(eq(courseResources.courseSlug, selectedCourse)).orderBy(asc(courseResources.sortOrder), asc(courseResources.title), asc(courseResources.id))
       : Promise.resolve([] as Array<typeof courseResources.$inferSelect>),
+    selectedCourse ? db.select({ id: lessonsDb.id, title: lessonsDb.title, unitId: lessonsDb.unitId }).from(lessonsDb).where(eq(lessonsDb.courseSlug, selectedCourse)).orderBy(asc(lessonsDb.unitId), asc(lessonsDb.position)) : Promise.resolve([]),
   ]);
   const institutionNames = new Map(institutionRows.map((row) => [row.slug, row.name]));
   const specialtyNames = new Map(specialtyRows.map((row) => [row.slug, row.name]));
@@ -152,6 +162,7 @@ export async function GET(request: Request) {
       audienceScope: course.audienceScope === "institution" ? "institution" : "specialty",
       status: course.status,
     })),
+    lessons: lessonRows,
     resources: resourceRows.map(resourcePayload),
     limits: { maxFileBytes: MAX_FILE_BYTES, maxFileMegabytes: 25 },
   }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
@@ -197,11 +208,15 @@ export async function POST(request: Request) {
     await deleteStoredMultipartFiles(parsed.files);
     return jsonError("رُفض الملف بعد الفحص الأمني ولن يتم حفظه", 422);
   }
+  let lessonId: string | null;
+  try { lessonId = await linkedLesson(parsed.fields.lessonId, courseSlug); }
+  catch (error) { await deleteStoredMultipartFiles(parsed.files); return jsonError(error instanceof ResourceInputError ? error.message : "تعذر ربط الدرس", 400); }
   const now = new Date().toISOString();
   try {
     const [created] = await db.transaction(async (tx) => {
       const [row] = await tx.insert(courseResources).values({
         courseSlug,
+        lessonId,
         title,
         description,
         objectKey: file.objectKey,
@@ -274,7 +289,8 @@ export async function PATCH(request: Request) {
     if (studentVisible && before.scanStatus !== "clean") throw new ResourceInputError("لا يمكن إظهار الملف للطلاب قبل اجتياز الفحص الأمني");
     if (studentVisible && status !== "active") throw new ResourceInputError("لا يمكن إظهار ملف مؤرشف للطلاب");
     const sortOrder = integer(payload.sortOrder, "ترتيب الملف", 0, 10000);
-    const [after] = await db.update(courseResources).set({ title, description, status, studentVisible, sortOrder, updatedAt: now }).where(eq(courseResources.id, id)).returning();
+    const lessonId = payload.lessonId === undefined ? before.lessonId : await linkedLesson(payload.lessonId, before.courseSlug);
+    const [after] = await db.update(courseResources).set({ title, description, status, studentVisible, sortOrder, lessonId, updatedAt: now }).where(eq(courseResources.id, id)).returning();
     await db.insert(auditLogs).values({ actorEmail: guarded.authorization.actor, action: "update", entityType: "course_resource", entityId: String(id), beforeJson: json(resourcePayload(before)), afterJson: json(resourcePayload(after)), ipAddress: clientIp(request), createdAt: now });
     return Response.json({ ok: true, resource: resourcePayload(after) }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   } catch (error) {

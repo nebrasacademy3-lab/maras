@@ -65,6 +65,7 @@ export function geminiTextResponse(payload: Record<string, unknown>) {
   const finishReason = typeof first.finishReason === "string" ? first.finishReason : null;
   const feedback = payload.promptFeedback && typeof payload.promptFeedback === "object" ? payload.promptFeedback as Record<string, unknown> : {};
   if (feedback.blockReason || ["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"].includes(finishReason || "")) throw new GeminiProviderError(422, "AI_CONTENT_BLOCKED");
+  if (finishReason === "MAX_TOKENS") throw new GeminiProviderError(422, "AI_OUTPUT_TOKEN_LIMIT");
   if (!text) throw new GeminiProviderError(422, finishReason === "MAX_TOKENS" ? "AI_OUTPUT_TOKEN_LIMIT" : "AI_EMPTY_RESPONSE");
   return { text, finishReason };
 }

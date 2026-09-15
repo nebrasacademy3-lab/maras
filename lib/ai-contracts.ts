@@ -60,6 +60,7 @@ export type AiArtifactPayload = {
   title: string;
   content: string;
   createdAt: string;
+  downloadUrl?: string;
 };
 
 export type AiQuizQuestion = {

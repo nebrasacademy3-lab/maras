@@ -13,7 +13,11 @@ export function aiJson(value: unknown, init: ResponseInit = {}) {
 }
 
 export function aiError(error: unknown) {
-  if (error instanceof AiPlatformError) return jsonError(error.message, error.status);
+  if (error instanceof AiPlatformError) {
+    const delay = "retryAfterSeconds" in error ? Number(error.retryAfterSeconds) : 0;
+    const retryAfter = Number.isFinite(delay) && delay > 0 ? Math.min(3600, Math.ceil(delay)) : undefined;
+    return aiJson({ error: error.message, code: error.code, ...(retryAfter ? { retryAfter } : {}) }, { status: error.status, ...(retryAfter ? { headers: { "retry-after": String(retryAfter) } } : {}) });
+  }
   return jsonError("تعذر إكمال طلب أدوات مراس. حاول مرة أخرى.", 500);
 }
 
@@ -36,7 +40,7 @@ export function filePayload(row: typeof aiFiles.$inferSelect): AiFilePayload {
 }
 
 export function artifactPayload(row: typeof aiArtifacts.$inferSelect): AiArtifactPayload {
-  return { id: row.id, conversationId: row.conversationId, fileId: row.fileId, kind: row.kind === "translation" ? "translation" : "summary", title: row.title, content: row.content, createdAt: row.createdAt };
+  return { id: row.id, downloadUrl: `/api/ai/artifacts/${row.id}/download`, conversationId: row.conversationId, fileId: row.fileId, kind: row.kind === "translation" ? "translation" : "summary", title: row.title, content: row.content, createdAt: row.createdAt };
 }
 
 function parseStoredQuestions(value: string) {

@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, asc, eq, isNull, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseResources } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
@@ -14,7 +14,7 @@ export async function GET(request: Request) {
   if (!authorization.ok) return authorization.response;
   if (!await checkRateLimit("course-resources-list", `user:${authorization.user.id}`, 90, 60)) return jsonError("طلبات كثيرة. حاول بعد دقيقة.", 429);
   const rows = await getDb().select({
-    id: courseResources.id,
+    id: courseResources.id, lessonId: courseResources.lessonId,
     title: courseResources.title,
     description: courseResources.description,
     originalName: courseResources.originalName,
@@ -24,6 +24,7 @@ export async function GET(request: Request) {
     updatedAt: courseResources.updatedAt,
   }).from(courseResources).where(and(
     eq(courseResources.courseSlug, courseSlug),
+      new URL(request.url).searchParams.get("lesson") ? or(isNull(courseResources.lessonId), eq(courseResources.lessonId, new URL(request.url).searchParams.get("lesson")!.slice(0, 160))) : undefined,
     eq(courseResources.status, "active"),
     eq(courseResources.studentVisible, true),
     eq(courseResources.scanStatus, "clean"),

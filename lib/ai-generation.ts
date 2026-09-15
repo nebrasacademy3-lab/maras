@@ -1,3 +1,5 @@
+import { studyDocumentText } from "@/lib/study-document";
+import { DocumentFormatError } from "@/lib/document-archive";
 import type { AiServiceConfig } from "@/lib/ai-platform";
 import { AiPlatformError } from "@/lib/ai-platform";
 import { generateGeminiContent, type GeminiResult } from "@/lib/gemini";
@@ -30,13 +32,25 @@ export async function generateAiChat(input: {
   history: Array<{ role: "user" | "assistant"; content: string }>;
   question: string;
 }) {
-  const contents = input.history.slice(-18).map((message) => ({
+  const contents = input.history.slice(-8).map((message) => ({
     role: message.role === "assistant" ? "model" as const : "user" as const,
-    parts: [{ text: message.content.slice(0, 8_000) }],
+    parts: [{ text: message.content.slice(0, 3_000) }],
   }));
   contents.push({ role: "user", parts: [{ text: `<student_message>\n${input.question.slice(0, 8_000)}\n</student_message>` }] });
   const result = await generateGeminiContent({ config: input.config, contents, systemInstruction: `${BASE_SYSTEM}\n${input.config.instructions}` });
   return { ...result, text: cleanGeneratedText(result.text, 20_000) };
+}
+
+function sourcePart(input: { bytes: Buffer; contentType: string }) {
+  try {
+    const text = studyDocumentText(input.bytes, input.contentType);
+    return text === null
+      ? { inlineData: { mimeType: input.contentType, data: input.bytes.toString("base64") } }
+      : { text: `<untrusted_study_document>\n${text}\n</untrusted_study_document>` };
+  } catch (error) {
+    if (error instanceof DocumentFormatError) throw new AiPlatformError("AI_DOCUMENT_INVALID", error.message, 422);
+    throw error;
+  }
 }
 
 function actionPrompt(action: "summary" | "translation", options: { targetLanguage?: string; originalName: string }) {
@@ -60,10 +74,11 @@ export async function generateFileArtifact(input: {
     config: input.config,
     systemInstruction: `${BASE_SYSTEM}\n${input.config.instructions}`,
     contents: [{ role: "user", parts: [
-      { inlineData: { mimeType: input.contentType, data: input.bytes.toString("base64") } },
+      sourcePart(input),
       { text: actionPrompt(input.action, input) },
     ] }],
   });
+  if (result.text.length > 80_000) throw new AiPlatformError("AI_OUTPUT_TOO_LONG", "الإجابة أكبر من حد الملف. قسّم المصدر حتى لا تفقد جزءًا من النتيجة.", 422);
   return { ...result, text: cleanGeneratedText(result.text, 80_000) };
 }
 
@@ -103,19 +118,21 @@ const quizSchema = {
   },
 } as const;
 
-function parseQuiz(text: string, requestedCount: number) {
+export function parseQuiz(text: string, requestedCount: number) {
   let payload: unknown;
   try { payload = JSON.parse(text); } catch { throw new AiPlatformError("AI_QUIZ_INVALID", "تعذر بناء الاختبار بصورة صحيحة. أعد المحاولة.", 502); }
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) throw new AiPlatformError("AI_QUIZ_INVALID", "تعذر بناء الاختبار بصورة صحيحة. أعد المحاولة.", 502);
   const record = payload as Record<string, unknown>;
-  const rawQuestions = Array.isArray(record.questions) ? record.questions.slice(0, requestedCount) : [];
+  const rawQuestions = Array.isArray(record.questions) && record.questions.length === requestedCount ? record.questions : [];
+  // Reject oversized essential text instead of silently changing the scientific question.
+  const completeText = (value: unknown, max: number) => typeof value === "string" && value.length <= max ? value.replace(/\u0000/g, "").trim() : "";
   const questions: StoredQuizQuestion[] = rawQuestions.flatMap((item, index) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) return [];
     const row = item as Record<string, unknown>;
-    const question = cleanGeneratedText(typeof row.question === "string" ? row.question : "", 1_000);
-    const choices = Array.isArray(row.choices) ? row.choices.map((choice) => cleanGeneratedText(typeof choice === "string" ? choice : "", 500)) : [];
-    const correctIndex = Number(row.correctIndex);
-    const explanation = cleanGeneratedText(typeof row.explanation === "string" ? row.explanation : "", 3_000);
+    const question = completeText(row.question, 1_000);
+    const choices = Array.isArray(row.choices) ? row.choices.map((choice) => completeText(choice, 500)) : [];
+    const correctIndex = typeof row.correctIndex === "number" ? row.correctIndex : -1;
+    const explanation = completeText(row.explanation, 3_000);
     if (!question || choices.length !== 4 || choices.some((choice) => !choice) || new Set(choices).size !== 4 || !Number.isInteger(correctIndex) || correctIndex < 0 || correctIndex > 3 || !explanation) return [];
     const terms = Array.isArray(row.scientificTerms) ? row.scientificTerms.slice(0, 8).flatMap((term) => {
       if (!term || typeof term !== "object" || Array.isArray(term)) return [];
@@ -127,7 +144,7 @@ function parseQuiz(text: string, requestedCount: number) {
     const translated = cleanGeneratedText(typeof row.translatedExplanation === "string" ? row.translatedExplanation : "", 3_000) || null;
     return [{ id: `q${index + 1}`, type: "single_choice" as const, question, choices: choices as [string, string, string, string], correctIndex, explanation, translatedExplanation: translated, scientificTerms: terms }];
   });
-  if (questions.length < Math.min(3, requestedCount)) throw new AiPlatformError("AI_QUIZ_INVALID", "لم ينتج الملف عددًا كافيًا من الأسئلة الصالحة. جرّب ملفًا أوضح.", 422);
+  if (questions.length !== requestedCount || new Set(questions.map(item => item.question.toLocaleLowerCase())).size !== requestedCount) throw new AiPlatformError("AI_QUIZ_INVALID", "لم ينتج الملف العدد المطلوب من الأسئلة الصالحة. اختر عددًا أقل أو ملفًا أوضح.", 422);
   const title = cleanGeneratedText(typeof record.title === "string" ? record.title : "", 180) || "اختبار من الملف";
   return { title, questions };
 }
@@ -146,7 +163,7 @@ export async function generateFileQuiz(input: {
     config: input.config,
     systemInstruction: `${BASE_SYSTEM}\n${input.config.instructions}`,
     contents: [{ role: "user", parts: [
-      { inlineData: { mimeType: input.contentType, data: input.bytes.toString("base64") } },
+      sourcePart(input),
       { text: prompt },
     ] }],
     responseSchema: quizSchema as unknown as Record<string, unknown>,

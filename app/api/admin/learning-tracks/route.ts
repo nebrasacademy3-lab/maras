@@ -1,3 +1,4 @@
+import { automaticIdentifier } from "@/lib/public-identifiers";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, learningTrackInterests, learningTracks, users } from "@/db/schema";
@@ -78,8 +79,8 @@ function optionalDate(value: unknown) {
   return new Date(timestamp).toISOString();
 }
 
-function readInput(payload: Record<string, unknown>): TrackInput {
-  const slug = cleanText(payload.slug, 120).toLowerCase();
+function readInput(payload: Record<string, unknown>, create = false): TrackInput {
+  const slug = cleanText(payload.slug, 120).toLowerCase() || (create ? automaticIdentifier(cleanText(payload.title, 120), "track", 120) : "");
   if (!/^[a-z0-9][a-z0-9._-]{1,119}$/.test(slug)) throw new TrackInputError("المعرّف الإنجليزي غير صالح");
   const title = cleanText(payload.title, 120);
   if (title.length < 2) throw new TrackInputError("اسم المسار مطلوب");
@@ -194,7 +195,7 @@ export async function POST(request: Request) {
     const guarded = await adminGuard(request, true);
     if (guarded.response || !guarded.user) return guarded.response;
     try {
-      const input = readInput(await requestPayload(request));
+      const input = readInput(await requestPayload(request), true);
       const now = new Date().toISOString();
       const created = await getDb().transaction(async (tx) => {
         const releaseVersion = input.status === "enrollment_open" || input.status === "available" ? 1 : 0;

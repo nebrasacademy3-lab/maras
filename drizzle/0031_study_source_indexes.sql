@@ -1,0 +1,2 @@
+CREATE INDEX "ai_files_source_user_idx" ON "ai_files" USING btree ("user_id","source_resource_id");--> statement-breakpoint
+CREATE INDEX "course_resources_lesson_idx" ON "course_resources" USING btree ("course_slug","lesson_id");

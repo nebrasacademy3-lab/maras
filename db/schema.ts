@@ -393,6 +393,7 @@ export const catalogCourses = pgTable("catalog_courses", {
 export const courseResources = pgTable("course_resources", {
   id: serial("id").primaryKey(),
   courseSlug: text("course_slug").notNull().references(() => catalogCourses.slug, { onDelete: "cascade" }),
+  lessonId: text("lesson_id").references(() => lessonsDb.id, { onDelete: "set null" }),
   title: text("title").notNull(),
   description: text("description").notNull().default(""),
   objectKey: text("object_key").notNull(),
@@ -418,6 +419,7 @@ export const courseResources = pgTable("course_resources", {
   uniqueIndex("course_resources_object_unique").on(table.objectKey),
   index("course_resources_course_idx").on(table.courseSlug, table.status, table.studentVisible, table.sortOrder),
   index("course_resources_scan_idx").on(table.scanStatus, table.status),
+  index("course_resources_lesson_idx").on(table.courseSlug, table.lessonId),
 ]);
 
 export const courseUnitsDb = pgTable("course_units", {
@@ -1083,6 +1085,8 @@ export const aiFiles = pgTable("ai_files", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   conversationId: integer("conversation_id").references(() => aiConversations.id, { onDelete: "set null" }),
+  // Tombstone retained when a course source is deleted; never turn its reference into an uploaded file.
+  sourceResourceId: integer("source_resource_id"),
   objectKey: text("object_key").notNull(),
   storageProvider: text("storage_provider").notNull().default("local"),
   originalName: text("original_name").notNull(),
@@ -1100,7 +1104,7 @@ export const aiFiles = pgTable("ai_files", {
   quarantineReason: text("quarantine_reason"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("ai_files_scan_queue_idx").on(table.scanStatus, table.scanNextAttemptAt, table.createdAt), uniqueIndex("ai_files_object_unique").on(table.objectKey), index("ai_files_user_idx").on(table.userId, table.createdAt), index("ai_files_conversation_idx").on(table.conversationId, table.createdAt)]);
+}, (table) => [index("ai_files_scan_queue_idx").on(table.scanStatus, table.scanNextAttemptAt, table.createdAt), uniqueIndex("ai_files_object_unique").on(table.objectKey), index("ai_files_user_idx").on(table.userId, table.createdAt), index("ai_files_source_user_idx").on(table.userId, table.sourceResourceId), index("ai_files_conversation_idx").on(table.conversationId, table.createdAt)]);
 
 export const aiMessages = pgTable("ai_messages", {
   id: serial("id").primaryKey(),
@@ -1224,3 +1228,42 @@ export const storeWebhookEvents = pgTable("store_webhook_events", {
   receivedAt: text("received_at").notNull(),
   processedAt: text("processed_at"),
 });
+
+
+// Shared, short leases. Provider calls never hold a PostgreSQL transaction/connection open.
+export const aiWorkLeases = pgTable("ai_work_leases", {
+  key: text("key").primaryKey(),
+  owner: text("owner").notNull(),
+  expiresAt: text("expires_at").notNull(),
+}, table => [index("ai_work_leases_expiry_idx").on(table.expiresAt)]);
+
+export const aiFileCache = pgTable("ai_file_cache", {
+  key: text("key").primaryKey(),
+  scope: text("scope").notNull(),
+  resultJson: text("result_json").notNull(),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at").notNull(),
+}, table => [index("ai_file_cache_expiry_idx").on(table.expiresAt)]);
+
+export const aiFileJobs = pgTable("ai_file_jobs", {
+  id: text("id").primaryKey(),
+  requestId: text("request_id").notNull(),
+  inputHash: text("input_hash").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  fileId: integer("file_id").notNull().references(() => aiFiles.id, { onDelete: "cascade" }),
+  conversationId: integer("conversation_id").notNull().references(() => aiConversations.id, { onDelete: "cascade" }),
+  action: text("action").notNull(),
+  client: text("client").notNull(),
+  optionsJson: text("options_json").notNull(),
+  status: text("status").notNull().default("queued"),
+  attempts: integer("attempts").notNull().default(0),
+  failures: integer("failures").notNull().default(0),
+  availableAt: text("available_at").notNull(),
+  leaseUntil: text("lease_until"),
+  leaseOwner: text("lease_owner"),
+  resultJson: text("result_json"),
+  errorCode: text("error_code"),
+  errorMessage: text("error_message"),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+}, table => [uniqueIndex("ai_file_jobs_request_unique").on(table.requestId), index("ai_file_jobs_queue_idx").on(table.status, table.availableAt), index("ai_file_jobs_user_idx").on(table.userId, table.status), index("ai_file_jobs_lease_idx").on(table.status, table.leaseUntil)]);

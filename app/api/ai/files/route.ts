@@ -1,4 +1,4 @@
-import { and, count, eq, sql } from "drizzle-orm";
+import { isNull, and, count, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiConversations, aiFiles } from "@/db/schema";
 import { jsonError } from "@/lib/api";
@@ -23,8 +23,8 @@ function boundedStorageLimit(value: string | undefined, fallback: number, minimu
 async function storedUsage(userId: number, tx?: AiFileTransaction) {
   const selection = { fileCount: count(), totalBytes: sql<string>`COALESCE(SUM(${aiFiles.sizeBytes}), 0)::text` };
   const rows = tx
-    ? await tx.select(selection).from(aiFiles).where(eq(aiFiles.userId, userId))
-    : await getDb().select(selection).from(aiFiles).where(eq(aiFiles.userId, userId));
+    ? await tx.select(selection).from(aiFiles).where(and(eq(aiFiles.userId, userId), isNull(aiFiles.sourceResourceId)))
+    : await getDb().select(selection).from(aiFiles).where(and(eq(aiFiles.userId, userId), isNull(aiFiles.sourceResourceId)));
   const [row] = rows;
   return { fileCount: Number(row?.fileCount || 0), totalBytes: Number(row?.totalBytes || 0) };
 }

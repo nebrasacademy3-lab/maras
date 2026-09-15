@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { router, useLocalSearchParams } from "expo-router";
 import React, { useMemo, useState } from "react";
 import { Alert, Pressable, StyleSheet, View } from "react-native";
+import { StudyArtifactDownload } from "@/src/components/study-file-tools";
 import { AppHeader } from "@/src/components/AppHeader";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
@@ -47,11 +48,11 @@ export default function AiConversationScreen() {
     finally { setSending(false); }
   };
 
-  const remove = () => Alert.alert("حذف المحادثة", "سيُحذف السجل والنتائج المرتبطة بهذه المحادثة من حسابك. هل أنت متأكد؟", [
+  const remove = () => Alert.alert("أرشفة المحادثة", "ستُخفى المحادثة من السجل النشط، ولا تعني الأرشفة حذف البيانات نهائيًا. هل تريد المتابعة؟", [
     { text: "إلغاء", style: "cancel" },
-    { text: "حذف", style: "destructive", onPress: () => void (async () => {
+    { text: "أرشفة", style: "destructive", onPress: () => void (async () => {
       try { await api(`/api/ai/conversations/${id}`, { method: "DELETE" }); await queryClient.invalidateQueries({ queryKey: ["ai-conversations"] }); router.replace("/(tabs)/ai"); }
-      catch (reason) { setError(reason instanceof ApiError ? reason.message : "تعذر حذف المحادثة"); }
+      catch (reason) { setError(reason instanceof ApiError ? reason.message : "تعذر أرشفة المحادثة"); }
     })() },
   ]);
 
@@ -61,7 +62,7 @@ export default function AiConversationScreen() {
 
     {!!data.files.length && <Card style={styles.filesCard}><View style={styles.filesTitle}><Ionicons name="documents-outline" size={18} color={colors.primary} /><Text style={[styles.filesTitleText, { color: colors.text }]}>ملفات المحادثة</Text></View>{data.files.map((file) => <View key={file.id} style={[styles.fileRow, { borderTopColor: colors.border }]}><View style={[styles.fileIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="document-text-outline" size={18} color={colors.primary} /></View><View style={styles.fileCopy}><Text numberOfLines={1} style={[styles.fileName, { color: colors.text }]}>{file.originalName}</Text><Text style={[styles.fileMeta, { color: colors.textSoft }]}>{(file.sizeBytes / 1024 / 1024).toFixed(1)} م.ب · {file.scanStatus}</Text></View><Ionicons name="shield-checkmark-outline" size={17} color={colors.success} /></View>)}</Card>}
 
-    {!!data.artifacts.length && <><SectionTitle title="النتائج المحفوظة" subtitle="ملخصات وترجمات هذا الملف" /><View style={styles.artifacts}>{data.artifacts.map((artifact) => <Card key={artifact.id} style={styles.artifact}><View style={styles.artifactHead}><View style={[styles.artifactIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name={artifact.kind === "summary" ? "sparkles-outline" : "language-outline"} size={20} color={colors.primary} /></View><View style={styles.artifactCopy}><Text style={[styles.artifactType, { color: colors.primary }]}>{artifact.kind === "summary" ? "ملخص" : "ترجمة"}</Text><Text style={[styles.artifactTitle, { color: colors.text }]}>{artifact.title}</Text></View></View><Text selectable style={[styles.artifactContent, { color: colors.text }]}>{artifact.content}</Text></Card>)}</View></>}
+    {!!data.artifacts.length && <><SectionTitle title="النتائج المحفوظة" subtitle="ملخصات وترجمات هذا الملف" /><View style={styles.artifacts}>{data.artifacts.map((artifact) => <Card key={artifact.id} style={styles.artifact}><View style={styles.artifactHead}><View style={[styles.artifactIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name={artifact.kind === "summary" ? "sparkles-outline" : "language-outline"} size={20} color={colors.primary} /></View><View style={styles.artifactCopy}><Text style={[styles.artifactType, { color: colors.primary }]}>{artifact.kind === "summary" ? "ملخص" : "ترجمة"}</Text><Text style={[styles.artifactTitle, { color: colors.text }]}>{artifact.title}</Text></View></View><StudyArtifactDownload id={artifact.id}/><Text selectable style={[styles.artifactContent, { color: colors.text }]}>{artifact.content}</Text></Card>)}</View></>}
 
     <SectionTitle title="المحادثة" subtitle="اسأل عن أي جزئية بصياغتك" />
     <View style={styles.messages}>{chronology.length ? chronology.map((message) => {
@@ -71,7 +72,7 @@ export default function AiConversationScreen() {
 
     <Card style={styles.composerCard}><TextInput multiline value={input} onChangeText={setInput} editable={!sending} placeholder="اكتب سؤالك لأدوات مراس…" placeholderTextColor={colors.textSoft} style={[styles.input, { color: colors.text, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} /><AppButton title={sending ? "تجهز أدوات مراس الإجابة…" : "إرسال"} icon="arrow-up-outline" loading={sending} disabled={input.trim().length < 2} onPress={() => void send()} />{error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}</Card>
 
-    <Pressable accessibilityRole="button" onPress={remove} style={[styles.deleteButton, { borderColor: `${colors.danger}55` }]}><Ionicons name="trash-outline" size={17} color={colors.danger} /><Text style={{ color: colors.danger, fontSize: 10, fontWeight: "900" }}>حذف هذه المحادثة</Text></Pressable>
+    <Pressable accessibilityRole="button" onPress={remove} style={[styles.deleteButton, { borderColor: `${colors.danger}55` }]}><Ionicons name="trash-outline" size={17} color={colors.danger} /><Text style={{ color: colors.danger, fontSize: 10, fontWeight: "900" }}>أرشفة هذه المحادثة</Text></Pressable>
   </Screen>;
 }
 

@@ -3,14 +3,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
-  ArrowUpLeft, BookOpenCheck, BrainCircuit, Check, CheckCircle2, CircleAlert,
+  BookOpenCheck, BrainCircuit, Check, CheckCircle2, CircleAlert,
   Crown, FileText, FileUp, Gauge, History, Languages, LoaderCircle, Menu,
-  MessageSquarePlus, Paperclip, Plus, Send, Sparkles, X,
+  MessageSquarePlus, Paperclip, Send, Sparkles, X,
 } from "lucide-react";
 import type {
   AiArtifactPayload, AiConversationSummary, AiFilePayload, AiMessagePayload,
-  AiQuizAttemptResult, AiQuizPayload, AiUsageStatus,
+  AiQuizPayload, AiUsageStatus,
 } from "@/lib/ai-contracts";
+import { requestStudyAction } from "@/lib/ai-job-client";
+import { StudyFileTools, StudyToolCards, type StudyAction } from "./study-file-tools";
+import { AiQuizRunner } from "./ai-quiz-runner";
+import toolStyles from "./study-tools.module.css";
 import styles from "./meras-ai-workspace.module.css";
 
 type StatusPayload = {
@@ -40,7 +44,7 @@ function sizeLabel(bytes: number) {
   return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} م.ب` : `${Math.ceil(bytes / 1024)} ك.ب`;
 }
 
-export function MerasAiWorkspace({ studentName, initialConversationId, initialQuizId, initialService = null }: { studentName: string; initialConversationId: number | null; initialQuizId: number | null; initialService?: "summary" | "translation" | "quiz" | null }) {
+function ConversationWorkspace({ studentName, initialConversationId, initialQuizId, initialService = null }: { studentName: string; initialConversationId: number | null; initialQuizId: number | null; initialService?: "summary" | "translation" | "quiz" | null }) {
   const [status, setStatus] = useState<StatusPayload | null>(null);
   const [conversations, setConversations] = useState<AiConversationSummary[]>([]);
   const [activeId, setActiveId] = useState<number | null>(initialConversationId);
@@ -48,8 +52,6 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
   const [files, setFiles] = useState<AiFilePayload[]>([]);
   const [artifacts, setArtifacts] = useState<AiArtifactPayload[]>([]);
   const [quiz, setQuiz] = useState<AiQuizPayload | null>(null);
-  const [quizAnswers, setQuizAnswers] = useState<Record<string, number>>({});
-  const [quizResults, setQuizResults] = useState<Record<string, AiQuizAttemptResult>>({});
   const [text, setText] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("العربية");
   const [questionCount, setQuestionCount] = useState(10);
@@ -72,7 +74,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
     setBusy("conversation"); setNotice(null);
     try {
       const payload = await responseJson<ConversationDetail>(await fetch(`/api/ai/conversations/${id}`, { cache: "no-store", credentials: "same-origin" }));
-      setActiveId(id); setMessages(payload.messages || []); setFiles(payload.files || []); setArtifacts(payload.artifacts || []); setQuiz(null); setQuizAnswers({}); setQuizResults({}); setSidebarOpen(false);
+      setActiveId(id); setMessages(payload.messages || []); setFiles(payload.files || []); setArtifacts(payload.artifacts || []); setQuiz(null); setSidebarOpen(false);
       window.history.replaceState(null, "", `/study-tools?conversation=${id}`);
     } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر فتح المحادثة" }); }
     finally { setBusy(""); }
@@ -82,7 +84,7 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
     setBusy("quiz"); setNotice(null);
     try {
       const payload = await responseJson<{ quiz: AiQuizPayload }>(await fetch(`/api/ai/quizzes/${id}`, { cache: "no-store", credentials: "same-origin" }));
-      setQuiz(payload.quiz); setActiveId(payload.quiz.conversationId); setQuizAnswers({}); setQuizResults({});
+      setQuiz(payload.quiz); setActiveId(payload.quiz.conversationId);
       window.history.replaceState(null, "", `/study-tools?quiz=${id}`);
     } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر فتح الاختبار" }); }
     finally { setBusy(""); }
@@ -154,25 +156,13 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
     if (busy) return;
     setBusy(`${action}:${file.id}`); setNotice(null); setQuiz(null);
     try {
-      const payload = await responseJson<{ artifact?: AiArtifactPayload; quiz?: AiQuizPayload; message: AiMessagePayload; usage: AiUsageStatus }>(await fetch(`/api/ai/files/${file.id}/actions`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, conversationId: activeId, targetLanguage, language: "العربية", questionCount, requestId: crypto.randomUUID() }) }));
+      const payload = await requestStudyAction<{ artifact?: AiArtifactPayload; quiz?: AiQuizPayload; message: AiMessagePayload; usage: AiUsageStatus }>(file.id, { action, conversationId: activeId, targetLanguage, language: "العربية", questionCount }, { onStatus: phase => setNotice({ tone: "ok", text: phase === "processing" ? "جارٍ إعداد النتيجة…" : "طلبك محفوظ في قائمة المعالجة. لا حاجة لإرساله مجددًا." }) });
       setMessages((current) => [...current, payload.message]);
       if (payload.artifact) setArtifacts((current) => [payload.artifact!, ...current]);
-      if (payload.quiz) { setQuiz(payload.quiz); setQuizAnswers({}); setQuizResults({}); window.history.replaceState(null, "", `/study-tools?quiz=${payload.quiz.id}`); }
+      if (payload.quiz) { setQuiz(payload.quiz); window.history.replaceState(null, "", `/study-tools?quiz=${payload.quiz.id}`); }
       setStatus((current) => current ? { ...current, services: { ...current.services, [action]: payload.usage } } : current);
       await loadShell();
     } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر معالجة الملف" }); }
-    finally { setBusy(""); }
-  };
-
-  const submitQuiz = async () => {
-    if (!quiz || busy) return;
-    setBusy("attempt"); setNotice(null);
-    try {
-      const answers = Object.entries(quizAnswers).map(([questionId, choiceIndex]) => ({ questionId, choiceIndex }));
-      const payload = await responseJson<{ attempt: { score: number; total: number; percent: number }; results: AiQuizAttemptResult[] }>(await fetch(`/api/ai/quizzes/${quiz.id}/attempts`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ answers }) }));
-      setQuizResults(Object.fromEntries(payload.results.map((result) => [result.questionId, result])));
-      setNotice({ tone: "ok", text: `نتيجتك ${payload.attempt.score} من ${payload.attempt.total} (${payload.attempt.percent}٪). راجع الشرح تحت كل سؤال.` });
-    } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر حفظ المحاولة" }); }
     finally { setBusy(""); }
   };
 
@@ -206,26 +196,21 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
 
         <div className={styles.content}>
           <section className={styles.chatPanel}>
-            {quiz ? <div className={styles.quizView}>
-              <header><button onClick={()=>setQuiz(null)}><ArrowUpLeft size={17}/> العودة للمحادثة</button><span><BookOpenCheck size={18}/>{quiz.questions.length} أسئلة</span></header>
-              <div className={styles.quizHero}><span><BrainCircuit size={25}/></span><div><small>اختبار تفاعلي</small><h2>{quiz.title}</h2><p>اختر إجابة كل سؤال ثم أرسل المحاولة لتظهر النتيجة والشرح.</p></div></div>
-              <div className={styles.questions}>{quiz.questions.map((question, index) => { const result=quizResults[question.id]; return <article key={question.id} className={result ? result.isCorrect ? styles.correctQuestion : styles.wrongQuestion : ""}><div className={styles.questionHead}><span>{index+1}</span><h3>{question.question}</h3></div><div className={styles.choices}>{question.choices.map((choice, choiceIndex) => <button type="button" key={choiceIndex} disabled={Boolean(result)} className={`${quizAnswers[question.id]===choiceIndex ? styles.selectedChoice : ""} ${result?.correctIndex===choiceIndex ? styles.correctChoice : ""} ${result?.selectedIndex===choiceIndex&&!result.isCorrect ? styles.wrongChoice : ""}`} onClick={()=>setQuizAnswers((current)=>({...current,[question.id]:choiceIndex}))}><i>{["أ","ب","ج","د"][choiceIndex]}</i><span>{choice}</span>{result?.correctIndex===choiceIndex ? <CheckCircle2 size={17}/> : null}</button>)}</div>{result ? <div className={styles.explanation}><b>{result.isCorrect ? "إجابة صحيحة" : "راجع الإجابة"}</b><p>{result.explanation}</p>{result.translatedExplanation ? <p>{result.translatedExplanation}</p> : null}{result.scientificTerms.length ? <div>{result.scientificTerms.map((term)=><span key={`${term.term}-${term.translation}`}>{term.term} · {term.translation}</span>)}</div> : null}</div> : null}</article>; })}</div>
-              {!Object.keys(quizResults).length ? <button className={styles.submitQuiz} disabled={busy==="attempt"} onClick={()=>void submitQuiz()}>{busy==="attempt"?<LoaderCircle className={styles.spin} size={18}/>:<CheckCircle2 size={18}/>} إرسال المحاولة</button> : <button className={styles.submitQuiz} onClick={()=>{setQuizAnswers({});setQuizResults({});setNotice(null);}}><Plus size={18}/> محاولة جديدة</button>}
-            </div> : <>
+            {quiz ? <AiQuizRunner key={quiz.id} quiz={quiz} onClose={() => setQuiz(null)}/> : <>
               {!displayMessages.length && !artifacts.length ? <div className={styles.welcome}>
                 <span className={styles.spark}><Sparkles size={31}/></span><small>مساعدك الدراسي من مراس</small><h2>كيف أساعدك اليوم؟</h2><p>اسأل عن فكرة، أو ارفع شرائحك لتحصل على ملخص وترجمة واختبار تفاعلي.</p>
                 <div className={styles.starters}><button onClick={()=>setText("اشرح لي مفهومًا صعبًا بطريقة مبسطة مع مثال")}>اشرح لي ببساطة</button><button onClick={()=>fileInput.current?.click()}>لخّص ملف المحاضرة</button><button onClick={()=>fileInput.current?.click()}>أنشئ اختبارًا من الشرائح</button></div>
               </div> : null}
               <div className={styles.messages}>{displayMessages.map((message) => <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.aiMessage}>{message.role === "assistant" ? <span><Sparkles size={16}/></span> : null}<div><small>{message.role === "assistant" ? "أدوات مراس" : "أنت"}</small><p>{message.content}</p></div></article>)}{busy==="chat" ? <article className={styles.aiMessage}><span><Sparkles size={16}/></span><div><small>أدوات مراس</small><p className={styles.thinking}><i/><i/><i/></p></div></article> : null}<div ref={endRef}/></div>
-              {artifacts.length ? <div className={styles.artifacts}><h3><FileText size={17}/> نتائج محفوظة</h3>{artifacts.map((artifact)=><details key={artifact.id}><summary><span>{artifact.kind === "summary" ? <BookOpenCheck size={17}/> : <Languages size={17}/>}<b>{artifact.title}</b></span><small>{new Date(artifact.createdAt).toLocaleDateString("ar-SA")}</small></summary><pre>{artifact.content}</pre></details>)}</div> : null}
+              {artifacts.length ? <div className={styles.artifacts}><h3><FileText size={17}/> نتائج محفوظة</h3>{artifacts.map((artifact)=><details key={artifact.id}><summary><span>{artifact.kind === "summary" ? <BookOpenCheck size={17}/> : <Languages size={17}/>}<b>{artifact.title}</b></span><small>{new Date(artifact.createdAt).toLocaleDateString("ar-SA")}</small></summary><a className={toolStyles.primary} href={`/api/ai/artifacts/${artifact.id}/download`}>تنزيل ملف Word · مراس العلم</a><pre>{artifact.content}</pre></details>)}</div> : null}
             </>}
           </section>
 
           <aside className={styles.toolsPanel}>
-            <div className={styles.toolsHeading}><span><Sparkles size={17}/></span><div><b>أدوات الملفات</b><small>{initialService === "summary" ? "ارفع ملفك ثم اضغط «تلخيص»" : initialService === "translation" ? "ارفع الشرائح ثم اضغط «ترجمة»" : initialService === "quiz" ? "ارفع المحاضرة ثم اضغط «اختبار»" : "PDF أو صور أو نصوص"}</small></div></div>
-            <input ref={fileInput} hidden type="file" accept=".pdf,.png,.jpg,.jpeg,.txt,.md" onChange={(event)=>void upload(event.target.files?.[0])}/>
+            <div className={styles.toolsHeading}><span><Sparkles size={17}/></span><div><b>أدوات الملفات</b><small>{initialService === "summary" ? "ارفع ملفك ثم اضغط «تلخيص»" : initialService === "translation" ? "ارفع الشرائح ثم اضغط «ترجمة»" : initialService === "quiz" ? "ارفع المحاضرة ثم اضغط «اختبار»" : "PDF · Word · PowerPoint · صور · نصوص"}</small></div></div>
+            <input ref={fileInput} hidden type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg,.txt,.md" onChange={(event)=>void upload(event.target.files?.[0])}/>
             <button className={styles.uploadButton} onClick={()=>fileInput.current?.click()} disabled={busy==="upload"}>{busy==="upload"?<LoaderCircle className={styles.spin} size={22}/>:<FileUp size={22}/>}<span><b>ارفع ملف المحاضرة</b><small>مع فحص أمني قبل المعالجة</small></span></button>
-            <p className={styles.fileGuidance}><CircleAlert size={14}/>{status?.documentGuidance.message || "صدّر PowerPoint أو Word إلى PDF أولًا للحفاظ على الشرائح والمخططات والجداول بدقة."}</p>
+            <p className={styles.fileGuidance}><CircleAlert size={14}/>{status?.documentGuidance.message || "يمكن رفع DOCX وPPTX مباشرة لقراءة نصوصهما. للمخططات والصور داخل الشرائح استخدم PDF."}</p>
             <label className={styles.languageField}>لغة الترجمة<input value={targetLanguage} maxLength={60} onChange={(event)=>setTargetLanguage(event.target.value)} /></label>
             <label className={styles.questionField}>عدد أسئلة الاختبار<div><input type="range" min="5" max="20" value={questionCount} onChange={(event)=>setQuestionCount(Number(event.target.value))}/><b>{questionCount}</b></div></label>
             <div className={styles.fileList}>{files.map((file)=><article key={file.id}><header><span><Paperclip size={16}/></span><div><b>{file.originalName}</b><small>{sizeLabel(file.sizeBytes)} · {file.scanStatus === "clean" ? "آمن" : "قيد الفحص"}</small></div></header><div><button className={initialService==="summary"?styles.suggestedAction:""} disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"summary")}><BookOpenCheck size={15}/> تلخيص</button><button className={initialService==="translation"?styles.suggestedAction:""} disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"translation")}><Languages size={15}/> ترجمة</button><button className={initialService==="quiz"?styles.suggestedAction:""} disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"quiz")}><BrainCircuit size={15}/> اختبار</button></div>{busy.endsWith(`:${file.id}`)?<p><LoaderCircle className={styles.spin} size={15}/> يجري تحليل الملف بدقة…</p>:null}</article>)}</div>
@@ -237,4 +222,14 @@ export function MerasAiWorkspace({ studentName, initialConversationId, initialQu
       </div>
     </section>
   </div>;
+}
+
+
+type WorkspaceProps = { studentName: string; initialConversationId: number | null; initialQuizId: number | null; initialService?: StudyAction | null };
+export function MerasAiWorkspace(props: WorkspaceProps) {
+  const [mode, setMode] = useState<StudyAction | "chat" | null>(props.initialConversationId || props.initialQuizId ? "chat" : props.initialService || null);
+  return <div dir="rtl"><section className={toolStyles.page}>
+    <header className={toolStyles.hero}><div><span className={toolStyles.eyebrow}><Sparkles size={18}/> أدوات مراس</span><h1>من المحاضرة إلى الفهم</h1><p>اختر أداتك، وارفع ملفك، ثم راجع نتيجة محفوظة في حسابك.</p></div><div className={toolStyles.actions}>{mode && <button className={toolStyles.secondary} onClick={() => setMode(null)}>كل الأدوات</button>}<Link className={toolStyles.secondary} href="/dashboard">العودة إلى لوحة الطالب</Link></div></header>
+    {!mode ? <StudyToolCards includeChat onSelect={setMode}/> : mode !== "chat" ? <StudyFileTools key={mode} action={mode} onBack={() => setMode(null)}/> : null}
+  </section>{mode === "chat" && <ConversationWorkspace {...props}/>}</div>;
 }

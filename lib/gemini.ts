@@ -1,4 +1,5 @@
 import "server-only";
+import { acquireAiProviderSlot, deferAiProvider } from "@/lib/ai-work-control";
 import { asc, eq } from "drizzle-orm";
 import { createHash } from "node:crypto";
 import { getDb } from "@/db";
@@ -100,6 +101,8 @@ export async function generateGeminiContent(input: {
   const attemptTimeoutMs = boundedRuntimeMs(process.env.AI_GEMINI_ATTEMPT_TIMEOUT_MS, 35_000, 5_000, 60_000);
   const deadline = Date.now() + overallTimeoutMs;
   let lastError = new GeminiProviderError(503, "AI_PROVIDER_UNAVAILABLE");
+  const releaseProvider = await acquireAiProviderSlot();
+  try {
   for (const candidate of candidates) {
     const remainingMs = deadline - Date.now();
     if (remainingMs < 1_000) break;
@@ -122,6 +125,11 @@ export async function generateGeminiContent(input: {
       if (!(error instanceof GeminiProviderError)) throw error;
       lastError = error;
       await markFailure(candidate, error);
+      // Keys in the same Google project share quotas. Never multiply a 429 burst across keys.
+      if (error.providerStatus === 429) {
+        await deferAiProvider(error.retryAfterSeconds || (error.code === "AI_QUOTA_EXHAUSTED" ? 3600 : 60));
+        throw error;
+      }
       if (error.retryable) continue;
       throw error;
     }
@@ -137,4 +145,5 @@ export async function generateGeminiContent(input: {
     };
   }
   throw lastError;
+  } finally { await releaseProvider().catch(() => undefined); }
 }

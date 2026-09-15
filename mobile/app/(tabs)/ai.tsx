@@ -1,3 +1,5 @@
+import { StudyArtifactDownload } from "@/src/components/study-file-tools";
+import { requestStudyAction } from "@/src/lib/study-jobs";
 import { StorePurchases } from "@/src/components/StorePurchases";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -116,7 +118,8 @@ export default function MerasAiScreen() {
         questionCount: action === "quiz" ? 10 : undefined,
         requestId: `mobile-${action}-${upload.file.id}-${Date.now()}`,
       };
-      const response = await api<ActionResponse>(`/api/ai/files/${upload.file.id}/actions`, { method: "POST", body: jsonBody(payload), timeoutMs: 4 * 60_000 });
+      const controller = new AbortController(); abortRef.current = controller;
+      const response = await requestStudyAction<ActionResponse>(upload.file.id, payload, { signal: controller.signal, onJob: async () => undefined, onStatus: phase => setMessage(phase === "processing" ? "جارٍ إعداد النتيجة…" : "طلبك محفوظ في قائمة المعالجة.") });
       if (response.action === "quiz") router.push({ pathname: "/ai/quiz/[id]", params: { id: String(response.quiz.id) } });
       else { setArtifact(response.artifact); setMessage(action === "summary" ? "اكتمل الملخص وحُفظ في سجلك." : "اكتملت الترجمة وحُفظت في سجلك."); }
       await Promise.all([
@@ -139,8 +142,8 @@ export default function MerasAiScreen() {
     <SectionTitle title="ماذا تريد أن تنجز؟" subtitle="اختر الأداة، ثم ارفع ملف PDF أو عرضًا مدعومًا" />
     <View style={styles.services}>{serviceCards.map((item) => {
       const usage = ai.services[item.service];
-      const disabled = !usage.enabled || usage.remaining <= 0;
-      return <Pressable key={item.service} disabled={disabled || Boolean(busyAction)} onPress={() => item.service === "chat" ? void createChat() : void pickAndUpload()} style={({ pressed }) => [styles.servicePressable, { backgroundColor: colors.surface, borderColor: colors.border, opacity: disabled ? .48 : pressed ? .86 : 1, transform: [{ scale: pressed ? .985 : 1 }] }]}>
+      const disabled = !usage.enabled || item.service === "chat" && usage.remaining <= 0;
+      return <Pressable key={item.service} disabled={disabled || Boolean(busyAction)} onPress={() => item.service === "chat" ? void createChat() : router.push({ pathname: "/ai/tool/[action]", params: { action: item.service } })} style={({ pressed }) => [styles.servicePressable, { backgroundColor: colors.surface, borderColor: colors.border, opacity: disabled ? .48 : pressed ? .86 : 1, transform: [{ scale: pressed ? .985 : 1 }] }]}>
         <LinearGradient colors={item.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.serviceIcon}><Ionicons name={item.icon} size={23} color="#FFF" /></LinearGradient>
         <View style={styles.serviceCopy}><Text style={[styles.serviceTitle, { color: colors.text }]}>{item.title}</Text><Text style={[styles.serviceText, { color: colors.textSoft }]}>{disabled ? (!usage.enabled ? "موقوف مؤقتًا من الإدارة" : "اكتمل حدك لهذا الشهر") : item.text}</Text></View>
         <View style={[styles.remaining, { backgroundColor: colors.surfaceAlt }]}><Text style={{ color: colors.primary }}>{usage.remaining}</Text><Ionicons name="chevron-back" size={13} color={colors.primary} /></View>
@@ -163,7 +166,7 @@ export default function MerasAiScreen() {
       {message ? <Text style={[styles.message, { color: message.startsWith("تعذر") || message.includes("يتجاوز") ? colors.danger : colors.success }]}>{message}</Text> : null}
     </Card>
 
-    {artifact ? <Card style={styles.artifact}><View style={styles.artifactHead}><View><Text style={[styles.artifactEyebrow, { color: colors.primary }]}>{artifact.kind === "summary" ? "الملخص" : "الترجمة"}</Text><Text style={[styles.artifactTitle, { color: colors.text }]}>{artifact.title}</Text></View><Ionicons name="bookmark" size={20} color={colors.primary} /></View><Text selectable style={[styles.artifactContent, { color: colors.text }]}>{artifact.content}</Text>{artifact.conversationId ? <AppButton title="فتح السجل الكامل" variant="ghost" icon="time-outline" onPress={() => router.push({ pathname: "/ai/conversation/[id]", params: { id: String(artifact.conversationId) } })} /> : null}</Card> : null}
+    {artifact ? <Card style={styles.artifact}><View style={styles.artifactHead}><View><Text style={[styles.artifactEyebrow, { color: colors.primary }]}>{artifact.kind === "summary" ? "الملخص" : "الترجمة"}</Text><Text style={[styles.artifactTitle, { color: colors.text }]}>{artifact.title}</Text></View><Ionicons name="bookmark" size={20} color={colors.primary} /></View><StudyArtifactDownload id={artifact.id}/><Text selectable style={[styles.artifactContent, { color: colors.text }]}>{artifact.content}</Text>{artifact.conversationId ? <AppButton title="فتح السجل الكامل" variant="ghost" icon="time-outline" onPress={() => router.push({ pathname: "/ai/conversation/[id]", params: { id: String(artifact.conversationId) } })} /> : null}</Card> : null}
 
     <SectionTitle title="سجل أدوات مراس" subtitle="ارجع إلى محادثاتك وملفاتك من أي جهاز" action={<Pressable onPress={() => void conversations.refetch()}><Ionicons name="refresh-outline" size={19} color={colors.primary} /></Pressable>} />
     {conversations.isLoading ? <LoadingState label="تحميل السجل…" /> : conversations.data?.conversations.length ? <View style={styles.history}>{conversations.data.conversations.slice(0, 8).map((row) => <Pressable key={row.id} onPress={() => router.push({ pathname: "/ai/conversation/[id]", params: { id: String(row.id) } })} style={({ pressed }) => [styles.historyRow, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .8 : 1 }]}><View style={[styles.historyIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name={row.kind === "chat" ? "chatbubble-ellipses-outline" : "document-text-outline"} size={20} color={colors.primary} /></View><View style={styles.historyCopy}><Text numberOfLines={1} style={[styles.historyTitle, { color: colors.text }]}>{row.title}</Text><Text numberOfLines={2} style={[styles.historyPreview, { color: colors.textSoft }]}>{row.preview || "افتح لمشاهدة المحتوى المحفوظ"}</Text></View><Ionicons name="chevron-back" size={17} color={colors.textSoft} /></Pressable>)}</View> : <EmptyState icon="chatbubbles-outline" title="سجلك يبدأ من هنا" text="أنشئ محادثة أو ارفع أول ملف، وسيُحفظ كل شيء تلقائيًا." />}
