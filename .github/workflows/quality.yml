@@ -3,7 +3,7 @@ name: Quality gates
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, implement/plan-v7-20260916]
 
 concurrency:
   group: quality-${{ github.workflow }}-${{ github.ref }}
@@ -44,6 +44,14 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install exact dependencies
         run: npm ci --no-audit --no-fund
+      - name: Inspect installed framework conventions
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync, existsSync } from 'node:fs';
+          for (const file of ['node_modules/next/dist/docs/01-app/02-guides/authentication.md','node_modules/next/dist/docs/01-app/03-api-reference/04-functions/revalidatePath.md']) {
+            if (existsSync(file)) console.log(`FRAMEWORK GUIDE ${file}\n${readFileSync(file,'utf8').split('\n').slice(0,140).join('\n')}`);
+          }
+          NODE
       - name: Lint web
         run: npm run lint
       - name: Build production web
@@ -65,8 +73,6 @@ jobs:
           path: |
             .data/study-browser/
             .data/platform-browser/
-            .data/study-server.log
-            .data/study-worker.log
           retention-days: 7
 
   mobile:
