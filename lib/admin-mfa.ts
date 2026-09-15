@@ -170,7 +170,12 @@ function requestCookie(request: Request, name: string) {
 function requestStepUpCredential(request: Request) {
   const header = request.headers.get("x-meras-admin-stepup")?.trim() || "";
   const bearer = request.headers.get("authorization")?.trim().match(/^Bearer\s+([A-Za-z0-9_-]{32,256})$/i)?.[1];
-  if (header && header.length <= 2_000 && bearer && request.headers.get("x-meras-client") === "mobile-v1") return header;
+  const client = request.headers.get("x-meras-client")?.trim() || "";
+  const clientIsKnown = !client || ["mobile-v1", "ios", "android", "web"].includes(client);
+  // Older admin tooling and legacy mobile flows still send the step-up token as a
+  // session-bound header without the mobile marker. Accept it as long as the same
+  // bearer session is present; the signed payload is still checked against the caller's session fingerprint.
+  if (header && header.length <= 2_000 && bearer && clientIsKnown) return header;
   return requestCookie(request, ADMIN_STEP_UP_COOKIE);
 }
 

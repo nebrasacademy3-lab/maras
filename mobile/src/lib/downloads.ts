@@ -1,6 +1,6 @@
 import * as FileSystem from "expo-file-system/legacy";
 import { Platform } from "react-native";
-import { apiRequestUrl, ApiError, getApiToken } from "@/src/lib/api";
+import { apiRequestUrl, ApiError, getAdminStepUpToken, getApiToken } from "@/src/lib/api";
 
 export type ProtectedDownloadResult = {
   action: "opened" | "saved" | "shared" | "stored" | "cancelled";
@@ -30,10 +30,12 @@ function safeFileName(value: string) {
 
 function authHeaders(): Record<string, string> {
   const token = getApiToken();
+  const stepUpToken = getAdminStepUpToken();
   return {
     "x-meras-client": "mobile-v1",
     "x-meras-platform": Platform.OS,
     ...(token ? { authorization: `Bearer ${token}` } : {}),
+    ...(stepUpToken ? { "x-meras-admin-stepup": stepUpToken } : {}),
   };
 }
 

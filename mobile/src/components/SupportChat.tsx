@@ -13,10 +13,10 @@ import * as FileSystem from "expo-file-system/legacy";
 import { Image } from "expo-image";
 import * as Linking from "expo-linking";
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { absoluteUrl, apiUpload, ApiError, getApiToken } from "@/src/lib/api";
+import { absoluteUrl, apiUpload, ApiError, getAdminStepUpToken, getApiToken } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import { useNotifications } from "@/src/providers/NotificationProvider";
@@ -34,7 +34,16 @@ type Props = {
 function isImage(file: SupportFile) { return file.contentType.startsWith("image/"); }
 function isAudio(file: SupportFile) { return file.contentType.startsWith("audio/"); }
 function formatBytes(bytes: number) { if (!bytes) return ""; if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`; return `${(bytes / 1024 / 1024).toFixed(1)} MB`; }
-function authHeaders(): Record<string, string> { const token = getApiToken(); return token ? { authorization: `Bearer ${token}` } : {}; }
+function authHeaders(): Record<string, string> {
+  const token = getApiToken();
+  const stepUpToken = getAdminStepUpToken();
+  return {
+    "x-meras-client": "mobile-v1",
+    "x-meras-platform": Platform.OS,
+    ...(token ? { authorization: `Bearer ${token}` } : {}),
+    ...(stepUpToken ? { "x-meras-admin-stepup": stepUpToken } : {}),
+  };
+}
 
 function AudioAttachment({ file, mine }: { file: SupportFile; mine: boolean }) {
   const { colors } = useTheme();
