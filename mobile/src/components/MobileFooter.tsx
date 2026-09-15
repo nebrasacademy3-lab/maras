@@ -7,13 +7,11 @@ import { ScaledText as Text } from "@/src/components/ScaledText";
 import { api } from "@/src/lib/api";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
-import { useNotifications } from "@/src/providers/NotificationProvider";
 import { BrandLogo } from "@/src/components/Brand";
 import type { PublicSettings } from "@/src/types";
 import { mobileSocialLinks } from "@/src/lib/public-social-links";
 
 export function MobileFooter() {
-  const { error } = useNotifications();
   const { colors } = useTheme();
   const { direction, rowDirection, isRTL } = useLanguage();
   const settingsQuery = useQuery({ queryKey: ["settings"], queryFn: () => api<{ settings: PublicSettings }>("/api/public/settings"), staleTime: 5_000 });
@@ -38,7 +36,7 @@ export function MobileFooter() {
     {settings && (settings.ios_app_url || settings.android_app_url) ? <View style={styles.storeSection}><Text style={[styles.storeTitle, { color: colors.text }]}>{settings.app_download_title}</Text><Text style={[styles.storeCopy, { color: colors.textSoft }]}>{settings.app_download_description}</Text><View style={[styles.stores, { flexDirection: rowDirection }]}>{settings.ios_app_url ? <Pressable onPress={() => Linking.openURL(settings.ios_app_url)} style={({ pressed }) => [styles.store, { flexDirection: rowDirection, opacity: pressed ? .72 : 1 }]}><Ionicons name="logo-apple" size={20} color="#FFF" /><View><Text style={styles.storeSmall}>حمّل التطبيق من</Text><Text style={styles.storeName}>App Store</Text></View></Pressable> : null}{settings.android_app_url ? <Pressable onPress={() => Linking.openURL(settings.android_app_url)} style={({ pressed }) => [styles.store, { flexDirection: rowDirection, opacity: pressed ? .72 : 1 }]}><Ionicons name="logo-google-playstore" size={20} color="#FFF" /><View><Text style={styles.storeSmall}>حمّل التطبيق من</Text><Text style={styles.storeName}>Google Play</Text></View></Pressable> : null}</View></View> : null}
     {settings && <View style={[styles.actions, { flexDirection: rowDirection }]}>
       {settings.support_email ? <Pressable onPress={() => Linking.openURL(`mailto:${settings.support_email}`)} style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="button" accessibilityLabel="البريد الإلكتروني"><Ionicons name="mail-outline" size={17} color={colors.primary} /></Pressable> : null}
-      {socials.map((item) => <Pressable key={item.id} onPress={() => void Linking.openURL(item.url).catch(() => error(isRTL ? "تعذر فتح الرابط" : "Could not open link", isRTL ? "تحقق من اتصالك ثم حاول مرة أخرى." : "Check your connection and try again."))}  style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="link" accessibilityLabel={isRTL ? item.labelAr : item.label}><Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={20} color={colors.primary} /></Pressable>)}
+      {socials.map((item) => <Pressable key={item.id} onPress={() => void Linking.openURL(item.url).catch(() => Alert.alert(isRTL ? "تعذر فتح الرابط" : "Could not open link", isRTL ? "تحقق من اتصالك ثم حاول مرة أخرى." : "Check your connection and try again."))} style={({ pressed }) => [styles.action, { backgroundColor: colors.surface, borderColor: colors.border, opacity: pressed ? .65 : 1 }]} accessibilityRole="link" accessibilityLabel={isRTL ? item.labelAr : item.label}><Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={20} color={colors.primary} /></Pressable>)}
     </View>}
     <View style={[styles.legalBox, { backgroundColor: colors.surface, borderColor: colors.border }]}>
       <View style={[styles.legalHead, { flexDirection: rowDirection }]}>

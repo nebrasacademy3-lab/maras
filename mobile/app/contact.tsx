@@ -12,10 +12,8 @@ import { useTheme } from "@/src/providers/ThemeProvider";
 import type { PublicSettings } from "@/src/types";
 import { mobileSocialLinks } from "@/src/lib/public-social-links";
 import { useLanguage } from "@/src/providers/LanguageProvider";
-import { useNotifications } from "@/src/providers/NotificationProvider";
 
 export default function Contact() {
-  const { error } = useNotifications();
   const { colors } = useTheme();
   const { isRTL, rowDirection } = useLanguage();
   const settings = useQuery({
@@ -55,7 +53,7 @@ export default function Contact() {
         key={item.id}
         accessibilityRole="link"
         accessibilityLabel={isRTL ? item.labelAr : item.label}
-        onPress={() => void Linking.openURL(item.url).catch(() => error(isRTL ? "تعذر فتح الرابط" : "Could not open link", isRTL ? "تحقق من اتصالك ثم حاول مرة أخرى." : "Check your connection and try again."))}
+        onPress={() => void Linking.openURL(item.url).catch(() => Alert.alert(isRTL ? "تعذر فتح الرابط" : "Could not open link", isRTL ? "تحقق من اتصالك ثم حاول مرة أخرى." : "Check your connection and try again."))}
         style={[styles.social, { backgroundColor: colors.surface, borderColor: colors.border, flexDirection: rowDirection }]}
       >
         <Ionicons name={item.icon as keyof typeof Ionicons.glyphMap} size={20} color={colors.primary} />

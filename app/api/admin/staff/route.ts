@@ -7,11 +7,6 @@ import { auditLogs, authSessions, pushDevices, supervisorAssignments, users } fr
 import { checkRateLimit, clientIp, getSessionUser, hashPassword, roleAllowed, sameOriginRequest, validEmail, validPassword, validSaudiPhone } from "@/lib/auth";
 import { cleanText, isAdminRequest, jsonError, normalizePhone } from "@/lib/api";
 import { getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
-function isConfiguredSuperAdmin(user: { email: string; role: string } | null | undefined) {
-  if (!user || user.role !== "admin") return false;
-  const configured = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
-  return configured ? user.email.toLowerCase() === configured : process.env.NODE_ENV !== "production";
-}
 
 function canonicalPhone(value: string) {
   const digits = normalizePhone(value).replace(/\D/g, "");
@@ -53,7 +48,7 @@ export async function POST(request: Request) {
   const machineAuthorized = isAdminRequest(request);
   if (!machineAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const session = machineAuthorized ? null : await getSessionUser(request);
-  if (!machineAuthorized && (!roleAllowed(session, ["admin"]) || !isConfiguredSuperAdmin(session))) return jsonError("إدارة الموظفين محصورة بالمدير الأعلى", 403);
+  if (!roleAllowed(session, ["admin"])) return jsonError("غير مصرح", 401);
 
   const identity = machineAuthorized ? `machine:${clientIp(request)}` : `user:${session!.id}`;
   if (!await checkRateLimit("admin-staff", identity, 20, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
@@ -87,7 +82,6 @@ export async function POST(request: Request) {
   const [existing] = await db.select().from(users).where(or(eq(users.email, email), eq(users.phone, phone))).limit(1);
   const now = new Date().toISOString();
   const actor = session?.email || "admin-api-token";
-  if (existing && process.env.SUPER_ADMIN_EMAIL?.trim() && isConfiguredSuperAdmin(existing) && session?.id !== existing.id) return jsonError("لا يمكن تعديل أو تعطيل المدير الأعلى", 403);
 
   if (existing) {
     const emailMatches = existing.email.toLowerCase() === email;

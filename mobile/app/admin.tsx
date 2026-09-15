@@ -22,7 +22,6 @@ import { assetMimeType } from "@/src/lib/file-types";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
-import { useNotifications } from "@/src/providers/NotificationProvider";
 import type { Course, Institution, SupportTicket } from "@/src/types";
 
 const LazySupportChat = React.lazy(async () => {
@@ -137,7 +136,6 @@ export default function Admin() {
   const { user } = useAuth();
   const { colors } = useTheme();
   const { language, direction, rowDirection } = useLanguage();
-  const { info, success, error, confirm } = useNotifications();
   const client = useQueryClient();
   const [tab, setTab] = useState<Tab>("overview");
   const [message, setMessage] = useState("");
@@ -152,34 +150,31 @@ export default function Admin() {
   const stepUpRequired = (detail?: string) => {
     setMessage(ADMIN_STEP_UP_MESSAGE);
     setTab("security");
-    info(language === "ar" ? "التحقق الإداري مطلوب" : "Admin verification required", detail || ADMIN_STEP_UP_MESSAGE);
+    Alert.alert(language === "ar" ? "التحقق الإداري مطلوب" : "Admin verification required", detail || ADMIN_STEP_UP_MESSAGE);
   };
-  const mutate: Mutate = async (payload, successMessage = "تم حفظ التغيير") => {
+  const mutate: Mutate = async (payload, success = "تم حفظ التغيير") => {
     setMessage("");
     try {
       await api("/api/admin/console", { method: "POST", body: jsonBody(payload) });
-      setMessage(successMessage);
-      success(language === "ar" ? "اكتملت العملية" : "Operation completed", successMessage);
+      setMessage(success);
       if (payload.action === "saveSettings") await client.invalidateQueries({ queryKey: ["settings"], refetchType: "active" });
       await refresh();
       return true;
     }
     catch (reason) {
       if (isAdminStepUpError(reason)) { stepUpRequired(reason.message); return false; }
-      const detail = reason instanceof ApiError ? reason.message : "تعذر تنفيذ الإجراء";
-      setMessage(detail);
-      error(language === "ar" ? "تعذر تنفيذ العملية" : "Operation failed", detail);
+      setMessage(reason instanceof ApiError ? reason.message : "تعذر تنفيذ الإجراء");
       return false;
     }
   };
-  const deleteEntity: DeleteEntity = (entityType, entityId, label, impact) => {
-    void confirm({
-      title: language === "ar" ? "تأكيد الحذف النهائي" : "Confirm permanent deletion",
-      message: language === "ar" ? `سيُحذف «${label}» نهائيًا.\n\n${impact}\n\nلن تُحذف الطلبات أو الفواتير أو أحداث الدفع، وتبقى سجلات التدقيق محفوظة.` : `Delete “${label}” permanently?\n\nThe selected non-financial data will be removed. Orders, invoices, payment events and audit logs are retained when required.`,
-      confirmLabel: language === "ar" ? "حذف نهائي" : "Delete permanently",
-      danger: true,
-    }).then((answer) => { if (answer) return mutate({ action: "deleteEntity", entityType, entityId: String(entityId), confirmation: "حذف" }, "تم الحذف النهائي وتحديث البيانات"); return false; });
-  };
+  const deleteEntity: DeleteEntity = (entityType, entityId, label, impact) => Alert.alert(
+    language === "ar" ? "تأكيد الحذف النهائي" : "Confirm permanent deletion",
+    language === "ar" ? `سيُحذف «${label}» نهائيًا.\n\n${impact}\n\nلن تُحذف الطلبات أو الفواتير أو أحداث الدفع، وتبقى سجلات التدقيق محفوظة.` : `Delete “${label}” permanently?\n\nThe selected non-financial data will be removed. Orders, invoices, payment events and audit logs are retained when required.`,
+    [
+      { text: language === "ar" ? "إلغاء" : "Cancel", style: "cancel" },
+      { text: language === "ar" ? "حذف نهائي" : "Delete permanently", style: "destructive", onPress: () => void mutate({ action: "deleteEntity", entityType, entityId: String(entityId), confirmation: "حذف" }, "تم الحذف النهائي وتحديث البيانات") },
+    ],
+  );
 
   if (user?.role !== "admin") return <Screen><AppHeader title="لوحة الإدارة" back /><EmptyState icon="lock-closed-outline" title="غير مصرح" text="هذه الصفحة متاحة للحسابات الإدارية فقط، ولا توجد حسابات تجريبية عامة." /></Screen>;
   if (query.isLoading) return <Screen><LoadingState label="جارٍ تحميل مركز التحكم..." /></Screen>;
@@ -303,17 +298,19 @@ function AdminRequestStatus({ status, colors }: { status: string; colors: Colors
 
 function Requests({ rows, courses, colors, mutate, onDelete }: { rows: AdminData["requests"]; courses: AdminData["courses"]; colors: Colors; mutate: Mutate; onDelete: DeleteEntity }) {
   const { language } = useLanguage();
-  const { success, error } = useNotifications();
   const [selectedCourses, setSelectedCourses] = useState<Record<number, string>>({});
   const [query, setQuery] = useState("");
   const visibleRows = rows.filter((row) => !query.trim() || `${row.courseName} ${row.student?.fullName || ""} ${row.student?.email || ""} ${row.university} ${row.specialty}`.toLowerCase().includes(query.trim().toLowerCase()));
   const downloadProtected = async (path: string, name: string, mimeType?: string, saveToFiles = false) => {
     try {
       const result = await downloadProtectedFile({ path, fileName: name, mimeType, saveToFiles });
-      if (result.action === "saved") success(language === "ar" ? "اكتمل التنزيل" : "Download complete", language === "ar" ? "تم حفظ الملف في المجلد الذي اخترته." : "The file was saved in the folder you selected.");
-      else if (result.action === "stored") success(language === "ar" ? "اكتمل التنزيل" : "Download complete", language === "ar" ? "تم تنزيل الملف وحفظه داخل مساحة تطبيق مراس." : "The file was downloaded to Meras app storage.");
+      if (result.action === "saved") Alert.alert(language === "ar" ? "اكتمل التنزيل" : "Download complete", language === "ar" ? "تم حفظ الملف في المجلد الذي اخترته." : "The file was saved in the folder you selected.");
+      else if (result.action === "stored") Alert.alert(language === "ar" ? "اكتمل التنزيل" : "Download complete", language === "ar" ? "تم تنزيل الملف وحفظه داخل مساحة تطبيق مراس." : "The file was downloaded to Meras app storage.");
     } catch (reason) {
-      error(language === "ar" ? "تعذر التنزيل" : "Download failed", language === "ar" && reason instanceof ApiError ? reason.message : language === "ar" ? "تعذر تنزيل الملف. تحقق من الاتصال وحاول مرة أخرى." : "The file could not be downloaded. Check your connection and try again.");
+      Alert.alert(
+        language === "ar" ? "تعذر التنزيل" : "Download failed",
+        language === "ar" && reason instanceof ApiError ? reason.message : language === "ar" ? "تعذر تنزيل الملف. تحقق من الاتصال وحاول مرة أخرى." : "The file could not be downloaded. Check your connection and try again.",
+      );
     }
   };
   const openFile = async (file: { id: number; originalName: string; contentType: string }) => downloadProtected(`/api/supervisor/request-files/${file.id}`, `request-file-${file.id}-${file.originalName}`, file.contentType);
@@ -379,7 +376,6 @@ function Support({ rows, colors, mutate, refresh, onDelete }: { rows: AdminData[
 
 function CatalogAdmin({ data, colors, mutate, refresh, onDelete }: { data: AdminData; colors: Colors; mutate: Mutate; refresh: () => Promise<void>; onDelete: DeleteEntity }) {
   const { t } = useLanguage();
-  const { success, error } = useNotifications();
   const [institution, setInstitution] = useState({ slug: "", name: "", nameEn: "", region: "", type: "حكومية", domain: "", logoUrl: "" });
   const [logo, setLogo] = useState<DocumentPicker.DocumentPickerAsset | null>(null);
   const [specialty, setSpecialty] = useState({ slug: "", name: "", description: "", institutionSlug: "" });
@@ -439,9 +435,9 @@ function CatalogAdmin({ data, colors, mutate, refresh, onDelete }: { data: Admin
       if (result.status < 200 || result.status >= 300) throw new Error(payload.error || "تعذر رفع الفيديو");
       setVideo(null); setVideoLessonId(""); await refresh();
       const durationMessage = payload.asset?.durationSeconds ? `حُسبت المدة تلقائيًا: ${Math.floor(payload.asset.durationSeconds / 60)}:${String(payload.asset.durationSeconds % 60).padStart(2, "0")}` : "تم ربط الفيديو بالدرس.";
-      success(t("تم رفع الفيديو"), t(`${durationMessage}\n${payload.processing?.message || "بدأ تجهيز الجودات المتعددة تلقائيًا."}`));
+      Alert.alert(t("تم رفع الفيديو"), t(`${durationMessage}\n${payload.processing?.message || "بدأ تجهيز الجودات المتعددة تلقائيًا."}`));
     } catch (reason) {
-      error(t("تعذر رفع الفيديو"), t(reason instanceof Error ? reason.message : "تحقق من الاتصال وحاول مرة أخرى"));
+      Alert.alert(t("تعذر رفع الفيديو"), t(reason instanceof Error ? reason.message : "تحقق من الاتصال وحاول مرة أخرى"));
     } finally { setVideoBusy(false); }
   };
   return <>

@@ -30,14 +30,6 @@
 .admin-app .admin-content { padding: 28px clamp(16px, 3vw, 38px) 60px; }
 .admin-app .admin-page-title p { font-size: calc(12px * var(--font-scale, 1)); }
 .admin-app .admin-page-title h1 { font-size: clamp(25px, 3vw, 32px); letter-spacing: 0; }
-.admin-app .admin-page-title { align-items: flex-end; gap: 18px; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 1px solid color-mix(in srgb, var(--line) 78%, transparent); }
-.admin-app .admin-page-title > div { min-width: 0; }
-.admin-app .admin-page-title .button { flex: none; box-shadow: 0 10px 24px color-mix(in srgb, var(--primary) 16%, transparent); }
-.admin-app button:focus-visible,
-.admin-app a:focus-visible,
-.admin-app input:focus-visible,
-.admin-app select:focus-visible,
-.admin-app textarea:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary) 40%, transparent); outline-offset: 2px; }
 
 .admin-app .admin-panel,
 .admin-app .subscription-card,
@@ -90,8 +82,6 @@
   .admin-app .admin-metric { min-height: 100px; }
   .admin-app .live-table-scroll { overflow-x: auto; }
   .admin-app .live-table-row { font-size: calc(13px * var(--font-scale, 1)); }
-  .admin-app .admin-page-title { align-items: stretch; flex-direction: column; gap: 10px; }
-  .admin-app .admin-page-title .button { width: 100%; }
 }
 .notification-segment-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px;border:1px solid var(--line);border-radius:14px}.notification-segment-fields legend{padding:0 7px;color:var(--primary);font-size:12px;font-weight:900}.notification-segment-fields>small{grid-column:1/-1;color:var(--text-soft)}@media(max-width:640px){.notification-segment-fields{grid-template-columns:1fr}}
 

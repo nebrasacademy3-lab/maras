@@ -11,7 +11,6 @@ import {
 import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import styles from "./admin-course-resources-center.module.css";
-import { useNotifications } from "@/components/notification-center";
 
 type AudienceScope = "specialty" | "institution";
 type CatalogCourse = {
@@ -79,7 +78,6 @@ function fileTypeLabel(contentType: string) {
 }
 
 export function AdminCourseResourcesCenter({ adminName }: { adminName: string }) {
-  const { confirm } = useNotifications();
   const [courses, setCourses] = useState<CatalogCourse[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
   const [selectedSlug, setSelectedSlug] = useState("");
@@ -242,7 +240,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
   }
 
   async function remove(resource: Resource) {
-    if (!await confirm({ title: "تأكيد حذف الملف", message: `حذف «${resource.title}» نهائيًا من السجل والتخزين؟`, confirmLabel: "حذف الملف", danger: true })) return;
+    if (!window.confirm(`حذف «${resource.title}» نهائيًا من السجل والتخزين؟`)) return;
     setBusyId(resource.id); setNotice(null);
     try {
       const response = await fetch(`/api/admin/course-resources?id=${resource.id}`, { method: "DELETE", credentials: "same-origin" });

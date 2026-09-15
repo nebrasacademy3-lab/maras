@@ -17,7 +17,6 @@ import { bingSiteVerification, googleSiteVerification, jsonLd, searchIndexingEna
 
 import { getPublicSettings } from "@/lib/platform-settings";
 import { normalizedSocialLinks } from "@/lib/social-links";
-import { NotificationCenter } from "@/components/notification-center";
 
 const siteUrl = seoSiteOrigin();
 
@@ -26,32 +25,18 @@ export const metadata: Metadata = {
   verification: { google: googleSiteVerification(), other: bingSiteVerification() ? { "msvalidate.01": bingSiteVerification()! } : {} },
   robots: { index: searchIndexingEnabled(), follow: true },
   title: { default: "مراس العلم | شرح جامعتك في مكان واحد", template: "%s | مراس العلم" },
-  description: "منصة مراس العلم تقدم شروحات مواد الجامعات السعودية، باقات واضحة، أدوات مذاكرة، واستضافة تعليمية آمنة ومنظمة للطلاب والجامعات.",
-  keywords: [
-    "مراس العلم",
-    "شرح جامعي",
-    "شروحات الجامعات السعودية",
-    "مواد الجامعة",
-    "دروس جامعية",
-    "تعلم عبر الإنترنت",
-    "مذاكرة جامعية",
-    "ملفات مادة الجامعة",
-    "أدوات تعليمية",
-    "اختبارات تدريبية",
-    "ترجمة ملخصات",
-    "محتوى تعليمي موثوق",
-  ],
-  alternates: { canonical: siteUrl },
+  description: "منصة تعليم جامعي سعودية تجمع شروحات المواد حسب الجامعة والتخصص، مع درس تجريبي مجاني قبل الاشتراك.",
+  keywords: ["مراس العلم", "شروحات جامعية", "جامعات السعودية", "شرح مواد الجامعة", "دروس جامعية"],
   openGraph: {
     type: "website",
     locale: "ar_SA",
     url: siteUrl,
     siteName: "مراس العلم",
     title: "مراس العلم | شرح جامعتك في مكان واحد",
-    description: "منصة تعليمية سعودية تجمع شروحات الجامعات، أدوات المذاكرة، والمواد الدراسية في بيئة آمنة ومنظمة.",
+    description: "اختر جامعتك وتخصصك، وشاهد شرحًا مجانيًا قبل الاشتراك.",
     images: [{ url: "/og.png", width: 1728, height: 910, alt: "مراس العلم — شرح جامعتك في مكان واحد" }],
   },
-  twitter: { card: "summary_large_image", title: "مراس العلم", description: "شرح جامعتك، في مكان واحد، مع أدوات مذاكرة مساندة وآمنة.", images: ["/og.png"] },
+  twitter: { card: "summary_large_image", title: "مراس العلم", description: "شرح جامعتك، في مكان واحد.", images: ["/og.png"] },
   icons: { icon: [{ url: "/brand/app-icon.png", type: "image/png", sizes: "1024x1024" }], shortcut: "/brand/app-icon.png", apple: "/brand/app-icon.png" },
   manifest: "/manifest.webmanifest",
 };
@@ -74,7 +59,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
   return (
     <html lang="ar" dir="rtl" data-scroll-behavior="smooth" suppressHydrationWarning>
       <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(structuredData) }} /></head>
-      <body><ThemeProvider><NotificationCenter><RealtimeSync><PlatformAnalytics /><AnnouncementCampaign />{children}<DeferredEnhancements /></RealtimeSync></NotificationCenter></ThemeProvider></body>
+      <body><ThemeProvider><RealtimeSync><PlatformAnalytics /><AnnouncementCampaign />{children}<DeferredEnhancements /></RealtimeSync></ThemeProvider></body>
     </html>
   );
 }

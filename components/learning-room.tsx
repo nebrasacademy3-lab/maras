@@ -236,13 +236,7 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
     <header className="learning-header">
       <div><button className="learning-menu" onClick={() => setSidebar(!sidebar)} aria-label="إظهار المحتوى"><Menu size={19} /></button><BrandLogo compact /><i /><Link href={`/courses/${course.slug}`}>{course.title}</Link></div>
       <div className="learning-progress-head"><span>{progress}%</span><i><b style={{ width: `${progress}%` }} /></i><small>{completed.size} من {allLessons.length} درسًا</small></div>
-      <div>
-        <span className="secure-session"><ShieldCheck size={15} /> جلسة محمية</span>
-        <ThemeToggle compact />
-        <Link href="/dashboard" className="learning-dashboard-link" aria-label="العودة إلى لوحة التحكم">
-          <span>لوحة التحكم</span>
-        </Link>
-      </div>
+      <div><span className="secure-session"><ShieldCheck size={15} /> جلسة محمية</span><ThemeToggle compact /><Link href="/dashboard" className="learning-avatar">م</Link></div>
     </header>
     <div className={`learning-layout ${sidebar ? "" : "sidebar-closed"}`}>
       <aside className="lesson-sidebar">

@@ -12,7 +12,6 @@ import { fromDateTimeLocal, toDateTimeLocal } from "@/components/admin-datetime"
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./admin-bundles-center.module.css";
-import { useNotifications } from "@/components/notification-center";
 
 type CatalogCourse = {
   slug: string;
@@ -80,7 +79,6 @@ const localDate = (value:string|null) => value ? new Date(value).toLocaleString(
 const dateInput = (value:string|null) => toDateTimeLocal(value);
 
 export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
-  const { confirm } = useNotifications();
   const [bundles,setBundles] = useState<Bundle[]>([]);
   const [catalog,setCatalog] = useState<CatalogCourse[]>([]);
   const [form,setForm] = useState<FormState>(emptyForm);
@@ -234,7 +232,7 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
   };
 
   const remove = async (bundle:Bundle) => {
-    if (!await confirm({ title: "تأكيد حذف الباقة", message: `حذف باقة «${bundle.title}» نهائيًا؟ إذا ارتبطت بطلب مالي سيمنع النظام الحذف.`, confirmLabel: "حذف الباقة", danger: true })) return;
+    if (!window.confirm(`حذف باقة «${bundle.title}» نهائيًا؟ إذا ارتبطت بطلب مالي سيمنع النظام الحذف.`)) return;
     setSaving(true); setNotice(null);
     try {
       const response = await fetch(`/api/admin/bundles?id=${bundle.id}`, { method:"DELETE", credentials:"same-origin" });

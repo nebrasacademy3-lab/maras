@@ -12,7 +12,6 @@ import {
 import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import styles from "./admin-partners-center.module.css";
-import { useNotifications } from "@/components/notification-center";
 
 type PartnerKind = "partner" | "accreditation" | "payment";
 type PartnerStatus = "draft" | "published" | "hidden";
@@ -58,7 +57,6 @@ function partnerIcon(kind: PartnerKind) {
 }
 
 export function AdminPartnersCenter({ adminName }: { adminName: string }) {
-  const { confirm } = useNotifications();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
   const [file, setFile] = useState<File | null>(null);
@@ -192,7 +190,7 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
   };
 
   const deletePartner = async (partner: Partner) => {
-    if (!await confirm({ title: "تأكيد حذف الشريك", message: "هل تريد حذف «" + partner.name + "» نهائيًا؟ سيُحذف الشعار المرفوع معه.", confirmLabel: "حذف الشريك", danger: true })) return;
+    if (!window.confirm("هل تريد حذف «" + partner.name + "» نهائيًا؟ سيُحذف الشعار المرفوع معه.")) return;
     setDeletingId(partner.id);
     setMessage("");
     setError("");

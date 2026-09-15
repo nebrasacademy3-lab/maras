@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { ArrowRight, Check, Clipboard, KeyRound, LoaderCircle, LockKeyhole, ShieldAlert, ShieldCheck, Smartphone } from "lucide-react";
 import styles from "./admin-security.module.css";
-import { useNotifications } from "@/components/notification-center";
 
 type SecurityStatus = {
   enabled: boolean;
@@ -38,7 +37,6 @@ function readableDate(value: string | null) {
 }
 
 export function AdminSecurity({ adminName, backHref }: { adminName: string; backHref: string }) {
-  const { confirm } = useNotifications();
   const [status, setStatus] = useState<SecurityStatus>(EMPTY_STATUS);
   const [setup, setSetup] = useState<SetupMaterial | null>(null);
   const [code, setCode] = useState("");
@@ -75,7 +73,7 @@ export function AdminSecurity({ adminName, backHref }: { adminName: string; back
       setNotice({ kind: "error", text: "أدخل الرمز المكون من 6 أرقام من تطبيق المصادقة." });
       return;
     }
-    if (action === "disable" && !await confirm({ title: "تعطيل المصادقة الإضافية", message: "هل تريد تعطيل المصادقة الإضافية لهذا الحساب؟", confirmLabel: "تعطيل المصادقة", danger: true })) return;
+    if (action === "disable" && !window.confirm("هل تريد تعطيل المصادقة الإضافية لهذا الحساب؟")) return;
     setBusy(action);
     setNotice(null);
     try {
