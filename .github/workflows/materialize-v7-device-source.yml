@@ -1,0 +1,37 @@
+name: Materialize reviewed v7 device source
+on:
+  push:
+    branches: [implement/plan-v7-20260916]
+    paths: [scripts/apply-v7-device-wiring.mjs, .github/workflows/materialize-v7-device-source.yml]
+permissions:
+  contents: write
+concurrency:
+  group: materialize-v7-device-source
+  cancel-in-progress: false
+jobs:
+  materialize:
+    if: github.repository == 'nebrasacademy3-lab/maras' && github.ref == 'refs/heads/implement/plan-v7-20260916'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Apply exact reviewed source changes
+        run: node scripts/apply-v7-device-wiring.mjs
+      - name: Generate matching Drizzle migration and snapshot
+        run: node node_modules/drizzle-kit/bin.cjs generate --name device_return_policy
+      - name: Review whitespace and persist actual source without touching main
+        run: |
+          git diff --check
+          git add db/schema.ts lib/staff-policy.ts mobile/src/lib/staff-policy.ts mobile/src/lib/device-access-policy.ts app/api/auth/login/route.ts app/api/mobile/auth/login/route.ts lib/account-mfa-login.ts drizzle scripts/apply-v7-device-wiring.mjs .github/workflows/materialize-v7-device-source.yml
+          git diff --cached --stat
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Wire device return policies and explicit permissions with generated database migration'
+          git push origin HEAD:refs/heads/implement/plan-v7-20260916
