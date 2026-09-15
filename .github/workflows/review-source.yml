@@ -1,0 +1,25 @@
+name: Isolated platform source
+on:
+  push:
+    branches: [improve/platform-security-design-20260915]
+    paths: [.github/workflows/review-source.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - run: |
+          git rev-parse HEAD > source-commit.txt
+          git archive --format=tar HEAD | gzip > platform-source.tar.gz
+      - uses: actions/upload-artifact@v4
+        with:
+          name: platform-review-source
+          path: |
+            platform-source.tar.gz
+            source-commit.txt
+          retention-days: 1
