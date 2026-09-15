@@ -37,7 +37,8 @@ jobs:
           assert len(manifest) == 71
           for item in manifest:
               target = safe_path(item['path'])
-              before = safe_path(item['base']).read_text() if item['base'] else ''
+              source = safe_path(item['base']) if item['base'] else None
+              before = source.read_text() if source and source.exists() else ''
               assert digest(before) == item['before'], 'Base changed: ' + item['path']
               lines = before.splitlines(keepends=True)
               for start, end, replacement in reversed(item['edits']):
