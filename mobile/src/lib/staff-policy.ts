@@ -2,6 +2,7 @@
 export const ADMIN_PERMISSIONS = {
   CATALOG_VIEW: "catalog.view", CATALOG_MANAGE: "catalog.manage",
   STUDENTS_VIEW: "students.view", STUDENTS_MANAGE: "students.manage",
+  DEVICES_VIEW: "students.devices.view", DEVICES_MANAGE: "students.devices.manage",
   SUBSCRIPTIONS_MANAGE: "subscriptions.manage", REQUESTS_MANAGE: "requests.manage", SUPPORT_MANAGE: "support.manage",
   SETTINGS_MANAGE: "settings.manage", SEO_MANAGE: "seo.manage", CONTENT_MANAGE: "content.manage",
   STAFF_MANAGE: "staff.manage", AUDIT_VIEW: "audit.view", OPERATIONS_MANAGE: "operations.manage",
@@ -14,7 +15,7 @@ export type AdminPermission = typeof ADMIN_PERMISSIONS[keyof typeof ADMIN_PERMIS
 export const OWNER_ONLY = new Set<string>(["staff.manage", "audit.view"]);
 export const PERMISSION_LABELS: Record<AdminPermission, string> = {
   "catalog.view": "عرض المواد والجهات والتخصصات", "catalog.manage": "إدارة المواد والدروس والملفات",
-  "students.view": "عرض الطلاب", "students.manage": "إدارة الطلاب والأجهزة", "subscriptions.manage": "إدارة الاشتراكات",
+  "students.view": "عرض الطلاب", "students.manage": "تعديل بيانات الطلاب", "students.devices.view": "عرض أجهزة الطلاب", "students.devices.manage": "إدارة أجهزة الطلاب والجلسات وسياسة العودة", "subscriptions.manage": "إدارة الاشتراكات",
   "requests.manage": "طلبات المواد", "support.manage": "الدعم والتذاكر", "settings.manage": "إعدادات المنصة", "seo.manage": "الظهور والاكتشاف",
   "content.manage": "محتوى الصفحات العامة", "staff.manage": "المشرفون — المدير الأعلى فقط", "audit.view": "سجل التدقيق — المدير الأعلى فقط",
   "operations.manage": "تشغيل المهام وفحص الملفات", "finance.view": "عرض المالية", "finance.export": "تصدير المالية", "finance.manage": "إدارة المدفوعات والاسترداد",
@@ -36,6 +37,7 @@ export function requiredRoutePermissions(path: string, method = "GET"): string[]
   if (path === "/api/admin/videos/direct") return ["catalog.manage"];
   if (path === "/api/admin/staff") return ["staff.manage"];
   if (/^\/api\/admin\/(finance|refunds|settlements|purchases)(\/|$)/.test(path)) return [read ? "finance.view" : "finance.manage"];
+  if (/^\/api\/admin\/students\/[^/]+\/devices$/.test(path)) return [read ? "students.devices.view" : "students.devices.manage"];
   if (/^\/api\/admin\/students\//.test(path)) return [read ? "students.view" : "students.manage"];
   if (/^\/api\/admin\/courses\//.test(path)) return ["catalog.view", "students.view"];
   if (/^\/api\/admin\/(course-resources|bundles|covers|logos|videos)(\/|$)/.test(path)) return [read ? "catalog.view" : "catalog.manage", ...(method === "DELETE" ? ["records.delete"] : [])];
@@ -62,7 +64,7 @@ export const CONSOLE_VIEWS: Record<string, string[]> = {
 export const CONSOLE_ACTIONS: Record<string, string[]> = {
   syncCatalogTemplates: ["catalog.manage"], syncOfficialPrograms: ["catalog.manage"], saveInstitution: ["catalog.manage"], saveSpecialty: ["catalog.manage"],
   saveCourse: ["catalog.manage"], saveUnit: ["catalog.manage"], saveLesson: ["catalog.manage"], updateUser: ["students.manage"], updateStudentProfile: ["students.manage"],
-  saveSupervisorAssignment: ["staff.manage"], grantAccess: ["subscriptions.manage"], updateAccess: ["subscriptions.manage"], revokeUserSession: ["students.manage"],
+  saveSupervisorAssignment: ["staff.manage"], grantAccess: ["subscriptions.manage"], updateAccess: ["subscriptions.manage"], revokeUserSession: ["students.devices.manage"],
   prepareRequest: ["requests.manage", "catalog.manage"], updateRequest: ["requests.manage"], updateTicket: ["support.manage"], updateReview: ["catalog.manage"],
   saveSettings: ["settings.manage"], createNotification: ["notifications.manage"], dispatchNotifications: ["notifications.dispatch"], saveCoupon: ["finance.manage"],
 };

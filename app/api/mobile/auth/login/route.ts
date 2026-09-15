@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   }
   let session;
   try { session = await createSession(row.id, request, payload.remember !== false); }
-  catch (error) { if (error instanceof DeviceLimitError) return jsonError(`حسابك مرتبط بالجهازين المعتمدين. استخدم أحدهما أو تواصل مع الدعم لاستبدال جهاز. تسجيل الخروج لا يحرر الجهاز.`, 409); throw error; }
+  catch (error) { if (error instanceof DeviceLimitError) return jsonError(error.userMessage, error.status, error.code); throw error; }
   const user = sessionUserFromRow(row);
   if (!user.emailVerified) await ensureVerificationEmail(user.id, request);
   const next = accountNext(user, true);

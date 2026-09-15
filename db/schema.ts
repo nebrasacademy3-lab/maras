@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -499,7 +499,10 @@ export const authDevices = pgTable("auth_devices", {
   revokedAt: text("revoked_at"),
   revokedBy: text("revoked_by"),
   revocationReason: text("revocation_reason"),
-}, (table) => [uniqueIndex("auth_devices_user_device_unique").on(table.userId, table.deviceId), index("auth_devices_user_active_idx").on(table.userId, table.revokedAt)]);
+  returnPolicy: text("return_policy").notNull().default("blocked"),
+  blockedUntil: text("blocked_until"),
+  policyVersion: integer("policy_version").notNull().default(0),
+}, (table) => [uniqueIndex("auth_devices_user_device_unique").on(table.userId, table.deviceId), index("auth_devices_user_active_idx").on(table.userId, table.revokedAt), check("auth_devices_return_policy_check", sql`${table.returnPolicy} IN ('blocked', 'allowed', 'approval')`), check("auth_devices_policy_version_check", sql`${table.policyVersion} >= 0`), check("auth_devices_block_expiry_policy_check", sql`${table.blockedUntil} IS NULL OR ${table.returnPolicy} = 'allowed'`)]);
 
 export const authRateLimits = pgTable("auth_rate_limits", {
   key: text("key").primaryKey(),
