@@ -1,0 +1,24 @@
+name: Isolated review snapshot
+on:
+  push:
+    branches: [improve/admin-security-design-20260915]
+    paths: [.github/workflows/review-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Archive tracked sources only
+        run: |
+          git rev-parse HEAD > SOURCE_COMMIT.txt
+          git archive --format=tar HEAD > /tmp/maras-review.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: maras-review-source
+          path: /tmp/maras-review.tar
+          retention-days: 1
