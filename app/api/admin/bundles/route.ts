@@ -40,7 +40,7 @@ class BundleConflictError extends Error {}
 
 async function authorize(request: Request) {
   const user = await getSessionUser(request);
-  if (roleAllowed(user, ["admin"])) return { actor: user!.email, identity: `user:${user!.id}`, machine: false, user: user! };
+  if (roleAllowed(user, ["admin", "supervisor"])) return { actor: user!.email, identity: `user:${user!.id}`, machine: false, user: user! };
   if (isAdminRequest(request)) return { actor: "admin-api-token", identity: `machine:${clientIp(request)}`, machine: true, user: null };
   return null;
 }

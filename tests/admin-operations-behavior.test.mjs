@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
 import { isolated, sql, eq, ne, and, or, isNull, tables, database } from "./helpers/business-fixtures.mjs";
+const policy = await isolated("../lib/staff-policy.ts");
 const decisions = await isolated("../lib/admin-operations.ts");
 const api = await isolated("../lib/api.ts");
 const now = "2026-09-12T12:00:00.000Z";
@@ -10,8 +11,8 @@ const accessExpiryIso = (days, date) => new Date(date.getTime() + days * 86_400_
 const fulfillment = await isolated("../lib/order-fulfillment.ts", { ...tables, eq, ne, and, sql, normalizeAccessDurationDays, accessExpiryIso, qualifyReferralForPaidOrderTx: async () => {} });
 class MfaError extends Error { constructor() { super("Step up required"); this.code = "MFA_STEP_UP_REQUIRED"; this.status = 403; } }
 async function consoleRoute(db, overrides = {}) {
-  return isolated("../app/api/admin/console/route.ts", { ...tables, ...api, ...decisions, sql, eq, ne, and, isNull, createHash,
-    getDb: () => db, getSessionUser: async () => ({ id: 99, email: "operator@example.test", role: "admin" }), roleAllowed: (user, roles) => roles.includes(user?.role), isAdminRequest: () => false, sameOriginRequest: () => true, checkRateLimit: async () => true, clientIp: () => "127.0.0.1", readBoundedJsonObject: request => request.json(), requireAdminStepUp: async () => {}, AdminMfaError: MfaError, ADMIN_PERMISSIONS: {}, effectiveAccessRows: async rows => rows, getCourseCatalog: async slug => ({ slug, title: "Physics", accessDurationDays: 30 }), validEmail: email => email.includes("@"), normalizeAccessDurationDays, accessExpiryIso,
+  return isolated("../app/api/admin/console/route.ts", { ...tables, ...api, ...decisions, ...policy, sql, eq, ne, and, isNull, createHash, permissionsForUser: async () => new Set(Object.values(policy.ADMIN_PERMISSIONS)), hasPermission: async () => true,
+    getDb: () => db, getSessionUser: async () => ({ id: 99, email: "operator@example.test", role: "admin", isPlatformOwner: true }), roleAllowed: (user, roles) => roles.includes(user?.role), isAdminRequest: () => false, sameOriginRequest: () => true, checkRateLimit: async () => true, clientIp: () => "127.0.0.1", readBoundedJsonObject: request => request.json(), requireAdminStepUp: async () => {}, AdminMfaError: MfaError, effectiveAccessRows: async rows => rows, getCourseCatalog: async slug => ({ slug, title: "Physics", accessDurationDays: 30 }), validEmail: email => email.includes("@"), normalizeAccessDurationDays, accessExpiryIso,
     fulfillPaidOrderTx: (tx, ...args) => fulfillment.fulfillPaidOrderTx({ ...tx, execute: async () => {} }, ...args), ...overrides,
   });
 }
@@ -31,7 +32,7 @@ test("the paginated APIs clamp malformed and hostile page input", () => {
 
 test("sensitive user changes reject generic machine tokens and missing step-up", async () => {
   const db = database({ users: [{ id: 1, role: "student", status: "active" }] });
-  const payload = { action: "updateUser", id: 1, role: "admin", status: "active" };
+  const payload = { action: "updateUser", id: 1, role: "student", status: "suspended" };
   for (const overrides of [{ getSessionUser: async () => null, isAdminRequest: () => true }, { requireAdminStepUp: async () => { throw new MfaError(); } }]) {
     const route = await consoleRoute(db, overrides);
     assert.equal((await route.POST(request(payload))).status, 403);
@@ -39,13 +40,11 @@ test("sensitive user changes reject generic machine tokens and missing step-up",
   }
 });
 
-test("concurrent demotions cannot remove the final active administrator", async () => {
-  const db = database({ users: [{ id: 1, email: "one@example.test", role: "admin", status: "active" }, { id: 2, email: "two@example.test", role: "admin", status: "active" }] });
-  const route = await consoleRoute(db);
-  const responses = await Promise.all([1, 2].map(id => route.POST(request({ action: "updateUser", id, role: "supervisor", status: "active" }))));
-  assert.deepEqual(responses.map(response => response.status).sort(), [200, 409]);
-  assert.equal(db.rows.users.filter(user => user.role === "admin" && user.status === "active").length, 1);
-  assert.equal(db.rows.auditLogs.length, 1);
+test("concurrent attempts cannot demote or suspend the permanent owner", async () => {
+  const db=database({users:[{id:1,email:"owner@example.test",role:"admin",isPlatformOwner:true,status:"active"}]});
+  const route=await consoleRoute(db);
+  const responses=await Promise.all(["supervisor","student"].map(role=>route.POST(request({action:"updateUser",id:1,role,status:"suspended"}))));
+  assert.deepEqual(responses.map(r=>r.status),[403,403]); assert.equal(db.writes.length,0); assert.equal(db.rows.users[0].role,"admin");
 });
 
 test("manual paid grants fulfill once and conflicting retry payload is rejected", async () => {
@@ -76,21 +75,21 @@ test("repeated paid fulfillment cannot extend a duplicate purchase twice or shor
 
 
 test("staff changes revoke the changed employee sessions and audit password resets without storing credentials", async () => {
-  for (const scenario of [{ role: "supervisor", password: "" }, { role: "admin", password: "Strong#Password1" }]) {
-    const employee = { id: 1, email: "staff@example.test", phone: "+966500000001", role: "admin", status: "active", passwordHash: "old-hash" };
+  for (const scenario of [{ role: "supervisor", password: "" }, { role: "supervisor", password: "Strong#Password1" }]) {
+    const employee = { id: 1, email: "staff@example.test", phone: "+966500000001", role: "supervisor", status: "active", passwordHash: "old-hash" };
     const db = database({ users: [employee, { id: 99, email: "operator@example.test", role: "admin", status: "active" }], authSessions: [{ id: 1, userId: 1, revokedAt: null }, { id: 2, userId: 99, revokedAt: null }], pushDevices: [{ id: 1, userId: 1, status: "active" }, { id: 2, userId: 99, status: "active" }] });
-    const route = await isolated("../app/api/admin/staff/route.ts", { ...tables, ...api, ...decisions, sql, eq, ne, and, or, isNull,
-      getDb: () => db, getSessionUser: async () => ({ id: 99, email: "operator@example.test", role: "admin" }), roleAllowed: (user, roles) => roles.includes(user?.role), isAdminRequest: () => false, sameOriginRequest: () => true, checkRateLimit: async () => true, clientIp: () => "127.0.0.1", readBoundedJsonObject: request => request.json(), requireAdminStepUp: async () => {}, AdminMfaError: MfaError,
+    const route = await isolated("../app/api/admin/staff/route.ts", { ...tables, ...api, ...decisions, ...policy, sql, eq, ne, and, or, isNull,
+      getDb: () => db, getSessionUser: async () => ({ id: 99, email: "operator@example.test", role: "admin", isPlatformOwner: true }), roleAllowed: (user, roles) => roles.includes(user?.role), isAdminRequest: () => false, sameOriginRequest: () => true, checkRateLimit: async () => true, clientIp: () => "127.0.0.1", readBoundedJsonObject: request => request.json(), requireAdminStepUp: async () => {}, AdminMfaError: MfaError,
       getInstitutionCatalog: async () => ({ slug: "university" }), getProgramsCatalog: async () => ({ programs: [{ name: "Physics" }] }), validEmail: () => true, validSaudiPhone: () => true, validPassword: () => true, hashPassword: async () => "fresh-password-hash",
     });
-    const result = await route.POST(request({ email: employee.email, phone: employee.phone, fullName: "Employee Name", universitySlug: "university", specialty: "Physics", ...scenario }));
+    const result = await route.POST(request({ action: "save", id:1, permissions:["catalog.manage"], email: employee.email, phone: employee.phone, fullName: "Employee Name", universitySlug: "university", specialty: "Physics", ...scenario }));
     assert.equal(result.status, 200);
     assert.ok(db.rows.authSessions[0].revokedAt); assert.equal(db.rows.authSessions[1].revokedAt, null);
     assert.equal(db.rows.pushDevices[0].status, "revoked"); assert.equal(db.rows.pushDevices[1].status, "active");
     assert.equal(db.rows.users[0].passwordHash, scenario.password ? "fresh-password-hash" : "old-hash");
     assert.equal(db.rows.auditLogs.length, 1);
-    assert.equal(JSON.parse(db.rows.auditLogs[0].afterJson).passwordReset, Boolean(scenario.password));
+    assert.equal(JSON.parse(db.rows.auditLogs[0].afterJson).passwordChanged, Boolean(scenario.password));
     assert.ok(!JSON.stringify(db.rows.auditLogs).includes("fresh-password-hash"));
-    if (scenario.role === "supervisor") assert.equal(db.rows.supervisorAssignments.length, 1);
+    assert.deepEqual(db.rows.staffPermissions.map(row=>row.permission),["catalog.manage"]);
   }
 });

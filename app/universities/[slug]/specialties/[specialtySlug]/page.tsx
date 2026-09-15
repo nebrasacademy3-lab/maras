@@ -1,3 +1,4 @@
+import { specialtyIsIndexable } from "@/lib/seo-eligibility";
 import { resolvedPublicPageMetadata } from "@/lib/seo-settings";
 import type { Metadata } from "next";
 import { cache } from "react";
@@ -25,7 +26,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug, specialtySlug } = await params;
   const data = await pageData(slug, specialtySlug);
   if (!data) notFound();
-  return resolvedPublicPageMetadata(data.path, `${data.specialty.name} في ${data.institution.name}`, `مواد وشروحات تخصص ${data.specialty.name} لطلاب ${data.institution.name} على منصة مراس العلم. ${data.specialty.description}`, { noindex: !data.rows.length });
+  return resolvedPublicPageMetadata(data.path, `${data.specialty.name} في ${data.institution.name}`, `مواد وشروحات تخصص ${data.specialty.name} لطلاب ${data.institution.name} على منصة مراس العلم. ${data.specialty.description}`, { noindex: !specialtyIsIndexable(data.specialty.description, data.rows.length) });
 }
 
 export default async function SpecialtyPage({ params }: Props) {

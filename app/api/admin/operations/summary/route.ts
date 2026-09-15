@@ -6,7 +6,7 @@ import { getSessionUser, roleAllowed } from "@/lib/auth";
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
-  if (!roleAllowed(user, ["admin"])) return jsonError("غير مصرح بعرض مركز التشغيل", 403);
+  if (!roleAllowed(user, ["admin", "supervisor"])) return jsonError("غير مصرح بعرض مركز التشغيل", 403);
   const db = getDb();
   const now = new Date();
   const twoHoursAgo = new Date(now.getTime() - 2 * 3_600_000).toISOString();

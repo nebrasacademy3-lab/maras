@@ -8,8 +8,9 @@ const ts = require("typescript");
 const read = (path) => readFileSync(new URL("../" + path, import.meta.url), "utf8");
 const compile = (source) => ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.ReactJSX } }).outputText;
 function load(path, mocks = {}, globals = {}) {
+  const interactions = { requestNativeAdminMfa: async () => false, nativeToast: () => {}, verifyNativeLogin: async () => { throw new Error("No MFA challenge expected by this fixture"); } };
   const exports = {};
-  vm.runInNewContext(compile(read(path)), { exports, URL, URLSearchParams, Headers, AbortController, FormData, Blob, setTimeout, clearTimeout, ...globals, require: (name) => { if (name in mocks) return mocks[name]; throw new Error("Unexpected import " + name); } });
+  vm.runInNewContext(compile(read(path)), { exports, URL, URLSearchParams, Headers, AbortController, FormData, Blob, setTimeout, clearTimeout, ...globals, require: (name) => { if (name in mocks) return mocks[name]; if (name === "@/src/lib/interaction-events") return interactions; throw new Error("Unexpected import " + name); } });
   return exports;
 }
 const progressHelpers = load("src/lib/playback-progress.ts");

@@ -1,3 +1,4 @@
+import { hasPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -11,12 +12,12 @@ async function scopeFor(request: Request) {
   const user = await getSessionUser(request);
   if (!roleAllowed(user, ["supervisor", "admin"])) return null;
   const assignments = user!.role === "admin" ? [] : await getDb().select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId, user!.id), eq(supervisorAssignments.active, true)));
-  return { user: user!, assignments };
+  return { user: user!, assignments, globalCatalog: await hasPermission(user, ADMIN_PERMISSIONS.CATALOG_VIEW) };
 }
 
 function assigned(course: { universitySlug:string; specialty:string; audienceScope?:"specialty"|"institution" }, scope: Awaited<ReturnType<typeof scopeFor>>) {
   if (!scope) return false;
-  return scope.user.role === "admin" || scope.assignments.some((item) => (!item.institutionSlug || item.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !item.specialty : !item.specialty || item.specialty === course.specialty));
+  return scope.globalCatalog || scope.assignments.some((item) => (!item.institutionSlug || item.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !item.specialty : !item.specialty || item.specialty === course.specialty));
 }
 
 export async function GET(request: Request) {

@@ -1,4 +1,6 @@
 "use client";
+import { promptAction } from "@/lib/interaction-events";
+import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -256,7 +258,7 @@ export function FinanceCenter({ adminName, initialSearch = "" }: { adminName: st
     setError("");
     lastLoad.current = Date.now();
     try {
-      const response = await fetch(`/api/admin/finance?${buildParams(next)}`, { cache: "no-store", signal });
+      const response = await adminFetch(`/api/admin/finance?${buildParams(next)}`, { cache: "no-store", signal });
       const payload = await response.json() as FinanceData & { error?: string };
       if (!response.ok) throw new Error(payload.error || "تعذر تحميل المركز المالي");
       setData(payload);
@@ -288,7 +290,7 @@ export function FinanceCenter({ adminName, initialSearch = "" }: { adminName: st
     setDetailError("");
     setDetailLoading(true);
     try {
-      const response = await fetch(`/api/admin/finance?order=${encodeURIComponent(orderNumber)}`, { cache: "no-store" });
+      const response = await adminFetch(`/api/admin/finance?order=${encodeURIComponent(orderNumber)}`, { cache: "no-store" });
       const payload = await response.json() as { order?: OrderDetail; error?: string };
       if (!response.ok || !payload.order) throw new Error(payload.error || "تعذر تحميل تفاصيل الطلب");
       if (detailRequest.current === requestId) setDetail(payload.order);
@@ -298,11 +300,11 @@ export function FinanceCenter({ adminName, initialSearch = "" }: { adminName: st
   }, []);
 
   const approveReview = useCallback(async (orderNumber: string) => {
-    const reason = window.prompt("سبب اعتماد الدفعة (يُسجل في سجل التدقيق)", "تم التحقق من التحصيل في لوحة Tap");
+    const reason = (await promptAction("سبب اعتماد الدفعة (يُسجل في سجل التدقيق)", "تم التحقق من التحصيل في لوحة Tap"));
     if (!reason || reason.trim().length < 4) return;
     setActionBusy(true); setActionMessage("");
     try {
-      const response = await fetch("/api/admin/finance", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resolvePaymentReview", orderNumber, decision: "approve", reason: reason.trim() }) });
+      const response = await adminFetch("/api/admin/finance", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resolvePaymentReview", orderNumber, decision: "approve", reason: reason.trim() }) });
       const payload = await response.json() as { error?: string };
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(payload.error || "تعذر اعتماد الدفعة");
@@ -320,7 +322,7 @@ export function FinanceCenter({ adminName, initialSearch = "" }: { adminName: st
     setExporting(true); setExportError("");
     try {
       const params = buildParams(appliedFilters); params.set("format", "csv");
-      const response = await fetch(`/api/admin/finance?${params}`, { cache: "no-store", credentials: "same-origin" });
+      const response = await adminFetch(`/api/admin/finance?${params}`, { cache: "no-store", credentials: "same-origin" });
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) { const payload = await response.json().catch(() => ({})) as { error?: string }; throw new Error(payload.error || "تعذر تصدير البيانات المالية"); }
       const blob = await response.blob();

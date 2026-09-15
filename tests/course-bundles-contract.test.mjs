@@ -42,7 +42,7 @@ test("public bundles expose only active exact multi-course quotes", async () => 
 
 test("admin bundle CRUD is protected, validated, and audited transactionally", async () => {
   const route = await read("app/api/admin/bundles/route.ts");
-  assert.match(route, /roleAllowed\(user, \["admin"\]\)/);
+  assert.match(route, /roleAllowed\(user, \["admin", "supervisor"\]\)/);
   assert.match(route, /isAdminRequest\(request\)/);
   assert.match(route, /sameOriginRequest\(request\)/);
   assert.match(route, /courseSlugs\.length < 2 \|\| courseSlugs\.length > 30/);

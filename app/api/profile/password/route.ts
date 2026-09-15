@@ -1,6 +1,6 @@
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, eq, isNull, ne } from "drizzle-orm";
-import { authSessions, emailVerificationCodes, passwordResetTokens, pushDevices, users } from "@/db/schema";
+import { accountMfaChallenges, authSessions, emailVerificationCodes, passwordResetTokens, pushDevices, users } from "@/db/schema";
 import { jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, hashOpaqueToken, hashPassword, requestSessionToken, sameOriginRequest, validPassword } from "@/lib/auth";
 import { isNativeAppRequest } from "@/lib/mobile-api";
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
   try {
   const revokedSessions = await consumeEmailCode(user.id, "change_password", payload.code, request, async (tx, _row, now) => {
     await tx.update(users).set({ passwordHash, updatedAt: now }).where(eq(users.id, user.id));
+    await tx.update(accountMfaChallenges).set({ usedAt: now }).where(and(eq(accountMfaChallenges.userId, user.id), isNull(accountMfaChallenges.usedAt)));
     await tx.update(passwordResetTokens).set({ usedAt: now }).where(and(eq(passwordResetTokens.userId, user.id), isNull(passwordResetTokens.usedAt)));
     await tx.update(emailVerificationCodes).set({ usedAt: now }).where(and(eq(emailVerificationCodes.userId, user.id), isNull(emailVerificationCodes.usedAt)));
     const revoked = await tx.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, user.id), isNull(authSessions.revokedAt), currentTokenHash ? ne(authSessions.tokenHash, currentTokenHash) : undefined)).returning({ deviceId: authSessions.deviceId });

@@ -1,3 +1,5 @@
+import { AdminMfaError } from "@/lib/admin-mfa";
+import { beginLoginMfa } from "@/lib/account-mfa";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -32,6 +34,14 @@ export async function POST(request: Request) {
   await clearRateLimit("mobile-login-account", identifier);
   const now = new Date().toISOString();
   await db.update(users).set({ lastLoginAt: now, updatedAt: now }).where(eq(users.id, row.id));
+  let challenge;
+  try { challenge = await beginLoginMfa(row.id, request, payload.remember !== false); }
+  catch (error) { if (error instanceof AdminMfaError) return jsonError(error.message, error.status, error.code); throw error; }
+  if (challenge) {
+    const headers = new Headers({ "cache-control": "no-store" });
+
+    return Response.json({ ok: true, mfaRequired: true, challengeToken: challenge.challengeToken, expiresAt: challenge.expiresAt }, { headers });
+  }
   let session;
   try { session = await createSession(row.id, request, payload.remember !== false); }
   catch (error) { if (error instanceof DeviceLimitError) return jsonError(`حسابك مرتبط بالجهازين المعتمدين. استخدم أحدهما أو تواصل مع الدعم لاستبدال جهاز. تسجيل الخروج لا يحرر الجهاز.`, 409); throw error; }

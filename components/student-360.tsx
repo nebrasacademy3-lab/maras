@@ -1,4 +1,7 @@
 "use client";
+import { useAdminAccess } from "@/components/admin-access";
+import { promptAction, confirmAction } from "@/lib/interaction-events";
+import { adminFetch } from "@/lib/admin-client";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -51,6 +54,7 @@ type PushDevice = { id: number; deviceId: string | null; platform: string; devic
 type RefundRow = { id: number; requestNumber: string; orderNumber: string; amountMinor: number; currency: string; status: string; reason: string; createdAt: string; completedAt: string | null };
 
 type Student = {
+  mfaEnabled?: boolean;
   id: number;
   email: string;
   phone: string | null;
@@ -385,6 +389,7 @@ function PanelHead({ icon: Icon, title, copy, count }: { icon: React.ElementType
 }
 
 export function Student360({ email }: { email: string }) {
+  const { owner, can } = useAdminAccess();
   const [data, setData] = useState<Student360Response | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -399,7 +404,7 @@ export function Student360({ email }: { email: string }) {
     setError("");
     try {
       const query = new URLSearchParams(Object.entries(pages).map(([key, page]) => [`${key}Page`, String(page)]));
-      const response = await fetch(`/api/admin/students/${encodeURIComponent(email)}?${query}`, { cache: "no-store", credentials: "same-origin" });
+      const response = await adminFetch(`/api/admin/students/${encodeURIComponent(email)}?${query}`, { cache: "no-store", credentials: "same-origin" });
       const result = await response.json() as Student360Response;
       if (!response.ok) throw new Error(result.error || "تعذر تحميل ملف الطالب");
       setData(result);
@@ -415,10 +420,19 @@ export function Student360({ email }: { email: string }) {
     return () => window.clearTimeout(timer);
   }, [load]);
 
+  async function resetMfa() {
+    if (!owner || !data) return;
+    const reason = (await promptAction("سبب إعادة ضبط MFA للطالب؛ يلزم التحقق من هويته عبر إجراء دعم معتمد"))?.trim();
+    if (!reason || reason.length < 4 || !await confirmAction({ title: "إعادة ضبط حماية الحساب؟", message: "ستُلغى جلسات الطالب ورموز استعادته. لا يُنفذ ذلك إلا بعد التحقق من هويته.", destructive: true })) return;
+    setBusy("mfa-reset");
+    try { const response = await adminFetch("/api/admin/staff", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "resetMfa", id: data.student.id, reason }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error); setActionMessage("أعيد ضبط MFA وأُلغيت جلسات الحساب مع تسجيل السبب"); await load(); }
+    catch (error) { setActionMessage(error instanceof Error ? error.message : "تعذر إعادة الضبط"); }
+    finally { setBusy(""); }
+  }
   const act = useCallback(async (key: string, payload: Record<string, unknown>, success: string) => {
     setBusy(key); setActionMessage("");
     try {
-      const response = await fetch("/api/admin/console", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const response = await adminFetch("/api/admin/console", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json() as { error?: string };
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(result.error || "تعذر تنفيذ الإجراء");
@@ -480,10 +494,11 @@ export function Student360({ email }: { email: string }) {
           <Link href={`/admin/finance?search=${encodeURIComponent(data.student.email)}`}><CircleDollarSign size={14} /> المركز المالي</Link>
         </div>
         <div className={styles.quickActions}>
-          <button type="button" disabled={Boolean(busy)} onClick={() => openAction("profile")}>تعديل بيانات الطالب</button>
-          <button type="button" disabled={Boolean(busy)} onClick={() => openAction("status")}>{data.student.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب"}</button>
-          <button type="button" disabled={Boolean(busy)} onClick={() => openAction("grant")}>منح مادة / تسجيل دفعة</button>
-          <button type="button" disabled={Boolean(busy)} onClick={() => openAction("notification")}>إرسال إشعار للطالب</button>
+          {can(["students.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("profile")}>تعديل بيانات الطالب</button>}
+          {can(["students.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("status")}>{data.student.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب"}</button>}
+          {can(["subscriptions.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("grant")}>منح مادة / تسجيل دفعة</button>}
+          {can(["notifications.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("notification")}>إرسال إشعار للطالب</button>}
+          {owner && data.student.mfaEnabled && <button type="button" disabled={Boolean(busy)} onClick={() => void resetMfa()}>إعادة ضبط MFA</button>}
           <button type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> تحديث</button>
         </div>
       </section>
@@ -518,6 +533,7 @@ export function Student360({ email }: { email: string }) {
               ["الجامعة", university],
               ["التخصص", data.student.specialty || "غير محدد"],
               ["المستوى الأكاديمي", data.student.academicLevel || "غير محدد"],
+              ["المصادقة الإضافية MFA", data.student.mfaEnabled ? "مفعّلة" : "غير مفعّلة"],
               ["توثيق البريد", data.student.emailVerifiedAt ? `موثق · ${safeDate(data.student.emailVerifiedAt, false)}` : "غير موثق"],
               ["توثيق الجوال", data.student.phoneVerifiedAt ? `موثق · ${safeDate(data.student.phoneVerifiedAt, false)}` : "غير موثق"],
               ["تاريخ إنشاء الحساب", safeDate(data.student.createdAt)],

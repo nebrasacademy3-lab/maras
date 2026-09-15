@@ -1,3 +1,4 @@
+import { NativeInteractionProvider } from "@/src/components/interaction-provider";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
@@ -13,7 +14,7 @@ function Runtime() {
   const { dark } = useTheme();
   const { isRTL, direction } = useLanguage();
   usePushNotifications();
-  return <><StatusBar style={dark ? "light" : "dark"} /><AnnouncementCampaign /><Stack screenOptions={{ headerShown: false, animation: isRTL ? "slide_from_left" : "slide_from_right", contentStyle: { direction, backgroundColor: dark ? "#050B18" : "#F7F9FD" } }} /><AssistantFab /></>;
+  return <><StatusBar style={dark ? "light" : "dark"} /><AnnouncementCampaign /><Stack screenOptions={{ headerShown: false, animation: isRTL ? "slide_from_left" : "slide_from_right", contentStyle: { direction, backgroundColor: dark ? "#050B18" : "#F7F9FD" } }} /><AssistantFab /><NativeInteractionProvider /></>;
 }
 
 export default function RootLayout() { return <AppProviders><Runtime /></AppProviders>; }

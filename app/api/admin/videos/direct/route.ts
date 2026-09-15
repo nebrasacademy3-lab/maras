@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { lessonsDb, supervisorAssignments, videoAssets } from "@/db/schema";
+import { lessonsDb, videoAssets } from "@/db/schema";
 import {
   checkRateLimit,
   clientIp,
@@ -156,12 +156,6 @@ async function authorize(request: Request) {
   return { user, tokenAuthorized };
 }
 
-async function supervisorMayUpload(access: { tokenAuthorized: boolean; user: { id: number; role: string } | null }, course: { universitySlug: string; audienceScope?: string; specialty: string }) {
-  if (access.tokenAuthorized || access.user?.role !== "supervisor") return true;
-  const assignments = await getDb().select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId, access.user.id), eq(supervisorAssignments.active, true)));
-  return assignments.some(assignment => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !assignment.specialty : !assignment.specialty || assignment.specialty === course.specialty));
-}
-
 export async function GET(request: Request) {
   const access = await authorize(request);
 
@@ -197,7 +191,7 @@ export async function GET(request: Request) {
     return jsonError("تعذر مطابقة المادة أو الدرس", 404);
   }
 
-  if (!await supervisorMayUpload(access, course)) return jsonError("هذه المادة غير مسندة لهذا المشرف", 403);
+  // catalog.manage was checked by getSessionUser before signing or accepting this upload.
 
   const [existingLesson] = await getDb()
     .select({ id: lessonsDb.id })
@@ -293,7 +287,7 @@ export async function POST(request: Request) {
     return jsonError("تعذر مطابقة المادة أو الدرس", 404);
   }
 
-  if (!await supervisorMayUpload(access, course)) return jsonError("هذه المادة غير مسندة لهذا المشرف", 403);
+  // catalog.manage was checked by getSessionUser before signing or accepting this upload.
 
   const db = getDb();
 

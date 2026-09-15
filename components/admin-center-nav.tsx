@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useAdminAccess } from "@/components/admin-access";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { Activity, Bot, CircleDollarSign, FileStack, Gift, Handshake, LayoutDashboard, LockKeyhole, PackageOpen, Route, Search, type LucideIcon } from "lucide-react";
@@ -8,6 +9,8 @@ import styles from "./admin-center-nav.module.css";
 
 export const ADMIN_CENTERS: ReadonlyArray<{ href: string; label: string; icon: LucideIcon; description: string }> = [
   { href: "/admin", label: "لوحة الإدارة", icon: LayoutDashboard, description: "الكتالوج والطلاب والطلبات والدعم" },
+  { href: "/admin/staff", label: "المشرفون والصلاحيات", icon: LockKeyhole, description: "حسابات الفريق والأجهزة والأذونات" },
+  { href: "/admin/content", label: "الصفحات والمحتوى", icon: FileStack, description: "عن مراس والأسئلة الشائعة والمحتوى العام" },
   { href: "/admin/purchases", label: "مشتريات التطبيقات", icon: CircleDollarSign, description: "منتجات المتاجر والمزامنة والاسترداد" },
   { href: "/admin/finance", label: "المركز المالي", icon: CircleDollarSign, description: "الإيراد والاستردادات والتسويات" },
   { href: "/admin/operations", label: "التشغيل والتحليلات", icon: Activity, description: "الطوابير والأتمتة والامتثال" },
@@ -23,9 +26,10 @@ export const ADMIN_CENTERS: ReadonlyArray<{ href: string; label: string; icon: L
 ];
 
 export function AdminCenterNav({ compact = false }: { compact?: boolean }) {
+  const { canVisit } = useAdminAccess();
   const pathname = usePathname() || "";
   const [query, setQuery] = useState("");
-  const centers = ADMIN_CENTERS.filter((center) => `${center.label} ${center.description}`.includes(query.trim()));
+  const centers = ADMIN_CENTERS.filter(center => canVisit(center.href)).filter((center) => `${center.label} ${center.description}`.includes(query.trim()));
   return <div className={styles.workspaceNav}>
     <label className={styles.search}><Search size={16} aria-hidden="true" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="ابحث عن مركز الإدارة..." aria-label="البحث في مراكز الإدارة" /></label>
     <nav className={`${styles.nav} ${compact ? styles.compact : ""}`} aria-label="مراكز الإدارة">

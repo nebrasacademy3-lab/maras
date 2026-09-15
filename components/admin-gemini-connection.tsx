@@ -1,4 +1,5 @@
 "use client";
+import { adminFetch } from "@/lib/admin-client";
 import { useId, useRef, useState } from "react";
 import { CircleAlert, KeyRound, LoaderCircle, PlugZap, RefreshCw, ShieldCheck } from "lucide-react";
 import type { GeminiModelOption } from "@/lib/gemini-config";
@@ -25,7 +26,7 @@ export function AdminGeminiConnection({ providers, environmentKeyCount, draftApi
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), action === "testRuntime" ? 130_000 : 65_000);
     try {
-      const response = await fetch("/api/admin/ai", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, model, service, ...(effectiveSource === "draft" ? { source: "draft", apiKey: draftApiKey } : effectiveSource === "environment" ? { source: "environment" } : { keyId: Number(effectiveSource) }) }), signal: controller.signal });
+      const response = await adminFetch("/api/admin/ai", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action, model, service, ...(effectiveSource === "draft" ? { source: "draft", apiKey: draftApiKey } : effectiveSource === "environment" ? { source: "environment" } : { keyId: Number(effectiveSource) }) }), signal: controller.signal });
       if (isAdminStepUpResponse(response)) { setResult({ ok: false, error: ADMIN_STEP_UP_MESSAGE, code: "ADMIN_STEP_UP_REQUIRED" }); return; }
       const value = await response.json().catch(() => ({})) as Result;
       if (!response.ok) { setResult({ ...value, ok: false, error: value.error || "تعذر إكمال الفحص. حاول مرة أخرى." }); return; }

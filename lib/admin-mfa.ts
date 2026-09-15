@@ -120,7 +120,7 @@ export function totpCodeForCounter(secret: string, counter: number, digits = TOT
   return String(binary % (10 ** digits)).padStart(digits, "0");
 }
 
-function matchedTotpCounter(secret: string, code: string, afterCounter: number, now = Date.now()) {
+export function matchedTotpCounter(secret: string, code: string, afterCounter: number, now = Date.now()) {
   if (!/^\d{6}$/.test(code)) return null;
   const current = Math.floor(now / 1000 / TOTP_PERIOD_SECONDS);
   for (const counter of [current - 1, current, current + 1]) {
@@ -307,11 +307,12 @@ export async function beginAdminTotpSetup(user: SessionUser, label = "تطبيق
   return { secret, otpauthUri };
 }
 
-async function consumeTotp(
+export async function consumeTotp<T = undefined>(
   user: SessionUser,
   code: string,
   requireVerified: boolean,
   mutation: "verify" | "disable" | null = null,
+  afterVerified?: (tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0], now: string) => Promise<T>,
 ) {
   const db = getDb();
   return db.transaction(async (tx) => {
@@ -344,9 +345,10 @@ async function consumeTotp(
       counter,
       updatedAt: now,
       ...(mutation === "verify" ? { verifiedAt: now } : {}),
-      ...(mutation === "disable" ? { disabledAt: now } : {}),
+      ...(mutation === "disable" ? { disabledAt: now, secretEncrypted: null } : {}),
     }).where(eq(adminMfaFactors.id, factor.id));
-    return { factorId: factor.id, counter };
+    const result = afterVerified ? await afterVerified(tx, now) : undefined;
+    return { factorId: factor.id, counter, result };
   });
 }
 
@@ -356,22 +358,16 @@ export async function verifyAdminTotpSetup(user: SessionUser, code: string) {
 }
 
 export async function createAdminStepUp(user: SessionUser, request: Request, code: string) {
+  const consumed = await consumeTotp(user, code, true);
+  return issueVerifiedAdminStepUp(user, request, consumed.factorId);
+}
+/** Internal only: call immediately after successful factor verification, never with a client factor ID. */
+export function issueVerifiedAdminStepUp(user: SessionUser, request: Request, factorId: number) {
   const credentialFingerprint = sessionFingerprint(request);
   if (!credentialFingerprint) throw new AdminMfaError("SESSION_REQUIRED", "انتهت جلسة الإدارة. سجّل الدخول مجددًا.", 401);
-  const consumed = await consumeTotp(user, code, true);
   const expiresAt = Math.floor(Date.now() / 1000) + STEP_UP_SECONDS;
-  const token = signStepUp({
-    uid: user.id,
-    fid: consumed.factorId,
-    sid: credentialFingerprint,
-    exp: expiresAt,
-    nonce: randomBytes(12).toString("base64url"),
-  });
-  return {
-    cookie: stepUpCookie(request, token, STEP_UP_SECONDS),
-    token,
-    expiresAt: new Date(expiresAt * 1000).toISOString(),
-  };
+  const token = signStepUp({ uid: user.id, fid: factorId, sid: credentialFingerprint, exp: expiresAt, nonce: randomBytes(12).toString("base64url") });
+  return { cookie: stepUpCookie(request, token, STEP_UP_SECONDS), token, expiresAt: new Date(expiresAt * 1000).toISOString() };
 }
 
 export async function validAdminStepUp(request: Request, user: SessionUser) {

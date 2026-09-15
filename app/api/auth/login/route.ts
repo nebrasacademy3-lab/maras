@@ -1,3 +1,5 @@
+import { AdminMfaError } from "@/lib/admin-mfa";
+import { beginLoginMfa } from "@/lib/account-mfa";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { eq, or } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -31,6 +33,14 @@ export async function POST(request: Request) {
 
   await clearRateLimit("login-account", identifier);
   await getDb().update(users).set({ lastLoginAt: new Date().toISOString(), updatedAt: new Date().toISOString() }).where(eq(users.id, user.id));
+  let challenge;
+  try { challenge = await beginLoginMfa(user.id, request, payload.remember !== false); }
+  catch (error) { if (error instanceof AdminMfaError) return jsonError(error.message, error.status, error.code); throw error; }
+  if (challenge) {
+    const headers = new Headers({ "cache-control": "no-store" });
+    headers.append("set-cookie", challenge.cookie); headers.append("set-cookie", challenge.deviceCookie);
+    return Response.json({ ok: true, mfaRequired: true,  expiresAt: challenge.expiresAt }, { headers });
+  }
   let session;
   try { session = await createSession(user.id, request, payload.remember !== false); }
   catch (error) { if (error instanceof DeviceLimitError) return jsonError(`حسابك مرتبط بالجهازين المعتمدين. استخدم أحدهما أو تواصل مع الدعم لاستبدال جهاز. تسجيل الخروج لا يحرر الجهاز.`, 409, "DEVICE_LIMIT_REACHED"); throw error; }

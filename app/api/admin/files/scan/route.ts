@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
-  if (!roleAllowed(user, ["admin"])) return jsonError("غير مصرح بعرض فحص المرفقات", 403);
+  if (!roleAllowed(user, ["admin", "supervisor"])) return jsonError("غير مصرح بعرض فحص المرفقات", 403);
   if (!await checkRateLimit("file-scan-read", "user:" + user!.id, 60, 60)) return jsonError("طلبات كثيرة، حاول بعد قليل", 429);
   return Response.json({ ok: true, ...await fileScanOverview() }, { headers: { "cache-control": "no-store" } });
 }
@@ -21,7 +21,7 @@ export async function POST(request: Request) {
   return observeRequest(request, "files.scan", async () => {
     const machine = isScheduledTaskRequest(request);
     const user = machine ? null : await getSessionUser(request);
-    if (!machine && (!roleAllowed(user, ["admin"]) || !sameOriginRequest(request))) return jsonError("غير مصرح بتشغيل فحص المرفقات", 403);
+    if (!machine && (!roleAllowed(user, ["admin", "supervisor"]) || !sameOriginRequest(request))) return jsonError("غير مصرح بتشغيل فحص المرفقات", 403);
     const identity = machine ? "machine:" + clientIp(request) : "user:" + user!.id;
     if (!await checkRateLimit("file-scan", identity, 8, 60)) return jsonError("تم تشغيل الفحص مؤخرًا", 429);
     let payload: Record<string, unknown> = {};

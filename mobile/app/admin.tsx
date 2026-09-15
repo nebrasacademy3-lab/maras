@@ -1,3 +1,7 @@
+import { PublicContentEditor } from "@/src/components/public-content-editor";
+import { StaffManager } from "@/src/components/staff-manager";
+import { permissionsCover } from "@/src/lib/staff-policy";
+import { MerasAlert as Alert } from "@/src/lib/interaction-events";
 import { AdminLessonSources } from "@/src/components/admin-lesson-sources";
 import { randomUUID } from "expo-crypto";
 import { AdminCourseRoster } from "@/src/components/admin-course-roster";
@@ -9,7 +13,7 @@ import * as Linking from "expo-linking";
 import React, { useState } from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { Alert, Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { RegisteredDevices } from "@/src/components/RegisteredDevices";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AdminAi } from "@/src/components/AdminAi";
@@ -33,10 +37,11 @@ const LazySupportChat = React.lazy(async () => {
 
 type Colors = ReturnType<typeof useTheme>["colors"];
 type AdminData = {
+  permissions: string[]; isPlatformOwner: boolean;
   pagination?: { view: string; page: number; pageSize: number; total: number } | null;
   metrics: { students: number; activeStudents: number; institutions: number; publishedCourses: number; orders: number; paidOrders: number; revenue: number; openRequests: number; openTickets: number; pendingReviews: number };
   services: Record<string, boolean>;
-  users: { id: number; fullName: string; email: string; phone: string | null; role: string; status: string; universitySlug: string | null; specialty: string | null; academicLevel: string | null; profileCompletedAt: string | null; deviceCount?: number; sessions?: { id: number; deviceId: string | null; deviceLabel: string; platform: string; ipAddress: string | null; lastSeenAt: string; expiresAt: string; createdAt: string }[] }[];
+  users: { mfaEnabled?: boolean; id: number; fullName: string; email: string; phone: string | null; role: string; status: string; universitySlug: string | null; specialty: string | null; academicLevel: string | null; profileCompletedAt: string | null; deviceCount?: number; sessions?: { id: number; deviceId: string | null; deviceLabel: string; platform: string; ipAddress: string | null; lastSeenAt: string; expiresAt: string; createdAt: string }[] }[];
   deviceLimit: number;
   requests: { id: number; userId?: number | null; courseName: string; university: string; specialty: string; courseUrl?: string | null; status: string; preparedCourseSlug?: string | null; attachmentsCount: number; createdAt: string; student?: { fullName: string; email: string; phone: string | null; universitySlug: string | null; specialty: string | null; academicLevel: string | null; status: string } | null; files?: { id: number; originalName: string; contentType: string; sizeBytes: number; createdAt: string }[] }[];
   tickets: { id: number; ticketNumber: string; title: string; message: string; userEmail: string | null; contactChannel?: string; status: string; createdAt: string; student?: { fullName: string; email: string; phone: string | null; universitySlug: string | null; specialty: string | null; academicLevel: string | null; status: string } | null; replies?: { id: number; body: string; authorRole?: string; authorEmail?: string; internal?: boolean; replyToId?: number | null; createdAt: string; files?: { id: number; originalName: string; contentType: string; sizeBytes: number; createdAt: string }[] }[] }[];
@@ -55,7 +60,7 @@ type AdminData = {
   settings: Record<string, string>;
 };
 
-type Tab = "roster" | "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "finance" | "operations" | "bundles" | "tracks" | "referrals" | "ai" | "reviews" | "communication" | "security" | "appearance";
+type Tab = "pages" | "roster" | "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "finance" | "operations" | "bundles" | "tracks" | "referrals" | "ai" | "reviews" | "communication" | "security" | "appearance";
 type Mutate = (payload: Record<string, unknown>, success?: string) => Promise<boolean>;
 type DeleteEntity = (entityType: string, entityId: string | number, label: string, impact: string) => void;
 const arabicMap: Record<string, string> = { ا: "a", أ: "a", إ: "i", آ: "a", ب: "b", ت: "t", ث: "th", ج: "j", ح: "h", خ: "kh", د: "d", ذ: "dh", ر: "r", ز: "z", س: "s", ش: "sh", ص: "s", ض: "d", ط: "t", ظ: "z", ع: "a", غ: "gh", ف: "f", ق: "q", ك: "k", ل: "l", م: "m", ن: "n", ه: "h", و: "w", ي: "y", ة: "h", ى: "a", ء: "a" };
@@ -115,6 +120,7 @@ const couponStatusLabels: Record<string, string> = { active: "نشط", inactive:
 const institutionTypeLabels: Record<string, string> = { university: "جامعة", college: "كلية", technical: "تقنية", public: "حكومية", private: "أهلية", "حكومية": "حكومية", "أهلية": "أهلية", "كلية": "كلية", "تقنية": "تقنية" };
 const orderStatusLabels: Record<string, string> = { initiated: "بدأ الدفع", pending: "بانتظار الدفع", verification_pending: "قيد التحقق من الدفع", payment_review: "قيد مراجعة الدفع", paid: "مدفوع", partially_refunded: "مسترد جزئيًا", refunded: "مسترد", failed: "متعذر", canceled: "ملغي", cancelled: "ملغي", voided: "مبطل" };
 const tabs: { key: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }[] = [
+  { key: "pages", label: "الصفحات والمحتوى", icon: "document-text-outline" },
   { key: "overview", label: "الرئيسية", icon: "grid-outline" },
   { key: "users", label: "الحسابات", icon: "people-outline" },
   { key: "subscriptions", label: "الاشتراكات", icon: "shield-checkmark-outline" },
@@ -149,11 +155,11 @@ export default function Admin() {
   const [pageState, setPageState] = useState({ tab: "overview", q: "", page: 1 });
   const view = ({ users: "students", subscriptions: "subscriptions", staff: "staff", requests: "requests", support: "support", reviews: "reviews", commerce: "orders" } as Record<string, string>)[tab] || "overview";
   const page = pageState.tab === tab && pageState.q === serverSearch ? pageState.page : 1;
-  const query = useQuery({ queryKey: ["admin-console", view, serverSearch, page], queryFn: ({ signal }) => api<AdminData>(`/api/admin/console?${new URLSearchParams({ client: "mobile", view, q: serverSearch, page: String(page) })}`, { signal }), enabled: user?.role === "admin", staleTime: 15_000, retry: 1 });
+  const query = useQuery({ queryKey: ["admin-console", view, serverSearch, page], queryFn: ({ signal }) => api<AdminData>(`/api/admin/console?${new URLSearchParams({ client: "mobile", view, q: serverSearch, page: String(page) })}`, { signal }), enabled: !!user && ["admin", "supervisor"].includes(user.role), staleTime: 15_000, retry: 1 });
   const refresh = async () => { await client.invalidateQueries({ queryKey: ["admin-console"] }); };
   const stepUpRequired = (detail?: string) => {
     setMessage(ADMIN_STEP_UP_MESSAGE);
-    setTab("security");
+
     Alert.alert(language === "ar" ? "التحقق الإداري مطلوب" : "Admin verification required", detail || ADMIN_STEP_UP_MESSAGE);
   };
   const mutate: Mutate = async (payload, success = "تم حفظ التغيير") => {
@@ -180,25 +186,30 @@ export default function Admin() {
     ],
   );
 
-  if (user?.role !== "admin") return <Screen><AppHeader title="لوحة الإدارة" back /><EmptyState icon="lock-closed-outline" title="غير مصرح" text="هذه الصفحة متاحة للحسابات الإدارية فقط، ولا توجد حسابات تجريبية عامة." /></Screen>;
+  if (!user || !["admin", "supervisor"].includes(user.role)) return <Screen><AppHeader title="لوحة الإدارة" back /><EmptyState icon="lock-closed-outline" title="غير مصرح" text="هذه الصفحة متاحة للحسابات الإدارية فقط، ولا توجد حسابات تجريبية عامة." /></Screen>;
   if (query.isLoading) return <Screen><LoadingState label="جارٍ تحميل مركز التحكم..." /></Screen>;
   if (!query.data) return <Screen><AppHeader title="لوحة الإدارة" back /><EmptyState icon="cloud-offline-outline" title="تعذر تحميل البيانات" text="تحقق من الاتصال ثم أعد المحاولة." action={<AppButton title="إعادة المحاولة" onPress={() => query.refetch()} />} /></Screen>;
   const data = query.data;
+  const required: Record<Tab, string[]> = { pages: ["content.manage"], overview: [], roster: ["catalog.view", "students.view"], users: ["students.view"], subscriptions: ["subscriptions.manage"], staff: ["staff.manage"], requests: ["requests.manage"], support: ["support.manage"], catalog: ["catalog.view"], commerce: ["finance.manage"], finance: ["finance.view"], operations: ["operations.manage"], bundles: ["catalog.manage"], tracks: ["roadmap.manage"], referrals: ["referrals.manage"], ai: ["ai.manage"], reviews: ["catalog.manage"], communication: ["notifications.manage", "settings.manage"], security: [], appearance: [] };
+  const availableTabs = tabs.filter(item => data.isPlatformOwner || permissionsCover(new Set(data.permissions), required[item.key]));
+  if (!availableTabs.some(item => item.key === tab)) return <Screen><AppHeader title="الصلاحيات" back/><EmptyState icon="lock-closed-outline" title="هذا القسم غير متاح لصلاحياتك" text="اطلب الصلاحية من المدير الأعلى." action={<AppButton title="العودة للوحة" onPress={() => setTab("overview")}/>}/></Screen>;
+
 
   return <Screen keyboard>
     <AppHeader title="لوحة الإدارة" subtitle="تحكم مباشر وآمن في منصة مراس" back />
     <View style={[styles.adminNavigator, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
       <View style={[styles.adminNavigatorHead, { flexDirection: rowDirection }]}><View style={[styles.adminNavigatorIcon, { backgroundColor: colors.surface }]}><Ionicons name="grid-outline" size={23} color={colors.primary} /></View><View style={{ flex: 1 }}><Text style={[styles.adminNavigatorTitle, { color: colors.text }]}>مركز التحكم</Text><Text style={[styles.adminNavigatorCopy, { color: colors.textSoft }]}>انتقل لأي قسم بالاسم، ثم ابحث داخل اختياراته</Text></View></View>
-      <SearchPicker label="أقسام الإدارة" hideLabel value={tab} placeholder="ابحث عن قسم" items={tabs.map((item) => ({ key: item.key, label: item.label }))} onSelect={(item) => setTab(item.key as Tab)} />
+      <SearchPicker label="أقسام الإدارة" hideLabel value={tab} placeholder="ابحث عن قسم" items={availableTabs.map((item) => ({ key: item.key, label: item.label }))} onSelect={(item) => setTab(item.key as Tab)} />
     </View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.tabs, { direction, flexDirection: rowDirection }]}>{tabs.map((item) => <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected: tab === item.key }} onPress={() => setTab(item.key)} style={[styles.tab, { backgroundColor: tab === item.key ? colors.primary : colors.surface, borderColor: tab === item.key ? colors.primary : colors.border }]}><View style={styles.tabIcon}><Ionicons name={item.icon} size={18} color={tab === item.key ? "#FFF" : colors.primary} /></View><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.82} style={[styles.tabLabel, { color: tab === item.key ? "#FFF" : colors.text }]}>{item.label}</Text></Pressable>)}</ScrollView>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.tabs, { direction, flexDirection: rowDirection }]}>{availableTabs.map((item) => <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected: tab === item.key }} onPress={() => setTab(item.key)} style={[styles.tab, { backgroundColor: tab === item.key ? colors.primary : colors.surface, borderColor: tab === item.key ? colors.primary : colors.border }]}><View style={styles.tabIcon}><Ionicons name={item.icon} size={18} color={tab === item.key ? "#FFF" : colors.primary} /></View><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.82} style={[styles.tabLabel, { color: tab === item.key ? "#FFF" : colors.text }]}>{item.label}</Text></Pressable>)}</ScrollView>
     {message ? <Text style={[styles.message, { color: message.startsWith("تم") ? colors.success : colors.danger }]}>{message}</Text> : null}
     {view !== "overview" && (tab !== "users" || !profileEmail) && <Card><Field label="بحث في جميع السجلات" value={searchDraft} onChangeText={setSearchDraft} /><AppButton title="بحث" onPress={() => { setServerSearch(searchDraft.trim()); setPageState({ tab, q: searchDraft.trim(), page: 1 }); }} /></Card>}
     {tab === "roster" && <AdminCourseRoster key={courseSelection} initialSlug={courseSelection} courses={data.courses} onOpenStudent={email => { setProfileEmail(email); setTab("users"); }} />}
     {tab === "overview" && <Overview data={data} colors={colors} />}
     {tab === "users" && (profileEmail ? <AdminStudentProfile email={profileEmail} onClose={() => setProfileEmail("")} onStepUpRequired={stepUpRequired} onOpenCourse={slug => { setCourseSelection(slug); setTab("roster"); }} onOpenSection={(section, search) => { setServerSearch(search); setSearchDraft(search); setTab(section); }} /> : <Users data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} onOpenProfile={setProfileEmail} />)}
     {tab === "subscriptions" && <SubscriptionAdmin data={data} colors={colors} mutate={mutate} />}
-    {tab === "staff" && <StaffAdmin data={data} colors={colors} refresh={refresh} mutate={mutate} onDelete={deleteEntity} />}
+    {tab === "staff" && <StaffManager />}
+    {tab === "pages" && <PublicContentEditor />}
     {tab === "requests" && <Requests rows={data.requests} courses={data.courses} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "support" && <Support rows={data.tickets} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
     {tab === "catalog" && <CatalogAdmin data={data} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
@@ -238,25 +249,6 @@ function Queue({ label, value, colors }: { label: string; value: number; colors:
   return <View style={[styles.queue, { borderBottomColor: colors.border }]}><Text style={[styles.queueValue, { color: colors.primary }]}>{value}</Text><Text style={[styles.queueLabel, { color: colors.text }]}>{label}</Text></View>;
 }
 
-function StaffAdmin({ data, colors, mutate, refresh, onDelete }: { data: AdminData; colors: Colors; mutate: Mutate; refresh: () => Promise<void>; onDelete: DeleteEntity }) {
-  const [form, setForm] = useState({ email: "", fullName: "", phone: "", password: "", role: "supervisor", universitySlug: "", specialty: "" });
-  const [feedback, setFeedback] = useState("");
-  const [busy, setBusy] = useState(false);
-  const staff = data.users.filter((row) => row.role !== "student");
-  const create = async () => {
-    setBusy(true); setFeedback("");
-    try {
-      const response = await api("/api/admin/staff", { method: "POST", body: jsonBody(form) });
-      void response;
-      setForm({ email: "", fullName: "", phone: "", password: "", role: "supervisor", universitySlug: "", specialty: "" });
-      setFeedback("تم إنشاء حساب الموظف وربطه بالبيانات");
-      await refresh();
-    } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر إنشاء حساب الموظف"); }
-    finally { setBusy(false); }
-  };
-  return <><SectionTitle title="إنشاء موظف وصلاحياته" subtitle="الحساب الجديد يبدأ بصلاحيات محددة ولا يصل إلى الإدارة إلا بدور مصرح" /><Card><Field label="البريد الإلكتروني" value={form.email} onChangeText={(value) => setForm({ ...form, email: value })} keyboardType="email-address" autoCapitalize="none" /><Field label="الاسم الكامل" value={form.fullName} onChangeText={(value) => setForm({ ...form, fullName: value })} /><Field label="الجوال السعودي" value={form.phone} onChangeText={(value) => setForm({ ...form, phone: value })} keyboardType="phone-pad" /><Field label="كلمة المرور المؤقتة" value={form.password} onChangeText={(value) => setForm({ ...form, password: value })} secureTextEntry autoCapitalize="none" /><ChoiceRow values={["supervisor", "admin"]} selected={form.role} onSelect={(value) => setForm({ ...form, role: value })} colors={colors} labels={roleLabels} /><SearchPicker label="الجامعة أو الكلية" value={form.universitySlug} placeholder="اختر الجهة" items={data.institutions.map((row) => ({ key: row.slug, label: row.name, detail: row.region }))} onSelect={(item) => setForm({ ...form, universitySlug: item.key })} /><SearchPicker label="التخصص" value={form.specialty} placeholder="اختر التخصص" items={data.specialties.map((row) => ({ key: row.name, label: row.name }))} onSelect={(item) => setForm({ ...form, specialty: item.key })} />{feedback ? <Text style={[styles.message, { color: feedback.startsWith("تم") ? colors.success : colors.danger }]}>{feedback}</Text> : null}<AppButton title="إنشاء الحساب" icon="person-add-outline" loading={busy} disabled={form.email.trim().length < 5 || form.fullName.trim().length < 5 || form.phone.trim().length < 8 || form.password.length < 10 || !form.universitySlug || !form.specialty} onPress={create} /></Card><SectionTitle title="الموظفون الحاليون" subtitle={`${staff.length} حساب إداري أو إشرافي`} />{staff.length ? staff.map((row) => <Card key={row.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={[styles.role, { color: colors.primary }]}>{roleLabels[row.role] || "صلاحية غير معروفة"}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.fullName}</Text></View><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.email} · {accountStatusLabels[row.status] || "حالة حساب غير معروفة"}</Text><View style={styles.actionRow}><AppButton full={false} title={row.status === "active" ? "تعليق" : "تنشيط"} variant={row.status === "active" ? "danger" : "soft"} onPress={() => void mutate({ action: "updateUser", id: row.id, role: row.role, status: row.status === "active" ? "suspended" : "active" })} /><AppButton full={false} title="تحويل لمشرف" variant="ghost" onPress={() => void mutate({ action: "updateUser", id: row.id, role: row.role === "admin" ? "supervisor" : "admin", status: row.status })} /><AppButton full={false} title="حذف نهائي" variant="danger" onPress={() => onDelete("user", row.id, row.fullName, "سيُحذف حساب الموظف وتوابعه غير المالية، ولن يُحذف الحساب الحالي أو آخر مدير أو أي حساب له تاريخ مالي.")} /></View></Card>) : <EmptyState title="لا يوجد موظفون" text="أنشئ أول مشرف أو مدير من النموذج أعلاه." />}</>;
-}
-
 function Users({ data, colors, mutate, onDelete, onOpenProfile }: { data: AdminData; colors: Colors; mutate: Mutate; onDelete: DeleteEntity; onOpenProfile: (email: string) => void }) {
   const { locale } = useLanguage();
   const supervisors = data.users.filter((row) => row.role === "supervisor");
@@ -276,7 +268,7 @@ function Users({ data, colors, mutate, onDelete, onOpenProfile }: { data: AdminD
     <SearchBox value={query} onChangeText={setQuery} placeholder="ابحث بالاسم أو البريد أو الجوال أو التخصص" />
     {visibleUsers.length ? visibleUsers.map((row) => <Card key={row.id} style={styles.dataCard}>
       <View style={styles.dataHead}><Text style={[styles.role, { color: colors.primary }]}>{roleLabels[row.role] || "صلاحية غير معروفة"}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.fullName}</Text></View>
-      <Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.email} · {row.phone || "بدون جوال"}</Text>
+      <Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.email} · {row.phone || "بدون جوال"} · MFA: {row.mfaEnabled ? "مفعّل" : "غير مفعّل"}</Text>
       <Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.specialty || "بدون تخصص"} · {row.academicLevel || "المستوى غير محدد"} · {row.profileCompletedAt && row.academicLevel ? "ملف مكتمل" : "ملف ناقص"} · {accountStatusLabels[row.status] || "حالة حساب غير معروفة"}</Text>
       {row.role === "student" ? <View style={[styles.deviceBox, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
         <RegisteredDevices studentEmail={row.email} /><Text style={[styles.deviceTitle, { color: colors.text }]}>الجلسات النشطة: {(row.sessions || []).length}</Text><AppButton full={false} title="ملف الطالب 360" icon="person-circle-outline" variant="ghost" onPress={() => onOpenProfile(row.email)} />
@@ -285,7 +277,7 @@ function Users({ data, colors, mutate, onDelete, onOpenProfile }: { data: AdminD
           <AppButton full={false} title="تسجيل خروج" variant="danger" onPress={() => mutate({ action: "revokeUserSession", sessionId: session.id }, "تم تسجيل خروج الجهاز")} />
         </View>) : <Text style={[styles.dataMeta, { color: colors.textSoft }]}>لا توجد جلسات نشطة.</Text>}
       </View> : null}
-      <View style={styles.actionRow}><AppButton full={false} title={row.status === "active" ? "تعليق" : "تنشيط"} variant={row.status === "active" ? "danger" : "soft"} onPress={() => mutate({ action: "updateUser", id: row.id, role: row.role, status: row.status === "active" ? "suspended" : "active" })} /><AppButton full={false} title={row.role === "student" ? "ترقية لمشرف" : "إعادة لطالب"} variant="soft" onPress={() => mutate({ action: "updateUser", id: row.id, status: row.status, role: row.role === "student" ? "supervisor" : "student" })} /><AppButton full={false} title="حذف نهائي" variant="danger" onPress={() => onDelete("user", row.id, row.fullName, "سيُحذف الحساب وبياناته غير المالية وملفات الدعم، ويُمنع إذا وُجد طلب أو فاتورة أو حدث دفع.")} /></View>
+      <View style={styles.actionRow}><AppButton full={false} title={row.status === "active" ? "تعليق" : "تنشيط"} variant={row.status === "active" ? "danger" : "soft"} onPress={() => mutate({ action: "updateUser", id: row.id, role: row.role, status: row.status === "active" ? "suspended" : "active" })} /><AppButton full={false} title="حذف نهائي" variant="danger" onPress={() => onDelete("user", row.id, row.fullName, "سيُحذف الحساب وبياناته غير المالية وملفات الدعم، ويُمنع إذا وُجد طلب أو فاتورة أو حدث دفع.")} /></View>
     </Card>) : <EmptyState title="لا توجد نتائج" text="جرّب اسمًا أو بريدًا أو رقم جوال مختلفًا." />}
     <SectionTitle title="نطاقات المشرفين" subtitle="يربط المشرف بطلبات ومحتوى الجامعة والتخصص المحددين" />
     <Card>
@@ -617,23 +609,30 @@ type MobileMfaStatus = { enabled:boolean; pendingSetup:boolean; stepUpValid:bool
 function MobileAdminSecurity({ colors }:{ colors:Colors }) {
   const mfa = useQuery({ queryKey:["admin-mfa-status"], queryFn:()=>api<MobileMfaStatus>("/api/admin/security/mfa"), staleTime:10_000, retry:0 });
   const [code,setCode] = useState("");
+  const [password,setPassword] = useState("");
+  const [recoveryCodes,setRecoveryCodes] = useState<string[]>([]);
   const [setup,setSetup] = useState<{secret:string;otpauthUri:string}|null>(null);
   const [feedback,setFeedback] = useState("");
   const [busy,setBusy] = useState(false);
   const submit = async (action:"setup"|"verify"|"stepUp"|"disable") => {
+    if (action === "disable") {
+      const confirmed = await new Promise<boolean>(resolve => Alert.alert("تعطيل المصادقة الإضافية؟", "ستُلغى رموز الاستعادة والجلسات الأخرى.", [{ text: "إلغاء", style: "cancel", onPress: () => resolve(false) }, { text: "تعطيل", style: "destructive", onPress: () => resolve(true) }], { onDismiss: () => resolve(false) }));
+      if (!confirmed) return;
+    }
     setBusy(true); setFeedback("");
     try {
+      if (action !== "stepUp" && !password) throw new ApiError("أدخل كلمة المرور الحالية قبل تغيير إعداد المصادقة.", 400);
       if (action !== "setup" && !/^\d{6}$/.test(code)) throw new ApiError("أدخل رمزًا صحيحًا من 6 أرقام.", 400);
-      const result = await api<MobileMfaStatus & { secret?:string;otpauthUri?:string;stepUpToken?:string }>("/api/admin/security/mfa", { method:"POST", body:jsonBody(action === "setup" ? { action, label:"تطبيق المصادقة — الجوال" } : { action, code }) });
+      const result = await api<MobileMfaStatus & { secret?:string;otpauthUri?:string;stepUpToken?:string;recoveryCodes?:string[] }>("/api/admin/security/mfa", { method:"POST", body:jsonBody({ action, code, ...(action !== "stepUp" ? { password } : {}), ...(action === "setup" ? { label:"تطبيق المصادقة — الجوال" } : {}) }) });
       if (action === "setup" && result.secret && result.otpauthUri) {
         setSetup({ secret:result.secret, otpauthUri:result.otpauthUri });
         setFeedback("أضف المفتاح إلى تطبيق المصادقة، ثم أدخل أول رمز يظهر لك.");
       } else if (action === "verify") {
-        setSetup(null); setCode(""); setFeedback("تم تفعيل المصادقة الإضافية بنجاح."); await mfa.refetch();
+        setSetup(null); setCode(""); setPassword(""); setRecoveryCodes(result.recoveryCodes || []); setAdminStepUpToken(result.stepUpToken || null); setFeedback("تم تفعيل المصادقة. احفظ رموز الاستعادة المعروضة الآن."); await mfa.refetch();
       } else if (action === "stepUp") {
         setAdminStepUpToken(result.stepUpToken || null); setCode(""); setFeedback("تم تأكيد هويتك للعمليات الحساسة لمدة ساعة."); await mfa.refetch();
       } else {
-        setAdminStepUpToken(null); setCode(""); setSetup(null); setFeedback("تم تعطيل المصادقة الإضافية لهذا الحساب."); await mfa.refetch();
+        setAdminStepUpToken(null); setCode(""); setSetup(null); setPassword(""); setRecoveryCodes([]); setFeedback("تم تعطيل المصادقة الإضافية لهذا الحساب."); await mfa.refetch();
       }
     } catch (reason) { setFeedback(reason instanceof ApiError ? reason.message : "تعذر إكمال إجراء الأمان."); }
     finally { setBusy(false); }
@@ -646,6 +645,8 @@ function MobileAdminSecurity({ colors }:{ colors:Colors }) {
     <Card style={styles.dataCard}>
       <View style={styles.dataHead}><Text style={[styles.role,{color:status.enabled?colors.success:colors.warning}]}>{status.enabled?"مفعّلة":"تحتاج إعدادًا"}</Text><Text style={[styles.dataTitle,{color:colors.text}]}>رمز تحقق متغير TOTP</Text></View>
       <Text style={[styles.dataMeta,{color:colors.textSoft}]}>استخدم تطبيق مصادقة موثوقًا. المفتاح مشفّر على الخادم ولا يظهر مجددًا بعد التفعيل.</Text>
+      <Field label="كلمة المرور الحالية — للإعداد والتعطيل" value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" maxLength={128}/>
+      {recoveryCodes.length > 0 ? <View style={styles.securitySetup}><Text selectable style={[styles.dataMeta,{color:colors.textSoft}]}>احفظ رموز استعادة الحساب؛ لن تظهر مرة أخرى. كل رمز يُستخدم مرة واحدة.</Text><Text selectable style={[styles.securitySecret,{color:colors.text}]}>{recoveryCodes.join("\n")}</Text><AppButton title="حفظت الرموز، إخفاؤها" variant="soft" onPress={()=>setRecoveryCodes([])}/></View> : null}
       {!status.enabled ? <AppButton title={status.pendingSetup?"إنشاء مفتاح إعداد جديد":"بدء إعداد المصادقة"} icon="key-outline" loading={busy} onPress={()=>void submit("setup")}/> : null}
       {setup ? <View style={[styles.securitySetup,{backgroundColor:colors.surfaceAlt,borderColor:colors.border}]}><Text style={[styles.dataMeta,{color:colors.textSoft}]}>مفتاح الإعداد — احفظه الآن</Text><Text selectable style={[styles.securitySecret,{color:colors.text}]}>{setup.secret}</Text><AppButton title="فتح تطبيق المصادقة" variant="soft" icon="open-outline" onPress={()=>void Linking.openURL(setup.otpauthUri).catch(()=>setFeedback("انسخ المفتاح يدويًا إلى تطبيق المصادقة."))}/></View> : null}
       {(setup || status.enabled) ? <Field label={status.enabled?"رمز المصادقة الحالي":"رمز التفعيل الأول"} value={code} onChangeText={(value)=>setCode(value.replace(/[^0-9]/g,"").slice(0,6))} keyboardType="number-pad"/> : null}

@@ -1,3 +1,4 @@
+import { beginLoginMfa } from "@/lib/account-mfa";
 import "server-only";
 import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -161,6 +162,13 @@ export async function finishOAuth(request: Request, rawProvider: string) {
     const sessionHeaders = new Headers(request.headers);
     if (row.deviceId) sessionHeaders.set("x-meras-device-id", row.deviceId);
     const sessionRequest = new Request(request.url, { headers: sessionHeaders });
+    const challenge = await beginLoginMfa(account.id, sessionRequest, true);
+    if (challenge) {
+      const response = redirect(new URL(`/login?mfa=1&return_to=${encodeURIComponent(safeAccountReturnTo(row.returnTo))}`, oauthOrigin()).toString(), clearBinding);
+      response.headers.append("set-cookie", challenge.cookie);
+      response.headers.append("set-cookie", challenge.deviceCookie);
+      return response;
+    }
     const session = await createSession(account.id, sessionRequest, true);
     if (!account.emailVerifiedAt) await ensureVerificationEmail(account.id, request);
     const next = accountNext(sessionUserFromRow(account));
@@ -194,6 +202,8 @@ export async function exchangeMobileOAuth(request: Request) {
     });
     const [account] = await getDb().select().from(users).where(and(eq(users.id, row.userId), eq(users.status, "active"))).limit(1);
     if (!account) throw new OAuthError("account_unavailable");
+    const mfaChallenge = await beginLoginMfa(account.id, request, true);
+    if (mfaChallenge) return Response.json({ mfaRequired: true, challengeToken: mfaChallenge.challengeToken, expiresAt: mfaChallenge.expiresAt }, { headers: noStore });
     const session = await createSession(account.id, request, true);
     const user = sessionUserFromRow(account);
     if (!user.emailVerified) await ensureVerificationEmail(account.id, request);

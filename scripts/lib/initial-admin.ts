@@ -25,7 +25,7 @@ export async function createInitialAdmin(pool: Pool, input: { email: string; ful
     const passwordHash = await hashPassword(input.password);
     const now = new Date().toISOString();
     const created = await client.query<{ id: number }>(
-      "INSERT INTO users(email,full_name,password_hash,role,status,email_verified_at,profile_completed_at,onboarding_completed_at,created_at,updated_at) VALUES($1,$2,$3,'admin','active',$4,$4,$4,$4,$4) RETURNING id",
+      "INSERT INTO users(email,full_name,password_hash,role,is_platform_owner,status,email_verified_at,profile_completed_at,onboarding_completed_at,created_at,updated_at) VALUES($1,$2,$3,'admin',true,'active',$4,$4,$4,$4,$4) RETURNING id",
       [email, fullName, passwordHash, now],
     );
     const id = created.rows[0]?.id;

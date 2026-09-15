@@ -1,4 +1,5 @@
 "use client";
+import { adminFetch } from "@/lib/admin-client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { AdminCenterNav } from "@/components/admin-center-nav";
@@ -18,7 +19,7 @@ export function AdminCourseRoster({ slug }: { slug: string }) {
     setLoading(true); setError("");
     try {
       const query = new URLSearchParams({ kind, status, q, page: String(page) });
-      const response = await fetch(`/api/admin/courses/${encodeURIComponent(slug)}?${query}`, { cache: "no-store", signal });
+      const response = await adminFetch(`/api/admin/courses/${encodeURIComponent(slug)}?${query}`, { cache: "no-store", signal });
       const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر تحميل الملف"); setData(result);
     } catch (caught) { if (!signal?.aborted) setError(caught instanceof Error ? caught.message : "تعذر تحميل الملف"); }
     finally { if (!signal?.aborted) setLoading(false); }
@@ -27,7 +28,7 @@ export function AdminCourseRoster({ slug }: { slug: string }) {
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); if (!action) return; const form = new FormData(event.currentTarget); setBusy(true); setMessage("");
     try {
-      const response = await fetch("/api/admin/console", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "updateAccess", id: action.row.id, operation: action.operation, operationKey: action.key, reason: form.get("reason"), days: Number(form.get("days") || 30), expectedUpdatedAt: action.row.updatedAt }) });
+      const response = await adminFetch("/api/admin/console", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "updateAccess", id: action.row.id, operation: action.operation, operationKey: action.key, reason: form.get("reason"), days: Number(form.get("days") || 30), expectedUpdatedAt: action.row.updatedAt }) });
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر تنفيذ الإجراء"); setAction(null); setMessage("تم تحديث الاشتراك وإضافة الإجراء إلى سجل الطالب"); await load();
     } catch (caught) { setMessage(caught instanceof Error ? caught.message : "تعذر تنفيذ الإجراء"); } finally { setBusy(false); }

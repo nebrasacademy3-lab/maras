@@ -8,9 +8,10 @@ const read = (path) => readFile(new URL(path, backend), "utf8");
 test("support API protects ticket ownership and manager-only closure/deletion", async () => {
   const route = await read("app/api/support/route.ts");
   const consoleRoute = await read("app/api/admin/console/route.ts");
-  assert.match(route, /if \(!isManager\(current\) && ticket\.userEmail !== current\.email\) return jsonError\("غير مصرح", 403\)/);
-  assert.match(route, /action === "close" && !isManager\(current\)\) return jsonError/);
-  assert.match(route, /const machineAuthorized = isAdminRequest\(request\)/);
+  assert.match(route, /if \(!manager && ticket\.userEmail !== current\.email\) return jsonError\("غير مصرح", 403\)/);
+  assert.match(route, /action === "close" && !manager\) return jsonError/);
+  assert.match(route, /await hasPermission\(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE\)/);
+  assert.match(route, /await requireAdminStepUp\(request, current!\)/);
   assert.match(route, /await tx\.delete\(supportReplyFiles\)/);
   assert.match(route, /await Promise\.all\(files\.map\(\(file\) => deleteObject/);
   assert.match(consoleRoute, /action === "updateTicket"/);

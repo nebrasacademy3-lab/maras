@@ -1,3 +1,5 @@
+import { permissionsForUser } from "@/lib/permissions";
+import { adminPagePermissions, permissionsCover } from "@/lib/staff-policy";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSessionUserFromHeaders, roleAllowed, type SessionUser, type UserRole } from "@/lib/auth";
@@ -16,7 +18,10 @@ export async function requireUser(returnTo: string): Promise<SessionUser> {
 
 export async function requireRole(returnTo: string, roles: UserRole[]) {
   const user = await requireUser(returnTo);
-  if (!roleAllowed(user, roles)) redirect("/dashboard?error=forbidden");
+  if (returnTo === "/admin" || returnTo.startsWith("/admin/")) {
+    const required = adminPagePermissions(returnTo.split("?")[0]);
+    if (!user.isPlatformOwner && (user.role !== "supervisor" || required === null || !permissionsCover(await permissionsForUser(user), required))) redirect("/dashboard?error=forbidden");
+  } else if (!roleAllowed(user, roles)) redirect("/dashboard?error=forbidden");
   return user;
 }
 

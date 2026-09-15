@@ -1,6 +1,7 @@
 export type UserRole = "student" | "supervisor" | "admin";
 
 export type SessionUser = {
+  isPlatformOwner?: boolean;
   id: number;
   email: string;
   emailVerified: boolean;

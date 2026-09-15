@@ -99,3 +99,8 @@
   .notice, .flow, .spin { animation: none; }
   .primaryButton, .dangerButton { transition: none; }
 }
+
+.passwordField { display: grid; gap: 8px; margin-top: 24px; color: var(--text-soft); font-size: 14px; line-height: 1.7; }
+.passwordField input { width: 100%; min-width: 0; min-height: 48px; padding: 12px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); color: var(--text); }
+.passwordField input:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.recoveryCodes { padding: 16px; border: 1px solid var(--line); border-radius: 14px; background: var(--surface-2); color: var(--text); white-space: pre-wrap; overflow-wrap: anywhere; text-align: center; line-height: 1.9; }

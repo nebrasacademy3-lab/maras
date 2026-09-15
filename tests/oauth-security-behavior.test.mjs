@@ -130,6 +130,7 @@ async function service(initial = {}, options = {}) {
   const dependencies = {
     ...provider, ...mem.tables, and: mem.and, eq: mem.eq, gt: mem.gt, lt: mem.lt, isNull: mem.isNull, sql: mem.sql, getDb: () => mem.db,
     checkRateLimit: async () => true, clientIp: () => "unit-test",
+    beginLoginMfa: async () => null,
     createSession: async (id) => { sessions.push(id); return { token: "never-in-a-url", cookie: "meras_session=session; HttpOnly", expiresAt: "future" }; },
     DeviceLimitError: class DeviceLimitError extends Error {},
     sameOriginRequest: request => !request.headers.get("origin") || request.headers.get("origin") === "https://meras.example",

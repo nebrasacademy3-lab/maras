@@ -9,7 +9,7 @@ const nativeRequest = (id, extra = {}) => new Request("https://test/api/mobile/a
 const identityA = "installation-aaaaaaaaaaaaaaaaaaaa";
 const identityB = "installation-bbbbbbbbbbbbbbbbbbbb";
 const identityC = "installation-cccccccccccccccccccc";
-async function authFor(db) { return isolated("../lib/auth.ts", { ...tables, eq, and, gt, isNull, sql, getDb: () => db, enrollStudentDeviceTx: devices.enrollStudentDeviceTx }); }
+async function authFor(db) { return isolated("../lib/auth.ts", { ...tables, eq, and, gt, isNull, sql, getDb: () => db, verifyLoginMfaTx: async () => false, enrollStudentDeviceTx: devices.enrollStudentDeviceTx }); }
 function studentDb() { return database({ users: [{ id: 7, role: "student", status: "active", email: "student@example.test" }] }); }
 
 test("logout, expired sessions and password-reset-style revocation never free either student device", async () => {
@@ -89,7 +89,7 @@ test("student session revocation cannot unregister an approved device or admit a
 
 test("device replacement API requires administrator role, step-up and a reason before writes", async () => {
   class AdminMfaError extends Error { status = 428; code = "MFA_STEP_UP_REQUIRED"; }
-  for (const scenario of [{ role: "student", mfa: true, status: 403 }, { role: "supervisor", mfa: true, status: 403 }, { role: "admin", mfa: false, status: 428 }, { role: "admin", mfa: true, reason: "", status: 400 }]) {
+  for (const scenario of [{ role: "student", mfa: true, status: 403 }, { role: "supervisor", mfa: true, status: 400 }, { role: "admin", mfa: false, status: 428 }, { role: "admin", mfa: true, reason: "", status: 400 }]) {
     const route = await isolated("../app/api/admin/students/[email]/devices/route.ts", { ...tables, ...primitives, ...bodies, ...devices, eq, and, asc: value => value, AdminMfaError, getSessionUser: async () => ({ id: 5, role: scenario.role }), sameOriginRequest: () => true, isNativeAppRequest: () => false, checkRateLimit: async () => true, requireAdminStepUp: async () => { if (!scenario.mfa) throw new AdminMfaError(); }, getDb: () => { throw new Error("database touched before authorization/validation"); } });
     const result = await route.DELETE(new Request("https://test/api/admin/students/student@example.test/devices", { method: "DELETE", body: JSON.stringify({ deviceId: 1, reason: scenario.reason || "" }) }), { params: Promise.resolve({ email: "student@example.test" }) });
     assert.equal(result.status, scenario.status);

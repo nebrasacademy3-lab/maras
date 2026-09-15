@@ -19,7 +19,7 @@ const links: NavLink[] = [
   { href: "/universities", label: "الجامعات", icon: GraduationCap },
   { href: "/courses", label: "المواد", icon: BookOpen },
   { href: "/how-it-works", label: "كيف تعمل مراس؟", icon: LifeBuoy },
-  { href: "/#faq", label: "الأسئلة الشائعة", icon: CircleHelp },
+  { href: "/faq", label: "الأسئلة الشائعة", icon: CircleHelp },
 ];
 
 type HeaderUser = { fullName?: string | null };

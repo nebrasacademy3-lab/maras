@@ -14,7 +14,7 @@ export const eq = (column, value) => ({ kind: "eq", column, value });
 export const ne = (column, value) => ({ kind: "ne", column, value });
 export const or = (...clauses) => ({ kind: "or", clauses });
 export const and = (...clauses) => ({ kind: "and", clauses });
-export const tables = Object.fromEntries(["orders", "orderItems", "aiSubscriptionOrders", "aiEntitlements", "paymentEvents", "courseAccess", "courseAccessEvents", "notificationsDb", "couponUses", "refundRequests", "invoices", "cartItems", "courseWaitlist", "analyticsEvents", "courseRequestFiles", "courseRequests", "users", "authDevices", "authSessions", "pushDevices", "auditLogs", "supervisorAssignments"].map(name => [name, new Proxy({ _name: name }, { get(target, key) { return key === "_name" ? target._name : { table: name, key }; } })]));
+export const tables = Object.fromEntries(["orders", "orderItems", "aiSubscriptionOrders", "aiEntitlements", "paymentEvents", "courseAccess", "courseAccessEvents", "notificationsDb", "couponUses", "refundRequests", "invoices", "cartItems", "courseWaitlist", "analyticsEvents", "courseRequestFiles", "courseRequests", "users", "authDevices", "authSessions", "pushDevices", "auditLogs", "supervisorAssignments", "accountMfaChallenges", "accountMfaRecoveryCodes", "staffPermissions"].map(name => [name, new Proxy({ _name: name }, { get(target, key) { return key === "_name" ? target._name : { table: name, key }; } })]));
 export function database(initial = {}) {
   const rows = Object.fromEntries(Object.keys(tables).map(name => [name, structuredClone(initial[name] || [])]));
   const writes = [];

@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   const machineAuthorized = isAdminRequest(request);
   if (!machineAuthorized && !sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = machineAuthorized ? null : await getSessionUser(request);
-  if (!machineAuthorized && !roleAllowed(user, ["admin"])) return jsonError("غير مصرح", 403);
+  if (!machineAuthorized && !roleAllowed(user, ["admin", "supervisor"])) return jsonError("غير مصرح", 403);
   const identity = machineAuthorized ? `machine:${clientIp(request)}` : `user:${user!.id}`;
   if (!await checkRateLimit("admin-cover-upload", identity, 20, 60)) return jsonError("طلبات الرفع كثيرة. حاول بعد دقيقة.", 429);
   const declaredLength = Number(request.headers.get("content-length"));

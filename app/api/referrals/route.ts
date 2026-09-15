@@ -1,3 +1,4 @@
+import { publicOrigin } from "@/lib/public-origin";
 import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -53,7 +54,7 @@ export async function GET(request: Request) {
   const couponById = new Map(coupons.map((coupon) => [coupon.id, coupon]));
   const courseTitles = new Map((await getCoursesCatalog()).map((course) => [course.slug, course.title]));
   const courseTitle = (slug: string | null) => (slug ? courseTitles.get(slug) || null : null);
-  const origin = (process.env.APP_URL?.trim() || new URL(request.url).origin).replace(/\/$/, "");
+  const origin = publicOrigin();
 
   return noStore({
     ok: true,

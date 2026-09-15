@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/lib/interaction-events";
+import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -93,7 +95,7 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
   const load = useCallback(async (signal?:AbortSignal) => {
     lastLoad.current = Date.now();
     try {
-      const response = await fetch("/api/admin/bundles", { cache:"no-store", credentials:"same-origin", signal });
+      const response = await adminFetch("/api/admin/bundles", { cache:"no-store", credentials:"same-origin", signal });
       const payload = await response.json() as { bundles?:Bundle[]; catalog?:CatalogCourse[]; error?:string };
       if (!response.ok) throw new Error(payload.error || "تعذر تحميل الباقات");
       setBundles(payload.bundles || []);
@@ -202,7 +204,7 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
     if (form.status === "published" && unavailableCount) { setNotice({ tone:"error", text:"لا يمكن النشر قبل جاهزية جميع المواد المختارة." }); return; }
     setSaving(true); setNotice(null);
     try {
-      const response = await fetch("/api/admin/bundles", {
+      const response = await adminFetch("/api/admin/bundles", {
         method:editingId ? "PATCH" : "POST",
         credentials:"same-origin",
         headers:{ "content-type":"application/json" },
@@ -222,7 +224,7 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
   const archive = async (bundle:Bundle) => {
     setSaving(true); setNotice(null);
     try {
-      const response = await fetch("/api/admin/bundles", { method:"PATCH", credentials:"same-origin", headers:{ "content-type":"application/json" }, body:JSON.stringify({ ...bundle, status:"archived", courseSlugs:bundle.courseSlugs }) });
+      const response = await adminFetch("/api/admin/bundles", { method:"PATCH", credentials:"same-origin", headers:{ "content-type":"application/json" }, body:JSON.stringify({ ...bundle, status:"archived", courseSlugs:bundle.courseSlugs }) });
       const payload = await response.json() as { error?:string };
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(payload.error || "تعذر أرشفة الباقة");
@@ -232,10 +234,10 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
   };
 
   const remove = async (bundle:Bundle) => {
-    if (!window.confirm(`حذف باقة «${bundle.title}» نهائيًا؟ إذا ارتبطت بطلب مالي سيمنع النظام الحذف.`)) return;
+    if (!await confirmAction(`حذف باقة «${bundle.title}» نهائيًا؟ إذا ارتبطت بطلب مالي سيمنع النظام الحذف.`)) return;
     setSaving(true); setNotice(null);
     try {
-      const response = await fetch(`/api/admin/bundles?id=${bundle.id}`, { method:"DELETE", credentials:"same-origin" });
+      const response = await adminFetch(`/api/admin/bundles?id=${bundle.id}`, { method:"DELETE", credentials:"same-origin" });
       const payload = await response.json() as { error?:string };
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(payload.error || "تعذر حذف الباقة");

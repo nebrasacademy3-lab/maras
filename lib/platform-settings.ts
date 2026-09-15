@@ -35,7 +35,7 @@ export const PUBLIC_SETTING_DEFAULTS = {
   legal_address: "",
   vat_number: "",
   positioning_claim: "منصة سعودية متخصصة في شروحات المقررات الجامعية ومواد التعلّم المساندة.",
-  first_platform_claim_enabled: "true",
+  first_platform_claim_enabled: "false",
   first_platform_claim_text: "أول منصة سعودية رسمية",
   first_platform_claim_evidence_url: "",
   payment_methods_marketing_enabled: "true",

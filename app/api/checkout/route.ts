@@ -234,7 +234,7 @@ export async function POST(request: Request) {
     return await replayExistingCheckout() || jsonError("محاولة الدفع نفسها قيد التجهيز. حاول بعد لحظات.", 409);
   }
 
-  const siteOrigin = (process.env.APP_URL || requestOrigin(request)).replace(/\/$/, "");
+  const siteOrigin = requestOrigin(request);
   const nameParts = customerName.split(/\s+/);
   const localPhone = customerPhone!.replace(/^\+?966/, "").replace(/^0/, "");
   let chargeResponse: Response;

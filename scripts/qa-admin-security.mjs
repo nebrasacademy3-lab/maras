@@ -15,7 +15,7 @@ async function call(path,body,overrides={}){const response=await fetch(fixture.o
 async function check(name,fn){await fn();checks.push({name,status:'passed'});console.log('PASS '+name);}
 try{
   const status=await call('/api/admin/security/mfa');assert.equal(status.status,200);
-  if(!status.data.enabled){const setup=await call('/api/admin/security/mfa',{action:'setup',label:'Synthetic QA factor'});assert.equal(setup.status,201);secret=setup.data.secret;writeFileSync(secretPath,JSON.stringify({secret}));const verified=await call('/api/admin/security/mfa',{action:'verify',code:otp(secret,Math.floor(Date.now()/30000)-1)});assert.equal(verified.status,200);}
+  if(!status.data.enabled){const setup=await call('/api/admin/security/mfa',{action:'setup',password:admin.password,label:'Synthetic QA factor'});assert.equal(setup.status,201);secret=setup.data.secret;writeFileSync(secretPath,JSON.stringify({secret}));const verified=await call('/api/admin/security/mfa',{action:'verify',password:admin.password,code:otp(secret,Math.floor(Date.now()/30000)-1)});assert.equal(verified.status,200);}
   const counter=(await db.query('SELECT counter FROM admin_mfa_factors WHERE user_id=$1 AND disabled_at IS NULL AND verified_at IS NOT NULL ORDER BY id DESC LIMIT 1',[admin.id])).rows[0].counter;
   if(counter>=Math.floor(Date.now()/30000)){const wait=30050-Date.now()%30000;console.log('Waiting for a fresh TOTP window');await new Promise(resolve=>setTimeout(resolve,wait));}
   const code=otp(secret,Math.floor(Date.now()/30000));const elevated=await call('/api/admin/security/mfa',{action:'stepUp',code});assert.equal(elevated.status,200,JSON.stringify({code:elevated.data.code,error:elevated.data.error}));stepToken=elevated.data.stepUpToken;assert.ok(stepToken);

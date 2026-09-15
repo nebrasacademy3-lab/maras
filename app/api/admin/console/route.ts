@@ -1,3 +1,5 @@
+import { revalidatePath } from "next/cache";
+import { CONSOLE_VIEWS, consoleActionPermissions, permissionsCover } from "@/lib/staff-policy";
 import { createHash } from "node:crypto";
 import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -20,7 +22,7 @@ import { syncOfficialInstitutionPrograms } from "@/lib/catalog-official-sync";
 import { automaticIdentifier } from "@/lib/public-identifiers";
 import { deleteAdminEntity, DeletionPolicyError, type AdminDeletionType } from "@/lib/admin-deletion";
 import { accessExpiryIso, normalizeAccessDurationDays, effectiveAccessRows } from "@/lib/course-access";
-import { ADMIN_PERMISSIONS, hasPermission, type AdminPermission } from "@/lib/permissions";
+import { ADMIN_PERMISSIONS, hasPermission, permissionsForUser, type AdminPermission } from "@/lib/permissions";
 import { adminPage, adminUserTransitionError, extendAccessExpiry } from "@/lib/admin-operations";
 import { fulfillPaidOrderTx, type FulfillmentNotice } from "@/lib/order-fulfillment";
 import { readBoundedJsonObject } from "@/lib/request-body";
@@ -30,13 +32,16 @@ import { enqueuePublicSeoUrls, indexNowConfig } from "@/lib/seo-indexnow";
 import { seoSegment } from "@/lib/seo";
 
 async function notifyCatalogDiscovery(paths: string[]) {
+  for (const path of [...new Set(["/sitemap.xml", "/llms.txt", ...paths])]) {
+    try { revalidatePath(path); } catch { /* Non-Next isolated workers use the catalog TTL instead. */ }
+  }
   try { if (indexNowConfig().enabled) await enqueuePublicSeoUrls(paths); }
   catch { console.error("[seo] Catalog saved; discovery queue unavailable"); }
 }
 
 async function authorize(request: Request, delegatedPermission?: AdminPermission) {
   const user = await getSessionUser(request);
-  if (roleAllowed(user, ["admin"])) return { actor: user!.email, user };
+  if (roleAllowed(user, ["admin", "supervisor"])) return { actor: user!.email, user };
   if (user && delegatedPermission && await hasPermission(user, delegatedPermission)) return { actor: user.email, user };
   if (isAdminRequest(request)) return { actor: "admin-api-token", user: null };
   return null;
@@ -92,12 +97,16 @@ export async function GET(request: Request) {
   if (!await checkRateLimit("admin-console-read", identity, 30, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
   const query = new URL(request.url).searchParams;
+  const grants = authorization.user ? await permissionsForUser(authorization.user) : new Set(Object.values(ADMIN_PERMISSIONS));
+  const owner = Boolean(authorization.user?.isPlatformOwner);
+  const can = (permission: string) => permissionsCover(grants, [permission]);
   const compactMobile = query.get("client") === "mobile";
   const view = query.get("view") || "overview";
+  if (!CONSOLE_VIEWS[view] || !permissionsCover(grants, CONSOLE_VIEWS[view])) return jsonError("هذا القسم غير متاح ضمن صلاحياتك", 403);
   const page = adminPage(query.get("page"));
   const needle = (query.get("q") || "").trim().slice(0, 160);
   const pattern = `%${needle.replace(/[\\%_]/g, "\\$&")}%`;
-  const userFilter = ["students", "staff"].includes(view) ? and(view === "students" ? eq(users.role, "student") : inArray(users.role, ["admin", "supervisor"]), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern), ilike(users.specialty, pattern)) : undefined) : undefined;
+  const userFilter = !owner ? and(eq(users.role, "student"), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern)) : undefined) : ["students", "staff"].includes(view) ? and(view === "students" ? eq(users.role, "student") : inArray(users.role, ["admin", "supervisor"]), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern), ilike(users.specialty, pattern)) : undefined) : undefined;
   const orderFilter = view === "orders" && needle ? or(ilike(orders.orderNumber, pattern), ilike(orders.customerEmail, pattern), ilike(orders.customerName, pattern), ilike(orders.courseSlug, pattern), ilike(orders.status, pattern)) : undefined;
   const requestFilter = view === "requests" && needle ? or(sql`${courseRequests.id}::text = ${needle}`, ilike(courseRequests.name, pattern), ilike(courseRequests.courseName, pattern), ilike(courseRequests.phone, pattern), ilike(courseRequests.university, pattern), ilike(courseRequests.specialty, pattern), sql`${courseRequests.userId} IN (SELECT id FROM users WHERE email ILIKE ${pattern})`) : undefined;
   const ticketFilter = view === "support" && needle ? or(ilike(supportTickets.ticketNumber, pattern), ilike(supportTickets.userEmail, pattern), ilike(supportTickets.title, pattern), ilike(supportTickets.message, pattern)) : undefined;
@@ -110,28 +119,28 @@ export async function GET(request: Request) {
     ? { videos: 120, users: 160, sessions: 600, orders: 180, requests: 160, files: 600, tickets: 120, replies: 700, reviews: 180, access: 400, assignments: 250, notifications: 120, coupons: 120, audits: 60 }
     : { videos: 500, users: 500, sessions: 3000, orders: 300, requests: 300, files: 3000, tickets: 300, replies: 2000, reviews: 300, access: 500, assignments: 500, notifications: 200, coupons: 200, audits: 120 };
   const [institutionRows, courses, specialtyRows, links, unitRows, lessonRows, videoRows, studentRows, sessionRows, orderRows, requestRows, requestFileRows, ticketRows, replyRows, supportFileRows, reviewRows, accessRows, supervisorRows, notificationRows, couponRows, settingRows, audits] = await Promise.all([
-    getInstitutionsCatalog(true),
-    getCoursesCatalog(true),
-    db.select().from(catalogSpecialties).orderBy(catalogSpecialties.name),
-    db.select().from(institutionSpecialties),
-    db.select().from(courseUnitsDb).orderBy(courseUnitsDb.position),
-    db.select().from(lessonsDb).orderBy(lessonsDb.position),
-    db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(limits.videos),
-    db.select({ id: users.id, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).where(userFilter).orderBy(desc(users.createdAt), desc(users.id)).limit(take("students", limits.users)).offset(skip("students")),
-    db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).orderBy(desc(authSessions.lastSeenAt)).limit(limits.sessions),
-    db.select().from(orders).where(orderFilter).orderBy(desc(orders.createdAt), desc(orders.id)).limit(take("orders", limits.orders)).offset(skip("orders")),
-    db.select().from(courseRequests).where(requestFilter).orderBy(desc(courseRequests.createdAt), desc(courseRequests.id)).limit(take("requests", limits.requests)).offset(skip("requests")),
-    db.select().from(courseRequestFiles).orderBy(desc(courseRequestFiles.createdAt)).limit(limits.files),
-    db.select().from(supportTickets).where(ticketFilter).orderBy(desc(supportTickets.createdAt), desc(supportTickets.id)).limit(take("support", limits.tickets)).offset(skip("support")),
-    db.select().from(supportReplies).orderBy(asc(supportReplies.createdAt)).limit(limits.replies),
-    db.select().from(supportReplyFiles).limit(limits.files),
-    db.select().from(courseReviews).where(reviewFilter).orderBy(desc(courseReviews.createdAt), desc(courseReviews.id)).limit(take("reviews", limits.reviews)).offset(skip("reviews")),
-    db.select().from(courseAccess).where(accessFilter).orderBy(desc(courseAccess.startsAt), desc(courseAccess.id)).limit(take("subscriptions", limits.access)).offset(skip("subscriptions")),
-    db.select().from(supervisorAssignments).orderBy(desc(supervisorAssignments.createdAt)).limit(limits.assignments),
-    db.select().from(notificationsDb).orderBy(desc(notificationsDb.createdAt)).limit(limits.notifications),
-    db.select().from(couponsDb).orderBy(desc(couponsDb.createdAt)).limit(limits.coupons),
-    db.select().from(platformSettings),
-    db.select().from(auditLogs).where(auditFilter).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(take("audit", limits.audits)).offset(skip("audit")),
+    can("catalog.view") ? getInstitutionsCatalog(true) : [],
+    can("catalog.view") ? getCoursesCatalog(true) : [],
+    can("catalog.view") ? db.select().from(catalogSpecialties).orderBy(catalogSpecialties.name) : [],
+    can("catalog.view") ? db.select().from(institutionSpecialties) : [],
+    can("catalog.view") ? db.select().from(courseUnitsDb).orderBy(courseUnitsDb.position) : [],
+    can("catalog.view") ? db.select().from(lessonsDb).orderBy(lessonsDb.position) : [],
+    can("catalog.view") ? db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(limits.videos) : [],
+    can("students.view") ? db.select({ id: users.id, mfaEnabled: sql<boolean>`EXISTS (SELECT 1 FROM admin_mfa_factors f WHERE f.user_id = ${users.id} AND f.verified_at IS NOT NULL AND f.disabled_at IS NULL)`, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).where(userFilter).orderBy(desc(users.createdAt), desc(users.id)).limit(take("students", limits.users)).offset(skip("students")) : [],
+    can("students.manage") ? db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).where(owner ? undefined : sql`${authSessions.userId} IN (SELECT id FROM users WHERE role = 'student')`).orderBy(desc(authSessions.lastSeenAt)).limit(limits.sessions) : [],
+    can("finance.view") ? db.select().from(orders).where(orderFilter).orderBy(desc(orders.createdAt), desc(orders.id)).limit(take("orders", limits.orders)).offset(skip("orders")) : [],
+    can("requests.manage") ? db.select().from(courseRequests).where(requestFilter).orderBy(desc(courseRequests.createdAt), desc(courseRequests.id)).limit(take("requests", limits.requests)).offset(skip("requests")) : [],
+    can("requests.manage") ? db.select().from(courseRequestFiles).orderBy(desc(courseRequestFiles.createdAt)).limit(limits.files) : [],
+    can("support.manage") ? db.select().from(supportTickets).where(ticketFilter).orderBy(desc(supportTickets.createdAt), desc(supportTickets.id)).limit(take("support", limits.tickets)).offset(skip("support")) : [],
+    can("support.manage") ? db.select().from(supportReplies).orderBy(asc(supportReplies.createdAt)).limit(limits.replies) : [],
+    can("support.manage") ? db.select().from(supportReplyFiles).limit(limits.files) : [],
+    can("catalog.manage") ? db.select().from(courseReviews).where(reviewFilter).orderBy(desc(courseReviews.createdAt), desc(courseReviews.id)).limit(take("reviews", limits.reviews)).offset(skip("reviews")) : [],
+    can("subscriptions.manage") ? db.select().from(courseAccess).where(accessFilter).orderBy(desc(courseAccess.startsAt), desc(courseAccess.id)).limit(take("subscriptions", limits.access)).offset(skip("subscriptions")) : [],
+    can("staff.manage") ? db.select().from(supervisorAssignments).orderBy(desc(supervisorAssignments.createdAt)).limit(limits.assignments) : [],
+    can("notifications.manage") ? db.select().from(notificationsDb).orderBy(desc(notificationsDb.createdAt)).limit(limits.notifications) : [],
+    can("finance.manage") ? db.select().from(couponsDb).orderBy(desc(couponsDb.createdAt)).limit(limits.coupons) : [],
+    can("settings.manage") ? db.select().from(platformSettings) : [],
+    can("audit.view") ? db.select().from(auditLogs).where(auditFilter).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(take("audit", limits.audits)).offset(skip("audit")) : [],
   ]);
 
   const paginatedTotal = view === "students" || view === "staff" ? await db.select({ total: count() }).from(users).where(userFilter)
@@ -147,10 +156,10 @@ export async function GET(request: Request) {
   const effectiveAccess = await effectiveAccessRows(accessRows);
   const registeredDeviceRows = studentRows.length ? await db.select({ id: authDevices.id, userId: authDevices.userId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(inArray(authDevices.userId, studentRows.map(student => student.id)), isNull(authDevices.revokedAt))) : [];
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...ADMIN_SETTING_DEFAULTS } as Record<string, string>;
-  for (const row of settingRows) settings[row.key] = row.value;
+  for (const row of settingRows) if (row.key in SETTING_META) settings[row.key] = row.value;
   const [managedInstitutionRows, managedCourseRows, totals, waitlistRows, activeAiKeys] = await Promise.all([
-    db.select().from(catalogInstitutions),
-    db.select().from(catalogCourses),
+    can("catalog.view") ? db.select().from(catalogInstitutions) : [],
+    can("catalog.view") ? db.select().from(catalogCourses) : [],
     db.execute(sql`SELECT
       (SELECT count(*)::int FROM users WHERE role = 'student') AS students,
       (SELECT count(*)::int FROM users WHERE role = 'student' AND status = 'active') AS active_students,
@@ -171,20 +180,21 @@ export async function GET(request: Request) {
   const environmentAiKeys = geminiEnvironmentKeys().length;
   return Response.json({
     ok: true,
+    permissions: [...grants], isPlatformOwner: owner,
     generatedAt: new Date().toISOString(),
     pagination: paginatedTotal ? { view, page: page.page, pageSize: page.pageSize, total: Number(paginatedTotal[0]?.total || 0) } : null,
     metrics: {
-      students: Number(totalRow.students || 0),
-      activeStudents: Number(totalRow.active_students || 0),
-      institutions: institutionRows.length,
-      publishedCourses: courses.filter((row) => row.lessons > 0).length,
-      orders: Number(totalRow.orders || 0),
-      paidOrders: Number(totalRow.paid_orders || 0),
-      revenue: Number(totalRow.revenue || 0),
-      reviewOrders: Number(totalRow.review_orders || 0),
-      openRequests: Number(totalRow.open_requests || 0),
-      openTickets: Number(totalRow.open_tickets || 0),
-      pendingReviews: Number(totalRow.pending_reviews || 0),
+      students: can("students.view") ? Number(totalRow.students || 0) : 0,
+      activeStudents: can("students.view") ? Number(totalRow.active_students || 0) : 0,
+      institutions: can("catalog.view") ? institutionRows.length : 0,
+      publishedCourses: can("catalog.view") ? courses.filter((row) => row.lessons > 0).length : 0,
+      orders: can("finance.view") ? Number(totalRow.orders || 0) : 0,
+      paidOrders: can("finance.view") ? Number(totalRow.paid_orders || 0) : 0,
+      revenue: can("finance.view") ? Number(totalRow.revenue || 0) : 0,
+      reviewOrders: can("finance.view") ? Number(totalRow.review_orders || 0) : 0,
+      openRequests: can("requests.manage") ? Number(totalRow.open_requests || 0) : 0,
+      openTickets: can("support.manage") ? Number(totalRow.open_tickets || 0) : 0,
+      pendingReviews: can("catalog.manage") ? Number(totalRow.pending_reviews || 0) : 0,
     },
     institutions: institutionRows.map((row) => ({ ...row, status: managedInstitutionMap.get(row.slug)?.status || "published" })),
     courses: courses.map((row) => ({ ...row, status: managedCourseMap.get(row.slug)?.status || "published", specialtySlug: managedCourseMap.get(row.slug)?.specialtySlug || "", audienceScope: managedCourseMap.get(row.slug)?.audienceScope === "institution" ? "institution" : "specialty", coverTheme: managedCourseMap.get(row.slug)?.coverTheme || "blue-violet", waitlistCount: waitlistByCourse.get(row.slug) || 0 })),
@@ -237,7 +247,7 @@ export async function GET(request: Request) {
     supervisorAssignments: supervisorRows,
     notifications: notificationRows,
     coupons: couponRows,
-    settings,
+    settings: can("settings.manage") ? settings : {},
     audit: audits,
     services: {
       assistant: true,
@@ -265,10 +275,29 @@ export async function POST(request: Request) {
       : undefined;
   const authorization = await authorize(request, delegatedPermission);
   if (!authorization) return jsonError("غير مصرح", 403);
+  const required = consoleActionPermissions(action, payload.entityType);
+  if (!required) return jsonError("عملية إدارية غير معروفة", 400);
+  const grants = authorization.user ? await permissionsForUser(authorization.user) : new Set(Object.values(ADMIN_PERMISSIONS));
+  if (!permissionsCover(grants, required)) return jsonError("لا تملك صلاحية تنفيذ هذه العملية", 403);
+  if (action === "grantAccess" && payload.grantType === "manual_payment" && !permissionsCover(grants, ["finance.manage"])) return jsonError("تسجيل دفعة يدوية يتطلب صلاحية إدارة المالية أيضًا", 403);
   const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
   if (!await checkRateLimit("admin-console-write", identity, 60, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
   const now = new Date().toISOString();
+  if (["updateUser", "updateStudentProfile"].includes(action) || action === "deleteEntity" && payload.entityType === "user") {
+    const id = Number(action === "deleteEntity" ? payload.entityId : payload.id);
+    if (!Number.isSafeInteger(id) || id < 1) return jsonError("معرف مستخدم غير صالح");
+    const [target] = await db.select({ role: users.role, isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, id));
+    if (!target) return jsonError("الحساب غير موجود", 404);
+    if (target.isPlatformOwner) return jsonError("حساب المدير الأعلى محمي؛ تستخدم إعدادات حسابه الشخصية", 403);
+    if ((target.role !== "student" || action === "updateUser" && payload.role !== "student") && !authorization.user?.isPlatformOwner) return jsonError("إدارة المشرفين متاحة للمدير الأعلى فقط", 403);
+    if (action === "updateUser" && payload.role === "admin") return jsonError("أضف مشرفًا بصلاحيات محددة بدل إنشاء مدير أعلى آخر", 400);
+  }
+  if (action === "revokeUserSession") {
+    const [target] = await db.select({ userId: authSessions.userId }).from(authSessions).where(eq(authSessions.id, Number(payload.sessionId ?? payload.id) || -1));
+    const [subject] = target ? await db.select({ role: users.role, isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, target.userId)) : [];
+    if (subject && (subject.isPlatformOwner || subject.role !== "student" && !authorization.user?.isPlatformOwner)) return jsonError("لا تملك إدارة جلسات هذا الحساب", 403);
+  }
   if (["updateUser", "updateStudentProfile", "grantAccess", "updateAccess", "revokeUserSession"].includes(action)) {
     if (!authorization.user) return jsonError("هذا الإجراء يتطلب جلسة مدير موثقة", 403);
     try { await requireAdminStepUp(request, authorization.user); }

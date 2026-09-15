@@ -1,0 +1,3 @@
+export type StaffDevice = { id: number; deviceLabel: string; platform: string; lastSeenAt: string; createdAt: string; expiresAt: string; userAgent: string | null };
+export type StaffMember = { id: number; fullName: string; email: string; phone: string | null; role: string; isPlatformOwner: boolean; status: string; updatedAt: string; permissions: string[]; mfaEnabled: boolean; sessions: StaffDevice[]; sessionsMayBeTruncated: boolean };
+export type StaffResponse = { ok: boolean; staff: StaffMember[]; permissions: Array<{ key: string; label: string }>; page: number; total: number; pageSize: number; error?: string };

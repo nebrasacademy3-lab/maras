@@ -1,18 +1,9 @@
 import type { Metadata } from "next";
 import type { Course } from "@/lib/data";
 
-const DEFAULT_PUBLIC_ORIGIN = "https://marasalelm.com";
+import { configuredPublicOrigin, DEFAULT_PUBLIC_ORIGIN } from "@/lib/public-origin";
 export type SeoSearchParams = Record<string, string | string[] | undefined>;
-function configuredOrigin() {
-  const raw = process.env.NEXT_PUBLIC_SITE_URL?.trim() || process.env.APP_URL?.trim();
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    if (url.username || url.password || !["https:", "http:"].includes(url.protocol)) return null;
-    if (url.protocol !== "https:" && !["localhost", "127.0.0.1"].includes(url.hostname)) return null;
-    return url.origin;
-  } catch { return null; }
-}
+function configuredOrigin() { return configuredPublicOrigin(process.env.NODE_ENV !== "production"); }
 export function seoSiteOrigin() { return configuredOrigin() || DEFAULT_PUBLIC_ORIGIN; }
 export function searchIndexingEnabled() {
   const origin = configuredOrigin();

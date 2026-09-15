@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction } from "@/lib/interaction-events";
+import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -95,7 +97,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
 
   const loadCatalog = useCallback(async (signal?: AbortSignal) => {
     try {
-      const response = await fetch("/api/admin/course-resources", { cache: "no-store", credentials: "same-origin", signal });
+      const response = await adminFetch("/api/admin/course-resources", { cache: "no-store", credentials: "same-origin", signal });
       const payload = await response.json() as { courses?: CatalogCourse[]; error?: string };
       if (!response.ok) throw new Error(payload.error || "تعذر تحميل المواد");
       const next = payload.courses || [];
@@ -113,7 +115,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
     if (!courseSlug) { setResources([]); return; }
     setLoadingResources(true);
     try {
-      const response = await fetch(`/api/admin/course-resources?course=${encodeURIComponent(courseSlug)}`, { cache: "no-store", credentials: "same-origin", signal });
+      const response = await adminFetch(`/api/admin/course-resources?course=${encodeURIComponent(courseSlug)}`, { cache: "no-store", credentials: "same-origin", signal });
       const payload = await response.json() as { resources?: Resource[]; lessons?: Array<{ id: string; title: string }>; courses?: CatalogCourse[]; error?: string };
       if (!response.ok) throw new Error(payload.error || "تعذر تحميل ملفات المادة");
       setResources(payload.resources || []);
@@ -155,7 +157,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
     if (!selectedCourse || selectedCourse.audienceScope === audienceScope) return;
     setSaving(true); setNotice(null);
     try {
-      const response = await fetch("/api/admin/course-resources", {
+      const response = await adminFetch("/api/admin/course-resources", {
         method: "PATCH", credentials: "same-origin", headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "scope", courseSlug: selectedCourse.slug, audienceScope }),
       });
@@ -178,7 +180,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
     if (file.size > MAX_FILE_BYTES) { setNotice({ tone: "error", text: "الحد الأقصى للملف الواحد 25 ميجابايت." }); return; }
     setSaving(true); setNotice(null);
     try {
-      const response = await fetch(`/api/admin/course-resources?course=${encodeURIComponent(selectedCourse.slug)}`, { method: "POST", credentials: "same-origin", body: data });
+      const response = await adminFetch(`/api/admin/course-resources?course=${encodeURIComponent(selectedCourse.slug)}`, { method: "POST", credentials: "same-origin", body: data });
       const payload = await response.json() as { error?: string; visibilityDeferred?: boolean };
       if (!response.ok) throw new Error(payload.error || "تعذر رفع الملف");
       form.reset();
@@ -207,7 +209,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
     };
     setBusyId(resource.id); setNotice(null);
     try {
-      const response = await fetch("/api/admin/course-resources", {
+      const response = await adminFetch("/api/admin/course-resources", {
         method: "PATCH", credentials: "same-origin", headers: { "content-type": "application/json" },
         body: JSON.stringify({ action: "update", id: resource.id, ...next }),
       });
@@ -230,7 +232,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
   async function rescan(resource: Resource) {
     setBusyId(resource.id); setNotice(null);
     try {
-      const response = await fetch("/api/admin/course-resources", {
+      const response = await adminFetch("/api/admin/course-resources", {
         method: "PATCH", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ action: "rescan", id: resource.id }),
       });
       const payload = await response.json() as { resource?: Resource; error?: string };
@@ -244,10 +246,10 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
   }
 
   async function remove(resource: Resource) {
-    if (!window.confirm(`حذف «${resource.title}» نهائيًا من السجل والتخزين؟`)) return;
+    if (!await confirmAction(`حذف «${resource.title}» نهائيًا من السجل والتخزين؟`)) return;
     setBusyId(resource.id); setNotice(null);
     try {
-      const response = await fetch(`/api/admin/course-resources?id=${resource.id}`, { method: "DELETE", credentials: "same-origin" });
+      const response = await adminFetch(`/api/admin/course-resources?id=${resource.id}`, { method: "DELETE", credentials: "same-origin" });
       const payload = await response.json() as { error?: string };
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(payload.error || "تعذر حذف الملف");

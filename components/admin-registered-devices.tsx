@@ -1,4 +1,5 @@
 "use client";
+import { adminFetch } from "@/lib/admin-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Laptop, RefreshCw, ShieldCheck, Smartphone } from "lucide-react";
 import { AdminMfaNotice, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
@@ -24,7 +25,7 @@ function RegisteredDevicesContent({ email, onChanged }: DevicesProps) {
     const timer=setTimeout(()=>{expired=true;controller.abort();},12_000);
     const current=()=>mounted.current&&loadController.current===controller;
     try {
-      const response=await fetch(endpoint,{credentials:"same-origin",cache:"no-store",signal:controller.signal});
+      const response=await adminFetch(endpoint,{credentials:"same-origin",cache:"no-store",signal:controller.signal});
       const result=await response.json() as {registeredDevices?:Device[];error?:string};
       if(!response.ok)throw new Error(result.error||"تعذر تحميل الأجهزة المعتمدة");
       if(current()&&!controller.signal.aborted){setDevices(result.registeredDevices||[]);setError("");}
@@ -36,7 +37,7 @@ function RegisteredDevicesContent({ email, onChanged }: DevicesProps) {
     event.preventDefault();if(!selected||busy||reason.trim().length<4)return;
     setBusy(true);setError("");setNotice("");setStepUp(false);loadController.current?.abort();
     try{
-      const response=await fetch(endpoint,{method:"DELETE",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({deviceId:selected.id,reason:reason.trim()})});
+      const response=await adminFetch(endpoint,{method:"DELETE",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify({deviceId:selected.id,reason:reason.trim()})});
       if(!mounted.current)return;
       if(isAdminStepUpResponse(response)){setStepUp(true);return;}
       const result=await response.json() as {error?:string};

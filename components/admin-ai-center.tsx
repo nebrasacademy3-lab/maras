@@ -1,4 +1,5 @@
 "use client";
+import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -53,7 +54,7 @@ export function AdminAiCenter({ adminName }: { adminName: string }) {
     if (!silent) setBusy("load");
     lastLoad.current = Date.now();
     try {
-      const result = await payload<Dashboard>(await fetch("/api/admin/ai", { cache: "no-store", credentials: "same-origin" }));
+      const result = await payload<Dashboard>(await adminFetch("/api/admin/ai", { cache: "no-store", credentials: "same-origin" }));
       setLoadedAt(Date.now());
       setData(current => current ? { ...result, settings: result.settings.map(setting => dirtyServices.current.has(setting.service) ? current.settings.find(item => item.service === setting.service) || setting : setting) } : result);
       if (!priceDirty.current) setPrice(String(result.monthlyPrice));
@@ -74,7 +75,7 @@ export function AdminAiCenter({ adminName }: { adminName: string }) {
   const mutate = async (body: Record<string, unknown>, success: string, key?: string) => {
     setBusy(key || String(body.action)); setNotice(null);
     try {
-      await payload(await fetch("/api/admin/ai", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
+      await payload(await adminFetch("/api/admin/ai", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify(body) }));
       if (body.action === "saveService") dirtyServices.current.delete(body.service as AiService);
       if (body.action === "setSubscription") priceDirty.current = false;
       setNotice({ tone: "ok", text: success }); await load(true); return true;

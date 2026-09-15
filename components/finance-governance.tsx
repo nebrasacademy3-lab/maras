@@ -1,4 +1,6 @@
 "use client";
+import { confirmAction, promptAction } from "@/lib/interaction-events";
+import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -31,8 +33,8 @@ export function FinanceGovernance({ prefill, refreshKey = 0 }: { prefill?: Refun
     setLoading(true);
     try {
       const [refundResponse, settlementResponse] = await Promise.all([
-        fetch("/api/admin/refunds", { cache: "no-store" }),
-        fetch("/api/admin/settlements", { cache: "no-store" }),
+        adminFetch("/api/admin/refunds", { cache: "no-store" }),
+        adminFetch("/api/admin/settlements", { cache: "no-store" }),
       ]);
       const refundPayload = await refundResponse.json();
       const settlementPayload = await settlementResponse.json();
@@ -69,7 +71,7 @@ export function FinanceGovernance({ prefill, refreshKey = 0 }: { prefill?: Refun
     setBusy(key);
     setMessage("");
     try {
-      const response = await fetch("/api/admin/refunds", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
+      const response = await adminFetch("/api/admin/refunds", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
       const result = await response.json();
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
       if (!response.ok) throw new Error(result.error || "تعذر تنفيذ الإجراء");
@@ -102,8 +104,8 @@ export function FinanceGovernance({ prefill, refreshKey = 0 }: { prefill?: Refun
             <small>{approved.length}/2 موافقات · المنشئ: <bdi dir="ltr">{row.requestedByEmail}</bdi></small>
             {approved.length > 0 && <small className={styles.approvals}>الموافقون: {approved.map((item) => item.approverEmail).join("، ")}</small>}
             {["pending", "first_approved", "provider_failed", "approved_pending_provider"].includes(row.status) && <div>
-              <button disabled={Boolean(busy)} onClick={() => { if (window.confirm("تأكيد اعتماد هذا الاسترداد؟ لا يجوز أن يكون الموافق هو منشئ الطلب.")) void refundAction({ action: "approve", id: row.id }, `approve-${row.id}`); }}><CheckCircle2 size={14} /> اعتماد</button>
-              <button className={styles.reject} disabled={Boolean(busy)} onClick={() => { const note = window.prompt("اكتب سبب رفض طلب الاسترداد"); if (note?.trim()) void refundAction({ action: "reject", id: row.id, note }, `reject-${row.id}`); }}><XCircle size={14} /> رفض</button>
+              <button disabled={Boolean(busy)} onClick={async () => { if (await confirmAction("تأكيد اعتماد هذا الاسترداد؟ لا يجوز أن يكون الموافق هو منشئ الطلب.")) void refundAction({ action: "approve", id: row.id }, `approve-${row.id}`); }}><CheckCircle2 size={14} /> اعتماد</button>
+              <button className={styles.reject} disabled={Boolean(busy)} onClick={async () => { const note = (await promptAction("اكتب سبب رفض طلب الاسترداد")); if (note?.trim()) void refundAction({ action: "reject", id: row.id, note }, `reject-${row.id}`); }}><XCircle size={14} /> رفض</button>
             </div>}
           </article>;
         })}{!refunds.length && <p className={styles.empty}>لا توجد طلبات استرداد.</p>}</div>
@@ -121,7 +123,7 @@ export function FinanceGovernance({ prefill, refreshKey = 0 }: { prefill?: Refun
             const query = new URLSearchParams({ id: String(form.get("id") || ""), currency: String(form.get("currency") || "SAR") });
             const from = String(form.get("from") || ""); const to = String(form.get("to") || "");
             if (from) query.set("from", from); if (to) query.set("to", to);
-            const response = await fetch(`/api/admin/settlements?${query}`, { method: "POST", headers: { "content-type": "text/csv" }, body: file });
+            const response = await adminFetch(`/api/admin/settlements?${query}`, { method: "POST", headers: { "content-type": "text/csv" }, body: file });
             const result = await response.json();
             if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
             if (!response.ok) throw new Error(result.error || "تعذر استيراد التسوية");

@@ -1,3 +1,4 @@
+import { verifyNativeLogin } from "@/src/lib/interaction-events";
 import * as SecureStore from "expo-secure-store";
 import { useQueryClient } from "@tanstack/react-query";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
@@ -10,6 +11,7 @@ import { socialAuthCode, type SocialProvider } from "@/src/lib/social-auth";
 const TOKEN_KEY = "meras_session_token";
 type Credentials = { identifier: string; password: string; remember?: boolean };
 type Registration = { fullName: string; email: string; phone: string; password: string; universitySlug: string; specialty: string; academicLevel: string; referralCode?: string; termsAccepted: true };
+type MfaResponse = { mfaRequired: true; challengeToken: string; expiresAt: string };
 type AuthResponse = { ok: true; token: string; expiresAt: string; user: SessionUser; next: string };
 type AuthContextValue = {
   user: SessionUser | null;
@@ -90,19 +92,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } finally { setLoading(false); }
     })();
   }, [refresh]);
-  const accept = useCallback(async (response: AuthResponse) => {
+  const accept = useCallback(async (initial: AuthResponse | MfaResponse) => {
+    const response = "mfaRequired" in initial
+      ? await verifyNativeLogin<AuthResponse>(code => api<AuthResponse>("/api/mobile/auth/mfa", { method: "POST", body: jsonBody({ challengeToken: initial.challengeToken, code }) }))
+      : initial;
     sessionGeneration.current++;
     await queryClient.cancelQueries();
     queryClient.clear();
     await persistToken(response.token); setToken(response.token); setUser(response.user); return response;
   }, [queryClient]);
-  const login = useCallback(async (value: Credentials) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/mobile/auth/login", { method: "POST", body: jsonBody(value) })); }, [accept]);
+  const login = useCallback(async (value: Credentials) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse | MfaResponse>("/api/mobile/auth/login", { method: "POST", body: jsonBody(value) })); }, [accept]);
   const register = useCallback(async (value: Registration) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) })); }, [accept]);
   const socialLogin = useCallback(async (provider: SocialProvider, referralCode?: string) => {
     await ensureDeviceIdentity();
     const exchange = await socialAuthCode(provider, referralCode);
     if (!exchange) return null;
-    return accept(await api<AuthResponse>("/api/auth/oauth/exchange", { method: "POST", body: jsonBody(exchange) }));
+    return accept(await api<AuthResponse | MfaResponse>("/api/auth/oauth/exchange", { method: "POST", body: jsonBody(exchange) }));
   }, [accept]);
   const logout = useCallback(async () => {
     sessionGeneration.current++;

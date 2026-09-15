@@ -8,6 +8,7 @@ export const users = pgTable("users", {
   fullName: text("full_name").notNull(),
   passwordHash: text("password_hash"),
   role: text("role").notNull().default("student"),
+  isPlatformOwner: boolean("is_platform_owner").notNull().default(false),
   emailVerifiedAt: text("email_verified_at"),
   phoneVerifiedAt: text("phone_verified_at"),
   universitySlug: text("university_slug"),
@@ -19,7 +20,7 @@ export const users = pgTable("users", {
   status: text("status").notNull().default("active"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("users_email_unique").on(table.email), uniqueIndex("users_phone_unique").on(table.phone)]);
+}, (table) => [uniqueIndex("users_single_owner_unique").on(table.isPlatformOwner).where(sql`${table.isPlatformOwner} = true`), uniqueIndex("users_email_unique").on(table.email), uniqueIndex("users_phone_unique").on(table.phone)]);
 
 export const emailVerificationCodes = pgTable("email_verification_codes", {
   id: serial("id").primaryKey(),
@@ -475,6 +476,7 @@ export const authSessions = pgTable("auth_sessions", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull(),
   tokenHash: text("token_hash").notNull(),
+  mfaVerifiedAt: text("mfa_verified_at"),
   ipAddress: text("ip_address"),
   userAgent: text("user_agent"),
   deviceId: text("device_id"),
@@ -1267,3 +1269,29 @@ export const aiFileJobs = pgTable("ai_file_jobs", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 }, table => [uniqueIndex("ai_file_jobs_request_unique").on(table.requestId), index("ai_file_jobs_queue_idx").on(table.status, table.availableAt), index("ai_file_jobs_user_idx").on(table.userId, table.status), index("ai_file_jobs_lease_idx").on(table.status, table.leaseUntil)]);
+
+// Direct, explicit staff grants. No wildcard or implicit "admin" bypass.
+export const staffPermissions = pgTable("staff_permissions", {
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  permission: text("permission").notNull(),
+  grantedBy: integer("granted_by").notNull().references(() => users.id),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, table => [primaryKey({ columns: [table.userId, table.permission] })]);
+
+export const accountMfaChallenges = pgTable("account_mfa_challenges", {
+  tokenHash: text("token_hash").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  deviceId: text("device_id").notNull(),
+  remember: boolean("remember").notNull().default(true),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, table => [index("account_mfa_challenges_user_idx").on(table.userId), index("account_mfa_challenges_expiry_idx").on(table.expiresAt)]);
+
+export const accountMfaRecoveryCodes = pgTable("account_mfa_recovery_codes", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  codeHash: text("code_hash").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, table => [uniqueIndex("account_mfa_recovery_unique").on(table.userId, table.codeHash)]);

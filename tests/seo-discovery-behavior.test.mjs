@@ -1,3 +1,4 @@
+import { seoPureDependencies } from "./helpers/pure-source.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -7,6 +8,7 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 async function isolated(path, dependencies = {}) {
+  dependencies = await seoPureDependencies(dependencies);
   const source = await readFile(new URL(path, import.meta.url), "utf8");
   const key = "__seoDiscovery" + crypto.randomUUID().replaceAll("-", "");
   globalThis[key] = dependencies;
@@ -121,9 +123,11 @@ test("public bundle detail responds with not-found for inactive or unknown bundl
 
 test("FAQ answers and live bundle membership exist in server HTML before browser JavaScript", async () => {
   const content = await isolated("../lib/seo-content.ts");
-  const dependencies = { React, ...seo, ...content, styles: {}, Link: ({ children, href }) => React.createElement("a", { href }, children), PublicInformationPage: ({ title, children }) => React.createElement("main", null, React.createElement("h1", null, title), children) };
+  const information = await seoPureDependencies();
+  const { PublicFaq } = await isolated("../components/public-faq.tsx", { React, useState: React.useState, ...information, styles: {}, Search: () => null, CircleHelp: () => null });
+  const dependencies = { getInformationContent: async () => ({ content: information.DEFAULT_INFORMATION }), PublicFaq, React, ...seo, ...content, styles: {}, Link: ({ children, href }) => React.createElement("a", { href }, children), PublicInformationPage: ({ title, children }) => React.createElement("main", null, React.createElement("h1", null, title), children) };
   const faq = await isolated("../app/faq/page.tsx", dependencies);
-  const html = renderToStaticMarkup(faq.default());
+  const html = renderToStaticMarkup(await faq.default());
   for (const item of content.PUBLIC_FAQ) { assert.ok(html.includes(item.question)); assert.ok(html.includes(item.answer)); }
   const structured = JSON.parse(html.match(/<script[^>]+type="application\/ld\+json"[^>]*>(.*?)<\/script>/s)[1]);
   assert.equal(structured.mainEntity.length, content.PUBLIC_FAQ.length);

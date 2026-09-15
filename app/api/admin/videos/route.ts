@@ -1,7 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { lessonsDb, supervisorAssignments, videoAssets } from "@/db/schema";
+import { lessonsDb, videoAssets } from "@/db/schema";
 import { checkRateLimit, clientIp, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
 import { getCourseCatalog, invalidateCatalogCache } from "@/lib/catalog-store";
@@ -152,11 +152,7 @@ export async function POST(request: Request) {
 
   const course = await getCourseCatalog(courseSlug, true);
   if (!course?.units.some((unit) => unit.lessons.some((lesson) => lesson.id === lessonId))) { await discardRawUpload(); return jsonError("تعذر مطابقة المادة أو الدرس"); }
-  if (!tokenAuthorized && user?.role === "supervisor") {
-    const assignments = await getDb().select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId, user.id), eq(supervisorAssignments.active, true)));
-    const mayEdit = assignments.some((assignment) => (!assignment.institutionSlug || assignment.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !assignment.specialty : !assignment.specialty || assignment.specialty === course.specialty));
-    if (!mayEdit) { await discardRawUpload(); return jsonError("هذه المادة غير مسندة لهذا المشرف", 403); }
-  }
+
 
   const db = getDb();
   const [existingLesson] = await db.select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug))).limit(1);

@@ -14,8 +14,8 @@ async function isolated(path, dependencies = {}) {
 }
 const body = await isolated("../lib/request-body.ts");
 const primitives = await isolated("../lib/api.ts");
-const jsonError = (message, status = 400) => Response.json({ error: message }, { status });
-const trusted = { ...body, finiteNumber: primitives.finiteNumber, cleanText: primitives.cleanText, jsonError, sameOriginRequest: () => true, isMobileRequest: () => false, isNativeAppRequest: () => false, getSessionUser: async () => ({ id: 9, role: "admin", email: "admin@example.test" }), roleAllowed: () => true, isAdminRequest: () => false, checkRateLimit: async () => true, clientIp: () => "127.0.0.1", getDb: () => ({}), requireAdminStepUp: async () => {}, authorizePermission: async () => ({ id: 9, role: "admin" }), ADMIN_PERMISSIONS: { COMPLIANCE_MANAGE: "compliance.manage" }, process: { env: { VIDEO_SIGNING_SECRET: "test-only-signing-secret-do-not-deploy" } } };
+const jsonError = (message, status = 400, code) => Response.json({ error: message, code }, { status });
+const trusted = { AdminMfaError: class extends Error {}, hasPermission: async user => Boolean(user && user.role === "admin"), ...body, finiteNumber: primitives.finiteNumber, cleanText: primitives.cleanText, jsonError, sameOriginRequest: () => true, isMobileRequest: () => false, isNativeAppRequest: () => false, getSessionUser: async () => ({ id: 9, role: "admin", isPlatformOwner: true, email: "admin@example.test" }), roleAllowed: () => true, isAdminRequest: () => false, checkRateLimit: async () => true, clientIp: () => "127.0.0.1", getDb: () => ({}), requireAdminStepUp: async () => {}, authorizePermission: async () => ({ id: 9, role: "admin" }), ADMIN_PERMISSIONS: { COMPLIANCE_MANAGE: "compliance.manage" }, process: { env: { VIDEO_SIGNING_SECRET: "test-only-signing-secret-do-not-deploy" } } };
 
 test("reviewed student and staff mutations reject null, arrays and excessive JSON before database mutations", async () => {
   const endpoints = [
@@ -47,7 +47,7 @@ test("support attachment download enforces reply visibility and ownership before
     const rows = new Map([[tables.supportReplyFiles, [file]], [tables.supportTickets, [{ userEmail: "owner@example.test" }]], [tables.supportReplies, [{ internal: scenario.internal, ticketId: scenario.replyTicket || 77 }]]]);
     const inspected = [];
     const db = { select: () => ({ from(table) { return { where(clause) { inspected.push(clause); return { limit: async () => rows.get(table) || [] }; } }; } }) };
-    const route = await isolated("../app/api/support/files/[id]/route.ts", { ...tables, jsonError, getDb: () => db, eq: (column, value) => ({ column, value }), getSessionUser: async () => ({ role: scenario.role, email: scenario.email }), getObject: async () => { reads += 1; return { body: new Uint8Array([1]) }; } });
+    const route = await isolated("../app/api/support/files/[id]/route.ts", { ...tables, jsonError, ADMIN_PERMISSIONS: {SUPPORT_MANAGE:"support.manage"}, hasPermission: async user => user.role === "admin", getDb: () => db, eq: (column, value) => ({ column, value }), getSessionUser: async () => ({ role: scenario.role, email: scenario.email }), getObject: async () => { reads += 1; return { body: new Uint8Array([1]) }; } });
     const result = await route.GET(new Request("https://test/api/support/files/11"), { params: Promise.resolve({ id: "11" }) });
     assert.equal(result.status, scenario.status, JSON.stringify(scenario));
     assert.equal(reads, scenario.status === 200 ? 1 : 0);
@@ -106,10 +106,9 @@ test("numeric request fields never invoke object coercion and reject invalid IDs
   assert.equal(result.status, 400);
 });
 
-test("the separately authenticated staff machine integration does not require browser MFA", async () => {
-  let bodyReads = 0;
-  const route = await isolated("../app/api/admin/staff/route.ts", { ...trusted, isAdminRequest: () => true, sameOriginRequest: () => { throw new Error("machine integration must not require an Origin"); }, getSessionUser: async () => { throw new Error("unexpected browser session lookup"); }, requireAdminStepUp: async () => { throw new Error("unexpected browser MFA check"); }, readBoundedJsonObject: async () => { bodyReads += 1; throw new Error("invalid body"); } });
-  const result = await route.POST(new Request("https://test/api/admin/staff", { method: "POST", body: "null" }));
-  assert.equal(result.status, 400);
-  assert.equal(bodyReads, 1);
+test("generic machine credentials cannot administer staff or skip owner authentication", async () => {
+  let touched = false;
+  const route = await isolated("../app/api/admin/staff/route.ts", { ...trusted, isAdminRequest: () => true, getSessionUser: async () => null, readBoundedJsonObject: async () => { touched=true; return {}; } });
+  const result = await route.POST(new Request("https://test/api/admin/staff", { method: "POST", body: "{}" }));
+  assert.equal(result.status,403); assert.equal(touched,false);
 });

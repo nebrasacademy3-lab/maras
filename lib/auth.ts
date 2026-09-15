@@ -1,3 +1,4 @@
+import { verifyLoginMfaTx, type LoginMfaProof } from "@/lib/account-mfa";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { authDevices, authRateLimits, authSessions, users } from "@/db/schema";
@@ -57,6 +58,7 @@ export type SessionUser = {
   specialty: string | null;
   academicLevel: string | null;
   role: UserRole;
+  isPlatformOwner?: boolean;
   emailVerified: boolean;
   profileCompleted: boolean;
   onboardingCompleted: boolean;
@@ -146,6 +148,7 @@ export function sessionUserFromRow(row: typeof users.$inferSelect): SessionUser 
     specialty: row.specialty,
     academicLevel: row.academicLevel,
     role,
+    isPlatformOwner: row.isPlatformOwner,
     emailVerified: Boolean(row.emailVerifiedAt),
     profileCompleted: role !== "student" || Boolean(row.profileCompletedAt && row.fullName.trim().length >= 5 && row.phone && row.universitySlug && row.specialty && row.academicLevel),
     onboardingCompleted: Boolean(row.onboardingCompletedAt),
@@ -159,13 +162,13 @@ export async function getSessionUserFromHeaders(requestHeaders: Headers): Promis
     const db = getDb();
     const tokenHash = await sha256(token);
     const now = new Date().toISOString();
-    const [row] = await db.select({ user: users, sessionId: authSessions.id, deviceId: authSessions.deviceId, lastSeenAt: authSessions.lastSeenAt }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).where(and(
+    const [row] = await db.select({ user: users, sessionId: authSessions.id, deviceId: authSessions.deviceId, lastSeenAt: authSessions.lastSeenAt, mfaVerifiedAt: authSessions.mfaVerifiedAt, requiresMfa: sql<boolean>`EXISTS (SELECT 1 FROM admin_mfa_factors WHERE user_id = ${users.id} AND type = 'totp' AND verified_at IS NOT NULL AND disabled_at IS NULL)` }).from(authSessions).innerJoin(users, eq(authSessions.userId, users.id)).where(and(
       eq(authSessions.tokenHash, tokenHash),
       isNull(authSessions.revokedAt),
       gt(authSessions.expiresAt, now),
       eq(users.status, "active"),
     )).limit(1);
-    if (!row) return null;
+    if (!row || row.requiresMfa && !row.mfaVerifiedAt) return null;
     if (row.user.role === "student") {
       if (!row.deviceId) return null;
       const [enrollment] = await db.select({ id: authDevices.id }).from(authDevices).where(and(eq(authDevices.userId, row.user.id), eq(authDevices.deviceId, row.deviceId), isNull(authDevices.revokedAt))).limit(1);
@@ -185,11 +188,17 @@ export function requestSessionToken(request: Request) {
   return bearerToken(request.headers) || parseCookie(request.headers.get("cookie"), SESSION_COOKIE);
 }
 
-export function getSessionUser(request: Request) {
-  return getSessionUserFromHeaders(request.headers);
+export async function getSessionUser(request: Request) {
+  const user = await getSessionUserFromHeaders(request.headers);
+  const path = new URL(request.url).pathname;
+  if (user && (path.startsWith("/api/admin/") || path.startsWith("/api/supervisor/"))) {
+    const { staffRequestAllowed } = await import("@/lib/permissions");
+    if (!await staffRequestAllowed(user, request)) return null;
+  }
+  return user;
 }
 
-export async function createSession(userId: number, request: Request, remember = true) {
+export async function createSession(userId: number, request: Request, remember = true, mfaProof?: LoginMfaProof) {
   const db = getDb();
   const now = new Date().toISOString();
   const device = await sessionDeviceIdentity(request);
@@ -203,6 +212,7 @@ export async function createSession(userId: number, request: Request, remember =
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${userId})`);
     const [account] = await tx.select({ role: users.role }).from(users).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!account) throw new Error("account_not_found");
+    const mfaVerified = await verifyLoginMfaTx(tx, userId, device.deviceId, mfaProof, remember);
 
     // Durable slots are checked before replacing a session. Logout, expiry and
     // password changes never delete enrollment or free an approved device slot.
@@ -212,6 +222,7 @@ export async function createSession(userId: number, request: Request, remember =
     await tx.insert(authSessions).values({
       userId,
       tokenHash,
+      mfaVerifiedAt: mfaVerified ? now : null,
       ipAddress: clientIp(request),
       userAgent: device.userAgent,
       deviceId: device.deviceId,

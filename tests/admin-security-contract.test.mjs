@@ -25,16 +25,13 @@ const [permissions, mfa, mfaRoute, finance, compliance, notifications, consoleRo
   read("mobile/app/admin.tsx"),
 ]);
 
-test("RBAC reads the existing role tables and keeps the admin fallback finite", () => {
-  assert.match(permissions, /userRoles/);
-  assert.match(permissions, /roles/);
-  assert.match(permissions, /rolePermissions/);
-  assert.match(permissions, /innerJoin\(roles/);
-  assert.match(permissions, /innerJoin\(rolePermissions/);
-  assert.match(permissions, /user\.role === "admin"/);
-  assert.match(permissions, /BUILT_IN_ADMIN_PERMISSIONS/);
-  assert.doesNotMatch(permissions, /permission\s*===\s*["']\*["']/);
-  assert.match(permissions, /return new Set\(\)/, "lookup failures deny access for non-admin users");
+test("RBAC grants only the immutable owner a finite full set and supervisors explicit permissions", () => {
+  assert.match(permissions, /user\.isPlatformOwner && user\.role === "admin"/);
+  assert.match(permissions, /staffPermissions/);
+  assert.match(permissions, /OWNER_ONLY/);
+  assert.match(permissions, /user\.role !== "supervisor"/);
+  assert.match(permissions, /return new Set\(\)/);
+  assert.doesNotMatch(permissions, /BUILT_IN_ADMIN_PERMISSIONS|rolePermissions/);
 });
 
 test("financial, compliance, notification, and deletion routes enforce permissions", () => {
