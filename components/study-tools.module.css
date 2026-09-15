@@ -10,7 +10,7 @@
 .toolIcon { width:56px; height:56px; border-radius:18px; display:grid; place-items:center; background:var(--surface-3); color:var(--primary); }
 .cardCta { color:var(--primary); font-weight:700; font-size:14px; margin-block-start:auto; padding-block-start:6px; }
 .panel,.lessonTools { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:clamp(16px,3vw,28px); color:var(--text); min-width:0; }
-.lessonTools { margin-block:24px; }
+.lessonTools { width:calc(100% - 52px); max-width:1128px; margin:24px auto; }
 .panelHeader { display:flex; align-items:center; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-block-end:22px; }
 .panelHeader h2 { font-size:23px; line-height:1.6; margin:6px 0; }
 .panelHeader h3 { font-size:19px; margin:0; }
@@ -68,5 +68,5 @@
 .toolCard:focus-visible,.primary:focus-visible,.secondary:focus-visible,.questionNumbers button:focus-visible,.upload:focus-visible { outline:3px solid var(--primary); outline-offset:3px; }
 .spin { animation:study-spin 1s linear infinite; }
 @keyframes study-spin { to { transform:rotate(360deg); } }
-@media(max-width:640px) { .hero { align-items:flex-start; flex-direction:column; } .panelHeader h2 { font-size:20px; } .lessonTools { padding:16px; } .toolCard { padding:20px; } .formGrid { grid-template-columns:1fr; } .choices label { gap:8px; font-size:15px; } }
+@media(max-width:640px) { .hero { align-items:flex-start; flex-direction:column; } .panelHeader h2 { font-size:20px; } .lessonTools { width:calc(100% - 24px); padding:16px; } .toolCard { padding:20px; } .formGrid { grid-template-columns:1fr; } .choices label { gap:8px; font-size:15px; } }
 @media(prefers-reduced-motion:reduce) { .toolCard { transition:none; } .toolCard:hover { transform:none; } .spin { animation:none; } }

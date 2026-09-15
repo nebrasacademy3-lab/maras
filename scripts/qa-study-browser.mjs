@@ -13,7 +13,7 @@ const browser = await chromium.launch({ headless: true });
 mkdirSync(".data/study-browser", { recursive: true });
 const checks = [];
 try {
-  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "ar-SA" });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 1000 }, locale: "ar-SA", reducedMotion: "reduce" });
   await context.addCookies([{ name: "meras_session", value: a.token, domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" }]);
   const page = await context.newPage(), errors = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -22,10 +22,14 @@ try {
   assert.equal(await page.getByRole("link", { name: "العودة للوحة الطالب" }).getAttribute("href"), "/dashboard");
   await page.getByRole("button", { name: /اختبر فهمك/ }).waitFor();
   await page.screenshot({ path: ".data/study-browser/learn-light.png", fullPage: true });
+  await page.getByRole("button", { name: /اختبر فهمك/ }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: ".data/study-browser/tools-light.png", fullPage: true, animations: "disabled" });
   const light = await page.locator(".learning-page").evaluate(el => ({ color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor }));
   await page.getByRole("button", { name: "تفعيل الوضع الليلي", exact: true }).click();
   await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
   await page.screenshot({ path: ".data/study-browser/learn-dark.png", fullPage: true });
+  await page.getByRole("button", { name: /اختبر فهمك/ }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: ".data/study-browser/tools-dark.png", fullPage: true, animations: "disabled" });
   const dark = await page.locator(".learning-page").evaluate(el => ({ color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor }));
   assert.notDeepEqual(light, dark, "learning theme must actually change");
   await page.getByRole("button", { name: "تفعيل الوضع الفاتح", exact: true }).click();
@@ -42,7 +46,8 @@ try {
   }
   await quiz.getByRole("button", { name: "إنهاء الاختبار وعرض النتيجة" }).click();
   await quiz.getByRole("heading", { name: "5 إجابات صحيحة من 5" }).waitFor();
-  await page.screenshot({ path: ".data/study-browser/quiz-results.png", fullPage: true });
+  await quiz.getByRole("heading", { name: "5 إجابات صحيحة من 5" }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: ".data/study-browser/quiz-results.png", fullPage: true, animations: "disabled" });
   let generationRequests = 0;
   const listener = request => { if (/\/api\/ai\/files\/\d+\/actions/.test(request.url()) && request.method() === "POST") generationRequests++; };
   page.on("request", listener);
@@ -52,6 +57,12 @@ try {
   page.off("request", listener);
   checks.push("real API queue + cached source, one question card, grading, explanations and zero-request retry");
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForFunction(() => document.querySelector(".learning-menu")?.getAttribute("aria-expanded") === "false");
+  await page.getByRole("button", { name: "إظهار المحتوى", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: "إظهار المحتوى", exact: true }).getAttribute("aria-expanded"), "true");
+  await page.getByRole("button", { name: "إغلاق قائمة الدروس", exact: true }).click();
+  assert.equal(await page.getByRole("button", { name: "إظهار المحتوى", exact: true }).getAttribute("aria-expanded"), "false");
+  await quiz.getByRole("radiogroup").scrollIntoViewIfNeeded();
   await page.screenshot({ path: ".data/study-browser/learn-phone.png", fullPage: true });
   assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2), "no page-wide horizontal overflow");
   checks.push("390px responsive lesson and quiz layout without horizontal overflow");

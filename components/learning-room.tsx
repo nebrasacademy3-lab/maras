@@ -48,7 +48,7 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
   const [progressLoaded, setProgressLoaded] = useState(false);
   const [completionMessage, setCompletionMessage] = useState("");
   const resumeHandled = useRef(false);
-  const [sidebar, setSidebar] = useState(true);
+  const [sidebar, setSidebar] = useState(false);
   const [tab, setTab] = useState("overview");
   const [noteDraft, setNoteDraft] = useState("");
   const [notes, setNotes] = useState<VideoNote[]>([]);
@@ -66,6 +66,16 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
   const [resourceMessage, setResourceMessage] = useState("");
   const currentIndex = allLessons.findIndex((lesson) => lesson.id === activeLesson.id);
   const progress = allLessons.length ? Math.round((completed.size / allLessons.length) * 100) : 0;
+
+  useEffect(() => {
+    const compact = window.matchMedia("(max-width: 700px)");
+    const syncViewport = () => setSidebar(!compact.matches);
+    const initial = window.setTimeout(syncViewport, 0);
+    const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") setSidebar(false); };
+    compact.addEventListener("change", syncViewport);
+    window.addEventListener("keydown", closeOnEscape);
+    return () => { window.clearTimeout(initial); compact.removeEventListener("change", syncViewport); window.removeEventListener("keydown", closeOnEscape); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -165,6 +175,7 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
   };
   const chooseLesson = (lesson: typeof activeLesson) => {
     setActiveLesson(lesson);
+    if (window.matchMedia("(max-width: 700px)").matches) setSidebar(false);
     const resumeAt = watched[lesson.id] || 0;
     if (resumeAt > 5 && !completed.has(lesson.id)) { seekNonceRef.current += 1; setSeekRequest({ seconds: resumeAt, nonce: seekNonceRef.current }); }
     else setSeekRequest(null);
@@ -235,13 +246,13 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
 
   return <main className="learning-page">
     <header className="learning-header">
-      <div><button className="learning-menu" onClick={() => setSidebar(!sidebar)} aria-label="إظهار المحتوى"><Menu size={19} /></button><BrandLogo compact /><i /><Link href={`/courses/${course.slug}`}>{course.title}</Link></div>
+      <div><button className="learning-menu" onClick={() => setSidebar(!sidebar)} aria-label="إظهار المحتوى" aria-expanded={sidebar} aria-controls="lesson-sidebar"><Menu size={19} /></button><BrandLogo compact /><i /><Link href={`/courses/${course.slug}`}>{course.title}</Link></div>
       <div className="learning-progress-head"><span>{progress}%</span><i><b style={{ width: `${progress}%` }} /></i><small>{completed.size} من {allLessons.length} درسًا</small></div>
       <div><span className="secure-session"><ShieldCheck size={15} /> جلسة محمية</span><ThemeToggle compact /><Link href="/dashboard" className="learning-dashboard">العودة للوحة الطالب</Link></div>
     </header>
     <div className={`learning-layout ${sidebar ? "" : "sidebar-closed"}`}>
-      <aside className="lesson-sidebar">
-        <div className="lesson-sidebar-head"><div><strong>محتويات المادة</strong><small>{course.units.length} وحدات · {course.lessons} درسًا</small></div><button onClick={() => setSidebar(false)}><PanelLeftClose size={18} /></button></div>
+      <aside id="lesson-sidebar" className="lesson-sidebar" inert={!sidebar}>
+        <div className="lesson-sidebar-head"><div><strong>محتويات المادة</strong><small>{course.units.length} وحدات · {course.lessons} درسًا</small></div><button aria-label="إغلاق قائمة الدروس" onClick={() => setSidebar(false)}><PanelLeftClose size={18} /></button></div>
         <label className="lesson-search"><Search size={15} /><input value={lessonQuery} onChange={(event)=>setLessonQuery(event.target.value)} placeholder="ابحث داخل الدروس..." /></label>
         <div className="lesson-units">{course.units.map((unit, unitIndex) => <details key={unit.title} open={unitIndex < 2}>
           <summary><span><b>الوحدة {unitIndex + 1}</b><strong>{unit.title.replace(/^الوحدة [^:]+:\s*/, "")}</strong></span><ChevronDown size={16} /></summary>
