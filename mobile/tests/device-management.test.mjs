@@ -13,8 +13,8 @@ function load(path, mocks = {}) {
 }
 const policy = load("src/lib/device-access-policy.ts");
 const nodes = node => !node ? [] : Array.isArray(node) ? node.flatMap(nodes) : [node, ...nodes(node.props?.children)];
-function harness(grants = ["students.devices.manage"], user = { id: 41, role: "supervisor" }) {
-  const slots = [], refs = [], effects = [], dialogs = [], writes = [], queries = [], jobs = [];
+function harness(grants = ["students.devices.manage"], user = { id: 41, role: "supervisor" }, options = {}) {
+  const slots = [], refs = [], effects = [], dialogs = [], writes = [], queries = [], jobs = [], cancellations = [], events = [];
   let cursor = 0, refCursor = 0, effectCursor = 0, mutationError = null;
   const snapshot = { deviceLimit: 2, serverTime: "2026-09-16T10:00:00Z", registeredDevices: [
     { id: 7, deviceLabel: "iPhone", platform: "ios", firstSeenAt: "2026-09-01", lastSeenAt: "2026-09-15", revokedAt: null, policyVersion: 3, returnPolicy: "blocked" },
@@ -35,19 +35,29 @@ function harness(grants = ["students.devices.manage"], user = { id: 41, role: "s
     "@/src/providers/LanguageProvider": { useLanguage: () => ({ direction: "rtl", locale: "ar-SA" }) },
     "@/src/providers/ThemeProvider": { useTheme: () => ({ colors: { text: "text", textSoft: "soft", primary: "primary", border: "border", danger: "danger", success: "success" } }) },
     "@/src/lib/interaction-events": { MerasAlert: { alert: (title, message, buttons) => dialogs.push({ title, message, buttons }) } },
-    "@/src/lib/api": { jsonBody: JSON.stringify, api: async (path, options) => { writes.push({ path, ...options }); return snapshot; } },
+    "@/src/lib/api": { jsonBody: JSON.stringify, api: async (path, init) => { events.push("write"); writes.push({ path, ...init }); if (options.write) await options.write(); return snapshot; } },
     "@tanstack/react-query": {
-      useQueryClient: () => ({ setQueryData: () => {}, invalidateQueries: async () => {} }),
+      useQueryClient: () => ({
+        cancelQueries: async config => { events.push("cancel-start"); cancellations.push(config); if (options.cancel) await options.cancel(); events.push("cancel-finish"); },
+        setQueryData: () => { events.push("cache-write"); },
+        invalidateQueries: async () => { if (options.invalidate) await options.invalidate(); },
+      }),
       useQuery: config => { queries.push(config); return { data: config.queryKey[0] === "admin-device-permissions" ? { permissions: grants, user: { isPlatformOwner: false } } : snapshot, isPending: false, isError: false, refetch: async () => {} }; },
       useMutation: config => ({ isPending: false, error: mutationError, reset: () => { mutationError = null; }, mutate: command => {
-        const job = config.mutationFn(command).then(result => config.onSuccess(result)).catch(error => { mutationError = error; }); jobs.push(job); return job;
+        const job = config.mutationFn(command).then(result => config.onSuccess(result)).catch(error => { mutationError = error; }).finally(() => config.onSettled?.()); jobs.push(job); return job;
       } }),
     },
   });
   const render = (email = "student@example.test") => { cursor = 0; refCursor = 0; effectCursor = 0; return runtime.RegisteredDevices({ studentEmail: email }); };
   const button = (tree, title) => nodes(tree).find(node => node.type === "Button" && node.props.title === title);
   function expanded() { let tree = render(); button(tree, "أجهزة الطالب وسياسة العودة").props.onPress(); tree = render(); return tree; }
-  return { render, button, expanded, nodes, dialogs, writes, queries, jobs, dispose: () => effects.forEach(cleanup => cleanup?.()), snapshot };
+  return { render, button, expanded, nodes, dialogs, writes, queries, jobs, cancellations, events, error: () => mutationError, dispose: () => effects.forEach(cleanup => cleanup?.()), snapshot };
+}
+function openConfirmation(h) {
+  let tree = h.expanded(); nodes(tree).find(node => node.type === "Button" && node.props.title === "إدارة الجهاز").props.onPress(); tree = h.render();
+  nodes(tree).find(node => node.type === "Field" && node.props.label === "سبب الإجراء").props.onChangeText("طلب الطالب بعد التحقق");
+  h.button(h.render(), "مراجعة وتأكيد").props.onPress();
+  return h.dialogs.at(-1).buttons.find(button => button.text === "تأكيد الإجراء").onPress;
 }
 
 test("native device permissions hide the entire section and disable private queries when ungranted", () => {
@@ -85,12 +95,33 @@ test("a revoked device offers explicit allow-return without requesting automatic
   assert.deepEqual(JSON.parse(h.writes[0].body), { action: "allow_return", deviceId: 8, expectedRevision: 4, reason: "سمح المدير بطلب عودة جديد" }); h.dispose();
 });
 test("a confirmation belonging to an unmounted student view never submits", async () => {
-  const h = harness(); let tree = h.expanded(); nodes(tree).find(node => node.type === "Button" && node.props.title === "إدارة الجهاز").props.onPress(); tree = h.render();
-  nodes(tree).find(node => node.type === "Field" && node.props.label === "سبب الإجراء").props.onChangeText("طلب قبل تغيير الحساب");
-  h.button(h.render(), "مراجعة وتأكيد").props.onPress(); h.dispose();
-  h.dialogs[0].buttons.find(button => button.text === "تأكيد الإجراء").onPress(); await Promise.all(h.jobs); assert.equal(h.writes.length, 0);
+  const h = harness(), confirm = openConfirmation(h); h.dispose(); confirm(); await Promise.all(h.jobs); assert.equal(h.writes.length, 0);
 });
 test("private device query keys include both the acting account and selected student", () => {
   const h = harness(); h.expanded(); const config = h.queries.findLast(query => query.queryKey[0] === "registered-devices");
   assert.deepEqual(Array.from(config.queryKey), ["registered-devices", 41, "student@example.test"]); h.dispose();
+});
+test("native writes wait for exact student-query cancellation before replacing the cache", async () => {
+  let release; const blocked = new Promise(resolve => { release = resolve; });
+  const h = harness(undefined, undefined, { cancel: () => blocked }), confirm = openConfirmation(h);
+  confirm(); assert.equal(h.cancellations.length, 1); assert.equal(h.cancellations[0].exact, true);
+  assert.deepEqual(Array.from(h.cancellations[0].queryKey), ["registered-devices", 41, "student@example.test"]);
+  assert.equal(h.writes.length, 0); release(); await Promise.all(h.jobs);
+  assert.deepEqual(h.events, ["cancel-start", "cancel-finish", "write", "cache-write"]); assert.equal(h.error(), null); h.dispose();
+});
+test("leaving during query cancellation prevents the pending native command from reaching the server", async () => {
+  let release; const blocked = new Promise(resolve => { release = resolve; });
+  const h = harness(undefined, undefined, { cancel: () => blocked }); openConfirmation(h)(); h.dispose(); release(); await Promise.all(h.jobs);
+  assert.equal(h.writes.length, 0); assert.ok(h.error()); assert.equal(h.events.includes("cache-write"), false);
+});
+test("repeated confirmation callbacks submit once while cancellation and mutation are pending", async () => {
+  let release; const blocked = new Promise(resolve => { release = resolve; });
+  const h = harness(undefined, undefined, { cancel: () => blocked }), confirm = openConfirmation(h);
+  confirm(); confirm(); confirm(); assert.equal(h.jobs.length, 1); release(); await Promise.all(h.jobs);
+  assert.equal(h.writes.length, 1); assert.equal(h.error(), null); h.dispose();
+});
+test("a failed summary refresh does not turn an applied native mutation into a retryable failure", async () => {
+  const h = harness(undefined, undefined, { invalidate: async () => { throw new Error("summary refresh unavailable"); } });
+  openConfirmation(h)(); await Promise.all(h.jobs); assert.equal(h.writes.length, 1); assert.equal(h.error(), null);
+  assert.equal(nodes(h.render()).filter(node => node.type === "Field").length, 0); h.dispose();
 });
