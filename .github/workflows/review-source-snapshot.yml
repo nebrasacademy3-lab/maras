@@ -1,0 +1,29 @@
+name: Review source snapshot
+on:
+  push:
+    branches: ['implement/plan-v7-20260916']
+    paths: ['.github/workflows/review-source-snapshot.yml']
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Archive committed sources for isolated reproduction
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/meras-review-source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/meras-review-source/source.tar.gz" HEAD
+          git rev-parse HEAD > "$RUNNER_TEMP/meras-review-source/commit.txt"
+          cd "$RUNNER_TEMP/meras-review-source"
+          sha256sum source.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewed-source
+          path: ${{ runner.temp }}/meras-review-source/
+          retention-days: 1
+          if-no-files-found: error

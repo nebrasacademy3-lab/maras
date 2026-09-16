@@ -15,3 +15,4 @@ export async function observeBrowserContext(context, observations, label) {
     page.on('pageerror',e=>observations.push({context:label,kind:'playwright-pageerror',page:safe(page.url()),message:safe(e.message),stack:safe(e.stack)}));
     page.on('requestfailed',request=>observations.push({context:label,kind:'request-failed',page:safe(page.url()),url:safe(request.url()),reason:safe(request.failure()?.errorText)}));
   });
+}
