@@ -31,7 +31,10 @@ export async function navigatePublicPage(page, url, {reload=false, timeout=30000
   const pending = new Set();
   let changed = Date.now();
   const started = request => {
-    if (request.resourceType() === 'eventsource' || new URL(request.url()).pathname === '/api/sync/stream') return;
+    const path = new URL(request.url()).pathname;
+    // Analytics beacons and the optional account probe are background work; they may use
+    // keepalive or be cancelled during navigation and must not gate public-page readiness.
+    if (request.resourceType() === 'eventsource' || ['/api/sync/stream', '/api/analytics', '/api/auth/me'].includes(path)) return;
     pending.add(request); changed = Date.now();
   };
   const ended = request => { if (pending.delete(request)) changed = Date.now(); };
