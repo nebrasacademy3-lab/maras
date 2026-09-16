@@ -115,22 +115,6 @@ for (const failure of ["read", "write", "readback", "corrupt"]) test(`device ide
   assert.equal(recovered.id, persisted); assert.equal(attached, 1);
 });
 
-test("admin replacement needs confirmation and sends the permanent registration ID and reason", async () => {
-  const state = []; let index = 0, mutation; const calls = []; class ApiError extends Error {}
-  const runtime = load("src/components/RegisteredDevices.tsx", {
-    react: { ...require("react"), useState: (initial) => { const key = index++; if (!(key in state)) state[key] = initial; return [state[key], (value) => { state[key] = typeof value === "function" ? value(state[key]) : value; }]; } },
-    "react/jsx-runtime": { jsx: element, jsxs: element },
-    "react-native": { Modal: "Modal", View: "View", Pressable: "Pressable", KeyboardAvoidingView: "KeyboardAvoidingView", ScrollView: "ScrollView", Platform: { OS: "ios" }, StyleSheet: { create: (styles) => styles } },
-    "@expo/vector-icons": { Ionicons: "Icon" }, "@/src/components/ScaledText": { ScaledText: "Text" }, "@/src/components/ui": { AppButton: "AppButton", Card: "Card", Field: "Field", SectionTitle: "SectionTitle" },
-    "@/src/providers/AuthProvider": { useAuth: () => ({ user: { id: 1, role: "admin" } }) }, "@/src/providers/LanguageProvider": { useLanguage: () => ({ direction: "rtl", locale: "ar-SA" }) }, "@/src/providers/ThemeProvider": { useTheme: () => ({ colors: { primary: "blue", danger: "red" } }) },
-    "@/src/lib/api": { ApiError, jsonBody: JSON.stringify, api: async (path, options) => { calls.push({ path, ...options }); return {}; } },
-    "@tanstack/react-query": { useQueryClient: () => ({ invalidateQueries: async () => {} }), useQuery: () => ({ data: { deviceLimit: 2, registeredDevices: [{ id: 7, deviceLabel: "iPhone", platform: "ios", lastSeenAt: "2026-09-09" }, { id: 8, deviceLabel: "Old phone", platform: "ios", lastSeenAt: "2026-09-09", revokedAt: "2026-09-09" }] } }), useMutation: (options) => { mutation = options; return { isPending: false, reset: () => {}, mutate: async () => { await mutation.mutationFn(); await mutation.onSuccess(); } }; } },
-  });
-  const render = () => { index = 0; return runtime.RegisteredDevices({ studentEmail: "student@example.test" }); };
-  let tree = render(); nodes(tree).find((node) => node.props?.title === "الأجهزة المعتمدة واستبدالها").props.onPress(); tree = render();
-  const buttons = nodes(tree).filter((node) => node.type === "Pressable"); assert.equal(buttons.length, 1, "revoked devices have no replacement action"); buttons[0].props.onPress(); tree = render();
-  assert.equal(nodes(tree).find((node) => node.props?.title === "تأكيد إيقاف اعتماد الجهاز").props.disabled, true);
-  nodes(tree).find((node) => node.props?.label === "سبب الاستبدال").props.onChangeText("  استبدال الهاتف بطلب الطالب  "); tree = render();
-  const confirm = nodes(tree).find((node) => node.props?.title === "تأكيد إيقاف اعتماد الجهاز"); assert.equal(confirm.props.disabled, false); await confirm.props.onPress();
-  assert.equal(calls.length, 1); assert.equal(calls[0].path, "/api/admin/students/student%40example.test/devices"); assert.equal(calls[0].method, "DELETE"); assert.deepEqual(JSON.parse(calls[0].body), { deviceId: 7, reason: "استبدال الهاتف بطلب الطالب" });
-});
+// The former DELETE-only device editor was replaced. Its confirmation, record-ID,
+// reason and no-request-on-cancel contracts are now tested alongside granular
+// permissions and revision checks in device-management.test.mjs.
