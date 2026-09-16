@@ -14,7 +14,7 @@ test("configured supervisor assignments are an allow-list across rosters, consol
   ]);
   assert.match(scope, /supervisorAssignments/);
   assert.match(scope, /supervisorScopesAllow/);
-  assert.match(scope, /scopes\\.length > 0/);
+  assert.match(scope, /scopes\.length > 0/);
   assert.match(roster, /getSupervisorScopes/);
   assert.match(roster, /هذه المادة خارج نطاق إشرافك المحدد/);
   assert.match(consoleRoute, /visibleCourses/);
