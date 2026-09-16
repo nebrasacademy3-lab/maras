@@ -19,5 +19,10 @@ test("configured supervisor assignments are an allow-list across rosters, consol
   assert.match(roster, /هذه المادة خارج نطاق إشرافك المحدد/);
   assert.match(consoleRoute, /visibleCourses/);
   assert.match(consoleRoute, /visibleStudentRows/);
+  assert.match(consoleRoute, /visibleOrderRows/);
+  assert.match(consoleRoute, /visibleRequestRows/);
+  assert.match(consoleRoute, /visibleReviewRows/);
+  assert.match(consoleRoute, /visibleTicketRows/);
+  assert.match(consoleRoute, /scopedSupervisor/);
   assert.match(studentRoute, /هذا الطالب خارج نطاق إشرافك المحدد/);
 });
