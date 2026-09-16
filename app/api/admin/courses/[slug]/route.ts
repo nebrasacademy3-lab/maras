@@ -18,7 +18,7 @@ export async function GET(request: Request, { params }: Props) {
   if (!course) return jsonError("المادة غير موجودة", 404);
   if (admin!.role === "supervisor") {
     const scopes = await getSupervisorScopes(admin!.id);
-    if (!supervisorScopesAllow(scopes, course)) return jsonError("هذه المادة خارج نطاق إشرافك المحدد", 403);
+    if (scopes.length && !supervisorScopesAllow(scopes, course)) return jsonError("هذه المادة خارج نطاق إشرافك المحدد", 403);
   }
   const query = new URL(request.url).searchParams;
   const kind = query.get("kind") === "waitlist" ? "waitlist" : "subscriptions";
