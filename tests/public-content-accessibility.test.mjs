@@ -20,8 +20,8 @@ async function render(about) {
   try {
     const input = `const { ${Object.keys(mocks).join(",")} } = globalThis[${JSON.stringify(key)}];\n` + source.replace(/^import .+;\r?\n/gm, "");
     const compiled = ts.transpileModule(input, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React } }).outputText;
-    const module = await import("data:text/javascript;base64," + Buffer.from(compiled).toString("base64"));
-    return module.PublicContentEditor();
+    const runtime = await import("data:text/javascript;base64," + Buffer.from(compiled).toString("base64"));
+    return runtime.PublicContentEditor();
   } finally { delete globalThis[key]; }
 }
 
