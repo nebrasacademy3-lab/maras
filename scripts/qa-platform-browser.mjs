@@ -31,12 +31,16 @@ try {
     const browser = await engines[name].launch({ headless: true, ...(name === "chromium" && process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
     let factorId;
     const checks = [], errors = [], observations = [];
+    const stage = label => { const progress = { engine:name, stage:label, timestamp:new Date().toISOString() }; writeFileSync(`${dir}/progress.json`,JSON.stringify(progress)); console.log("BROWSER_STAGE",JSON.stringify(progress)); };
+    stage("public-pages");
     try {
       const context = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
+      context.setDefaultTimeout(30_000); context.setDefaultNavigationTimeout(30_000);
       await observeBrowserContext(context,observations,"public");
       const page = await context.newPage(); page.on("pageerror", error => errors.push(error.message));
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
+        stage(`public:${path}`);
         const response = await navigatePublicPage(page,origin + path); assert.equal(response.status(), 200, path);
         await page.locator("h1").first().waitFor({ state: "visible" });
         await page.waitForFunction(() => Boolean(document.documentElement.dataset.palette));
@@ -56,6 +60,7 @@ try {
       await page.getByLabel("البحث في الأسئلة الشائعة").fill("");
       checks.push("35 rendered FAQ answers match structured data and search filters the real visible content");
       for (const theme of ["light", "dark"]) {
+        stage(`public-theme:${theme}`);
         await page.evaluate(value => localStorage.setItem("meras-theme", value), theme);
         await navigatePublicPage(page,page.url(),{reload:true});
         await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, theme === "dark");
@@ -69,8 +74,10 @@ try {
       }
       checks.push("public light/dark theme persists across navigation; desktop and phone screenshots captured");
       await context.close();
+      stage("mfa-enrollment");
       const enrollmentFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8")).enrollment[name];
       const enrolling = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
+      enrolling.setDefaultTimeout(30_000); enrolling.setDefaultNavigationTimeout(30_000);
       await observeBrowserContext(enrolling,observations,"enrollment");
       await enrolling.addCookies([cookie(enrollmentFixture.token)]);
       const security = await enrolling.newPage(); security.on("pageerror", error => errors.push(error.message));
@@ -102,6 +109,8 @@ try {
       const [factor] = await db.insert(schema.adminMfaFactors).values({ userId: owner.id, type: "totp", label: "Synthetic browser QA", secretEncrypted: mfa.encryptAdminMfaSecret(secret), counter: Math.floor(Date.now() / 30_000) - 1, verifiedAt: now }).returning({ id: schema.adminMfaFactors.id }); factorId = factor.id;
       await db.update(schema.authSessions).set({ mfaVerifiedAt: now }).where(eq(schema.authSessions.tokenHash, createHash("sha256").update(owner.token).digest("hex")));
       const admin = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } }); await admin.addCookies([cookie(owner.token)]);
+      stage("owner-navigation");
+      admin.setDefaultTimeout(30_000); admin.setDefaultNavigationTimeout(30_000);
       await observeBrowserContext(admin,observations,"owner");
       const editor = await admin.newPage(); editor.on("pageerror", error => errors.push(error.message));
       await editor.goto(origin + "/admin", {waitUntil:"domcontentloaded"});
@@ -124,6 +133,7 @@ try {
       await assertFits(editor,"admin/owner/phone");
       checks.push("owner navigation has eight unified groups, no legacy sidebar, and a searchable keyboard-accessible mobile drawer");
       await editor.setViewportSize({width:1440,height:1000});
+      stage("staff-step-up");
       await editor.goto(origin + "/admin/staff", { waitUntil: "domcontentloaded" });
       await editor.getByRole("button", { name: "إضافة مشرف", exact: true }).click();
       const uniqueEmail = `qa-browser-${name}-${randomBytes(5).toString("hex")}@example.test`;
@@ -152,6 +162,7 @@ try {
       checks.push("real staff mutation pauses for MFA, cancellation preserves fields and writes nothing; verified retry creates exactly one supervisor");
       await editor.setViewportSize({ width: 390, height: 844 }); await assertFits(editor, "admin/staff/phone");
       await editor.screenshot({ path: `${dir}/staff-phone.png`, fullPage: true, animations: "disabled" });
+      stage("content-cancellation");
       await editor.goto(origin + "/admin/content", { waitUntil: "domcontentloaded" });
       const title = editor.getByLabel("عنوان الصفحة", { exact: true }); await title.fill("عنوان اختبار لم ينشر — مراس العلم");
       await editor.getByRole("button", { name: "نشر التغييرات", exact: true }).click();
@@ -162,6 +173,8 @@ try {
       await admin.close();
       const viewerFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8"));
       const viewer = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await viewer.addCookies([cookie(viewerFixture.supervisor.token)]);
+      stage("restricted-supervisor");
+      viewer.setDefaultTimeout(30_000); viewer.setDefaultNavigationTimeout(30_000);
       await observeBrowserContext(viewer,observations,"restricted-supervisor");
       const viewerPage = await viewer.newPage(); await viewerPage.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
       await viewerPage.getByRole("heading",{name:"ما يحتاج متابعتك",exact:true}).waitFor({state:"visible"});
@@ -170,6 +183,7 @@ try {
       assert.equal((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status(), 403);
       checks.push("catalog-view supervisor has no owner/finance/content navigation and is denied staff and upload-signing APIs");
       await viewer.close(); assert.deepEqual(errors, [], "no client JavaScript exceptions");
+      stage("complete");
       const report = { engine: name, passed: checks.length, checks, clientExceptions: errors, liveProviders: false, devices: "browser viewport emulation, not physical phones" };
       writeFileSync(`${dir}/report.json`, JSON.stringify(report, null, 2)); reports.push(report); console.log(JSON.stringify(report, null, 2));
     } finally { writeFileSync(`${dir}/observations.json`,JSON.stringify(observations,null,2)); if (factorId) await db.delete(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.id, factorId)); await browser.close(); }

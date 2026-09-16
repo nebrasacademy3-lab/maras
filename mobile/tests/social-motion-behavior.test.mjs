@@ -45,7 +45,7 @@ test("shared native motion replays on focus and measures only unrevealed section
 });
 
 test("foreground and admin saves invalidate live social settings", () => {
-  assert.match(read("src/providers/RealtimeSyncProvider.tsx"), /queryKey: \["settings"\], refetchType: "active"/);
+  assert.match(read("src/providers/RealtimeSyncProvider.tsx"), /invalidateChannels\(queryClient, \["settings"\]\)/);
   assert.match(read("app/admin.tsx"), /payload.action === "saveSettings"\) await client.invalidateQueries/);
   for (const path of ["src/components/MobileFooter.tsx", "app/contact.tsx"]) assert.match(read(path), /mobileSocialLinks\(/);
 });
