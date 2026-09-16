@@ -71,3 +71,21 @@ The application source validated for this checkpoint is `0a29b982779b91475e9256b
 - Public readiness now waits only for required public initialization responses. Optional background analytics and account probes cannot create a false timeout, while protected/admin requests remain covered by their dedicated checks.
 
 This checkpoint verifies the committed source on CI. It still does not claim signed store binaries, physical-device execution, production payment/RevenueCat configuration, live Resend delivery, live Gemini requests, load testing for thousands of users, or completion of the wider 192-case plan described above.
+
+
+## Continuation checkpoint — 2026-09-16 — paid fallback and supervisor scopes
+
+The current branch head is `aac6cac596d0b81fbf65de326b8e3182bb7ae1d7`. This checkpoint includes the following implementation work:
+
+- Gemini routing now separates free-tier and paid-tier candidates. Every eligible free candidate is attempted first; a paid candidate is considered only after the free candidates report quota exhaustion. The paid path is disabled by default, requires the audited owner/finance permission and MFA to change, reserves daily/monthly/per-request budget atomically under a database advisory lock, writes an audit record with a non-secret request fingerprint, and stops when a cap is reached. Transient provider failures do not consume paid budget. No live paid key or paid request was used.
+- The web and native AI administration surfaces show the provider tier, paid-fallback state and caps. The database migration adds the provider-tier constraint and the paid-budget settings/ledger path. Environment examples keep free and paid credentials separate.
+- Configured supervisor assignments are now an allow-list for course rosters, student profiles and the administrative console. The console filters courses, institutions, specialties, units, lessons, videos, orders, material requests, reviews, support tickets, access records and scoped metrics. Supervisors with no assignments retain the legacy read behavior during migration; assigning a scope activates the restriction. Direct course and student routes enforce the same check.
+- The contract suite now asserts these console filters, and the final browser run exercised the updated administration shell.
+
+Evidence for this exact branch head:
+
+- Quality gates run [35163332187](https://github.com/nebrasacademy3-lab/maras/actions/runs/35163332187) passed: production lint/build, **523/523 web tests**, isolated study/security/device/admin checks, and **8/8 Chromium, 8/8 Firefox and 8/8 WebKit** browser checks.
+- Mobile release validation run [35163332105](https://github.com/nebrasacademy3-lab/maras/actions/runs/35163332105) passed Android and iOS Expo compatibility, TypeScript, native prebuild and JavaScript/assets export. The mobile behavior suite in the quality run passed **90/90** tests.
+- The branch remains an open draft in [PR #3](https://github.com/nebrasacademy3-lab/maras/pull/3); it is not merged into `main), and no deployment or store submission was performed.
+
+These results are strong CI evidence for the changed source, not proof of the entire 192-case plan. Identity/email/phone ownership migration, exact per-university permission auditing across every legacy endpoint, resumable large-file production rollout, full teacher/quiz/translation/speech/PDF feature parity, load testing at approximately 1,000 concurrent users, physical-device testing, signed store binaries, live payment/RevenueCat configuration, live email/push delivery and an independent penetration review remain release gates. The platform is not declared absolutely vulnerability-free.
