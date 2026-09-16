@@ -17,7 +17,8 @@ export async function navigatePublicPage(page, url, {reload=false, timeout=30000
       })]);
     } finally { clearTimeout(timer); }
   };
-  const expected = ['/api/auth/me', '/api/public/announcements', '/api/public/settings', '/api/sync'];
+  // Authentication is optional on public pages; protected flows validate it separately.
+  const expected = ['/api/public/announcements', '/api/public/settings', '/api/sync'];
   const responseWaits = expected.map(path => bounded(page.waitForResponse(response => {
     const actual = new URL(response.url());
     return actual.origin === destination.origin && actual.pathname === path && response.request().method() === 'GET';
