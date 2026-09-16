@@ -1,0 +1,77 @@
+name: Apply reviewed administration source
+on:
+  push:
+    branches: ['implement/plan-v7-20260916']
+    paths: ['.review/administration/ready.json']
+permissions:
+  contents: write
+concurrency:
+  group: apply-reviewed-admin-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  apply:
+    if: github.repository == 'nebrasacademy3-lab/maras' && github.ref == 'refs/heads/implement/plan-v7-20260916'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 2
+      - name: Verify every source before applying the reviewed changes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import hashlib, json, lzma, subprocess
+          digest = '112147443d105e7443d996669ea7f77d3da3d9c8e5312b6016ec385b3199aef1'
+          folder = Path('.review/administration')
+          compressed = b''.join((folder / ('part-%d.bin' % i)).read_bytes() for i in range(4))
+          assert len(compressed) < 1024*1024 and hashlib.sha256(compressed).hexdigest() == digest, 'Transfer integrity failure'
+          decoder = lzma.LZMADecompressor(memlimit=128*1024*1024)
+          raw = decoder.decompress(compressed, max_length=5*1024*1024)
+          assert decoder.eof and not decoder.unused_data, 'Invalid or oversized manifest'
+          data = json.loads(raw)
+          assert data['version'] == 1 and data['base'] == '2a0bc4160cde562820263d30e2e5eebed18f6214'
+          files = data['files']
+          assert 1 <= len(files) <= 100
+          allowed = {'app','components','lib','mobile','scripts','tests','docs'}
+          seen = set(); prepared = []; preserved = []
+          for record in files:
+              name = record['path']; path = Path(name); posix = PurePosixPath(name)
+              assert isinstance(name,str) and name not in seen and not posix.is_absolute() and '\\' not in name and all(ord(c)>=32 for c in name)
+              assert posix.parts[0] in allowed and all(p not in ('..','.git','node_modules','.env') and not p.startswith('.env') for p in posix.parts)
+              assert not path.is_symlink() and all(not parent.is_symlink() for parent in path.parents)
+              seen.add(name)
+              # Preserve the separately reviewed concurrent lifecycle fix, including its new regression tests.
+              if name == 'components/realtime-sync.tsx':
+                  actual = subprocess.check_output(['git','hash-object','--',name], text=True).strip()
+                  assert actual == 'bbddedee54d6b4c77efbe36bf9ea1f06d886ff73', 'Concurrent realtime source changed; review required'
+                  preserved.append(name); continue
+              before = path.read_bytes() if path.exists() else None
+              assert (hashlib.sha256(before).hexdigest() if before is not None else None) == record['before'], 'Source conflict: '+name
+              if record['after'] is None:
+                  assert before is not None
+                  prepared.append((name,None)); continue
+              lines = (before or b'').decode('utf-8').splitlines(keepends=True)
+              output = []; cursor = 0
+              for start,end,replacement in record['edits']:
+                  assert isinstance(start,int) and isinstance(end,int) and cursor <= start <= end <= len(lines) and isinstance(replacement,str)
+                  output.extend(lines[cursor:start]); output.append(replacement); cursor=end
+              output.extend(lines[cursor:]); after=''.join(output).encode('utf-8')
+              assert hashlib.sha256(after).hexdigest() == record['after'], 'Result integrity failure: '+name
+              prepared.append((name,after))
+          assert len(prepared)+len(preserved)==66
+          for name,after in prepared:
+              path=Path(name)
+              if after is None: path.unlink()
+              else: path.parent.mkdir(parents=True,exist_ok=True); path.write_bytes(after)
+          subprocess.run(['git','diff','--check'],check=True)
+          subprocess.run(['git','add','--all','--',*[name for name,_ in prepared]],check=True)
+          subprocess.run(['git','rm','-r','--','.review/administration'],check=True)
+          subprocess.run(['git','config','user.name','github-actions[bot]'],check=True)
+          subprocess.run(['git','config','user.email','41898282+github-actions[bot]@users.noreply.github.com'],check=True)
+          subprocess.run(['git','commit','-m','Unify web/native administration, harden role-scoped actions and strengthen public identity'],check=True)
+          subprocess.run(['git','push','origin','HEAD:implement/plan-v7-20260916'],check=True)
+          print('Verified source files:',len(prepared),'Preserved concurrent files:',len(preserved))
+          print('SOURCE_COMMIT='+subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip())
+          PY
