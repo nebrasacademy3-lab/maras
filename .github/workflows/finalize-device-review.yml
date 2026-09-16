@@ -1,0 +1,26 @@
+name: Finalize device review source
+on:
+  push:
+    branches: [implement/plan-v7-20260916]
+    paths: [scripts/finalize-device-review.mjs, .github/workflows/finalize-device-review.yml]
+permissions:
+  contents: write
+jobs:
+  apply:
+    if: github.repository == 'nebrasacademy3-lab/maras' && github.ref == 'refs/heads/implement/plan-v7-20260916'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node scripts/finalize-device-review.mjs
+      - name: Commit reviewed source, never main
+        run: |
+          git diff --check
+          git add tests/auth-device-enrollment-behavior.test.mjs lib/auth-devices.ts app/api/admin/students components/admin-registered-devices.tsx scripts/qa-study-ci.mjs scripts/finalize-device-review.mjs .github/workflows/finalize-device-review.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Bind device policies to real unit tests and isolated database checks'
+          git push origin HEAD:refs/heads/implement/plan-v7-20260916
