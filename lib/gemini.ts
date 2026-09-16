@@ -5,7 +5,7 @@ import { asc, eq } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { getDb } from "@/db";
 import { aiApiKeys } from "@/db/schema";
-import { decryptAiApiKey, geminiEnvironmentKeyGroups, geminiProjectTier } from "@/lib/ai-keys";
+import { decryptAiApiKey, geminiEnvironmentKeys, geminiProjectTier } from "@/lib/ai-keys";
 import { AiPlatformError, type AiServiceConfig } from "@/lib/ai-platform";
 import { normalizeGeminiModel } from "@/lib/gemini-config";
 import { GeminiProviderError } from "@/lib/gemini-errors";
@@ -39,6 +39,16 @@ const DEFAULT_MAX_KEY_ATTEMPTS = 3;
 
 function rawFingerprint(apiKey: string) {
   return createHash("sha256").update("meras-ai-key:v1:" + apiKey).digest("hex");
+}
+
+function environmentKeyGroups() {
+  const all = geminiEnvironmentKeys();
+  const paid = geminiEnvironmentKeys({
+    GEMINI_PAID_API_KEYS: process.env.GEMINI_PAID_API_KEYS,
+    GEMINI_PAID_API_KEY: process.env.GEMINI_PAID_API_KEY,
+  });
+  const paidSet = new Set(paid);
+  return { free: all.filter((key) => !paidSet.has(key)), paid };
 }
 
 function retryDelayMs(status: number, failures: number) {
@@ -115,7 +125,7 @@ async function keyCandidates() {
       return [];
     }
   });
-  const groups = geminiEnvironmentKeyGroups();
+  const groups = environmentKeyGroups();
   const environment: KeyCandidate[] = [
     ...groups.free.flatMap((apiKey, index) => {
       const fingerprint = rawFingerprint(apiKey);
