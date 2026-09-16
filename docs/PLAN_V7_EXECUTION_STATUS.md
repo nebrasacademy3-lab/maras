@@ -59,3 +59,15 @@ Partner creation/update/delete now requires server capabilities, mutation MFA, b
 Visible public identity, Organization/WebSite identifiers and AboutPage data now share the official Arabic name, domain, public naming variant and clear limitations. The optional public directory refers to the same entity. These changes do not prove indexing, ranking or inclusion in any AI system. The assistant did not claim academic accreditation or fabricate legal identifiers, reviews or affiliations.
 
 This is a defined implementation increment, not completion of the 192-case plan. The earlier unpublished identity rewrite, Gemini paid-fallback ledger, large-file pipeline and lesson teacher/quiz/PDF expansion were not present in this baseline and are not represented as recovered or deployed here. Current test/build and visual results must be taken from this increment's actual CI run. Broader identity, AI-budget, study-tool, performance/load and signed-device release work remain acceptance gates.
+
+
+## Latest verified checkpoint — 2026-09-16
+
+The branch head is `0a29b982779b91475e9256ba06765a4fb5d247a1`. The final GitHub Actions runs for this head completed successfully:
+
+- Quality gates run `35157455412`: web lint and production build passed; **520/520 web tests** passed; isolated database/security/device/admin/study integrations passed; Chromium, Firefox and WebKit browser checks passed with no client exceptions.
+- Mobile release validation run `35157455228`: Android and iOS passed Expo dependency compatibility, TypeScript, native configuration generation and JavaScript/assets export.
+- `expo-build-properties` is now aligned at `~57.0.20` in both `mobile/package.json` and the lockfile.
+- Public readiness now waits only for required public initialization responses. Optional background analytics and account probes cannot create a false timeout, while protected/admin requests remain covered by their dedicated checks.
+
+This checkpoint verifies the committed source on CI. It still does not claim signed store binaries, physical-device execution, production payment/RevenueCat configuration, live Resend delivery, live Gemini requests, load testing for thousands of users, or completion of the wider 192-case plan described above.
