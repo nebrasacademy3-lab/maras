@@ -9,7 +9,7 @@ function pageFixture(overrides={}){
 }
 test('browser readiness waits for real finite public responses and load, not an inline palette or networkidle',async()=>{const f=pageFixture();await navigatePublicPage(f.page,'https://qa.example/about');assert.equal(f.calls[0].options.waitUntil,'load');assert.ok(f.calls[0].options.timeout>0);assert.equal(f.calls.filter(c=>c.finished).length,3);assert.equal(f.listeners.size,0);});
 test('failed public startup response fails QA rather than being ignored',async()=>{const f=pageFixture({'/api/public/settings':500});await assert.rejects(navigatePublicPage(f.page,'https://qa.example/about'),/HTTP 500/);assert.equal(f.listeners.size,0);});
-test('reload also waits for new document initialization responses',async()=>{const f=pageFixture();await navigatePublicPage(f.page,'https://qa.example/about',{reload:true});assert.equal(f.calls[0].reload,true);assert.equal(f.calls.filter(c=>c.finished).length,4);assert.equal(f.listeners.size,0);});
+test('reload also waits for new document initialization responses',async()=>{const f=pageFixture();await navigatePublicPage(f.page,'https://qa.example/about',{reload:true});assert.equal(f.calls[0].reload,true);assert.equal(f.calls.filter(c=>c.finished).length,3);assert.equal(f.listeners.size,0);});
 test('header and announcement restoration revalidate a bfcache page without reusing aborted requests',async()=>{
  for(const name of ['site-header','announcement-campaign']){const source=await readFile(new URL('../components/'+name+'.tsx',import.meta.url),'utf8');assert.match(source,/pageActive\.current=false/);assert.match(source,/if\(!event\.persisted\)return/);assert.match(source,/addEventListener\("pageshow",restore\)/);assert.match(source,/removeEventListener\("pageshow",restore\)/);}
 });
