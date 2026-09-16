@@ -117,20 +117,18 @@ async function keyCandidates() {
   });
   const groups = geminiEnvironmentKeyGroups();
   const environment: KeyCandidate[] = [
-    ...groups.free.map((apiKey, index) => {
+    ...groups.free.flatMap((apiKey, index) => {
       const fingerprint = rawFingerprint(apiKey);
       const state = environmentCooldowns.get(fingerprint);
-      return state && state.until > now
-        ? null
-        : { id: null, apiKey, fingerprint, priority: 1_000 + index, lastUsedAt: state?.lastUsedAt || null, source: "environment" as const, tier: "free" as const };
-    }).filter((candidate): candidate is KeyCandidate => Boolean(candidate)),
-    ...groups.paid.map((apiKey, index) => {
+      if (state && state.until > now) return [];
+      return [{ id: null, apiKey, fingerprint, priority: 1_000 + index, lastUsedAt: state?.lastUsedAt || null, source: "environment" as const, tier: "free" as const }];
+    }),
+    ...groups.paid.flatMap((apiKey, index) => {
       const fingerprint = rawFingerprint(apiKey);
       const state = environmentCooldowns.get(fingerprint);
-      return state && state.until > now
-        ? null
-        : { id: null, apiKey, fingerprint, priority: 2_000 + index, lastUsedAt: state?.lastUsedAt || null, source: "environment" as const, tier: "paid" as const };
-    }).filter((candidate): candidate is KeyCandidate => Boolean(candidate)),
+      if (state && state.until > now) return [];
+      return [{ id: null, apiKey, fingerprint, priority: 2_000 + index, lastUsedAt: state?.lastUsedAt || null, source: "environment" as const, tier: "paid" as const }];
+    }),
   ];
   const unique = new Map<string, KeyCandidate>();
   for (const candidate of [...database, ...environment]) {
