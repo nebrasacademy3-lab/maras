@@ -101,7 +101,7 @@ export async function GET(request: Request) {
   const query = new URL(request.url).searchParams;
   const grants = authorization.user ? await permissionsForUser(authorization.user) : new Set(Object.values(ADMIN_PERMISSIONS));
   const owner = Boolean(authorization.user?.isPlatformOwner);
-  const supervisorScopes = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? await getSupervisorScopes(authorization.user.id) : [];
+  const supervisorScopes = authorization.user?.role === "supervisor" ? await getSupervisorScopes(authorization.user.id) : [];
   const can = (permission: string) => permissionsCover(grants, [permission]);
   const compactMobile = query.get("client") === "mobile";
   const view = query.get("view") || "overview";
