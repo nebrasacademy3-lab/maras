@@ -38,8 +38,10 @@ test("mobile administration controls payment marketing and incomplete social dat
     read("mobile/app/admin.tsx"),
     read("mobile/app/contact.tsx"),
   ]);
+  assert.match(admin, /mode === "settings"/);
   assert.match(admin, /payment_methods_marketing_enabled/);
-  assert.match(admin, /values: \{ payment_methods_marketing_enabled: value \}/);
+  assert.match(admin, /saveSettings/);
+  assert.match(admin, /payment_methods_marketing_enabled:\s*value/);
   assert.match(contact, /\{socials\.length \? <>/);
   assert.doesNotMatch(contact, /ستُضاف الحسابات الاجتماعية/);
 });

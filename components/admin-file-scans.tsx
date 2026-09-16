@@ -1,7 +1,6 @@
 "use client";
 import { adminFetch } from "@/lib/admin-client";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { AdminMfaNotice, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import { fileScanErrorMessage, fileScanSummaryMessage } from "@/lib/file-scan-messages";
@@ -45,7 +44,7 @@ export function AdminFileScans() {
     finally { running.current = false; setBusy(false); }
   }
   return <main className={styles.page} dir="rtl">
-    <AdminCenterNav compact />
+
     <header><h1>فحص المرفقات</h1><p>تفحص الخدمة محتوى الملف وتطابق بصمته قبل إتاحة تنزيله. إعادة المحاولة تفحص الملف المحدد، وتبقيه محميًا إذا فشل الفحص.</p>
       <div className={styles.actions}><button disabled={busy} onClick={() => void act({ action: "check" })}>اختبار الاتصال بخدمة الفحص</button><button disabled={busy || !data?.configured} onClick={() => void act({ action: "run" })}>{busy ? "جارٍ التنفيذ…" : "فحص الملف التالي"}</button><button disabled={busy} onClick={() => void load()}>تحديث</button></div>
       {connection && <p>آخر اختبار اتصال: {new Date(connection.checkedAt).toLocaleString("ar-SA")} — {connection.ok ? "نجح الفحص التجريبي" : "لم ينجح الاتصال أو الفحص"}</p>}

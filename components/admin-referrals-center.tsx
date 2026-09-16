@@ -4,7 +4,6 @@ import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CheckCircle2, CircleDollarSign, Gift, LoaderCircle, RefreshCw, Save, Search, ShieldAlert, Sparkles, TicketPercent, UsersRound } from "lucide-react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./admin-referrals-center.module.css";
@@ -91,7 +90,7 @@ export function AdminReferralsCenter({ adminName, initialSearch = "", initialTab
   ] as const;
 
   return <main className={styles.page} dir="rtl">
-    <AdminCenterNav />
+
     <header className={styles.topbar}>
       <div><span>مرحبًا، {adminName}</span><h1>الإحالات والهدايا</h1><p>تحكم بالمستويات، راجع الحالات، وامنح كوبونات واشتراكات خاصة من مركز واحد.</p></div>
       <div className={styles.headerActions}><button type="button" onClick={() => void load({ silent: true })} disabled={loading}><RefreshCw className={loading ? styles.spin : ""} /> تحديث</button><button onClick={() => mutate("reconcile", "POST", { action: "reconcile" })} disabled={Boolean(busy)}>{busy === "reconcile" ? <LoaderCircle className={styles.spin} /> : <RefreshCw />} مطابقة وإصدار المستحقات</button></div>

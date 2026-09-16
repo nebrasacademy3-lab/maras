@@ -2,7 +2,6 @@
 import { adminFetch } from "@/lib/admin-client";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { AdminMfaNotice, isAdminStepUpResponse, ADMIN_STEP_UP_MESSAGE } from "@/components/admin-mfa-notice";
 import styles from "@/components/student-360.module.css";
 
@@ -33,7 +32,7 @@ export function AdminCourseRoster({ slug }: { slug: string }) {
       const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر تنفيذ الإجراء"); setAction(null); setMessage("تم تحديث الاشتراك وإضافة الإجراء إلى سجل الطالب"); await load();
     } catch (caught) { setMessage(caught instanceof Error ? caught.message : "تعذر تنفيذ الإجراء"); } finally { setBusy(false); }
   }
-  return <main className={styles.page} dir="rtl"><div className={styles.shell}><AdminCenterNav compact />
+  return <main className={styles.page} dir="rtl"><div className={styles.shell}>
     <section className={styles.hero}><div className={styles.identity}><h1>{data?.course.title || "ملف المادة"}</h1><p>{data?.course.university} · {data?.course.specialty}</p></div><button className={styles.retry} disabled={loading} onClick={() => void load()}>تحديث</button></section>
     <nav className={styles.quickLinks}><Link href={`/admin?view=courses&q=${encodeURIComponent(slug)}`}>المحتوى والسعر وحالة النشر</Link><Link href={`/admin/course-resources?course=${encodeURIComponent(slug)}`}>ملفات المادة</Link><Link href={`/courses/${encodeURIComponent(slug)}`}>معاينة صفحة الطالب</Link><Link href="/admin/operations">حالة إرسال التنبيهات</Link></nav>
     {data && <section className={styles.metrics}>{[["subscriptions", "كل سجلات الوصول"], ["active", "مشتركون نشطون"], ["waiting", "فعلوا تنبيه التوفر"], ["notified", "أُبلغوا بالتوفر"]].map(([key, title]) => <article className={styles.metric} key={key}><span>{title}<strong>{(data.totals[key] || 0).toLocaleString("ar-SA")}</strong></span></article>)}</section>}

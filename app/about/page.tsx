@@ -1,3 +1,4 @@
+import {publicIdentityFacts} from "@/lib/seo";
 import Link from "next/link";
 import { BookOpen, Compass, Layers, ListChecks, ShieldCheck, Sparkles, Target, UsersRound } from "lucide-react";
 import { PublicInformationPage } from "@/components/public-information-page";
@@ -9,8 +10,10 @@ export const dynamic = "force-dynamic";
 export function generateMetadata() { return staticPublicPageMetadata("/about"); }
 export default async function AboutPage() {
   const [{ content }, settings] = await Promise.all([getInformationContent(), getPublicSettings()]);
+  const identity=publicIdentityFacts();
   const about = content.about; const icons = [Layers, ListChecks, UsersRound, ShieldCheck, Sparkles, BookOpen];
   return <PublicInformationPage path="/about" title={about.title} intro={about.intro}>
+    <section className={styles.card} aria-labelledby="platform-identity"><span className={styles.sectionLabel}>هوية المنصة وروابطها الرسمية</span><h2 id="platform-identity">مراس العلم — Maras Al Elm</h2><p>{identity.description}</p><dl className={styles.facts}><dt>الاسم</dt><dd>{identity.name} · {identity.alternateNames[0]}</dd><dt>الموقع الرسمي</dt><dd><a href={identity.url} dir="ltr">{identity.url.replace(/^https?:\/\//, "").replace(/\/$/, "")}</a></dd><dt>الخدمات الحالية</dt><dd><Link href="/courses">المواد والشروح</Link> · <Link href="/universities">تصفح الجامعات والتخصصات</Link> · <Link href="/how-it-works">طريقة الاشتراك والمراجعة</Link></dd></dl><p className={styles.muted}>{identity.distinction}</p><Link href="/contact">قنوات التواصل والدعم المنشورة</Link></section>
     <section className={styles.section}><span className={styles.sectionLabel}>الفهم أولًا</span><h2>دراسة أقل تشتتًا، وخطوة أوضح.</h2><p>اختيار شرح مناسب لا ينتهي بالوصول إلى رابط فيديو. تحتاج إلى معرفة ما ستدرسه، وكيف ستراجعه، وأين تتابع تقدمك، ومن تتواصل معه عند الحاجة. تجمع مراس هذه الخطوات في مساحة تعليمية مساندة مرتبطة بحسابك.</p><p>ابدأ من جامعتك وتخصصك، وقارن توصيف المادة بخطتك الرسمية. لا تدّعي مراس أنها بديل عن الجامعة أو أنها تضمن نتيجة دراسية؛ دورها أن تساند وقتك وجهدك بمحتوى منظم وأدوات واضحة.</p></section>
     <div className={styles.split}><section className={styles.featurePanel}><Target size={30}/><span className={styles.sectionLabel}>رسالتنا</span><h2>أن يصل الشرح إلى احتياجك</h2><p>{about.mission}</p></section><section className={styles.featurePanel}><Compass size={30}/><span className={styles.sectionLabel}>رؤيتنا</span><h2>ثقة تُبنى بالتجربة والوضوح</h2><p>{about.vision}</p></section></div>
     <section><span className={styles.sectionLabel}>لماذا تختار مراس؟</span><h2>ما تحتاجه في تجربة مترابطة</h2><div className={styles.grid}>{about.why.map((item,index) => { const Icon = icons[index % icons.length]; return <article key={index} className={styles.card}><span className={styles.cardIcon}><Icon size={25}/></span><h3>{item.title}</h3><p>{item.body}</p></article>; })}</div></section>

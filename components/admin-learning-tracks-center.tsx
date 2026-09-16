@@ -6,7 +6,6 @@ import { SearchableSelect } from "@/components/searchable-select";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Archive, BellRing, Check, ChevronLeft, Edit3, Eye, LoaderCircle, Plus, RefreshCw, Route, Search, Sparkles, UsersRound, X } from "lucide-react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { fromDateTimeLocal, toDateTimeLocal } from "@/components/admin-datetime";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { useRealtimeSync } from "@/components/realtime-sync";
@@ -128,7 +127,7 @@ export function AdminLearningTracksCenter({ adminName }:{ adminName:string }) {
   }
 
   return <main className={styles.page} dir="rtl"><div className={styles.shell}>
-    <AdminCenterNav />
+
     <header className={styles.header}>
       <div><span><Route size={16}/> خارطة محتوى مراس</span><h1>المسارات القادمة</h1><p>{adminName} · تحكم بما يظهر في الرئيسية، واجمع الاهتمامات، وافتح التسجيل مع إشعار تلقائي.</p></div>
       <nav><button type="button" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/> تحديث</button></nav>

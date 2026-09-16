@@ -11,7 +11,6 @@ import {
 import type { AiService } from "@/lib/ai-contracts";
 import { AdminGeminiConnection } from "./admin-gemini-connection";
 import type { GeminiModelOption } from "@/lib/gemini-config";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./admin-ai-center.module.css";
@@ -91,7 +90,7 @@ export function AdminAiCenter({ adminName }: { adminName: string }) {
   const activeProviders = (data?.keys.filter((key) => key.decryptable !== false && key.status === "active" && (!key.cooldownUntil || Date.parse(key.cooldownUntil) <= loadedAt)).length || 0) + (data?.environmentKeyCount || 0);
 
   return <main className={styles.page} dir="rtl"><div className={styles.shell}>
-    <AdminCenterNav />
+
     <header className={styles.header}>
       <div className={styles.heading}><span><Sparkles size={24}/></span><div><small>مركز أدوات المذاكرة</small><h1>إدارة أدوات مراس</h1><p>{adminName} · الخدمات والمزودون والحدود والاشتراكات من مكان واحد.</p></div></div>
       <div className={styles.headerActions}><button onClick={()=>void load()} disabled={busy==="load"}><RefreshCw className={busy==="load"?styles.spin:""} size={16}/> تحديث</button></div>

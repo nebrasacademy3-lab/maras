@@ -1,4 +1,7 @@
 "use client";
+import {AdminCapability} from "@/components/admin-capability";
+
+
 import { promptAction } from "@/lib/interaction-events";
 import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
@@ -21,7 +24,6 @@ import {
   WalletCards,
   X,
 } from "lucide-react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./finance-center.module.css";
@@ -199,8 +201,8 @@ function DetailDrawer({ detail, loading, error, onClose, onApprove, onRefund, ac
         </div>
         {!detail.refund.complete && <div className={styles.alert}><AlertTriangle size={18} /><span>وصلت حالة استرداد جزئي، لكن الحدث المحفوظ لا يتضمن المبلغ. أدرجنا الطلب ضمن تنبيهات المطابقة ولم نفترض قيمة غير مؤكدة.</span></div>}
         {actionMessage && (isAdminStepUpMessage(actionMessage) ? <AdminMfaNotice compact /> : <div className={styles.alert}><ShieldAlert size={18} /><span>{actionMessage}</span></div>)}
-        {detail.reviewable && <section className={`${styles.detailSection} ${styles.decisionPanel}`}><h3>قرار المراجعة المالية</h3><p>{detail.status === "payment_review" ? "استُلمت الدفعة لكن التفعيل توقف (كوبون لم يُقبل أو اشتراك قائم). اعتماد الدفعة يفعّل المواد ويصدر الفاتورة ويمدد أي اشتراك قائم، أو أنشئ طلب استرداد محكومًا بموافقتين." : "لم تؤكد بوابة الدفع نتيجة العملية بعد. اعتمد الدفعة فقط إذا تحققت من التحصيل في لوحة Tap، أو أنشئ طلب استرداد."}</p><div className={styles.decisionActions}><button type="button" className={styles.primaryButton} disabled={actionBusy} onClick={() => onApprove(detail.orderNumber)}>{actionBusy ? <RefreshCw className={styles.spinIcon} size={16} /> : <ShieldAlert size={16} />} اعتماد الدفعة وتفعيل المواد</button><button type="button" className={styles.softButton} disabled={actionBusy} onClick={() => onRefund(detail)}><RotateCcw size={16} /> إنشاء طلب استرداد</button></div></section>}
-        {!detail.reviewable && ["paid", "partially_refunded"].includes(detail.status) && detail.tapChargeId && <div className={styles.detailActions}><button type="button" className={styles.softButton} onClick={() => onRefund(detail)}><RotateCcw size={16} /> طلب استرداد لهذا الطلب</button></div>}
+        {detail.reviewable && <section className={`${styles.detailSection} ${styles.decisionPanel}`}><h3>قرار المراجعة المالية</h3><p>{detail.status === "payment_review" ? "استُلمت الدفعة لكن التفعيل توقف (كوبون لم يُقبل أو اشتراك قائم). اعتماد الدفعة يفعّل المواد ويصدر الفاتورة ويمدد أي اشتراك قائم، أو أنشئ طلب استرداد محكومًا بموافقتين." : "لم تؤكد بوابة الدفع نتيجة العملية بعد. اعتمد الدفعة فقط إذا تحققت من التحصيل في لوحة Tap، أو أنشئ طلب استرداد."}</p><div className={styles.decisionActions}><AdminCapability all={["finance.manage"]}><button type="button" className={styles.primaryButton} disabled={actionBusy} onClick={() => onApprove(detail.orderNumber)}>{actionBusy ? <RefreshCw className={styles.spinIcon} size={16} /> : <ShieldAlert size={16} />} اعتماد الدفعة وتفعيل المواد</button></AdminCapability><AdminCapability all={["finance.manage"]}><button type="button" className={styles.softButton} disabled={actionBusy} onClick={() => onRefund(detail)}><RotateCcw size={16} /> إنشاء طلب استرداد</button></AdminCapability></div></section>}
+        {!detail.reviewable && ["paid", "partially_refunded"].includes(detail.status) && detail.tapChargeId && <div className={styles.detailActions}><AdminCapability all={["finance.manage"]}><button type="button" className={styles.softButton} onClick={() => onRefund(detail)}><RotateCcw size={16} /> طلب استرداد لهذا الطلب</button></AdminCapability></div>}
         <section className={styles.detailSection}><h3>بيانات الطلب والطالب</h3>
           <div className={styles.detailRow}><span>الحالة</span><b><span className={styles.badge} data-state={detail.status}>{detail.statusLabel}</span></b></div>
           <div className={styles.detailRow}><span>الطالب</span><b>{detail.customerName}</b></div>
@@ -340,10 +342,10 @@ export function FinanceCenter({ adminName, initialSearch = "" }: { adminName: st
 
   return <main className={styles.page}>
     <div className={styles.shell}>
-      <AdminCenterNav />
+
       <header className={styles.topbar}>
         <div className={styles.title}><span className={styles.titleIcon}><BadgeDollarSign size={25} /></span><div><h1>المركز المالي</h1><p>صورة مالية متكاملة لجميع الطلبات — مرحبًا {adminName}</p></div></div>
-        <div className={styles.topActions}><button type="button" className={styles.primaryButton} disabled={exporting} onClick={() => void exportCsv()}><Download size={17} />{exporting ? "جارٍ التصدير…" : "تصدير CSV"}</button></div>
+        <div className={styles.topActions}><AdminCapability all={["finance.export"]}><button type="button" className={styles.primaryButton} disabled={exporting} onClick={() => void exportCsv()}><Download size={17} />{exporting ? "جارٍ التصدير…" : "تصدير CSV"}</button></AdminCapability></div>
       </header>
       {exportError && (isAdminStepUpMessage(exportError) ? <AdminMfaNotice /> : <div className={`${styles.alert} ${styles.error}`}><AlertTriangle size={18} /><span>{exportError}</span></div>)}
 

@@ -1,3 +1,4 @@
+import {adminConsoleNeeds} from "@/lib/admin-console-scope";
 import { revalidatePath } from "next/cache";
 import { CONSOLE_VIEWS, consoleActionPermissions, permissionsCover } from "@/lib/staff-policy";
 import { createHash } from "node:crypto";
@@ -103,6 +104,8 @@ export async function GET(request: Request) {
   const compactMobile = query.get("client") === "mobile";
   const view = query.get("view") || "overview";
   if (!CONSOLE_VIEWS[view] || !permissionsCover(grants, CONSOLE_VIEWS[view])) return jsonError("هذا القسم غير متاح ضمن صلاحياتك", 403);
+  const scoped=query.get("scope")==="screen";
+  const needs=(key:string)=>adminConsoleNeeds(view,key,scoped);
   const page = adminPage(query.get("page"));
   const needle = (query.get("q") || "").trim().slice(0, 160);
   const pattern = `%${needle.replace(/[\\%_]/g, "\\$&")}%`;
@@ -118,31 +121,33 @@ export async function GET(request: Request) {
   const limits = compactMobile
     ? { videos: 120, users: 160, sessions: 600, orders: 180, requests: 160, files: 600, tickets: 120, replies: 700, reviews: 180, access: 400, assignments: 250, notifications: 120, coupons: 120, audits: 60 }
     : { videos: 500, users: 500, sessions: 3000, orders: 300, requests: 300, files: 3000, tickets: 300, replies: 2000, reviews: 300, access: 500, assignments: 500, notifications: 200, coupons: 200, audits: 120 };
-  const [institutionRows, courses, specialtyRows, links, unitRows, lessonRows, videoRows, studentRows, sessionRows, orderRows, requestRows, requestFileRows, ticketRows, replyRows, supportFileRows, reviewRows, accessRows, supervisorRows, notificationRows, couponRows, settingRows, audits] = await Promise.all([
-    can("catalog.view") ? getInstitutionsCatalog(true) : [],
-    can("catalog.view") ? getCoursesCatalog(true) : [],
-    can("catalog.view") ? db.select().from(catalogSpecialties).orderBy(catalogSpecialties.name) : [],
-    can("catalog.view") ? db.select().from(institutionSpecialties) : [],
-    can("catalog.view") ? db.select().from(courseUnitsDb).orderBy(courseUnitsDb.position) : [],
-    can("catalog.view") ? db.select().from(lessonsDb).orderBy(lessonsDb.position) : [],
-    can("catalog.view") ? db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(limits.videos) : [],
-    can("students.view") ? db.select({ id: users.id, mfaEnabled: sql<boolean>`EXISTS (SELECT 1 FROM admin_mfa_factors f WHERE f.user_id = ${users.id} AND f.verified_at IS NOT NULL AND f.disabled_at IS NULL)`, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).where(userFilter).orderBy(desc(users.createdAt), desc(users.id)).limit(take("students", limits.users)).offset(skip("students")) : [],
-    can("students.manage") ? db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).where(owner ? undefined : sql`${authSessions.userId} IN (SELECT id FROM users WHERE role = 'student')`).orderBy(desc(authSessions.lastSeenAt)).limit(limits.sessions) : [],
-    can("finance.view") ? db.select().from(orders).where(orderFilter).orderBy(desc(orders.createdAt), desc(orders.id)).limit(take("orders", limits.orders)).offset(skip("orders")) : [],
-    can("requests.manage") ? db.select().from(courseRequests).where(requestFilter).orderBy(desc(courseRequests.createdAt), desc(courseRequests.id)).limit(take("requests", limits.requests)).offset(skip("requests")) : [],
-    can("requests.manage") ? db.select().from(courseRequestFiles).orderBy(desc(courseRequestFiles.createdAt)).limit(limits.files) : [],
-    can("support.manage") ? db.select().from(supportTickets).where(ticketFilter).orderBy(desc(supportTickets.createdAt), desc(supportTickets.id)).limit(take("support", limits.tickets)).offset(skip("support")) : [],
-    can("support.manage") ? db.select().from(supportReplies).orderBy(asc(supportReplies.createdAt)).limit(limits.replies) : [],
-    can("support.manage") ? db.select().from(supportReplyFiles).limit(limits.files) : [],
-    can("catalog.manage") ? db.select().from(courseReviews).where(reviewFilter).orderBy(desc(courseReviews.createdAt), desc(courseReviews.id)).limit(take("reviews", limits.reviews)).offset(skip("reviews")) : [],
-    can("subscriptions.manage") ? db.select().from(courseAccess).where(accessFilter).orderBy(desc(courseAccess.startsAt), desc(courseAccess.id)).limit(take("subscriptions", limits.access)).offset(skip("subscriptions")) : [],
-    can("staff.manage") ? db.select().from(supervisorAssignments).orderBy(desc(supervisorAssignments.createdAt)).limit(limits.assignments) : [],
-    can("notifications.manage") ? db.select().from(notificationsDb).orderBy(desc(notificationsDb.createdAt)).limit(limits.notifications) : [],
-    can("finance.manage") ? db.select().from(couponsDb).orderBy(desc(couponsDb.createdAt)).limit(limits.coupons) : [],
-    can("settings.manage") ? db.select().from(platformSettings) : [],
-    can("audit.view") ? db.select().from(auditLogs).where(auditFilter).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(take("audit", limits.audits)).offset(skip("audit")) : [],
+  const [institutionRows, courses, specialtyRows, links, unitRows, lessonRows, videoRows, studentRows, sessionRows, orderRows, requestRows, ticketRows, reviewRows, accessRows, supervisorRows, notificationRows, couponRows, settingRows, audits] = await Promise.all([
+    needs("institutions") && can("catalog.view") ? getInstitutionsCatalog(true) : [],
+    needs("courses") && can("catalog.view") ? getCoursesCatalog(true) : [],
+    needs("specialties") && can("catalog.view") ? db.select().from(catalogSpecialties).orderBy(catalogSpecialties.name) : [],
+    needs("links") && can("catalog.view") ? db.select().from(institutionSpecialties) : [],
+    needs("units") && can("catalog.view") ? db.select().from(courseUnitsDb).orderBy(courseUnitsDb.position) : [],
+    needs("lessons") && can("catalog.view") ? db.select().from(lessonsDb).orderBy(lessonsDb.position) : [],
+    needs("videos") && can("catalog.view") ? db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(limits.videos) : [],
+    needs("users") && (can("students.view") || view === "staff" && can("staff.manage")) ? db.select({ id: users.id, mfaEnabled: sql<boolean>`EXISTS (SELECT 1 FROM admin_mfa_factors f WHERE f.user_id = ${users.id} AND f.verified_at IS NOT NULL AND f.disabled_at IS NULL)`, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).where(userFilter).orderBy(desc(users.createdAt), desc(users.id)).limit(take("students", limits.users)).offset(skip("students")) : [],
+    needs("sessions") && can("students.devices.view") ? db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).where(owner ? undefined : sql`${authSessions.userId} IN (SELECT id FROM users WHERE role = 'student')`).orderBy(desc(authSessions.lastSeenAt)).limit(limits.sessions) : [],
+    needs("orders") && can("finance.view") ? db.select().from(orders).where(orderFilter).orderBy(desc(orders.createdAt), desc(orders.id)).limit(scoped && view==="overview" ? 5 : take("orders", limits.orders)).offset(skip("orders")) : [],
+    needs("requests") && can("requests.manage") ? db.select().from(courseRequests).where(requestFilter).orderBy(desc(courseRequests.createdAt), desc(courseRequests.id)).limit(take("requests", limits.requests)).offset(skip("requests")) : [],
+    needs("tickets") && can("support.manage") ? db.select().from(supportTickets).where(ticketFilter).orderBy(desc(supportTickets.createdAt), desc(supportTickets.id)).limit(take("support", limits.tickets)).offset(skip("support")) : [],
+    needs("reviews") && can("catalog.manage") ? db.select().from(courseReviews).where(reviewFilter).orderBy(desc(courseReviews.createdAt), desc(courseReviews.id)).limit(take("reviews", limits.reviews)).offset(skip("reviews")) : [],
+    needs("access") && can("subscriptions.manage") ? db.select().from(courseAccess).where(accessFilter).orderBy(desc(courseAccess.startsAt), desc(courseAccess.id)).limit(take("subscriptions", limits.access)).offset(skip("subscriptions")) : [],
+    needs("assignments") && can("staff.manage") ? db.select().from(supervisorAssignments).orderBy(desc(supervisorAssignments.createdAt)).limit(limits.assignments) : [],
+    needs("notifications") && can("notifications.manage") ? db.select().from(notificationsDb).orderBy(desc(notificationsDb.createdAt)).limit(limits.notifications) : [],
+    needs("coupons") && can("finance.manage") ? db.select().from(couponsDb).orderBy(desc(couponsDb.createdAt)).limit(limits.coupons) : [],
+    needs("settings") && can("settings.manage") ? db.select().from(platformSettings) : [],
+    needs("audit") && can("audit.view") ? db.select().from(auditLogs).where(auditFilter).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(take("audit", limits.audits)).offset(skip("audit")) : [],
   ]);
 
+  const [requestFileRows, replyRows, supportFileRows] = await Promise.all([
+    requestRows.length ? db.select().from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, requestRows.map(row=>row.id))).orderBy(asc(courseRequestFiles.id)).limit(limits.files) : [],
+    ticketRows.length ? db.select().from(supportReplies).where(inArray(supportReplies.ticketId,ticketRows.map(row=>row.id))).orderBy(asc(supportReplies.id)).limit(limits.replies) : [],
+    ticketRows.length ? db.select().from(supportReplyFiles).where(inArray(supportReplyFiles.ticketId,ticketRows.map(row=>row.id))).limit(limits.files) : [],
+  ]);
   const paginatedTotal = view === "students" || view === "staff" ? await db.select({ total: count() }).from(users).where(userFilter)
     : view === "orders" ? await db.select({ total: count() }).from(orders).where(orderFilter)
     : view === "requests" ? await db.select({ total: count() }).from(courseRequests).where(requestFilter)
@@ -154,13 +159,13 @@ export async function GET(request: Request) {
   const relatedUserEmails = ticketRows.flatMap((row) => row.userEmail ? [row.userEmail] : []);
   const relatedStudents = relatedUserIds.length || relatedUserEmails.length ? await db.select({ id: users.id, email: users.email, fullName: users.fullName, phone: users.phone, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, status: users.status }).from(users).where(or(relatedUserIds.length ? inArray(users.id, relatedUserIds) : undefined, relatedUserEmails.length ? inArray(users.email, relatedUserEmails) : undefined)) : [];
   const effectiveAccess = await effectiveAccessRows(accessRows);
-  const registeredDeviceRows = studentRows.length ? await db.select({ id: authDevices.id, userId: authDevices.userId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(inArray(authDevices.userId, studentRows.map(student => student.id)), isNull(authDevices.revokedAt))) : [];
+  const registeredDeviceRows = needs("devices") && can("students.devices.view") && studentRows.length ? await db.select({ id: authDevices.id, userId: authDevices.userId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(inArray(authDevices.userId, studentRows.map(student => student.id)), isNull(authDevices.revokedAt))) : [];
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...ADMIN_SETTING_DEFAULTS } as Record<string, string>;
   for (const row of settingRows) if (row.key in SETTING_META) settings[row.key] = row.value;
   const [managedInstitutionRows, managedCourseRows, totals, waitlistRows, activeAiKeys] = await Promise.all([
-    can("catalog.view") ? db.select().from(catalogInstitutions) : [],
-    can("catalog.view") ? db.select().from(catalogCourses) : [],
-    db.execute(sql`SELECT
+    needs("institutions") && can("catalog.view") ? db.select().from(catalogInstitutions) : [],
+    needs("courses") && can("catalog.view") ? db.select().from(catalogCourses) : [],
+    needs("metrics") ? db.execute(sql`SELECT
       (SELECT count(*)::int FROM users WHERE role = 'student') AS students,
       (SELECT count(*)::int FROM users WHERE role = 'student' AND status = 'active') AS active_students,
       (SELECT count(*)::int FROM orders) AS orders,
@@ -169,15 +174,15 @@ export async function GET(request: Request) {
       (SELECT count(*)::int FROM orders WHERE status IN ('verification_pending', 'payment_review')) AS review_orders,
       (SELECT count(*)::int FROM course_requests WHERE status NOT IN ('available', 'declined')) AS open_requests,
       (SELECT count(*)::int FROM support_tickets WHERE status NOT IN ('resolved', 'closed')) AS open_tickets,
-      (SELECT count(*)::int FROM course_reviews WHERE status = 'pending') AS pending_reviews`),
-    db.select({ courseSlug: courseWaitlist.courseSlug, total: count() }).from(courseWaitlist).where(eq(courseWaitlist.status, "active")).groupBy(courseWaitlist.courseSlug),
-    db.select({ total: count() }).from(aiApiKeys).where(eq(aiApiKeys.status, "active")),
+      (SELECT count(*)::int FROM course_reviews WHERE status = 'pending') AS pending_reviews`) : {rows:[]},
+    needs("courses") && can("students.view") ? db.select({ courseSlug: courseWaitlist.courseSlug, total: count() }).from(courseWaitlist).where(eq(courseWaitlist.status, "active")).groupBy(courseWaitlist.courseSlug) : [],
+    needs("services") && can("operations.manage") ? db.select({ total: count() }).from(aiApiKeys).where(eq(aiApiKeys.status, "active")) : [],
   ]);
   const managedInstitutionMap = new Map(managedInstitutionRows.map((row) => [row.slug, row]));
   const managedCourseMap = new Map(managedCourseRows.map((row) => [row.slug, row]));
   const totalRow = (totals.rows[0] || {}) as Record<string, unknown>;
   const waitlistByCourse = new Map(waitlistRows.map((row) => [row.courseSlug, Number(row.total)]));
-  const environmentAiKeys = geminiEnvironmentKeys().length;
+  const environmentAiKeys = needs("services") && can("operations.manage") ? geminiEnvironmentKeys().length : 0;
   return Response.json({
     ok: true,
     permissions: [...grants], isPlatformOwner: owner,
@@ -247,16 +252,16 @@ export async function GET(request: Request) {
     supervisorAssignments: supervisorRows,
     notifications: notificationRows,
     coupons: couponRows,
-    settings: can("settings.manage") ? settings : {},
+    settings: needs("settings") && can("settings.manage") ? settings : {},
     audit: audits,
-    services: {
+    services: needs("services") && can("operations.manage") ? {
       assistant: true,
       merasAi: environmentAiKeys > 0 || Number(activeAiKeys[0]?.total || 0) > 0,
       payments: Boolean(process.env.TAP_SECRET_KEY?.trim()),
       email: Boolean(process.env.RESEND_API_KEY?.trim()),
       videoSigning: Boolean(process.env.VIDEO_SIGNING_SECRET?.trim() && process.env.VIDEO_SIGNING_SECRET!.trim().length >= 24),
       mfaConfigured: adminMfaConfigured(),
-    },
+    } : {},
   }, { headers: { "cache-control": "no-store" } });
 }
 

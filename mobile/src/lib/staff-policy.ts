@@ -76,7 +76,7 @@ export function consoleActionPermissions(action: string, entityType?: unknown) {
 export function adminPagePermissions(path: string): string[] | null {
   if (path === "/admin" || path === "/admin/security") return [];
   if (path.startsWith("/admin/students/")) return ["students.view"];
-  if (path.startsWith("/admin/courses/")) return ["catalog.view", "students.view"];
+  if (path === "/admin/courses" || path.startsWith("/admin/courses/")) return ["catalog.view", "students.view"];
   const map: Record<string, string[]> = { "/admin/partners": ["content.manage"], "/admin/files": ["operations.manage"], "/admin/purchases": ["finance.view"], "/admin/finance": ["finance.view"], "/admin/operations": ["operations.manage"], "/admin/ai": ["ai.manage"], "/admin/referrals": ["referrals.manage"], "/admin/seo": ["seo.manage"], "/admin/course-resources": ["catalog.view"], "/admin/bundles": ["catalog.view"], "/admin/learning-tracks": ["roadmap.manage"], "/admin/staff": ["staff.manage"], "/admin/content": ["content.manage"] };
   return map[path] || null;
 }
