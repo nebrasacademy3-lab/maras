@@ -38,6 +38,7 @@ import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 import { activeAccessCondition, effectiveAccessRows } from "@/lib/course-access";
 import { adminPage } from "@/lib/admin-operations";
 import { publicRewardLabel } from "@/lib/referrals";
+import { getSupervisorScopes, supervisorScopesAllow } from "@/lib/supervisor-scope";
 
 type Props = { params: Promise<{ email: string }> };
 
@@ -73,6 +74,10 @@ export async function GET(request: Request, { params }: Props) {
     updatedAt: users.updatedAt,
   }).from(users).where(and(eq(users.email, email), eq(users.role, "student"))).limit(1);
   if (!student) return jsonError("الطالب غير موجود", 404);
+  if (admin!.role === "supervisor") {
+    const scopes = await getSupervisorScopes(admin!.id);
+    if (!supervisorScopesAllow(scopes, student)) return jsonError("هذا الطالب خارج نطاق إشرافك المحدد", 403);
+  }
 
   const notificationVisibility = and(or(eq(notificationsDb.userEmail, email), and(isNull(notificationsDb.userEmail), or(eq(notificationsDb.audience, student.role), eq(notificationsDb.audience, "public")))), or(eq(notificationsDb.presentation, "inbox"), eq(notificationsDb.presentation, "all")), or(isNull(notificationsDb.startsAt), lte(notificationsDb.startsAt, now)), or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now)));
   const readJoin = and(eq(notificationReads.notificationId, notificationsDb.id), eq(notificationReads.userId, student.id));
