@@ -76,7 +76,7 @@ export async function GET(request: Request, { params }: Props) {
   if (!student) return jsonError("الطالب غير موجود", 404);
   if (admin!.role === "supervisor") {
     const scopes = await getSupervisorScopes(admin!.id);
-    if (!supervisorScopesAllow(scopes, student)) return jsonError("هذا الطالب خارج نطاق إشرافك المحدد", 403);
+    if (scopes.length && !supervisorScopesAllow(scopes, student)) return jsonError("هذا الطالب خارج نطاق إشرافك المحدد", 403);
   }
 
   const notificationVisibility = and(or(eq(notificationsDb.userEmail, email), and(isNull(notificationsDb.userEmail), or(eq(notificationsDb.audience, student.role), eq(notificationsDb.audience, "public")))), or(eq(notificationsDb.presentation, "inbox"), eq(notificationsDb.presentation, "all")), or(isNull(notificationsDb.startsAt), lte(notificationsDb.startsAt, now)), or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now)));
