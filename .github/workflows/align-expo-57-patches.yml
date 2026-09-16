@@ -26,6 +26,23 @@ jobs:
           node-version: '22'
           cache: npm
           cache-dependency-path: mobile/package-lock.json
+      - name: Apply exact reviewed source corrections
+        run: |
+          node --input-type=module <<'NODE'
+          import {readFileSync,writeFileSync} from 'node:fs';
+          function patch(path,before,after) {
+            const source=readFileSync(path,'utf8');
+            if(source.includes(after)) return;
+            if(source.split(before).length!==2) throw Error(`Missing or ambiguous reviewed anchor: ${path}`);
+            writeFileSync(path,source.replace(before,after));
+          }
+          patch('mobile/app.config.ts','      "expo-video",','      "expo-video",\n      "expo-image",\n      "expo-localization",\n      "expo-sharing",\n      "expo-web-browser",');
+          patch('components/staff-manager.tsx','<h2>فريق مراس، بصلاحيات واضحة</h2>','<h1>فريق مراس، بصلاحيات واضحة</h1>');
+          patch('components/staff-manager.module.css','.hero h2{','.hero h1,.hero h2{');
+          patch('scripts/qa-platform-browser.mjs',
+            '      await dialog.getByRole("button", { name: "تحقق ومتابعة", exact: true }).click();\n      await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).waitFor({ state: "hidden" });',
+            '      // A busy button changes its accessible name before the POST commits.\n      const savedReply = editor.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/staff" && response.request().method() === "POST");\n      await dialog.getByRole("button", { name: "تحقق ومتابعة", exact: true }).click();\n      const savedResponse = await savedReply;\n      assert.equal(savedResponse.status(), 200, "the MFA-authorized staff transaction must succeed");\n      const savedPayload = await savedResponse.json();\n      assert.equal(savedPayload.ok, true);\n      assert.equal(savedPayload.user.email, uniqueEmail);\n      await editor.getByRole("button", { name: "إغلاق محرر المشرف", exact: true }).waitFor({ state: "hidden" });');
+          NODE
       - name: Install current locked dependencies
         working-directory: mobile
         run: npm ci --no-audit --no-fund
@@ -42,7 +59,7 @@ jobs:
           npm run typecheck
           npm run lint
           npm test
-      - name: Persist manifests only and remove this temporary source editor
+      - name: Persist reviewed source and remove this temporary editor
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -50,13 +67,13 @@ jobs:
           node --input-type=module <<'NODE'
           import {execFileSync} from 'node:child_process';
           const changed=execFileSync('git',['diff','--name-only'],{encoding:'utf8'}).trim().split('\n').filter(Boolean);
-          const allowed=new Set(['mobile/package.json','mobile/package-lock.json']);
-          if(changed.some(path=>!allowed.has(path))) throw Error('Unexpected source changes outside reviewed manifests');
+          const allowed=new Set(['mobile/package.json','mobile/package-lock.json','mobile/app.config.ts','components/staff-manager.tsx','components/staff-manager.module.css','scripts/qa-platform-browser.mjs']);
+          if(changed.some(path=>!allowed.has(path))) throw Error('Unexpected source changes outside reviewed files');
           NODE
-          git add mobile/package.json mobile/package-lock.json
+          git add mobile/package.json mobile/package-lock.json mobile/app.config.ts components/staff-manager.tsx components/staff-manager.module.css scripts/qa-platform-browser.mjs
           git rm .github/workflows/align-expo-57-patches.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'Align Expo 57 supported patches and regenerate verified native lockfile'
+          git commit -m 'Align Expo 57 plugins and patches; verify committed staff saves and semantic heading'
           gh auth setup-git
           git push origin HEAD:refs/heads/implement/plan-v7-20260916
