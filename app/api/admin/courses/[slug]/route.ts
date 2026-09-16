@@ -6,6 +6,7 @@ import { checkRateLimit, getSessionUser, roleAllowed } from "@/lib/auth";
 import { getCourseCatalog } from "@/lib/catalog-store";
 import { activeAccessCondition, effectiveAccessRows } from "@/lib/course-access";
 import { adminPage } from "@/lib/admin-operations";
+import { getSupervisorScopes, supervisorScopesAllow } from "@/lib/supervisor-scope";
 
 type Props = { params: Promise<{ slug: string }> };
 export async function GET(request: Request, { params }: Props) {
@@ -15,6 +16,10 @@ export async function GET(request: Request, { params }: Props) {
   const { slug } = await params;
   const course = await getCourseCatalog(slug, true);
   if (!course) return jsonError("المادة غير موجودة", 404);
+  if (admin!.role === "supervisor") {
+    const scopes = await getSupervisorScopes(admin!.id);
+    if (!supervisorScopesAllow(scopes, course)) return jsonError("هذه المادة خارج نطاق إشرافك المحدد", 403);
+  }
   const query = new URL(request.url).searchParams;
   const kind = query.get("kind") === "waitlist" ? "waitlist" : "subscriptions";
   const search = (query.get("q") || "").trim().slice(0, 160);
