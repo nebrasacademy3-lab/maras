@@ -145,18 +145,24 @@ export async function GET(request: Request) {
     needs("audit") && can("audit.view") ? db.select().from(auditLogs).where(auditFilter).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(take("audit", limits.audits)).offset(skip("audit")) : [],
   ]);
 
-  const visibleCourses = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? courses.filter((course) => supervisorScopesAllow(supervisorScopes, course)) : courses;
-  const visibleInstitutionRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? institutionRows.filter((row) => visibleCourses.some((course) => course.universitySlug === row.slug)) : institutionRows;
-  const visibleStudentRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? studentRows.filter((student) => supervisorScopesAllow(supervisorScopes, student)) : studentRows;
-  const visibleSpecialtyRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? specialtyRows.filter((row) => visibleCourses.some((course) => course.specialtySlug === row.slug)) : specialtyRows;
+  const scopedSupervisor = authorization.user?.role === "supervisor" && supervisorScopes.length > 0;
+  const visibleCourses = scopedSupervisor ? courses.filter((course) => supervisorScopesAllow(supervisorScopes, course)) : courses;
+  const visibleInstitutionRows = scopedSupervisor ? institutionRows.filter((row) => visibleCourses.some((course) => course.universitySlug === row.slug)) : institutionRows;
+  const visibleStudentRows = scopedSupervisor ? studentRows.filter((student) => supervisorScopesAllow(supervisorScopes, student)) : studentRows;
+  const visibleSpecialtyRows = scopedSupervisor ? specialtyRows.filter((row) => visibleCourses.some((course) => course.specialtySlug === row.slug)) : specialtyRows;
   const visibleCourseSlugs = new Set(visibleCourses.map((course) => course.slug));
-  const visibleUnitRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? unitRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : unitRows;
-  const visibleLessonRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? lessonRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : lessonRows;
-  const visibleVideoRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? videoRows.filter((row) => visibleLessonRows.some((lesson) => lesson.id === row.lessonId)) : videoRows;
+  const visibleUnitRows = scopedSupervisor ? unitRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : unitRows;
+  const visibleLessonRows = scopedSupervisor ? lessonRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : lessonRows;
+  const visibleVideoRows = scopedSupervisor ? videoRows.filter((row) => visibleLessonRows.some((lesson) => lesson.id === row.lessonId)) : videoRows;
+  const visibleOrderRows = scopedSupervisor ? orderRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : orderRows;
+  const visibleRequestRows = scopedSupervisor ? requestRows.filter((row) => supervisorScopesAllow(supervisorScopes, { universitySlug: row.universitySlug, specialty: row.specialty })) : requestRows;
+  const visibleReviewRows = scopedSupervisor ? reviewRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : reviewRows;
+  const visibleStudentEmails = new Set(visibleStudentRows.map((student) => student.email.toLowerCase()));
+  const visibleTicketRows = scopedSupervisor ? ticketRows.filter((row) => visibleStudentEmails.has(row.userEmail.toLowerCase())) : ticketRows;
   const [requestFileRows, replyRows, supportFileRows] = await Promise.all([
-    requestRows.length ? db.select().from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, requestRows.map(row=>row.id))).orderBy(asc(courseRequestFiles.id)).limit(limits.files) : [],
-    ticketRows.length ? db.select().from(supportReplies).where(inArray(supportReplies.ticketId,ticketRows.map(row=>row.id))).orderBy(asc(supportReplies.id)).limit(limits.replies) : [],
-    ticketRows.length ? db.select().from(supportReplyFiles).where(inArray(supportReplyFiles.ticketId,ticketRows.map(row=>row.id))).limit(limits.files) : [],
+    visibleRequestRows.length ? db.select().from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, visibleRequestRows.map(row=>row.id))).orderBy(asc(courseRequestFiles.id)).limit(limits.files) : [],
+    visibleTicketRows.length ? db.select().from(supportReplies).where(inArray(supportReplies.ticketId,visibleTicketRows.map(row=>row.id))).orderBy(asc(supportReplies.id)).limit(limits.replies) : [],
+    visibleTicketRows.length ? db.select().from(supportReplyFiles).where(inArray(supportReplyFiles.ticketId,visibleTicketRows.map(row=>row.id))).limit(limits.files) : [],
   ]);
   const paginatedTotal = view === "students" || view === "staff" ? await db.select({ total: count() }).from(users).where(userFilter)
     : view === "orders" ? await db.select({ total: count() }).from(orders).where(orderFilter)
@@ -165,8 +171,8 @@ export async function GET(request: Request) {
     : view === "subscriptions" ? await db.select({ total: count() }).from(courseAccess).where(accessFilter)
     : view === "reviews" ? await db.select({ total: count() }).from(courseReviews).where(reviewFilter)
     : view === "audit" ? await db.select({ total: count() }).from(auditLogs).where(auditFilter) : null;
-  const relatedUserIds = requestRows.flatMap((row) => row.userId ? [row.userId] : []);
-  const relatedUserEmails = ticketRows.flatMap((row) => row.userEmail ? [row.userEmail] : []);
+  const relatedUserIds = visibleRequestRows.flatMap((row) => row.userId ? [row.userId] : []);
+  const relatedUserEmails = visibleTicketRows.flatMap((row) => row.userEmail ? [row.userEmail] : []);
   const relatedStudents = relatedUserIds.length || relatedUserEmails.length ? await db.select({ id: users.id, email: users.email, fullName: users.fullName, phone: users.phone, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, status: users.status }).from(users).where(or(relatedUserIds.length ? inArray(users.id, relatedUserIds) : undefined, relatedUserEmails.length ? inArray(users.email, relatedUserEmails) : undefined)) : [];
   const effectiveAccess = await effectiveAccessRows(accessRows);
   const registeredDeviceRows = needs("devices") && can("students.devices.view") && studentRows.length ? await db.select({ id: authDevices.id, userId: authDevices.userId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(inArray(authDevices.userId, studentRows.map(student => student.id)), isNull(authDevices.revokedAt))) : [];
@@ -197,24 +203,24 @@ export async function GET(request: Request) {
     ok: true,
     permissions: [...grants], isPlatformOwner: owner,
     generatedAt: new Date().toISOString(),
-    pagination: paginatedTotal ? { view, page: page.page, pageSize: page.pageSize, total: Number(paginatedTotal[0]?.total || 0) } : null,
+    pagination: paginatedTotal && !scopedSupervisor ? { view, page: page.page, pageSize: page.pageSize, total: Number(paginatedTotal[0]?.total || 0) } : null,
     metrics: {
-      students: can("students.view") ? Number(totalRow.students || 0) : 0,
-      activeStudents: can("students.view") ? Number(totalRow.active_students || 0) : 0,
+      students: can("students.view") ? (scopedSupervisor ? visibleStudentRows.length : Number(totalRow.students || 0)) : 0,
+      activeStudents: can("students.view") ? (scopedSupervisor ? visibleStudentRows.filter((row) => row.status === "active").length : Number(totalRow.active_students || 0)) : 0,
       institutions: can("catalog.view") ? visibleInstitutionRows.length : 0,
       publishedCourses: can("catalog.view") ? visibleCourses.filter((row) => row.lessons > 0).length : 0,
-      orders: can("finance.view") ? Number(totalRow.orders || 0) : 0,
-      paidOrders: can("finance.view") ? Number(totalRow.paid_orders || 0) : 0,
-      revenue: can("finance.view") ? Number(totalRow.revenue || 0) : 0,
-      reviewOrders: can("finance.view") ? Number(totalRow.review_orders || 0) : 0,
-      openRequests: can("requests.manage") ? Number(totalRow.open_requests || 0) : 0,
-      openTickets: can("support.manage") ? Number(totalRow.open_tickets || 0) : 0,
-      pendingReviews: can("catalog.manage") ? Number(totalRow.pending_reviews || 0) : 0,
+      orders: can("finance.view") ? (scopedSupervisor ? visibleOrderRows.length : Number(totalRow.orders || 0)) : 0,
+      paidOrders: can("finance.view") ? (scopedSupervisor ? visibleOrderRows.filter((row) => row.status === "paid").length : Number(totalRow.paid_orders || 0)) : 0,
+      revenue: can("finance.view") ? (scopedSupervisor ? visibleOrderRows.filter((row) => row.status === "paid").reduce((sum, row) => sum + Number(row.total || 0), 0) : Number(totalRow.revenue || 0)) : 0,
+      reviewOrders: can("finance.view") ? (scopedSupervisor ? visibleOrderRows.filter((row) => ["verification_pending", "payment_review"].includes(row.status)).length : Number(totalRow.review_orders || 0)) : 0,
+      openRequests: can("requests.manage") ? (scopedSupervisor ? visibleRequestRows.filter((row) => !["available", "declined"].includes(row.status)).length : Number(totalRow.open_requests || 0)) : 0,
+      openTickets: can("support.manage") ? (scopedSupervisor ? visibleTicketRows.filter((row) => !["resolved", "closed"].includes(row.status)).length : Number(totalRow.open_tickets || 0)) : 0,
+      pendingReviews: can("catalog.manage") ? (scopedSupervisor ? visibleReviewRows.filter((row) => row.status === "pending").length : Number(totalRow.pending_reviews || 0)) : 0,
     },
     institutions: visibleInstitutionRows.map((row) => ({ ...row, status: managedInstitutionMap.get(row.slug)?.status || "published" })),
     courses: visibleCourses.map((row) => ({ ...row, status: managedCourseMap.get(row.slug)?.status || "published", specialtySlug: managedCourseMap.get(row.slug)?.specialtySlug || "", audienceScope: managedCourseMap.get(row.slug)?.audienceScope === "institution" ? "institution" : "specialty", coverTheme: managedCourseMap.get(row.slug)?.coverTheme || "blue-violet", waitlistCount: waitlistByCourse.get(row.slug) || 0 })),
     specialties: visibleSpecialtyRows,
-    specialtyLinks: authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? links.filter((row) => visibleCourseSlugs.has(row.institutionSlug) || visibleSpecialtyRows.some((specialty) => specialty.slug === row.specialtySlug)) : links,
+    specialtyLinks: scopedSupervisor ? links.filter((row) => visibleCourseSlugs.has(row.institutionSlug) || visibleSpecialtyRows.some((specialty) => specialty.slug === row.specialtySlug)) : links,
     units: visibleUnitRows,
     lessons: visibleLessonRows,
     videos: visibleVideoRows,
@@ -229,9 +235,9 @@ export async function GET(request: Request) {
       };
     }),
     deviceLimit: 2,
-    orders: orderRows,
-    requests: requestRows.map((request) => ({ ...request, student: request.userId ? (() => { const student = relatedStudents.find((user) => user.id === request.userId); return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null; })() : null, files: requestFileRows.filter((file) => file.requestId === request.id).map((file) => ({ id: file.id, requestId: file.requestId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })),
-    tickets: ticketRows.map((ticket) => {
+    orders: visibleOrderRows,
+    requests: visibleRequestRows.map((request) => ({ ...request, student: request.userId ? (() => { const student = relatedStudents.find((user) => user.id === request.userId); return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null; })() : null, files: requestFileRows.filter((file) => file.requestId === request.id).map((file) => ({ id: file.id, requestId: file.requestId, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, createdAt: file.createdAt })) })),
+    tickets: visibleTicketRows.map((ticket) => {
       const ticketReplies = replyRows
         .filter((reply) => reply.ticketId === ticket.id)
         .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
@@ -257,8 +263,8 @@ export async function GET(request: Request) {
         replies,
       };
     }),
-    reviews: reviewRows,
-    access: authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? effectiveAccess.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : effectiveAccess,
+    reviews: visibleReviewRows,
+    access: scopedSupervisor ? effectiveAccess.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : effectiveAccess,
     supervisorAssignments: supervisorRows,
     notifications: notificationRows,
     coupons: couponRows,
