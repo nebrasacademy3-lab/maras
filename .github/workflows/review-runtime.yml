@@ -1,0 +1,44 @@
+name: Isolated review runtime
+on:
+  push:
+    branches: ['implement/plan-v7-20260916']
+    paths: ['.github/workflows/review-runtime.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: review-runtime-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  snapshot:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            mobile/package-lock.json
+      - name: Exact dependency snapshots without application secrets
+        run: |
+          npm ci --no-audit --no-fund
+          npm ci --prefix mobile --no-audit --no-fund
+          mkdir -p "$RUNNER_TEMP/meras-runtime"
+          git rev-parse HEAD > "$RUNNER_TEMP/meras-runtime/source-commit.txt"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/meras-runtime/source.tar.gz"
+          tar -czf "$RUNNER_TEMP/meras-runtime/web-deps.tar.gz" node_modules
+          tar -czf "$RUNNER_TEMP/meras-runtime/mobile-deps.tar.gz" -C mobile node_modules
+          cd "$RUNNER_TEMP/meras-runtime"
+          sha256sum *.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: isolated-review-runtime
+          path: ${{ runner.temp }}/meras-runtime/
+          retention-days: 2
+          compression-level: 0
+          if-no-files-found: error
