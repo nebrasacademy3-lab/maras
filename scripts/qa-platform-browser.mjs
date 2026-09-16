@@ -1,3 +1,4 @@
+import {observeBrowserContext} from "./qa-browser-observations.mjs";
 /** Browser checks use dedicated loopback fixtures and synthetic MFA only. */
 import assert from "node:assert/strict";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
@@ -28,9 +29,10 @@ try {
     const dir = `.data/platform-browser/${name}`; mkdirSync(dir, { recursive: true });
     const browser = await engines[name].launch({ headless: true, ...(name === "chromium" && process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
     let factorId;
-    const checks = [], errors = [];
+    const checks = [], errors = [], observations = [];
     try {
       const context = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
+      await observeBrowserContext(context,observations,"public");
       const page = await context.newPage(); page.on("pageerror", error => errors.push(error.message));
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
@@ -68,6 +70,7 @@ try {
       await context.close();
       const enrollmentFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8")).enrollment[name];
       const enrolling = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
+      await observeBrowserContext(enrolling,observations,"enrollment");
       await enrolling.addCookies([cookie(enrollmentFixture.token)]);
       const security = await enrolling.newPage(); security.on("pageerror", error => errors.push(error.message));
       await security.goto(origin + "/admin/security", { waitUntil: "domcontentloaded" });
@@ -98,7 +101,27 @@ try {
       const [factor] = await db.insert(schema.adminMfaFactors).values({ userId: owner.id, type: "totp", label: "Synthetic browser QA", secretEncrypted: mfa.encryptAdminMfaSecret(secret), counter: Math.floor(Date.now() / 30_000) - 1, verifiedAt: now }).returning({ id: schema.adminMfaFactors.id }); factorId = factor.id;
       await db.update(schema.authSessions).set({ mfaVerifiedAt: now }).where(eq(schema.authSessions.tokenHash, createHash("sha256").update(owner.token).digest("hex")));
       const admin = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } }); await admin.addCookies([cookie(owner.token)]);
+      await observeBrowserContext(admin,observations,"owner");
       const editor = await admin.newPage(); editor.on("pageerror", error => errors.push(error.message));
+      await editor.goto(origin + "/admin", {waitUntil:"domcontentloaded"});
+      await editor.locator("aside").first().waitFor({state:"visible"});
+      const sidebar=editor.locator("aside").first();
+      assert.equal(await sidebar.locator("details > summary").count(),8,"single eight-group owner navigation");
+      assert.equal(await editor.locator(".admin-sidebar").count(),0,"legacy duplicated sidebar removed, not hidden");
+      await assertFits(editor,"admin/owner/desktop");
+      await editor.screenshot({path:`${dir}/unified-admin-desktop.png`,fullPage:true,animations:"disabled"});
+      await editor.setViewportSize({width:390,height:844});
+      await editor.getByRole("button",{name:"فتح أقسام الإدارة",exact:true}).click();
+      const navigation=editor.getByRole("dialog",{name:"أقسام الإدارة",exact:true});
+      await navigation.waitFor({state:"visible"});
+      await navigation.getByLabel("البحث في أقسام الإدارة المسموحة").fill("الطلاب");
+      assert.ok(await navigation.getByRole("link",{name:/الطلاب/}).count()>0);
+      await editor.screenshot({path:`${dir}/unified-admin-navigation-phone.png`,fullPage:true,animations:"disabled"});
+      await editor.keyboard.press("Escape");
+      await navigation.waitFor({state:"hidden"});
+      await assertFits(editor,"admin/owner/phone");
+      checks.push("owner navigation has eight unified groups, no legacy sidebar, and a searchable keyboard-accessible mobile drawer");
+      await editor.setViewportSize({width:1440,height:1000});
       await editor.goto(origin + "/admin/staff", { waitUntil: "domcontentloaded" });
       await editor.getByRole("button", { name: "إضافة مشرف", exact: true }).click();
       const uniqueEmail = `qa-browser-${name}-${randomBytes(5).toString("hex")}@example.test`;
@@ -137,6 +160,7 @@ try {
       await admin.close();
       const viewerFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8"));
       const viewer = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await viewer.addCookies([cookie(viewerFixture.supervisor.token)]);
+      await observeBrowserContext(viewer,observations,"restricted-supervisor");
       const viewerPage = await viewer.newPage(); await viewerPage.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
       assert.equal(await viewerPage.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').count(), 0);
       assert.equal((await viewer.request.get(origin + "/api/admin/staff")).status(), 403);
@@ -145,7 +169,7 @@ try {
       await viewer.close(); assert.deepEqual(errors, [], "no client JavaScript exceptions");
       const report = { engine: name, passed: checks.length, checks, clientExceptions: errors, liveProviders: false, devices: "browser viewport emulation, not physical phones" };
       writeFileSync(`${dir}/report.json`, JSON.stringify(report, null, 2)); reports.push(report); console.log(JSON.stringify(report, null, 2));
-    } finally { if (factorId) await db.delete(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.id, factorId)); await browser.close(); }
+    } finally { writeFileSync(`${dir}/observations.json`,JSON.stringify(observations,null,2)); if (factorId) await db.delete(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.id, factorId)); await browser.close(); }
   }
   writeFileSync(".data/platform-browser/report.json", JSON.stringify({ engines: reports.map(r => r.engine), checks: reports.reduce((n,r) => n + r.passed, 0), reports }, null, 2));
 } finally { await closeDb(); }

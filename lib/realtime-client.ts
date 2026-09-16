@@ -16,7 +16,7 @@ export function createRealtimeController(deps: RealtimeDependencies) {
   const schedule=(delay=connected?45000:5000)=>{clear("poll");if(active&&!disposed)poll=deps.timer(()=>void snapshot(),delay);};
   async function snapshot(){
     if(!active||disposed)return;if(inFlight){pending=true;return;}
-    inFlight=true;const epoch=generation,controller=new AbortController();request=controller;
+    inFlight=true;const epoch=generation,controller=new AbortController();request=controller;let failed=false;
     try{
       const payload=await deps.fetchSnapshot(controller.signal);
       if(disposed||!active||controller.signal.aborted||epoch!==generation)return;
@@ -24,10 +24,10 @@ export function createRealtimeController(deps: RealtimeDependencies) {
       const next=payload.channels||{catalog:payload.version};
       if(previous){const changed=[...new Set([...Object.keys(previous),...Object.keys(next)])].filter(key=>previous![key]!==next[key]);if(changed.length)deps.deliver({...payload,changed});}
       previous=next;
-    }catch{if(active&&!disposed&&epoch===generation)connected=false;}
+    }catch{if(active&&!disposed&&epoch===generation){connected=false;failed=true;}}
     finally{
       // A previous page lifecycle must not clear or schedule work for a resumed lifecycle.
-      if(epoch===generation){inFlight=false;request=null;if(pending){pending=false;void snapshot();}else schedule();}
+      if(epoch===generation){inFlight=false;request=null;if(failed){pending=false;schedule(60000);}else if(pending){pending=false;void snapshot();}else schedule();}
     }
   }
   function queueSnapshot(){if(!active||disposed)return;clear("debounce");debounce=deps.timer(()=>void snapshot(),80);}

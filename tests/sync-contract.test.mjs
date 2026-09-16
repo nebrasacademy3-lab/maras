@@ -25,14 +25,17 @@ test("sync response is version-only and exposes scoped channels", async () => {
 });
 
 test("web sync prefers server-sent events with adaptive polling fallback", async () => {
-  const [source, stream] = await Promise.all([read("components/realtime-sync.tsx"), read("app/api/sync/stream/route.ts")]);
-  assert.match(source, /document\.visibilityState === "hidden"/);
-  assert.match(source, /60_000/);
+  const [source, controller, stream] = await Promise.all([read("components/realtime-sync.tsx"), read("lib/realtime-client.ts"), read("app/api/sync/stream/route.ts")]);
+  assert.match(source, /createRealtimeController/);
+  assert.match(source, /document\.visibilityState === "visible"/);
+  assert.match(source, /"pagehide",pause/);
+  assert.match(source, /"pageshow",wake/);
   assert.match(source, /new EventSource\("\/api\/sync\/stream"/);
-  assert.match(source, /45_000/);
-  assert.match(source, /5_000/);
   assert.match(source, /new CustomEvent\(REALTIME_SYNC_EVENT/);
-  assert.match(source, /Math\.min\(reconnectDelay \* 2/);
+  assert.match(controller, /schedule\(60000\)/);
+  assert.match(controller, /connected\?45000:5000/);
+  assert.match(controller, /Math\.min\(backoff\*2,30000\)/);
+  assert.match(controller, /request\?\.abort\(\)/);
   assert.match(stream, /text\/event-stream/);
   assert.match(stream, /x-accel-buffering/);
   assert.match(stream, /acquireSyncConnection/);
