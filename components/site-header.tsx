@@ -35,26 +35,35 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
   const { cartSlugs, favoriteSlugs } = useCommerceState();
 
   const accountRequest=useRef<AbortController|null>(null),notificationRequest=useRef<AbortController|null>(null);
+  const pageActive=useRef(true);
   const refreshAccount=useCallback(async()=>{
+    if(!pageActive.current)return undefined;
     accountRequest.current?.abort();const controller=new AbortController();accountRequest.current=controller;
     try{const response=await fetch("/api/auth/me",{credentials:"include",cache:"no-store",signal:controller.signal});
       if(!response.ok&&response.status!==401)return;
       const payload=response.ok?await response.json() as {user?:HeaderUser}:null;
-      if(!controller.signal.aborted&&accountRequest.current===controller)setAccount(payload?.user||null);
+      if(!controller.signal.aborted&&pageActive.current&&accountRequest.current===controller){const next=payload?.user||null;setAccount(next);return next;}
     }catch{/* A network interruption is not a successful logout and cannot overwrite a newer account read. */}
   },[]);
   const refreshNotifications=useCallback(async()=>{
+    if(!pageActive.current)return;
     notificationRequest.current?.abort();const controller=new AbortController();notificationRequest.current=controller;
     try{const response=await fetch("/api/mobile/notifications",{credentials:"include",cache:"no-store",signal:controller.signal});if(!response.ok)return;
       const payload=await response.json() as {unreadCount?:number;notifications?:{readAt:string|null}[]};
-      if(!controller.signal.aborted&&notificationRequest.current===controller)setUnreadNotifications(typeof payload.unreadCount==="number"?payload.unreadCount:payload.notifications?.filter(n=>!n.readAt).length||0);
+      if(!controller.signal.aborted&&pageActive.current&&notificationRequest.current===controller)setUnreadNotifications(typeof payload.unreadCount==="number"?payload.unreadCount:payload.notifications?.filter(n=>!n.readAt).length||0);
     }catch{/* Keep the last known count until a current response can be verified. */}
   },[]);
   useEffect(()=>{const timer=setTimeout(()=>void refreshAccount(),0);return()=>{clearTimeout(timer);accountRequest.current?.abort();};},[pathname,refreshAccount]);
   const signedIn=appMode||Boolean(account);
   useEffect(()=>{resetCommerce();if(signedIn)void ensureCommerceLoaded();},[signedIn,account?.id,userName]);
   useEffect(()=>{const timer=setTimeout(()=>{if(signedIn)void refreshNotifications();else setUnreadNotifications(0);},0);return()=>{clearTimeout(timer);notificationRequest.current?.abort();};},[pathname,signedIn,account?.id,refreshNotifications]);
-  useEffect(()=>{const pause=()=>{accountRequest.current?.abort();notificationRequest.current?.abort();resetCommerce();};window.addEventListener("pagehide",pause);return()=>{pause();window.removeEventListener("pagehide",pause);};},[]);
+  useEffect(()=>{
+    pageActive.current=true;
+    const pause=()=>{pageActive.current=false;accountRequest.current?.abort();notificationRequest.current?.abort();resetCommerce();};
+    const restore=(event:PageTransitionEvent)=>{if(!event.persisted)return;pageActive.current=true;void refreshAccount().then(current=>{if(pageActive.current&&current){void ensureCommerceLoaded();void refreshNotifications();}});};
+    window.addEventListener("pagehide",pause);window.addEventListener("pageshow",restore);
+    return()=>{pause();window.removeEventListener("pagehide",pause);window.removeEventListener("pageshow",restore);};
+  },[refreshAccount,refreshNotifications]);
   useEffect(() => {
     const syncReadState = (event: Event) => {
       const detail = (event as CustomEvent<{ unread?: number }>).detail;

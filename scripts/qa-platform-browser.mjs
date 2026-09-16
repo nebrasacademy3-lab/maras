@@ -1,3 +1,4 @@
+import {navigatePublicPage} from "./qa-page-readiness.mjs";
 import {observeBrowserContext} from "./qa-browser-observations.mjs";
 /** Browser checks use dedicated loopback fixtures and synthetic MFA only. */
 import assert from "node:assert/strict";
@@ -36,7 +37,7 @@ try {
       const page = await context.newPage(); page.on("pageerror", error => errors.push(error.message));
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
-        const response = await page.goto(origin + path, { waitUntil: "domcontentloaded" }); assert.equal(response.status(), 200, path);
+        const response = await navigatePublicPage(page,origin + path); assert.equal(response.status(), 200, path);
         await page.locator("h1").first().waitFor({ state: "visible" });
         await page.waitForFunction(() => Boolean(document.documentElement.dataset.palette));
         await page.locator('link[rel="canonical"]').waitFor({ state: "attached" });
@@ -47,7 +48,7 @@ try {
         }
       }
       checks.push("eight public routes render headings and canonical URLs; 320/390/768/1440px have no page overflow");
-      await page.goto(origin + "/faq", { waitUntil: "domcontentloaded" });
+      await navigatePublicPage(page,origin + "/faq");
       const count = await page.locator("details").count(); assert.equal(count, 35);
       const schemaContent = await page.locator('script[type="application/ld+json"]').allTextContents();
       assert.ok(schemaContent.some(value => { const row = JSON.parse(value); return row["@type"] === "FAQPage" && row.mainEntity.length === count; }));
@@ -56,15 +57,15 @@ try {
       checks.push("35 rendered FAQ answers match structured data and search filters the real visible content");
       for (const theme of ["light", "dark"]) {
         await page.evaluate(value => localStorage.setItem("meras-theme", value), theme);
-        await page.reload({ waitUntil: "domcontentloaded" });
+        await navigatePublicPage(page,page.url(),{reload:true});
         await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, theme === "dark");
         await page.screenshot({ path: `${dir}/faq-${theme}.png`, fullPage: true, animations: "disabled" });
-        await page.goto(origin + "/about", { waitUntil: "domcontentloaded" });
+        await navigatePublicPage(page,origin + "/about");
         await page.screenshot({ path: `${dir}/about-${theme}.png`, fullPage: true, animations: "disabled" });
         await page.setViewportSize({ width: 390, height: 844 }); await assertFits(page, `about/${theme}/phone`);
         await page.screenshot({ path: `${dir}/about-${theme}-phone.png`, fullPage: true, animations: "disabled" });
         await page.setViewportSize({ width: 1440, height: 1000 });
-        await page.goto(origin + "/faq", { waitUntil: "domcontentloaded" });
+        await navigatePublicPage(page,origin + "/faq");
       }
       checks.push("public light/dark theme persists across navigation; desktop and phone screenshots captured");
       await context.close();
@@ -108,6 +109,7 @@ try {
       const sidebar=editor.locator("aside").first();
       assert.equal(await sidebar.locator("details > summary").count(),8,"single eight-group owner navigation");
       assert.equal(await editor.locator(".admin-sidebar").count(),0,"legacy duplicated sidebar removed, not hidden");
+      await editor.getByRole("heading",{name:"ما يحتاج متابعتك",exact:true}).waitFor({state:"visible"});
       await assertFits(editor,"admin/owner/desktop");
       await editor.screenshot({path:`${dir}/unified-admin-desktop.png`,fullPage:true,animations:"disabled"});
       await editor.setViewportSize({width:390,height:844});
@@ -162,6 +164,7 @@ try {
       const viewer = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await viewer.addCookies([cookie(viewerFixture.supervisor.token)]);
       await observeBrowserContext(viewer,observations,"restricted-supervisor");
       const viewerPage = await viewer.newPage(); await viewerPage.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
+      await viewerPage.getByRole("heading",{name:"ما يحتاج متابعتك",exact:true}).waitFor({state:"visible"});
       assert.equal(await viewerPage.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').count(), 0);
       assert.equal((await viewer.request.get(origin + "/api/admin/staff")).status(), 403);
       assert.equal((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status(), 403);

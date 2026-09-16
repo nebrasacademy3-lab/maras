@@ -23,13 +23,15 @@ export function AnnouncementCampaign() {
   const modalRef = useRef<HTMLElement | null>(null);
   const bannerRef = useRef<HTMLElement | null>(null);
   const requestRef=useRef<AbortController|null>(null);
+  const pageActive=useRef(true);
   const load = useCallback(() => {
+    if(!pageActive.current)return Promise.resolve();
     requestRef.current?.abort(); const controller=new AbortController(); requestRef.current=controller; const signal=controller.signal;
     return Promise.all([
     fetch("/api/public/announcements", { cache: "no-store", signal }).then(async (response) => response.ok ? await response.json() as { announcements?: Announcement[] } : null).catch(() => null),
     fetch("/api/public/settings", { cache: "no-store", signal }).then(async (response) => response.ok ? await response.json() as { settings?: { announcement?: string } } : null).catch(() => null),
   ]).then(([payload, settingsPayload]) => {
-    if (signal.aborted || requestRef.current!==controller) return;
+    if (signal.aborted || !pageActive.current || requestRef.current!==controller) return;
     const notice = settingAnnouncement(settingsPayload?.settings?.announcement || "");
     const active = [...(payload?.announcements || []), ...(notice ? [notice] : [])].filter((item) => !dismissed(item.id));
     const modalCandidate = active.find((item) => (item.presentation === "modal" || item.presentation === "all") && !modalSeen(item.id) && (item.dismissible || Boolean(item.actionUrl))) || null;
@@ -38,7 +40,13 @@ export function AnnouncementCampaign() {
     setBanner(bannerCandidate?.id === modalCandidate?.id ? null : bannerCandidate);
   }).catch(() => undefined); }, []);
   const closeModal = useCallback((item: Announcement) => { rememberModal(item.id); setModal(null); if (item.presentation === "all") setBanner(item); else dismiss(item.id); }, []);
-  useEffect(() => { void load(); const pause=()=>requestRef.current?.abort(); window.addEventListener("pagehide",pause); return () => {pause();window.removeEventListener("pagehide",pause);}; }, [load]);
+  useEffect(() => {
+    pageActive.current=true;
+    const pause=()=>{pageActive.current=false;requestRef.current?.abort();};
+    const restore=(event:PageTransitionEvent)=>{if(!event.persisted)return;pageActive.current=true;void load();};
+    window.addEventListener("pagehide",pause);window.addEventListener("pageshow",restore);void load();
+    return () => {pause();window.removeEventListener("pagehide",pause);window.removeEventListener("pageshow",restore);};
+  }, [load]);
   useEffect(() => {
     const root = document.documentElement;
     const node = bannerRef.current;
