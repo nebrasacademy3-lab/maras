@@ -96,7 +96,8 @@ function compatibleVideoType(declared: string, detected: string) {
 
   return (
     (declared === "video/webm" || declared === "video/x-matroska") &&
-    detected === "video/webm"
+    (detected === "video/webm"
+    )
   );
 }
 
@@ -142,7 +143,9 @@ async function authorize(request: Request) {
   const user = tokenAuthorized ? null : await getSessionUser(request);
 
   if (!tokenAuthorized && !roleAllowed(user, ["admin", "supervisor"])) {
-    return jsonError("غير مصرح برفع الفيديو", 401);
+    // The shared session boundary also returns null for a missing catalog.manage
+    // capability. Do not turn that denial into an expired-session signal for apps.
+    return jsonError("غير مصرح برفع الفيديو", 403);
   }
 
   const identity = tokenAuthorized
