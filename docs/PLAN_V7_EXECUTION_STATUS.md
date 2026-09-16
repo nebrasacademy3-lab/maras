@@ -63,7 +63,7 @@ This is a defined implementation increment, not completion of the 192-case plan.
 
 ## Latest verified checkpoint — 2026-09-16
 
-The branch head is `0a29b982779b91475e9256ba06765a4fb5d247a1`. The final GitHub Actions runs for this head completed successfully:
+The application source validated for this checkpoint is `0a29b982779b91475e9256ba06765a4fb5d247a1`; the surrounding status note may receive later documentation-only commits. The final GitHub Actions runs for this source completed successfully:
 
 - Quality gates run `35157455412`: web lint and production build passed; **520/520 web tests** passed; isolated database/security/device/admin/study integrations passed; Chromium, Firefox and WebKit browser checks passed with no client exceptions.
 - Mobile release validation run `35157455228`: Android and iOS passed Expo dependency compatibility, TypeScript, native configuration generation and JavaScript/assets export.
