@@ -62,8 +62,11 @@ TAP_TABBY_ENABLED=false
 TAP_TAMARA_ENABLED=false
 
 # مراس AI — أدخل مفاتيح Gemini الحقيقية في Railway ولا تضعها في المستودع.
+# Free-tier projects only. Keep paid credentials separate; the server will not use them while the audited budget policy is disabled.
 GEMINI_API_KEY=
 GEMINI_API_KEYS=
+GEMINI_FREE_API_KEYS=
+GEMINI_PAID_API_KEYS=
 AI_KEYS_ENCRYPTION_KEY=REPLACE_WITH_AN_INDEPENDENT_RANDOM_32_BYTE_KEY
 AI_MONTHLY_PRICE_SAR=30
 AI_MAX_STORED_FILES_PER_USER=30

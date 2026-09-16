@@ -1130,6 +1130,7 @@ export const aiUsageEvents = pgTable("ai_usage_events", {
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   service: text("service").notNull(),
   keyId: integer("key_id").references(() => aiApiKeys.id, { onDelete: "set null" }),
+  providerTier: text("provider_tier").notNull().default("free"),
   conversationId: integer("conversation_id").references(() => aiConversations.id, { onDelete: "set null" }),
   fileId: integer("file_id").references(() => aiFiles.id, { onDelete: "set null" }),
   model: text("model"),
