@@ -1,0 +1,23 @@
+import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import test from "node:test";
+
+const root = new URL("../", import.meta.url);
+const read = path => readFile(new URL(path, root), "utf8");
+
+test("configured supervisor assignments are an allow-list across rosters, console data and student profiles", async () => {
+  const [scope, roster, consoleRoute, studentRoute] = await Promise.all([
+    read("lib/supervisor-scope.ts"),
+    read("app/api/admin/courses/[slug]/route.ts"),
+    read("app/api/admin/console/route.ts"),
+    read("app/api/admin/students/[email]/route.ts"),
+  ]);
+  assert.match(scope, /supervisorAssignments/);
+  assert.match(scope, /supervisorScopesAllow/);
+  assert.match(scope, /scopes\\.length > 0/);
+  assert.match(roster, /getSupervisorScopes/);
+  assert.match(roster, /هذه المادة خارج نطاق إشرافك المحدد/);
+  assert.match(consoleRoute, /visibleCourses/);
+  assert.match(consoleRoute, /visibleStudentRows/);
+  assert.match(studentRoute, /هذا الطالب خارج نطاق إشرافك المحدد/);
+});
