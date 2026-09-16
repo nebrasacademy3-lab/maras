@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 import ts from "typescript";
+import { pureSource } from "./helpers/pure-source.mjs";
 
+const devicePolicy = await pureSource("lib/device-access-policy.ts");
 const settle = () => new Promise(resolve => setTimeout(resolve, 15));
 function deferred() { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; }); return { promise, resolve, reject }; }
 function all(tree, predicate) {
@@ -35,7 +37,7 @@ async function harness(file, name, props, overrides = {}) {
     return {
       state,
       boundary: next => loaded[name](next || props),
-      render: () => { stateIndex = 0; refIndex = 0; const tree = loaded[name](props); return typeof tree.type === "function" ? tree.type(tree.props) : tree; },
+      render: () => { stateIndex = 0; refIndex = 0; const tree = loaded[name](props); return tree && typeof tree.type === "function" ? tree.type(tree.props) : tree; },
       mount: () => { mounted = true; for (const effect of effects.splice(0)) { const cleanup = effect(); if (cleanup) cleanups.push(cleanup); } },
       unmount: () => { for (const cleanup of cleanups.splice(0)) cleanup(); },
     };
@@ -98,17 +100,37 @@ test("cancelled sharing sends no tracking request or false success", async () =>
   assert.equal(tracked, 0); assert.doesNotMatch(content(h.render()), /تمت مشاركة رابطك/); h.unmount();
 });
 
+const deviceAccess = grants => ({ can: required => required.every(permission => grants.includes(permission) || permission.endsWith(".view") && grants.includes(permission.replace(/\.view$/, ".manage"))) });
+const deviceOverrides = grants => ({ ...devicePolicy, useAdminAccess: () => deviceAccess(grants), confirmAction: async () => assert.fail("a refresh cannot invoke a destructive confirmation") });
 test("device refresh ignores delayed older responses and email changes remount private state", async () => {
   const requests = [];
-  const h = await harness("../components/admin-registered-devices.tsx", "AdminRegisteredDevices", { email: "first@example.test" }, { fetch: (_url, init) => { const pending = deferred(); requests.push({ ...pending, signal: init.signal }); return pending.promise; } });
-  const firstBoundary = h.boundary();
-  assert.notEqual(firstBoundary.props.key, h.boundary({ email: "second@example.test" }).props.key);
-  h.render(); h.mount(); await settle();
-  first(h.render(), node => node.props["aria-label"] === "تحديث الأجهزة المعتمدة").props.onClick();
-  assert.equal(requests.length, 2); assert.equal(requests[0].signal.aborted, true);
-  const device = { id: 7, deviceLabel: "Fresh revoked device", platform: "ios", firstSeenAt: "2026-09-09", lastSeenAt: "2026-09-09", revokedAt: "2026-09-09", revocationReason: "replacement" };
-  requests[1].resolve(Response.json({ registeredDevices: [device] })); await settle();
-  requests[0].resolve(Response.json({ registeredDevices: [{ ...device, deviceLabel: "Stale active device", revokedAt: null }] })); await settle();
-  const tree = h.render(); assert.match(content(tree), /Fresh revoked device/); assert.doesNotMatch(content(tree), /Stale active device/);
-  h.unmount(); assert.equal(requests[1].signal.aborted, true);
+  const h = await harness("../components/admin-registered-devices.tsx", "AdminRegisteredDevices", { email: "first@example.test" }, { ...deviceOverrides(["students.devices.manage"]), fetch: (_url, init) => { const pending = deferred(); requests.push({ ...pending, signal: init.signal }); return pending.promise; } });
+  try {
+    const firstBoundary = h.boundary();
+    assert.notEqual(firstBoundary.props.key, h.boundary({ email: "second@example.test" }).props.key);
+    h.render(); h.mount(); await settle();
+    first(h.render(), node => node.props["aria-label"] === "تحديث الأجهزة").props.onClick();
+    assert.equal(requests.length, 2); assert.equal(requests[0].signal.aborted, true);
+    const device = { id: 7, deviceLabel: "Fresh revoked device", platform: "ios", firstSeenAt: "2026-09-09", lastSeenAt: "2026-09-09", revokedAt: "2026-09-09", revocationReason: "replacement", policyVersion: 1, returnPolicy: "blocked" };
+    const snapshot = devices => ({ registeredDevices: devices, deviceLimit: 2, serverTime: "2026-09-16T10:00:00Z" });
+    requests[1].resolve(Response.json(snapshot([device]))); await settle();
+    requests[0].resolve(Response.json(snapshot([{ ...device, deviceLabel: "Stale active device", revokedAt: null }]))); await settle();
+    const tree = h.render(); assert.match(content(tree), /Fresh revoked device/); assert.doesNotMatch(content(tree), /Stale active device/);
+  } finally { h.unmount(); }
+  assert.equal(requests[1].signal.aborted, true);
+});
+
+test("ungranted web device section mounts no private state and sends no request", async () => {
+  for (const grants of [[], ["students.manage"], ["students.view"]]) {
+    let requests = 0;
+    const h = await harness("../components/admin-registered-devices.tsx", "AdminRegisteredDevices", { email: "private@example.test" }, { ...deviceOverrides(grants), fetch: async () => { requests++; return Response.json({}); } });
+    try { assert.equal(h.render(), null); h.mount(); await settle(); assert.equal(requests, 0); assert.equal(h.state.length, 0); }
+    finally { h.unmount(); }
+  }
+});
+
+test("read-only web device permission exposes status without mutation controls", async () => {
+  const h = await harness("../components/admin-registered-devices.tsx", "AdminRegisteredDevices", { email: "private@example.test" }, { ...deviceOverrides(["students.devices.view"]), fetch: async () => Response.json({ registeredDevices: [{ id: 1, deviceLabel: "Read-only phone", platform: "ios", firstSeenAt: "2026-09-01", lastSeenAt: "2026-09-15", revokedAt: null, policyVersion: 0 }], deviceLimit: 2, serverTime: "2026-09-16T10:00:00Z" }) });
+  try { h.render(); h.mount(); await settle(); const tree = h.render(); assert.match(content(tree), /Read-only phone/); assert.equal(all(tree, node => node.type === "button" && content(node).includes("إدارة الجهاز")).length, 0); assert.equal(all(tree, node => node.type === "form").length, 0); }
+  finally { h.unmount(); }
 });
