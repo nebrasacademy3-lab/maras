@@ -158,7 +158,7 @@ export async function GET(request: Request) {
   const visibleRequestRows = scopedSupervisor ? requestRows.filter((row) => supervisorScopesAllow(supervisorScopes, { universitySlug: row.universitySlug, specialty: row.specialty })) : requestRows;
   const visibleReviewRows = scopedSupervisor ? reviewRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : reviewRows;
   const visibleStudentEmails = new Set(visibleStudentRows.map((student) => student.email.toLowerCase()));
-  const visibleTicketRows = scopedSupervisor ? ticketRows.filter((row) => visibleStudentEmails.has(row.userEmail.toLowerCase())) : ticketRows;
+  const visibleTicketRows = scopedSupervisor ? ticketRows.filter((row) => row.userEmail ? visibleStudentEmails.has(row.userEmail.toLowerCase()) : false) : ticketRows;
   const [requestFileRows, replyRows, supportFileRows] = await Promise.all([
     visibleRequestRows.length ? db.select().from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, visibleRequestRows.map(row=>row.id))).orderBy(asc(courseRequestFiles.id)).limit(limits.files) : [],
     visibleTicketRows.length ? db.select().from(supportReplies).where(inArray(supportReplies.ticketId,visibleTicketRows.map(row=>row.id))).orderBy(asc(supportReplies.id)).limit(limits.replies) : [],
