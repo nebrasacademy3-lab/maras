@@ -212,7 +212,7 @@ export async function GET(request: Request, { params }: Props) {
   if (!can("support.manage")) { result.support = []; result.summary.openTickets = 0; redactPages("support"); }
   if (!can("requests.manage")) { result.requests = []; redactPages("requests"); }
   if (!can("notifications.manage")) { result.notifications = []; result.summary.unreadNotifications = 0; redactPages("notifications"); }
-  if (!can("students.manage")) { result.sessions = []; result.pushDevices = []; result.summary.pushDevices = 0; redactPages("sessions", "pushDevices"); }
+  if (!can("students.devices.view")) { result.sessions = []; result.pushDevices = []; result.summary.pushDevices = 0; redactPages("sessions", "pushDevices"); }
   if (!can("referrals.manage")) { result.referrals = { code: null, referredBy: [], referred: [], rewards: [], coupons: [] }; result.summary.qualifiedReferrals = 0; result.summary.activeRewards = 0; redactPages("referrals", "rewards", "coupons"); }
   if (!can("ai.manage")) { result.ai = { entitlements: [], orders: [], usage: [] }; result.summary.aiActive = false; redactPages("ai", "aiOrders"); }
   if (!can("catalog.view")) { result.catalog.courses = []; result.catalog.institutions = []; }

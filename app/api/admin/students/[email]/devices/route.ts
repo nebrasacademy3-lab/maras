@@ -1,4 +1,4 @@
-import { and, asc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { authDevices, users } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
@@ -34,7 +34,7 @@ async function studentFor(context: Context) {
   return student || null;
 }
 async function snapshot(userId: number) {
-  const registeredDevices = await getDb().select({ id: authDevices.id, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt, revokedAt: authDevices.revokedAt, revokedBy: authDevices.revokedBy, revocationReason: authDevices.revocationReason, returnPolicy: authDevices.returnPolicy, blockedUntil: authDevices.blockedUntil, policyVersion: authDevices.policyVersion }).from(authDevices).where(eq(authDevices.userId, userId)).orderBy(asc(authDevices.firstSeenAt)).limit(500);
+  const registeredDevices = await getDb().select({ id: authDevices.id, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt, revokedAt: authDevices.revokedAt, revokedBy: authDevices.revokedBy, revocationReason: authDevices.revocationReason, returnPolicy: authDevices.returnPolicy, blockedUntil: authDevices.blockedUntil, policyVersion: authDevices.policyVersion }).from(authDevices).where(eq(authDevices.userId, userId)).orderBy(sql`(${authDevices.revokedAt} IS NULL) DESC`, desc(authDevices.lastSeenAt), desc(authDevices.id)).limit(500);
   return { registeredDevices, deviceLimit: STUDENT_DEVICE_LIMIT, serverTime: new Date().toISOString(), historyMayBeTruncated: registeredDevices.length === 500 };
 }
 export async function GET(request: Request, context: Context) {

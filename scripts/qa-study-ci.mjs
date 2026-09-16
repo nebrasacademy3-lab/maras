@@ -1,6 +1,6 @@
 /** Run only against the dedicated loopback CI PostgreSQL service; never load application secrets. */
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, openSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, openSync } from "node:fs";
 import pg from "pg";
 import { randomBytes } from "node:crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -16,14 +16,18 @@ try { await migrate(drizzle(pool), { migrationsFolder: "./drizzle" }); } finally
 await run(["scripts/qa-seed.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-tools.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-security.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-device-return.ts"]);
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3100"], { env, stdio: ["ignore", openSync(".data/study-server.log", "w"), "inherit"] });
 const worker = spawn(process.execPath, ["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/ai-worker.ts"], { env, stdio: ["ignore", openSync(".data/study-worker.log", "w"), "inherit"] });
 try {
   let ready = false;
+  await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "--input-type=module", "--eval", 'const m=await import("./lib/seo.ts"); console.log("PUBLIC_SOURCE_ORIGIN", JSON.stringify({ site: process.env.NEXT_PUBLIC_SITE_URL, app: process.env.APP_URL, node: process.env.NODE_ENV, resolved: m.seoSiteOrigin(), canonical: m.seoUrl("/about") }));']);
   for (let i = 0; i < 60; i++) { try { const response = await fetch("http://127.0.0.1:3100/login", { signal: AbortSignal.timeout(2000) }); if (response.ok) { ready = true; break; } } catch { /* The isolated server may still be starting. */ } await new Promise(r => setTimeout(r, 1000)); }
-  if (!ready) throw new Error("Synthetic web server did not start successfully");
+  if (!ready || server.exitCode !== null) throw new Error(`Synthetic server failed to own its listener: ${readFileSync(".data/study-server.log", "utf8").slice(-3000)}`);
+  console.log("SYNTHETIC_SERVER_LISTENER", JSON.stringify({ pid: server.pid, exitCode: server.exitCode }));
   const response = await fetch("http://127.0.0.1:3100/about", { signal: AbortSignal.timeout(30000) });
   const html = await response.text();
+  if (server.exitCode !== null) throw new Error(`A stale listener answered instead of this server: ${readFileSync(".data/study-server.log", "utf8").slice(-3000)}`);
   console.log("PUBLIC_CANONICAL_DIAGNOSTIC", JSON.stringify({ status: response.status, expected: env.NEXT_PUBLIC_SITE_URL, canonicalTags: html.match(/<link\b[^>]*rel=["']canonical["'][^>]*>/g) || [] }));
   await run(["scripts/qa-study-browser.mjs"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-browser.mjs"]);

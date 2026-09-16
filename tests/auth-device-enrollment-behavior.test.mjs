@@ -4,7 +4,8 @@ import test from "node:test";
 import { isolated, sql, eq, and, gt, isNull, tables, database } from "./helpers/business-fixtures.mjs";
 const primitives = await isolated("../lib/api.ts");
 const bodies = await isolated("../lib/request-body.ts");
-const devices = await isolated("../lib/auth-devices.ts", { ...tables, eq, and, isNull, sql });
+const devicePolicy = await isolated("../lib/device-access-policy.ts");
+const devices = await isolated("../lib/auth-devices.ts", { ...tables, ...devicePolicy, eq, and, isNull, sql });
 const nativeRequest = (id, extra = {}) => new Request("https://test/api/mobile/auth/login", { headers: { "x-meras-client": "mobile-v1", "x-meras-platform": "ios", "x-meras-device-id": id, ...extra } });
 const identityA = "installation-aaaaaaaaaaaaaaaaaaaa";
 const identityB = "installation-bbbbbbbbbbbbbbbbbbbb";
@@ -90,7 +91,7 @@ test("student session revocation cannot unregister an approved device or admit a
 test("device replacement API requires administrator role, step-up and a reason before writes", async () => {
   class AdminMfaError extends Error { status = 428; code = "MFA_STEP_UP_REQUIRED"; }
   for (const scenario of [{ role: "student", mfa: true, status: 403 }, { role: "supervisor", mfa: true, status: 400 }, { role: "admin", mfa: false, status: 428 }, { role: "admin", mfa: true, reason: "", status: 400 }]) {
-    const route = await isolated("../app/api/admin/students/[email]/devices/route.ts", { ...tables, ...primitives, ...bodies, ...devices, eq, and, asc: value => value, AdminMfaError, getSessionUser: async () => ({ id: 5, role: scenario.role }), sameOriginRequest: () => true, isNativeAppRequest: () => false, checkRateLimit: async () => true, requireAdminStepUp: async () => { if (!scenario.mfa) throw new AdminMfaError(); }, getDb: () => { throw new Error("database touched before authorization/validation"); } });
+    const route = await isolated("../app/api/admin/students/[email]/devices/route.ts", { ...tables, ...primitives, ...bodies, ...devices, ...devicePolicy, eq, and, sql, desc: value => value, asc: value => value, AdminMfaError, getSessionUser: async () => ({ id: 5, role: scenario.role }), sameOriginRequest: () => true, isNativeAppRequest: () => false, checkRateLimit: async () => true, requireAdminStepUp: async () => { if (!scenario.mfa) throw new AdminMfaError(); }, getDb: () => { throw new Error("database touched before authorization/validation"); } });
     const result = await route.DELETE(new Request("https://test/api/admin/students/student@example.test/devices", { method: "DELETE", body: JSON.stringify({ deviceId: 1, reason: scenario.reason || "" }) }), { params: Promise.resolve({ email: "student@example.test" }) });
     assert.equal(result.status, scenario.status);
   }

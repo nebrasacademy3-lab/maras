@@ -50,7 +50,7 @@ function DeviceManager({ email, onChanged, canManage }: Props & { canManage: boo
       const result = await response.json() as Snapshot & { error?: string; code?: string };
       if (!mounted.current) return;
       if (!response.ok) throw new Error(result.error || "تعذر تنفيذ الإجراء؛ البيانات المدخلة باقية.");
-      setSnapshot(result); setSelected(null); setReason(""); setNotice("تم تنفيذ الإجراء وتوثيقه. لا تُستعاد أي جلسة قديمة."); await onChanged?.();
+      setSnapshot(result); setSelected(null); setReason(""); setNotice("تم تنفيذ الإجراء وتوثيقه. لا تُستعاد أي جلسة قديمة."); try { await onChanged?.(); } catch { setNotice("تم تنفيذ الإجراء، لكن تحديث ملخص الطالب تعثر؛ حدّث الملخص دون تكرار العملية."); }
     } catch (caught) { if (mounted.current && !controller.signal.aborted) setError(caught instanceof Error ? caught.message : "تعذر تعديل الجهاز"); }
     finally { pending.current = false; if (mounted.current) setBusy(false); }
   }
