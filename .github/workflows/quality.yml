@@ -36,28 +36,33 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Use Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Verify committed source and shared contracts
+        run: node scripts/verify-source-integrity.mjs
       - name: Install exact dependencies
         run: npm ci --no-audit --no-fund
-      - name: Inspect installed framework conventions
-        run: |
-          node --input-type=module <<'NODE'
-          import { readFileSync, existsSync } from 'node:fs';
-          for (const file of ['node_modules/next/dist/docs/01-app/02-guides/authentication.md','node_modules/next/dist/docs/01-app/03-api-reference/04-functions/revalidatePath.md']) {
-            if (existsSync(file)) console.log(`FRAMEWORK GUIDE ${file}\n${readFileSync(file,'utf8').split('\n').slice(0,140).join('\n')}`);
-          }
-          NODE
       - name: Lint web
         run: npm run lint
       - name: Build production web
         run: npm run build
       - name: Run contracts and smoke tests
-        run: node --test --test-concurrency=1 tests/*.test.mjs
+        run: |
+          set +e
+          node --test --test-concurrency=1 tests/*.test.mjs > "$RUNNER_TEMP/meras-web-tests.log" 2>&1
+          result=$?
+          set -e
+          grep -E '^# (tests|pass|fail|cancelled|skipped|todo|duration_ms)|^not ok|^[[:space:]]+(error:|code:|expected:|actual:|location:)' "$RUNNER_TEMP/meras-web-tests.log" || true
+          exit "$result"
+      - name: Verify source was not rewritten by tests
+        if: always()
+        run: node scripts/verify-source-integrity.mjs
       - name: Install isolated browser engines
         run: node node_modules/playwright/cli.js install --with-deps chromium firefox webkit
       - name: Verify platform security and responsive interfaces
@@ -73,6 +78,8 @@ jobs:
           path: |
             .data/study-browser/
             .data/platform-browser/
+            .data/qa-device-return-report.json
+          include-hidden-files: true
           retention-days: 7
 
   mobile:
@@ -85,6 +92,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Use Node.js 22
         uses: actions/setup-node@v4
         with:
