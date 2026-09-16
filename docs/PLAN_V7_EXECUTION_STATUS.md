@@ -75,7 +75,7 @@ This checkpoint verifies the committed source on CI. It still does not claim sig
 
 ## Continuation checkpoint — 2026-09-16 — paid fallback and supervisor scopes
 
-The application source validated by CI is `aac6cac596d0b81fbf65de326b8e3182bb7ae1d7`; the latest branch head is `4fb96158d0237707df0c2d25c4a2a302a46acaef` and contains documentation-only follow-up. This checkpoint includes the following implementation work:
+The application source validated by CI is `aac6cac596d0b81fbf65de326b8e3182bb7ae1d7`; subsequent branch commits only update this status note and PR metadata. This checkpoint includes the following implementation work:
 
 - Gemini routing now separates free-tier and paid-tier candidates. Every eligible free candidate is attempted first; a paid candidate is considered only after the free candidates report quota exhaustion. The paid path is disabled by default, requires the audited owner/finance permission and MFA to change, reserves daily/monthly/per-request budget atomically under a database advisory lock, writes an audit record with a non-secret request fingerprint, and stops when a cap is reached. Transient provider failures do not consume paid budget. No live paid key or paid request was used.
 - The web and native AI administration surfaces show the provider tier, paid-fallback state and caps. The database migration adds the provider-tier constraint and the paid-budget settings/ledger path. Environment examples keep free and paid credentials separate.
