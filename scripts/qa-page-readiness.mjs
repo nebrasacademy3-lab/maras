@@ -23,7 +23,7 @@ export async function navigatePublicPage(page, url, {reload=false, timeout=30000
     const actual = new URL(response.url());
     return actual.origin === destination.origin && actual.pathname === path && response.request().method() === 'GET';
   }, {timeout:remaining()}).then(async response => {
-    assert.ok(response.ok() || (path === '/api/auth/me' && response.status() === 401), `${path}: HTTP ${response.status()}`);
+    assert.ok(response.ok(), `${path}: HTTP ${response.status()}`);
     const failure = await bounded(response.finished(), `response body ${path}`);
     if (failure) throw new Error(`Public startup body failed: ${path}`, {cause:failure});
     return path;
