@@ -114,8 +114,15 @@ try {
       assert.equal((await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, uniqueEmail))).length, 0);
       await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).click(); await dialog.waitFor();
       await dialog.getByLabel("رمز تطبيق المصادقة").fill(mfa.totpCodeForCounter(secret, Math.floor(Date.now() / 30_000)));
+      // A busy button changes its accessible name before the POST commits.
+      const savedReply = editor.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/staff" && response.request().method() === "POST");
       await dialog.getByRole("button", { name: "تحقق ومتابعة", exact: true }).click();
-      await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).waitFor({ state: "hidden" });
+      const savedResponse = await savedReply;
+      assert.equal(savedResponse.status(), 200, "the MFA-authorized staff transaction must succeed");
+      const savedPayload = await savedResponse.json();
+      assert.equal(savedPayload.ok, true);
+      assert.equal(savedPayload.user.email, uniqueEmail);
+      await editor.getByRole("button", { name: "إغلاق محرر المشرف", exact: true }).waitFor({ state: "hidden" });
       assert.equal((await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, uniqueEmail))).length, 1);
       checks.push("real staff mutation pauses for MFA, cancellation preserves fields and writes nothing; verified retry creates exactly one supervisor");
       await editor.setViewportSize({ width: 390, height: 844 }); await assertFits(editor, "admin/staff/phone");
