@@ -155,7 +155,6 @@ export async function GET(request: Request) {
   const visibleUnitRows = authorization.user?.role === "supervisor" ? unitRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : unitRows;
   const visibleLessonRows = authorization.user?.role === "supervisor" ? lessonRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : lessonRows;
   const visibleVideoRows = authorization.user?.role === "supervisor" ? videoRows.filter((row) => visibleLessonRows.some((lesson) => lesson.id === row.lessonId)) : videoRows;
-  const visibleAccessRows = authorization.user?.role === "supervisor" ? accessRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : accessRows;
   const [requestFileRows, replyRows, supportFileRows] = await Promise.all([
     requestRows.length ? db.select().from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, requestRows.map(row=>row.id))).orderBy(asc(courseRequestFiles.id)).limit(limits.files) : [],
     ticketRows.length ? db.select().from(supportReplies).where(inArray(supportReplies.ticketId,ticketRows.map(row=>row.id))).orderBy(asc(supportReplies.id)).limit(limits.replies) : [],
