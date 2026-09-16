@@ -101,13 +101,11 @@ export async function GET(request: Request) {
   const query = new URL(request.url).searchParams;
   const grants = authorization.user ? await permissionsForUser(authorization.user) : new Set(Object.values(ADMIN_PERMISSIONS));
   const owner = Boolean(authorization.user?.isPlatformOwner);
-  const supervisorScopes = authorization.user?.role === "supervisor" ? await getSupervisorScopes(authorization.user.id) : [];
-  const supervisorScopeConfigured = authorization.user?.role !== "supervisor" || supervisorScopes.length > 0;
+  const supervisorScopes = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? await getSupervisorScopes(authorization.user.id) : [];
   const can = (permission: string) => permissionsCover(grants, [permission]);
   const compactMobile = query.get("client") === "mobile";
   const view = query.get("view") || "overview";
   if (!CONSOLE_VIEWS[view] || !permissionsCover(grants, CONSOLE_VIEWS[view])) return jsonError("هذا القسم غير متاح ضمن صلاحياتك", 403);
-  if (!supervisorScopeConfigured && ["overview", "institutions", "specialties", "courses", "content", "students", "subscriptions", "requests", "reviews"].includes(view)) return jsonError("لا يوجد نطاق إشراف مفعل لهذا الحساب", 403);
   const scoped=query.get("scope")==="screen";
   const needs=(key:string)=>adminConsoleNeeds(view,key,scoped);
   const page = adminPage(query.get("page"));
@@ -147,14 +145,14 @@ export async function GET(request: Request) {
     needs("audit") && can("audit.view") ? db.select().from(auditLogs).where(auditFilter).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(take("audit", limits.audits)).offset(skip("audit")) : [],
   ]);
 
-  const visibleCourses = authorization.user?.role === "supervisor" ? courses.filter((course) => supervisorScopesAllow(supervisorScopes, course)) : courses;
-  const visibleInstitutionRows = authorization.user?.role === "supervisor" ? institutionRows.filter((row) => visibleCourses.some((course) => course.universitySlug === row.slug)) : institutionRows;
-  const visibleStudentRows = authorization.user?.role === "supervisor" ? studentRows.filter((student) => supervisorScopesAllow(supervisorScopes, student)) : studentRows;
-  const visibleSpecialtyRows = authorization.user?.role === "supervisor" ? specialtyRows.filter((row) => visibleCourses.some((course) => course.specialtySlug === row.slug)) : specialtyRows;
+  const visibleCourses = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? courses.filter((course) => supervisorScopesAllow(supervisorScopes, course)) : courses;
+  const visibleInstitutionRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? institutionRows.filter((row) => visibleCourses.some((course) => course.universitySlug === row.slug)) : institutionRows;
+  const visibleStudentRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? studentRows.filter((student) => supervisorScopesAllow(supervisorScopes, student)) : studentRows;
+  const visibleSpecialtyRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? specialtyRows.filter((row) => visibleCourses.some((course) => course.specialtySlug === row.slug)) : specialtyRows;
   const visibleCourseSlugs = new Set(visibleCourses.map((course) => course.slug));
-  const visibleUnitRows = authorization.user?.role === "supervisor" ? unitRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : unitRows;
-  const visibleLessonRows = authorization.user?.role === "supervisor" ? lessonRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : lessonRows;
-  const visibleVideoRows = authorization.user?.role === "supervisor" ? videoRows.filter((row) => visibleLessonRows.some((lesson) => lesson.id === row.lessonId)) : videoRows;
+  const visibleUnitRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? unitRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : unitRows;
+  const visibleLessonRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? lessonRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : lessonRows;
+  const visibleVideoRows = authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? videoRows.filter((row) => visibleLessonRows.some((lesson) => lesson.id === row.lessonId)) : videoRows;
   const [requestFileRows, replyRows, supportFileRows] = await Promise.all([
     requestRows.length ? db.select().from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, requestRows.map(row=>row.id))).orderBy(asc(courseRequestFiles.id)).limit(limits.files) : [],
     ticketRows.length ? db.select().from(supportReplies).where(inArray(supportReplies.ticketId,ticketRows.map(row=>row.id))).orderBy(asc(supportReplies.id)).limit(limits.replies) : [],
@@ -216,7 +214,7 @@ export async function GET(request: Request) {
     institutions: visibleInstitutionRows.map((row) => ({ ...row, status: managedInstitutionMap.get(row.slug)?.status || "published" })),
     courses: visibleCourses.map((row) => ({ ...row, status: managedCourseMap.get(row.slug)?.status || "published", specialtySlug: managedCourseMap.get(row.slug)?.specialtySlug || "", audienceScope: managedCourseMap.get(row.slug)?.audienceScope === "institution" ? "institution" : "specialty", coverTheme: managedCourseMap.get(row.slug)?.coverTheme || "blue-violet", waitlistCount: waitlistByCourse.get(row.slug) || 0 })),
     specialties: visibleSpecialtyRows,
-    specialtyLinks: authorization.user?.role === "supervisor" ? links.filter((row) => visibleCourseSlugs.has(row.institutionSlug) || visibleSpecialtyRows.some((specialty) => specialty.slug === row.specialtySlug)) : links,
+    specialtyLinks: authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? links.filter((row) => visibleCourseSlugs.has(row.institutionSlug) || visibleSpecialtyRows.some((specialty) => specialty.slug === row.specialtySlug)) : links,
     units: visibleUnitRows,
     lessons: visibleLessonRows,
     videos: visibleVideoRows,
@@ -260,7 +258,7 @@ export async function GET(request: Request) {
       };
     }),
     reviews: reviewRows,
-    access: authorization.user?.role === "supervisor" ? effectiveAccess.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : effectiveAccess,
+    access: authorization.user?.role === "supervisor" && supervisorScopes.length > 0 ? effectiveAccess.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : effectiveAccess,
     supervisorAssignments: supervisorRows,
     notifications: notificationRows,
     coupons: couponRows,
