@@ -26,19 +26,36 @@ function DevicePanel({ studentEmail, userId }: { studentEmail?: string; userId: 
   const canRead = !admin || canManage || (!access.isError && Boolean(access.data?.permissions.includes("students.devices.view")));
   const [expanded, setExpanded] = useState(!admin); const [selected, setSelected] = useState<Device | null>(null);
   const [action, setAction] = useState<DeviceAction>("end_sessions"); const [reason, setReason] = useState(""); const [hours, setHours] = useState("24"); const [feedback, setFeedback] = useState("");
-  const mounted = useRef(true); const writer = useRef<AbortController | null>(null);
+  const mounted = useRef(true); const writer = useRef<AbortController | null>(null); const submitting = useRef(false);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; writer.current?.abort(); }; }, []);
   const path = admin ? `/api/admin/students/${encodeURIComponent(studentEmail!)}/devices` : "/api/profile/sessions";
   const queryKey = ["registered-devices", userId, studentEmail || "self"];
   const query = useQuery({ queryKey, queryFn: ({ signal }) => api<Snapshot>(path, { signal }), enabled: canRead && expanded, staleTime: 15000 });
   const mutation = useMutation({
-    mutationFn: (command: Command) => { const controller = new AbortController(); writer.current = controller; return api<Snapshot>(path, { method: "POST", body: jsonBody(command), signal: controller.signal }); },
-    onSuccess: async result => { if (!mounted.current) return; client.setQueryData(queryKey, result); setSelected(null); setReason(""); setFeedback("تم تنفيذ الإجراء وتوثيقه دون إعادة أي جلسة قديمة."); await client.invalidateQueries({ queryKey: ["admin-student-profile", studentEmail] }); },
+    mutationFn: async (command: Command) => {
+      const controller = new AbortController(); writer.current = controller;
+      // An older read must not overwrite the authoritative mutation response.
+      await client.cancelQueries({ queryKey, exact: true });
+      if (!mounted.current || controller.signal.aborted) throw new Error("أُلغي الإجراء بعد مغادرة ملف الطالب.");
+      return api<Snapshot>(path, { method: "POST", body: jsonBody(command), signal: controller.signal });
+    },
+    onSuccess: async result => {
+      if (!mounted.current) return;
+      client.setQueryData(queryKey, result); setSelected(null); setReason("");
+      setFeedback("تم تنفيذ الإجراء وتوثيقه دون إعادة أي جلسة قديمة.");
+      try { await client.invalidateQueries({ queryKey: ["admin-student-profile", studentEmail] }); }
+      catch { if (mounted.current) setFeedback("تم الإجراء، لكن تحديث ملخص الطالب تعثر. حدّث الملخص دون تكرار العملية."); }
+    },
+    onSettled: () => { submitting.current = false; },
   });
   function confirm() {
-    if (!selected || !canManage || mutation.isPending || reason.trim().length < 4) return;
+    if (!selected || !canManage || submitting.current || mutation.isPending || reason.trim().length < 4) return;
     const command: Command = { action, deviceId: selected.id, expectedRevision: selected.policyVersion || 0, reason: reason.trim(), ...(action === "block_until" ? { durationHours: Number(hours) } : {}) };
-    MerasAlert.alert(DEVICE_ACTION_LABELS[action], `${selected.deviceLabel}\n${DEVICE_ACTION_DESCRIPTIONS[action]}\nالسبب: ${command.reason}${action === "block_until" ? `\nمدة الحظر: ${hours} ساعة` : ""}`, [{ text: "إلغاء", style: "cancel" }, { text: "تأكيد الإجراء", style: action === "allow_return" ? "default" : "destructive", onPress: () => { if (mounted.current) mutation.mutate(command); } }]);
+    MerasAlert.alert(DEVICE_ACTION_LABELS[action], `${selected.deviceLabel}\n${DEVICE_ACTION_DESCRIPTIONS[action]}\nالسبب: ${command.reason}${action === "block_until" ? `\nمدة الحظر: ${hours} ساعة` : ""}`, [{ text: "إلغاء", style: "cancel" }, { text: "تأكيد الإجراء", style: action === "allow_return" ? "default" : "destructive", onPress: () => {
+      if (!mounted.current || submitting.current) return;
+      submitting.current = true;
+      mutation.mutate(command);
+    } }]);
   }
   if (!canRead) return null;
   const devices = query.data?.registeredDevices || []; const active = devices.filter(device => !device.revokedAt);
@@ -46,9 +63,9 @@ function DevicePanel({ studentEmail, userId }: { studentEmail?: string; userId: 
   const text = { color: colors.text, fontSize: 14, lineHeight: 24, textAlign: "right" as const };
   const date = (value: string) => new Date(value).toLocaleString(locale);
   return <View style={{ direction, gap: 12 }}>
-    {admin ? <AppButton title={expanded ? "إخفاء الأجهزة" : "أجهزة الطالب وسياسة العودة"} icon="phone-portrait-outline" variant="soft" onPress={() => setExpanded(value => !value)} /> : <SectionTitle title="أجهزتك المعتمدة" subtitle="تسجيل الخروج ينهي الجلسة، ولا يسحب اعتماد الجهاز" />}
+    {admin ? <AppButton title={expanded ? "إخفاء الأجهزة" : "أجهزة الطالب وسياسة العودة"} icon="phone-portrait-outline" variant="soft" disabled={mutation.isPending} onPress={() => setExpanded(value => !value)} /> : <SectionTitle title="أجهزتك المعتمدة" subtitle="تسجيل الخروج ينهي الجلسة، ولا يسحب اعتماد الجهاز" />}
     {expanded && <Card style={{ gap: 14 }}><Text selectable style={{ ...text, color: colors.textSoft }}>{admin ? "إنهاء الجلسة مختلف عن سحب الاعتماد. السماح بالعودة لا يعيد جلسات قديمة ولا يتجاوز الحد أو المصادقة." : "راجع أجهزتك واتصل بالدعم عند الحاجة للاستبدال أو مراجعة المنع. حافظ على سرية بيانات الدخول."}</Text>
-      {query.isPending ? <Text style={text}>جارٍ تحميل الأجهزة…</Text> : query.isError ? <><Text accessibilityRole="alert" style={{ ...text, color: colors.danger }}>تعذر تحميل حالة الأجهزة.</Text><AppButton title="إعادة المحاولة" variant="soft" onPress={() => void query.refetch()} /></> : <>
+      {query.isPending ? <Text style={text}>جارٍ تحميل الأجهزة…</Text> : query.isError ? <><Text accessibilityRole="alert" style={{ ...text, color: colors.danger }}>تعذر تحميل حالة الأجهزة.</Text><AppButton title="إعادة المحاولة" variant="soft" disabled={mutation.isPending} onPress={() => void query.refetch()} /></> : <>
         <Text style={{ ...text, color: colors.primary, fontWeight: "800" }}>{active.length} من {query.data?.deviceLimit || 2} أجهزة معتمدة</Text>
         {(admin ? devices : active).map(device => <View key={device.id} style={{ borderTopWidth: 1, borderColor: colors.border, paddingTop: 14, gap: 8 }}><View style={{ flexDirection: "row-reverse", alignItems: "center", gap: 10 }}><Ionicons name={device.platform === "web" ? "desktop-outline" : "phone-portrait-outline"} size={24} color={colors.primary}/><Text selectable style={{ ...text, flex: 1, fontWeight: "800" }}>{device.deviceLabel || "جهاز مراس"}</Text></View>
           <Text style={{ ...text, color: colors.textSoft }}>{admin ? devicePolicyLabel({ ...device, revokedAt: device.revokedAt || null }, now) : device.current ? "الجهاز الحالي" : "معتمد"}</Text><Text style={{ ...text, color: colors.textSoft }}>آخر نشاط: {date(device.lastSeenAt)}</Text>
