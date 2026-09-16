@@ -19,6 +19,7 @@ export type ScopedCourse = {
 export type ScopedStudent = {
   universitySlug?: string | null;
   specialty?: string | null;
+  specialtySlug?: string | null;
 };
 
 export async function getSupervisorScopes(supervisorId: number): Promise<SupervisorScope[]> {
