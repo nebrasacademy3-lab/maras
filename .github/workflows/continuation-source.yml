@@ -10,18 +10,29 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: 8e2e888cb81ea1ade883b3cefbc272bd5fd6f1be
-          persist-credentials: false
-      - name: Archive tracked files only
+      - name: Recover known review blob as data only
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p "$RUNNER_TEMP/review-source"
-          git archive --format=tar HEAD > "$RUNNER_TEMP/review-source/source.tar"
-          git rev-parse HEAD > "$RUNNER_TEMP/review-source/commit.txt"
-          git ls-tree -r HEAD > "$RUNNER_TEMP/review-source/tree.txt"
+          python3 - <<'PY'
+          import os, json, base64, hashlib, pathlib, urllib.request
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  raise RuntimeError('Redirect refused')
+          sha = '28a58237dbae4be9d218db75d3bb3912c32f9551'
+          endpoint = 'https://api.github.com/repos/nebrasacademy3-lab/maras/git/blobs/' + sha
+          request = urllib.request.Request(endpoint, headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json','User-Agent':'Maras-source-recovery'})
+          with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
+              record = json.loads(response.read(1000000))
+          data = base64.b64decode(record['content'])
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest() == sha
+          target = pathlib.Path(os.environ['RUNNER_TEMP']) / 'review-recovery'
+          target.mkdir()
+          (target / 'saved-review.gz').write_bytes(data)
+          print('Verified saved review bytes:', len(data))
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: ownership-review-source
-          path: ${{ runner.temp }}/review-source/
+          name: ownership-review-recovery
+          path: ${{ runner.temp }}/review-recovery/
           retention-days: 1
