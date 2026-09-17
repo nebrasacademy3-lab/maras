@@ -52,7 +52,7 @@ export function scopedOrderSql(actor: number | null, orderNumber: SQLWrapper): S
   if (actor === null) return sql`true`;
   // The entire order must be in scope. One eligible item cannot expose a mixed bundle.
   return sql`EXISTS (SELECT 1 FROM orders so WHERE so.order_number = ${orderNumber}
-    AND ${scopedStudentSql(actor, sql`so.customer_email`)}
+    AND ${scopedStudentSql(actor, sql`so.user_id`, "id")}
     AND ${scopedCourseSql(actor, sql`so.course_slug`)}
     AND NOT EXISTS (SELECT 1 FROM order_items si WHERE si.order_number = so.order_number
       AND NOT (${scopedCourseSql(actor, sql`si.course_slug`)})))`;

@@ -1,3 +1,4 @@
+import { lockOrderOwnerTx } from "@/lib/order-ownership";
 import { supervisorConsoleMutationAllowed } from "@/lib/supervisor-console-policy";
 import { supervisorCourseAllowed, supervisorScopeId, scopedInstitutionSql, scopedSubjectSql, scopedCourseSql, scopedStudentSql, scopedOrderSql, scopedRequestSql } from "@/lib/supervisor-data-scope";
 import {adminConsoleNeeds} from "@/lib/admin-console-scope";
@@ -656,6 +657,8 @@ export async function POST(request: Request) {
         if (prior.fingerprint !== fingerprint) return { error: "معرّف العملية مستخدم لبيانات مختلفة", status: 409 };
         return { replayed: true, notice: null as FulfillmentNotice | null };
       }
+      const owner = await lockOrderOwnerTx(tx, { userId: student.id });
+      if (owner.email !== userEmail) return { error: "تغيرت بيانات الطالب؛ حدّث الملف قبل منح الوصول.", status: 409 };
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${userEmail}:${courseSlug}`}))`);
       const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, userEmail), eq(courseAccess.courseSlug, courseSlug))).limit(1);
       if (existing?.suspendedAt) return { error: "استأنف الاشتراك المتوقف أولًا قبل منح وصول إضافي", status: 409 };
@@ -663,7 +666,7 @@ export async function POST(request: Request) {
       let notice: FulfillmentNotice | null = null;
       let accessId = existing?.id;
       if (orderNumber) {
-        const [order] = await tx.insert(orders).values({ orderNumber, customerEmail: userEmail, customerName: student.fullName, customerPhone: student.phone, courseSlug, subtotal: price, discount: 0, total: price, subtotalMinor: Math.round(price * 100), discountMinor: 0, totalMinor: Math.round(price * 100), currency: "SAR", status: "pending", paymentMethod: "manual", createdAt: now, updatedAt: now }).returning();
+        const [order] = await tx.insert(orders).values({ userId: student.id, orderNumber, customerEmail: userEmail, customerName: student.fullName, customerPhone: student.phone, courseSlug, subtotal: price, discount: 0, total: price, subtotalMinor: Math.round(price * 100), discountMinor: 0, totalMinor: Math.round(price * 100), currency: "SAR", status: "pending", paymentMethod: "manual", createdAt: now, updatedAt: now }).returning();
         await tx.insert(orderItems).values({ orderNumber, courseSlug, unitPrice: price, discount: 0, total: price, accessDurationDays: days, createdAt: now });
         await tx.insert(paymentEvents).values({ provider: "admin", providerEventId: `admin-payment:${orderNumber}`, orderNumber, status: "paid", payload: asJson({ actor: authorization.actor, price, fingerprint }), receivedAt: now });
         const fulfillment = await fulfillPaidOrderTx(tx, order, [{ courseSlug, accessDurationDays: days, expiresAt: resolvedExpiry }], { actorEmail: authorization.actor, chargeId: null, now, accessSource: "admin_payment", extendDuplicates: true });
@@ -980,7 +983,8 @@ export async function POST(request: Request) {
       for (let offset = 0; offset < recipients.length; offset += 250) {
         await db.insert(notificationsDb).values(recipients.slice(offset, offset + 250).map((recipient) => ({
           audience: "user",
-          userEmail: recipient.email.toLowerCase(),
+          targetUserId: recipient.id,
+          userEmail: null,
           title,
           body,
           actionUrl,
@@ -1001,11 +1005,11 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, campaignId, recipients: recipients.length, queued: pushEnabled }, { status: 201 });
     }
     const pushScheduled = Boolean(pushEnabled && startsAt && new Date(startsAt).getTime() > Date.now());
-    const [created] = await db.insert(notificationsDb).values({ audience, title, body, userEmail, actionUrl, actionLabel, presentation, template, pushEnabled, pushStatus: !pushEnabled ? "disabled" : pushScheduled ? "pending" : "processing", pushClaimedAt: pushEnabled && !pushScheduled ? now : null, startsAt, expiresAt, dismissible, createdAt: now }).returning({ id: notificationsDb.id });
+    const [created] = await db.insert(notificationsDb).values({ audience, title, body, userEmail, actionUrl, actionLabel, presentation, template, pushEnabled, pushStatus: !pushEnabled ? "disabled" : pushScheduled ? "pending" : "processing", pushClaimedAt: pushEnabled && !pushScheduled ? now : null, startsAt, expiresAt, dismissible, createdAt: now }).returning({ id: notificationsDb.id, targetUserId: notificationsDb.targetUserId });
     const push = pushScheduled
       ? { scheduled: true, attempted: 0, accepted: 0, rejected: 0, invalidated: 0, providerErrors: [] as string[] }
       : pushEnabled
-        ? { scheduled: false, ...await sendPushNotification({ userEmail, audience }, title, body, { ...(actionUrl?.startsWith("https://") ? { url: actionUrl } : { route: actionUrl || "/notifications" }), notificationId: created.id }) }
+        ? { scheduled: false, ...await sendPushNotification(userEmail ? { userId: created.targetUserId } : { audience }, title, body, { ...(actionUrl?.startsWith("https://") ? { url: actionUrl } : { route: actionUrl || "/notifications" }), notificationId: created.id }) }
         : { scheduled: false, attempted: 0, accepted: 0, rejected: 0, invalidated: 0, providerErrors: [] as string[] };
     if (!pushScheduled && pushEnabled) await db.update(notificationsDb).set({ pushStatus: push.accepted > 0 ? "accepted" : push.attempted === 0 ? "no_devices" : "failed", pushAttempts: 1, pushLastError: push.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: push.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, created.id));
     await audit(request, authorization.actor, "create", "notification", String(created.id), null, { audience, title, userEmail, template, actionUrl, push });

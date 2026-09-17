@@ -39,7 +39,7 @@ test("scope SQL binds hostile identifiers as values rather than interpolating ex
 });
 test("mixed-order predicate checks the customer, primary course and every order line", () => {
   const query = compile(scope.scopedOrderSql(7, sql`orders.order_number`));
-  assert.match(query.sql, /so\.customer_email/); assert.match(query.sql, /so\.course_slug/);
+  assert.match(query.sql, /su\.id = so\.user_id/); assert.match(query.sql, /so\.course_slug/);
   assert.match(query.sql, /NOT EXISTS \(SELECT 1 FROM order_items/);
   assert.match(query.sql, /si\.course_slug/);
 });

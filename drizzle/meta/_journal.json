@@ -253,6 +253,13 @@
       "when": 1789609290719,
       "tag": "0035_email_change_identity",
       "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789650000000,
+      "tag": "0036_order_owner_and_notification_target",
+      "breakpoints": true
     }
   ]
 }

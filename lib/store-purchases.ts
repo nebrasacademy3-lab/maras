@@ -79,7 +79,7 @@ export async function applyVerifiedStorePurchase(client:PoolClient,user:StoreUse
   }
   if(before?.status==="refunded" && active)await resequenceRestoredStorePeriods(client,user,snapshot.kind,now);
   await audit(client,user.id,active?"store-purchase-verified":"store-purchase-refunded",id,{status:purchase.status,previousStatus:before?.status||null});
-  await client.query("INSERT INTO notifications(user_email,title,body,action_url,dedupe_key,push_enabled,created_at) VALUES($1,$2,$3,$4,$5,true,$6) ON CONFLICT(dedupe_key) DO NOTHING",[user.email,active?"تم تفعيل مشتريات التطبيق":"تم تحديث استرداد المتجر",snapshot.title, snapshot.kind==="ai"?"/study-tools":"/dashboard","store:"+id+":"+purchase.status,now]);
+  await client.query("INSERT INTO notifications(target_user_id,title,body,action_url,dedupe_key,push_enabled,created_at) VALUES($1,$2,$3,$4,$5,true,$6) ON CONFLICT(dedupe_key) DO NOTHING",[user.id,active?"تم تفعيل مشتريات التطبيق":"تم تحديث استرداد المتجر",snapshot.title, snapshot.kind==="ai"?"/study-tools":"/dashboard","store:"+id+":"+purchase.status,now]);
   return true;
 }
 export async function syncStorePurchases(user:StoreUser) {

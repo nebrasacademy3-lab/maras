@@ -180,7 +180,6 @@ export async function requestEmailChange(userId: number, requestedEmail: unknown
 // This is not a substitute for the release-gated stable user-ID ownership migration.
 async function migrateEmailReferences(tx: Transaction, oldEmail: string, newEmail: string) {
   await tx.execute(sql`UPDATE "support_tickets" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "orders" SET "customer_email" = ${newEmail} WHERE lower("customer_email") = lower(${oldEmail})`);
   await tx.execute(sql`UPDATE "course_access" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
   await tx.execute(sql`UPDATE "course_access_events" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
   await tx.execute(sql`UPDATE "lesson_progress" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
@@ -189,9 +188,7 @@ async function migrateEmailReferences(tx: Transaction, oldEmail: string, newEmai
   await tx.execute(sql`UPDATE "cart_items" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
   await tx.execute(sql`UPDATE "lesson_notes" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
   await tx.execute(sql`UPDATE "course_reviews" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "notifications" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
   await tx.execute(sql`UPDATE "course_waitlist" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "ai_subscription_orders" SET "customer_email" = ${newEmail} WHERE lower("customer_email") = lower(${oldEmail})`);
   await tx.execute(sql`UPDATE "store_course_grants" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
 }
 

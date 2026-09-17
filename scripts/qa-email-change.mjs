@@ -85,7 +85,7 @@ try {
   await db.insert(schema.oauthExchanges).values({ userId: a.id, codeHash: randomUUID(), challenge: "fixture", returnTo: "/dashboard", redirectUri: "merasalelm://oauth/callback", expiresAt: future });
   const orderNumber = "QA-IDENTITY-" + nonce;
   const snapshotJson = JSON.stringify({ customer: { name: a.fullName, email: a.email, phone: "" }, total: 100 });
-  await db.insert(schema.orders).values({ orderNumber, customerEmail: a.email, customerName: a.fullName, courseSlug: "qa-physics", subtotal: 100, total: 100, status: "paid" });
+  await db.insert(schema.orders).values({ orderNumber, userId: a.id, customerEmail: a.email, customerName: a.fullName, courseSlug: "qa-physics", subtotal: 100, total: 100, status: "paid" });
   await db.insert(schema.invoices).values({ invoiceNumber: "INV-" + nonce, orderNumber, customerEmail: a.email, total: 100, snapshotJson });
   await db.insert(schema.auditLogs).values({ actorEmail: a.email, action: "identity_fixture", entityType: "user", entityId: String(a.id) });
   await db.insert(schema.courseAccess).values({ userEmail: a.email, courseSlug: "qa-physics", startsAt: now });
@@ -114,7 +114,7 @@ try {
   const [invoice] = await db.select().from(schema.invoices).where(eq(schema.invoices.orderNumber, orderNumber));
   assert.equal(invoice.customerEmail, a.email); assert.equal(invoice.snapshotJson, snapshotJson);
   assert.equal((await db.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.entityId, String(a.id)), eq(schema.auditLogs.action, "identity_fixture"))))[0].actorEmail, a.email);
-  assert.equal((await db.select().from(schema.orders).where(eq(schema.orders.orderNumber, orderNumber)))[0].customerEmail, a.next);
+  assert.equal((await db.select().from(schema.orders).where(eq(schema.orders.orderNumber, orderNumber)))[0].customerEmail, a.email);
   assert.equal((await db.select().from(schema.courseAccess).where(eq(schema.courseAccess.userEmail, a.next))).length, 1);
   pass("invoice and actor history remain unchanged while operational access remains with the account");
 

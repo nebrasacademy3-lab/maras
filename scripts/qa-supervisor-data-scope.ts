@@ -90,7 +90,7 @@ try {
   pass("scope filters SQL before pagination and aggregate counts despite sixty newer outsiders");
 
   const ownNumber = `QA-SCOPE-${nonce}-own`, mixedNumber = `QA-SCOPE-${nonce}-mixed`, otherNumber = `QA-SCOPE-${nonce}-other`;
-  await db.insert(s.orders).values([{ orderNumber: ownNumber, customerEmail: studentA.email, courseSlug: courseA }, { orderNumber: mixedNumber, customerEmail: studentA.email, courseSlug: courseA }, { orderNumber: otherNumber, customerEmail: studentB.email, courseSlug: courseB }].map(value => ({ ...value, customerName: "Synthetic", subtotal: 100, total: 100, status: "paid" })));
+  await db.insert(s.orders).values([{ orderNumber: ownNumber, userId: studentA.id, customerEmail: studentA.email, courseSlug: courseA }, { orderNumber: mixedNumber, userId: studentA.id, customerEmail: studentA.email, courseSlug: courseA }, { orderNumber: otherNumber, userId: studentB.id, customerEmail: studentB.email, courseSlug: courseB }].map(value => ({ ...value, customerName: "Synthetic", subtotal: 100, total: 100, status: "paid" })));
   await db.insert(s.orderItems).values([{ orderNumber: ownNumber, courseSlug: courseA }, { orderNumber: mixedNumber, courseSlug: courseA }, { orderNumber: mixedNumber, courseSlug: courseB }, { orderNumber: otherNumber, courseSlug: courseB }].map(value => ({ ...value, unitPrice: 100, total: 100 })));
   const orderData = await data(await consoleRoute.GET(request("/api/admin/console?view=orders&scope=screen", staff)));
   assert.deepEqual(orderData.orders.map((row: { orderNumber: string }) => row.orderNumber), [ownNumber]);

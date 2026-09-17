@@ -27,7 +27,7 @@ export default async function InvoicePage({params}:{params:Promise<{orderNumber:
     getCoursesCatalog(true),
   ]);
   if(!order)notFound();
-  if(user.role!=="admin"&&order.customerEmail.toLowerCase()!==user.email.toLowerCase())redirect("/dashboard?error=forbidden");
+  if(user.role!=="admin"&&order.userId!==user.id)redirect("/dashboard?error=forbidden");
   if(!invoice){
     const pending=["verification_pending","payment_review","pending","initiated","in_progress","authorized"].includes(order.status);
     return <main className={styles.page}><section className={styles.actions}><Link href={user.role==="admin"?"/admin/finance":"/dashboard?view=orders"}>العودة إلى الطلبات</Link></section><article className={styles.invoice}><header><BrandLogo/><div><span>{pending?"الطلب قيد التحقق":"لا توجد فاتورة"}</span><strong dir="ltr">{order.orderNumber}</strong></div></header><section className={styles.pendingNotice}><h1>{pending?"لم تصدر الفاتورة بعد":"لم تصدر فاتورة لهذا الطلب"}</h1><p>{pending?"استلمنا عملية الدفع ونتحقق منها الآن. تصدر الفاتورة تلقائيًا فور تأكيد الدفع وتفعيل المواد، وستجدها هنا وفي سجل الطلبات.":"لم تكتمل عملية الدفع لهذا الطلب، لذلك لا توجد فاتورة ضريبية مرتبطة به."}</p><p><Link href="/dashboard?view=orders">سجل الطلبات</Link> · <Link href={`/support?category=payment&order=${encodeURIComponent(order.orderNumber)}`}>تواصل مع الدعم</Link></p></section></article></main>;

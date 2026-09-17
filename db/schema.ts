@@ -157,6 +157,8 @@ export const supportTickets = pgTable("support_tickets", {
 }, (table) => [uniqueIndex("support_ticket_number_unique").on(table.ticketNumber), index("support_status_idx").on(table.status), index("support_user_idx").on(table.userEmail)]);
 
 export const orders = pgTable("orders", {
+  // Stable owner; customer fields are the immutable-at-checkout payer snapshot.
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   id: serial("id").primaryKey(),
   orderNumber: text("order_number").notNull(),
   customerEmail: text("customer_email").notNull(),
@@ -184,7 +186,15 @@ export const orders = pgTable("orders", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   paidAt: text("paid_at"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("orders_number_unique").on(table.orderNumber), uniqueIndex("orders_checkout_key_unique").on(table.checkoutKey), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
+}, (table) => [index("orders_owner_created_idx").on(table.userId, table.createdAt), uniqueIndex("orders_number_unique").on(table.orderNumber), uniqueIndex("orders_checkout_key_unique").on(table.checkoutKey), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
+
+export const orderOwnershipReviews = pgTable("order_ownership_reviews", {
+  orderId: integer("order_id").primaryKey().references(() => orders.id, { onDelete: "cascade" }),
+  reason: text("reason").notNull(),
+  candidateCount: integer("candidate_count").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  resolvedAt: text("resolved_at"),
+});
 
 export const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
@@ -610,6 +620,8 @@ export const courseReviews = pgTable("course_reviews", {
 }, (table) => [uniqueIndex("course_reviews_user_course_unique").on(table.userEmail, table.courseSlug), index("course_reviews_status_idx").on(table.status), index("course_reviews_course_status_idx").on(table.courseSlug, table.status)]);
 
 export const notificationsDb = pgTable("notifications", {
+  // A bound target never falls back to a historical email or a broadcast audience.
+  targetUserId: integer("target_user_id").references(() => users.id, { onDelete: "cascade" }),
   id: serial("id").primaryKey(),
   userEmail: text("user_email"),
   audience: text("audience").notNull().default("user"),
@@ -631,7 +643,7 @@ export const notificationsDb = pgTable("notifications", {
   dismissible: boolean("dismissible").notNull().default(true),
   readAt: text("read_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("notifications_dedupe_key_unique").on(table.dedupeKey), index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience), index("notifications_push_dispatch_idx").on(table.pushEnabled, table.pushStatus, table.pushClaimedAt, table.startsAt)]);
+}, (table) => [index("notifications_target_user_idx").on(table.targetUserId, table.createdAt), uniqueIndex("notifications_dedupe_key_unique").on(table.dedupeKey), index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience), index("notifications_push_dispatch_idx").on(table.pushEnabled, table.pushStatus, table.pushClaimedAt, table.startsAt)]);
 
 export const notificationReads = pgTable("notification_reads", {
   notificationId: integer("notification_id").notNull().references(() => notificationsDb.id, { onDelete: "cascade" }),

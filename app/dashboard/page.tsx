@@ -1,3 +1,4 @@
+import { notificationRecipientWhere } from "@/lib/notification-visibility";
 import { effectiveAccessRows } from "@/lib/course-access";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
@@ -17,11 +18,11 @@ export default async function DashboardPage({ searchParams }:{ searchParams:Prom
   if (!user.onboardingCompleted) redirect("/onboarding");
   const db = getDb();
   const now = new Date().toISOString();
-  const visibleNotifications=and(or(eq(notificationsDb.userEmail,user.email),and(isNull(notificationsDb.userEmail),or(eq(notificationsDb.audience,user.role),eq(notificationsDb.audience,"public")))),or(eq(notificationsDb.presentation,"inbox"),eq(notificationsDb.presentation,"all")),or(isNull(notificationsDb.startsAt),lte(notificationsDb.startsAt,now)),or(isNull(notificationsDb.expiresAt),gt(notificationsDb.expiresAt,now)));
+  const visibleNotifications=and(notificationRecipientWhere(user),or(eq(notificationsDb.presentation,"inbox"),eq(notificationsDb.presentation,"all")),or(isNull(notificationsDb.startsAt),lte(notificationsDb.startsAt,now)),or(isNull(notificationsDb.expiresAt),gt(notificationsDb.expiresAt,now)));
   const [accessRows, progressRows, orderRows, requestRows, noticeRows, ticketRows, catalogCourses, institutions, recommendedRows] = await Promise.all([
     db.select().from(courseAccess).where(eq(courseAccess.userEmail, user.email)).then(rows => effectiveAccessRows(rows)),
     db.select().from(lessonProgress).where(eq(lessonProgress.userEmail,user.email)),
-    db.select().from(orders).where(eq(orders.customerEmail,user.email)).orderBy(desc(orders.createdAt)).limit(50),
+    db.select().from(orders).where(eq(orders.userId, user.id)).orderBy(desc(orders.createdAt)).limit(50),
     db.select().from(courseRequests).where(eq(courseRequests.userId,user.id)).orderBy(desc(courseRequests.createdAt)).limit(50),
     db.select({notification:notificationsDb,readAt:notificationReads.readAt}).from(notificationsDb).leftJoin(notificationReads,and(eq(notificationReads.notificationId,notificationsDb.id),eq(notificationReads.userId,user.id))).where(visibleNotifications).orderBy(desc(notificationsDb.createdAt)).limit(50),
     db.select().from(supportTickets).where(eq(supportTickets.userEmail,user.email)).orderBy(desc(supportTickets.createdAt)).limit(50),

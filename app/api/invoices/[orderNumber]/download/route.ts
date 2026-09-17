@@ -25,7 +25,7 @@ export async function GET(request:Request,{params}:{params:Promise<{orderNumber:
     getCoursesCatalog(true),
   ]);
   if(!invoice||!order)return jsonError("الفاتورة غير موجودة",404);
-  if(user.role!=="admin"&&order.customerEmail.toLowerCase()!==user.email.toLowerCase())return jsonError("غير مصرح بتحميل هذه الفاتورة",403);
+  if(user.role!=="admin"&&order.userId!==user.id)return jsonError("غير مصرح بتحميل هذه الفاتورة",403);
   const currency=/^[A-Z]{3}$/.test(invoice.currency)?invoice.currency:"SAR";
   const customer = invoiceCustomerSnapshot(invoice, order);
   const courseNames=new Map(courses.map((course)=>[course.slug,course.title]));

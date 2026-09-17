@@ -12,6 +12,7 @@ const RETRY_BACKOFF_MS = [0, 2 * 60_000, 10 * 60_000] as const;
 type ClaimedNotification = {
   id: number;
   userEmail: string | null;
+  targetUserId: number | null;
   audience: string;
   title: string;
   body: string;
@@ -50,6 +51,7 @@ async function claimDuePushNotifications(limit: number, now: Date): Promise<Clai
     const rows = await tx.select({
       id: notificationsDb.id,
       userEmail: notificationsDb.userEmail,
+      targetUserId: notificationsDb.targetUserId,
       audience: notificationsDb.audience,
       title: notificationsDb.title,
       body: notificationsDb.body,
@@ -99,7 +101,7 @@ export async function dispatchDuePushNotifications(limit = 50): Promise<Campaign
   for (const row of rows) {
     let delivery: PushDeliveryResult;
     try {
-      delivery = await sendPushNotification({ userEmail: row.userEmail, audience: row.audience }, row.title, row.body, { route: row.actionUrl || "/notifications", notificationId: row.id });
+      delivery = await sendPushNotification((row.targetUserId != null ? { userId: row.targetUserId } : row.userEmail != null ? { userId: null } : { audience: row.audience }), row.title, row.body, { route: row.actionUrl || "/notifications", notificationId: row.id });
     } catch (error) {
       delivery = emptyDelivery(error);
     }

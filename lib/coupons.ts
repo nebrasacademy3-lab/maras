@@ -111,7 +111,7 @@ export async function reserveCouponForCheckoutTx(tx: CouponTransaction, input: {
 export async function redeemCouponReservationTx(tx: CouponTransaction, input: {
   orderNumber: string;
   couponCode: string;
-  customerEmail: string;
+  userId: number;
   now: string;
 }) {
   const [reservation] = await tx.select().from(couponUses)
@@ -123,10 +123,10 @@ export async function redeemCouponReservationTx(tx: CouponTransaction, input: {
   await tx.execute(sql`SELECT pg_advisory_xact_lock(${reservation.couponId + 8_000_000})`);
   const [[coupon], [owner]] = await Promise.all([
     tx.select().from(couponsDb).where(eq(couponsDb.id, reservation.couponId)).limit(1).for("update"),
-    tx.select({ email: users.email }).from(users).where(eq(users.id, reservation.userId)).limit(1),
+    tx.select({ id: users.id, status: users.status }).from(users).where(eq(users.id, reservation.userId)).limit(1),
   ]);
   if (!coupon || !owner) return { ok: false as const, reason: "missing_owner_or_coupon" };
-  if (owner.email.toLowerCase() !== input.customerEmail.toLowerCase()) return { ok: false as const, reason: "owner_mismatch" };
+  if (owner.id !== input.userId || owner.status !== "active") return { ok: false as const, reason: "owner_mismatch" };
   if (coupon.code !== cleanCode(input.couponCode)) return { ok: false as const, reason: "code_mismatch" };
   if (coupon.ownerUserId !== null && coupon.ownerUserId !== reservation.userId) return { ok: false as const, reason: "coupon_owner_mismatch" };
 

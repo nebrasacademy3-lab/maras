@@ -51,11 +51,11 @@ test("invoice is printable and protected by account ownership", async () => {
     read("app/api/invoices/[orderNumber]/download/route.ts"),
     read("mobile/app/orders.tsx"),
   ]);
-  assert.match(invoice, /order\.customerEmail\.toLowerCase\(\)!==user\.email\.toLowerCase\(\)/);
+  assert.match(invoice, /order\.userId\s*!==\s*user\.id/);
   assert.match(invoice, /InvoicePrintButton/);
   assert.match(invoice, /فاتورة ضريبية مبسطة/);
   assert.match(download, /getSessionUser/);
-  assert.match(download, /order\.customerEmail\.toLowerCase\(\)!==user\.email\.toLowerCase\(\)/);
+  assert.match(download, /order\.userId\s*!==\s*user\.id/);
   assert.match(download, /content-disposition/);
   assert.match(mobileOrders, /downloadProtectedFile/);
 });

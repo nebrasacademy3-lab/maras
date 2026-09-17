@@ -17,7 +17,7 @@ test("invoice web and download authorize by order but display the invoice snapsh
   for (const path of ["app/invoices/[orderNumber]/page.tsx", "app/api/invoices/[orderNumber]/download/route.ts"]) {
     const source = await read(path);
     assert.match(source, /invoiceCustomerSnapshot\(invoice, order\)/);
-    assert.match(source, /order\.customerEmail\.toLowerCase\(\)!==user\.email\.toLowerCase\(\)/);
+    assert.match(source, /order\.userId\s*!==\s*user\.id/);
     assert.doesNotMatch(source, /escapeHtml\(order\.customer(?:Name|Email|Phone)\)|\{order\.customer(?:Name|Email|Phone)\}/);
   }
   const mobile = await read("app/api/mobile/dashboard/route.ts");

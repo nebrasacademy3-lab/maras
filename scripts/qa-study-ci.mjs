@@ -13,6 +13,7 @@ const env = { ...process.env, DATABASE_URL: url, DATABASE_SSL: "false", APP_URL:
 const run = (args, settings = env) => new Promise((resolve, reject) => { const child = spawn(process.execPath, args, { env: settings, stdio: "inherit" }); child.on("error", reject); child.on("exit", code => code === 0 ? resolve() : reject(new Error(`Command ${args[0]} exited ${code}`))); });
 const pool = new pg.Pool({ connectionString: url });
 try { await migrate(drizzle(pool), { migrationsFolder: "./drizzle" }); } finally { await pool.end(); }
+await run(["scripts/qa-order-ownership-migration.mjs"]);
 await run(["scripts/qa-seed.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-tools.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-security.ts"]);
@@ -20,6 +21,7 @@ await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "sc
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-admin-navigation-security.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-email-change.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-supervisor-data-scope.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-order-ownership.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-protected-video.ts", "--prepare"]);
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3100"], { env, stdio: ["ignore", openSync(".data/study-server.log", "w"), "inherit"] });
 const worker = spawn(process.execPath, ["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/ai-worker.ts"], { env, stdio: ["ignore", openSync(".data/study-worker.log", "w"), "inherit"] });
