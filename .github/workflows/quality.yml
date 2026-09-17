@@ -60,6 +60,14 @@ jobs:
           set -e
           grep -E '^# (tests|pass|fail|cancelled|skipped|todo|duration_ms)|^not ok|^[[:space:]]+(error:|code:|expected:|actual:|location:)' "$RUNNER_TEMP/meras-web-tests.log" || true
           exit "$result"
+      - name: Keep non-secret web test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-test-results
+          path: ${{ runner.temp }}/meras-web-tests.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Verify source was not rewritten by tests
         if: always()
         run: node scripts/verify-source-integrity.mjs

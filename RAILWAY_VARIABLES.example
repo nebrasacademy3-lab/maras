@@ -83,10 +83,8 @@ RESEND_TEMPLATE_CHANGE_PASSWORD=
 RESEND_TEMPLATE_RESET_PASSWORD=
 EMAIL_FROM=
 
-# المساعد الخارجي — اختياري؛ المحرك المحلي يبقى فعالًا بدونه.
-OPENAI_API_KEY=
-OPENAI_API_URL=https://api.openai.com/v1
-ASSISTANT_MODEL=gpt-5-mini
+# المساعد العام يستخدم Gemini فقط بالمفاتيح المجانية المؤهلة والإعداد المعتمد لخدمة chat.
+# عند التعطل يعود للدليل البرمجي للمنصة؛ لا ينتقل إلى مزود آخر أو احتياط مدفوع.
 
 # Google / Apple sign-in — fill only real server credentials (docs/oauth-setup.md).
 GOOGLE_CLIENT_ID=
@@ -104,3 +102,7 @@ SEO_INDEXING_ENABLED=true
 
 # Enable only after stable account ownership migration and ID acceptance tests.
 EMAIL_CHANGE_ENABLED=false
+
+# Supervised web/workers: graceful shutdown, then bounded forced termination.
+RUNTIME_SHUTDOWN_TIMEOUT_MS=25000
+# S3 settings are all-or-none; production S3 endpoints must use HTTPS.

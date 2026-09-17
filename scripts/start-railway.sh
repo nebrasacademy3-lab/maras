@@ -14,6 +14,9 @@ export HOSTNAME="0.0.0.0"
 export UPLOAD_DIR="${UPLOAD_DIR:-${RAILWAY_VOLUME_MOUNT_PATH:-/data}/uploads}"
 mkdir -p "${UPLOAD_DIR}"
 
+# Validate runtime policy before migrations or other startup side effects.
+node scripts/runtime-supervisor.mjs --check
+
 echo "Waiting for PostgreSQL..."
 db_ready="false"
 for attempt in $(seq 1 20); do
@@ -22,10 +25,10 @@ const { Client } = require('pg');
 const cs = process.env.DATABASE_URL;
 const sslEnabled = process.env.DATABASE_SSL === 'true' || /[?&]sslmode=(require|verify-ca|verify-full)/i.test(cs || '');
 const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== 'false';
-const client = new Client({ connectionString: cs, connectionTimeoutMillis: 7000, ssl: sslEnabled ? { rejectUnauthorized } : undefined });
+const client = new Client({ connectionString: cs, connectionTimeoutMillis: 7000, query_timeout: 4000, statement_timeout: 4000, ssl: sslEnabled ? { rejectUnauthorized } : undefined });
 (async () => {
   try { await client.connect(); await client.query('select 1'); process.exitCode = 0; }
-  catch (e) { console.error(e instanceof Error ? e.message : String(e)); process.exitCode = 1; }
+  catch { console.error("[postgres-readiness] Connection unavailable; retrying without exposing connection details."); process.exitCode = 1; }
   finally { await client.end().catch(() => undefined); }
 })();
 NODE
@@ -55,15 +58,10 @@ if [[ "${AUTO_SEED_CATALOG:-true}" == "true" ]]; then
   fi
 fi
 
-if [[ "${VIDEO_WORKER_ENABLED:-true}" == "true" ]]; then
-  echo "Starting adaptive video processing worker..."
-  node --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/video-worker.ts &
+echo "Starting supervised Meras web and enabled processing workers on ${HOSTNAME}:${PORT:-3000}"
+# tini is installed by the production Dockerfile; -s also works when a hosting
+# launcher occupies PID 1. Local environments without tini still supervise exits.
+if command -v tini >/dev/null 2>&1; then
+  exec tini -s -- node scripts/runtime-supervisor.mjs
 fi
-
-if [[ "${AI_WORKER_ENABLED:-true}" == "true" ]]; then
-  echo "Starting bounded study-tools queue worker..."
-  node --import ./scripts/ai-worker-runtime.mjs --require ./scripts/tsx-runtime-bootstrap.cjs --import tsx scripts/ai-worker.ts &
-fi
-
-echo "Starting Meras Al-Elm on ${HOSTNAME}:${PORT:-3000}"
-exec ./node_modules/.bin/next start --hostname "${HOSTNAME}" --port "${PORT:-3000}"
+exec node scripts/runtime-supervisor.mjs

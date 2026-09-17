@@ -171,18 +171,22 @@ export async function generateGeminiContent(input: {
   contents: GeminiContent[];
   systemInstruction: string;
   responseSchema?: Record<string, unknown>;
+  allowPaidFallback?: boolean;
+  timeoutMs?: number;
 }): Promise<GeminiResult> {
   const model = normalizeGeminiModel(input.config.model);
   if (!model) throw new AiPlatformError("AI_MODEL_INVALID", "معرّف نموذج الخدمة غير صالح. راجع إعدادات الخدمة في الإدارة.");
+  const overallTimeoutMs = boundedRuntimeMs(process.env.AI_GEMINI_OVERALL_TIMEOUT_MS, 85_000, 15_000, 120_000);
+  const timeoutMs = input.timeoutMs ?? overallTimeoutMs;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1000) throw new AiPlatformError("AI_TIMEOUT_INVALID", "مهلة طلب الخدمة غير صالحة.");
+  const deadline = Date.now() + Math.min(timeoutMs, overallTimeoutMs);
   const pool = await keyCandidates();
   const candidatePool = pool.candidates;
   const maxAttempts = boundedRuntimeMs(process.env.AI_GEMINI_MAX_KEY_ATTEMPTS, DEFAULT_MAX_KEY_ATTEMPTS, 1, 64);
   if (!candidatePool.length) throw new AiPlatformError("AI_PROVIDER_UNAVAILABLE", "لا يوجد مزود الخدمة متاح الآن. حاول بعد قليل.", 503);
   const freeCandidates = candidatePool.filter((candidate) => candidate.tier === "free");
   const paidCandidates = candidatePool.filter((candidate) => candidate.tier === "paid");
-  const overallTimeoutMs = boundedRuntimeMs(process.env.AI_GEMINI_OVERALL_TIMEOUT_MS, 85_000, 15_000, 120_000);
   const attemptTimeoutMs = boundedRuntimeMs(process.env.AI_GEMINI_ATTEMPT_TIMEOUT_MS, 35_000, 5_000, 60_000);
-  const deadline = Date.now() + overallTimeoutMs;
   let lastError = new GeminiProviderError(503, "AI_PROVIDER_UNAVAILABLE");
   const releaseProvider = await acquireAiProviderSlot();
   try {
@@ -192,7 +196,9 @@ export async function generateGeminiContent(input: {
       const generationConfig: Record<string, unknown> = { temperature: input.config.temperature, maxOutputTokens: input.config.maxOutputTokens };
       if (input.responseSchema) {
         generationConfig.responseMimeType = "application/json";
-        generationConfig.responseSchema = input.responseSchema;
+        // Callers provide JSON Schema (including nullable unions and
+        // additionalProperties), not Google's separate OpenAPI Schema message.
+        generationConfig.responseJsonSchema = input.responseSchema;
       }
       let payload: Record<string, unknown>;
       let output: ReturnType<typeof geminiTextResponse>;
@@ -250,7 +256,7 @@ export async function generateGeminiContent(input: {
       && freeCandidates.length <= maxAttempts
       && freeAttempts === freeCandidates.length
       && freeQuotaFailures === freeCandidates.length;
-    if (!allEligibleFreeExhausted || !paidCandidates.length) throw lastError;
+    if (input.allowPaidFallback === false || !allEligibleFreeExhausted || !paidCandidates.length) throw lastError;
 
     const assertFreshPaidEligibility = async (candidate: KeyCandidate) => {
       const fresh = await keyCandidates();

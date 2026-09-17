@@ -35,10 +35,11 @@ test("model responses are instructed to be structured, detailed, and safe", () =
   assert.match(ai, /سؤال توضيح واحد/);
   assert.match(ai, /لا تكشف.*السياق الخام/);
   assert.match(ai, /answer.*4800/);
-  assert.match(ai, /type: "json_schema"/);
-  assert.match(ai, /strict: true/);
+  assert.match(ai, /generateGeminiContent/);
+  assert.match(ai, /responseSchema/);
+  assert.match(ai, /allowPaidFallback: false/);
   assert.match(ai, /additionalProperties: false/);
-  assert.match(ai, /reasoning_effort: "minimal"/);
+  assert.doesNotMatch(ai, /OPENAI_API_KEY|chat\/completions|answerWithOpenAI/);
   assert.match(ai, /"\/cart", "\/favorites", "\/checkout"/);
 });
 
