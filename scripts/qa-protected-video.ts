@@ -64,7 +64,7 @@ async function prepare() {
   const [asset] = await db.insert(s.videoAssets).values({ courseSlug: course, lessonId: lesson, objectKey, contentType: "video/mp4", storageProvider: "local", sizeBytes: original.length, status: "ready", processingStatus: "source_only" }).returning();
   await db.update(s.lessonsDb).set({ videoAssetId: asset.id }).where(eq(s.lessonsDb.id, lesson));
   async function person(label: string) {
-    const [user] = await db.insert(s.users).values({ email: `${course}-${label}@example.test`, fullName: "طالب فيديو اصطناعي", role: "student", status: "active", emailVerifiedAt: now(), profileCompletedAt: now(), onboardingCompletedAt: now(), universitySlug: "qa-university", specialty: "علوم الاختبار" }).returning();
+    const [user] = await db.insert(s.users).values({ email: `${course}-${label}@example.test`, fullName: "طالب فيديو اصطناعي", role: "student", status: "active", phone: "05" + String((parseInt(nonce, 16) + (label === "owner" ? 0 : 1)) % 100000000).padStart(8, "0"), academicLevel: "1", phoneVerifiedAt: now(), emailVerifiedAt: now(), profileCompletedAt: now(), onboardingCompletedAt: now(), universitySlug: "qa-university", specialty: "علوم الاختبار" }).returning();
     const session = await auth.createSession(user.id, new Request(origin + "/api/auth/login", { headers: { "x-meras-device-id": course + "-" + label } }));
     return { id: user.id, email: user.email, token: session.token };
   }
