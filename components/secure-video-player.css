@@ -77,7 +77,12 @@
 .secure-player.is-fullscreen .player-settings { top: 58px; max-height: calc(100% - 70px); }
 .secure-player .player-settings > div { position: sticky; top: -12px; z-index: 1; background: #050c1f; }
 .secure-player .player-settings > div button { min-width: 36px; min-height: 36px; font-size: 22px; }
-.secure-player .player-settings label button { min-height: 32px; }
+/* A fieldset names a group without relabelling its first button as a <label> does. */
+.secure-player .player-setting-group { min-width: 0; margin: 11px 0 0; padding: 0; border: 0; }
+.secure-player .player-setting-group legend { padding: 0; color: #9fb0cf; font-size: calc(10px * var(--font-scale, 1)); }
+.secure-player .player-setting-group > span { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.secure-player .player-setting-group button { min-height: 32px; display: flex; align-items: center; gap: 3px; padding: 0 8px; border: 1px solid rgba(255,255,255,.18); border-radius: 7px; color: #dbe5f7; background: rgba(255,255,255,.05); font-size: calc(10px * var(--font-scale, 1)); cursor: pointer; }
+.secure-player .player-setting-group button[aria-pressed="true"] { border-color: #4d82ff; color: #fff; background: #275ac8; }
 .secure-player .video-exit-fullscreen {
   position: absolute; z-index: 60;
   top: max(8px, env(safe-area-inset-top)); left: max(8px, env(safe-area-inset-left));

@@ -247,7 +247,16 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
           </div>
         </div>
       </div>
-      {settings && <div className="player-settings" role="region" aria-label="إعدادات المشاهدة"><div><Settings size={16} /><strong>إعدادات المشاهدة</strong><button type="button" aria-label="إغلاق إعدادات المشاهدة" onClick={() => setSettings(false)}>×</button></div><label>السرعة<span>{[.5,.75,1,1.25,1.5,2].map((value) => <button key={value} className={rate === value ? "active" : ""} onClick={() => changeRate(value)}>{rate === value && <Check size={11} />}{value}×</button>)}</span></label><label>الجودة<span>{Object.keys(qualitySources).map((value) => <button key={value} className={quality === value ? "active" : ""} onClick={() => changeQuality(value)}>{quality === value && <Check size={11} />}{value}</button>)}</span></label><p><ShieldCheck size={14} /> عند توفر البث المتكيف يختار المشغل أفضل جودة للاتصال تلقائيًا، مع بقاء الفيديو الأصلي خيارًا احتياطيًا.</p></div>}
+      {settings && <div className="player-settings" role="region" aria-label="إعدادات المشاهدة">
+        <div><Settings size={16} /><strong>إعدادات المشاهدة</strong><button type="button" aria-label="إغلاق إعدادات المشاهدة" onClick={() => setSettings(false)}>×</button></div>
+        <fieldset className="player-setting-group"><legend>السرعة</legend><span>
+          {[.5,.75,1,1.25,1.5,2].map((value) => <button type="button" key={value} aria-pressed={rate === value} className={rate === value ? "active" : ""} onClick={() => changeRate(value)}>{rate === value && <Check size={11} aria-hidden="true" />}{value}×</button>)}
+        </span></fieldset>
+        <fieldset className="player-setting-group"><legend>الجودة</legend><span>
+          {Object.keys(qualitySources).map((value) => <button type="button" key={value} aria-pressed={quality === value} className={quality === value ? "active" : ""} onClick={() => changeQuality(value)}>{quality === value && <Check size={11} aria-hidden="true" />}{value}</button>)}
+        </span></fieldset>
+        <p><ShieldCheck size={14} /> عند توفر البث المتكيف يختار المشغل أفضل جودة للاتصال تلقائيًا، مع بقاء الفيديو الأصلي خيارًا احتياطيًا.</p>
+      </div>}
       </div>
     </div>
   );
