@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+import type { ClientConfig, Pool, QueryConfig } from "pg";
 
 /** Abort destroys the borrowed connection; a late acquisition is never queried. */
 export async function checkDatabaseReadiness(pool: Pick<Pool, "connect">, signal: AbortSignal): Promise<boolean> {
@@ -14,7 +14,10 @@ export async function checkDatabaseReadiness(pool: Pick<Pool, "connect">, signal
   try {
     if (signal.aborted) { release(true); return false; }
     signal.addEventListener("abort", abort, { once: true });
-    await client.query({ text: "select 1", query_timeout: 2000 });
+    // pg supports a per-query read timeout, but its QueryConfig declaration
+    // omits that ClientConfig option. Keep both shapes checked without any casts.
+    const query: QueryConfig & Pick<ClientConfig, "query_timeout"> = { text: "select 1", query_timeout: 2000 };
+    await client.query(query);
     return !signal.aborted;
   } catch {
     release(true);
