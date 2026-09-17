@@ -36,7 +36,13 @@ globalThis.fetch = async (url, init) => {
   assert.ok(!JSON.stringify(request.contents).includes("inlineData"), "Office text is extracted before provider call");
   providerCalls++;
   await new Promise(resolve => setTimeout(resolve, 50));
-  const text = request.generationConfig.responseSchema ? JSON.stringify({ title: "اختبار اصطناعي", questions: Array.from({ length: 5 }, (_, i) => ({ question: `سؤال اصطناعي ${i + 1}`, choices: ["أ", "ب", "ج", "د"], correctIndex: 0, explanation: "شرح اصطناعي صحيح بالنسبة للاختبار البرمجي فقط.", translatedExplanation: null, scientificTerms: [] })) }) : "# نتيجة اختبار اصطناعية\nالقوة تساوي الكتلة مضروبة بالتسارع.";
+  const structured = request.generationConfig.responseMimeType === "application/json";
+  assert.equal(request.generationConfig.responseSchema, undefined, "JSON Schema must not use the OpenAPI schema field");
+  if (structured) {
+    assert.equal(request.generationConfig.responseJsonSchema?.type, "object");
+    assert.equal(request.generationConfig.responseJsonSchema?.properties?.questions?.type, "array");
+  } else assert.equal(request.generationConfig.responseJsonSchema, undefined);
+  const text = structured ? JSON.stringify({ title: "اختبار اصطناعي", questions: Array.from({ length: 5 }, (_, i) => ({ question: `سؤال اصطناعي ${i + 1}`, choices: ["أ", "ب", "ج", "د"], correctIndex: 0, explanation: "شرح اصطناعي صحيح بالنسبة للاختبار البرمجي فقط.", translatedExplanation: null, scientificTerms: [] })) }) : "# نتيجة اختبار اصطناعية\nالقوة تساوي الكتلة مضروبة بالتسارع.";
   return Response.json({ candidates: [{ content: { parts: [{ text }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 20, candidatesTokenCount: 20 } });
 };
 const successes: string[] = [];

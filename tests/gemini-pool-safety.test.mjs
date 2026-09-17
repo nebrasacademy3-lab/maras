@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import * as crypto from "node:crypto";
-import { pureSource } from "./helpers/pure-source.mjs";
+import { nativeSource as pureSource } from "./helpers/native-source.mjs";
 class AiPlatformError extends Error {
   constructor(code, message, status = 400) { super(message); Object.assign(this, { code, status }); }
 }
@@ -36,6 +36,7 @@ async function fixture(overrides = [{}, {}], options = {}) {
   };
   const provider = await pureSource("lib/gemini-provider.ts", { ...keys, ...config, ...errors, AiPlatformError, fetch: async (_url, init) => {
     calls.push(init.headers["x-goog-api-key"]);
+    options.onRequest?.(JSON.parse(init.body));
     return options.response ? options.response(calls.length, rows) : answer();
   } });
   const runtime = await pureSource("lib/gemini.ts", {
@@ -107,4 +108,26 @@ test("an unavailable credential registry fails closed even with environment cred
   const f = await fixture([{}], { storeUnavailable: true, prepare: (_rows, raw, env) => { env.GEMINI_API_KEY = raw[0]; } });
   await assert.rejects(f.generateGeminiContent(input), error => error.code === "AI_KEY_STORE_UNAVAILABLE");
   assert.equal(f.calls.length, 0);
+});
+
+test("free-only tasks never reserve or invoke paid Gemini even after complete quota exhaustion", async () => {
+  const f = await fixture([{}, {}, { projectLabel: "paid:backup" }], { response: quota });
+  await assert.rejects(f.generateGeminiContent({ ...input, allowPaidFallback: false }), error => error.code === "AI_QUOTA_EXHAUSTED");
+  assert.equal(f.calls.length, 2); assert.equal(f.reservations.length, 0);
+});
+
+test("JSON Schema uses responseJsonSchema rather than the incompatible OpenAPI message", async () => {
+  const sent = [];
+  const f = await fixture([{}], { onRequest: body => sent.push(body) });
+  const schema = { type: "object", additionalProperties: false, properties: { explanation: { type: ["string", "null"] } } };
+  await f.generateGeminiContent({ ...input, responseSchema: schema });
+  assert.deepEqual(sent[0].generationConfig.responseJsonSchema, schema);
+  assert.equal(sent[0].generationConfig.responseSchema, undefined);
+  assert.equal(sent[0].generationConfig.responseMimeType, "application/json");
+});
+
+test("invalid per-request provider deadlines fail before any external dispatch", async () => {
+  const f = await fixture([{}]);
+  for (const timeoutMs of [0, -1, NaN, Infinity, 1.1]) await assert.rejects(f.generateGeminiContent({ ...input, timeoutMs }), error => error.code === "AI_TIMEOUT_INVALID");
+  assert.equal(f.calls.length, 0); assert.equal(f.reservations.length, 0);
 });

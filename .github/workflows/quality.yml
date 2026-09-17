@@ -60,6 +60,14 @@ jobs:
           set -e
           grep -E '^# (tests|pass|fail|cancelled|skipped|todo|duration_ms)|^not ok|^[[:space:]]+(error:|code:|expected:|actual:|location:)' "$RUNNER_TEMP/meras-web-tests.log" || true
           exit "$result"
+      - name: Keep non-secret web test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-test-results
+          path: ${{ runner.temp }}/meras-web-tests.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Verify source was not rewritten by tests
         if: always()
         run: node scripts/verify-source-integrity.mjs
@@ -75,7 +83,21 @@ jobs:
         env:
           QA_DATABASE_URL: postgresql://maras_qa:synthetic-ci-only@127.0.0.1:55439/maras_qa
           QA_BROWSERS: chromium,firefox,webkit
-        run: node scripts/qa-study-ci.mjs
+        run: |
+          set +e
+          node scripts/qa-study-ci.mjs > "$RUNNER_TEMP/meras-platform-qa.log" 2>&1
+          result=$?
+          set -e
+          tail -n 160 "$RUNNER_TEMP/meras-platform-qa.log"
+          exit "$result"
+      - name: Keep isolated integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: platform-integration-log
+          path: ${{ runner.temp }}/meras-platform-qa.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Keep non-secret visual evidence
         if: always()
         uses: actions/upload-artifact@v4

@@ -1,0 +1,65 @@
+name: Dependency security
+
+on:
+  pull_request:
+  push:
+    branches: [main, implement/plan-v7-20260916]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dependency-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    name: ${{ matrix.label }} locked dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: web
+            directory: .
+          - label: mobile
+            directory: mobile
+    defaults:
+      run:
+        working-directory: ${{ matrix.directory }}
+    steps:
+      - name: Checkout exact source without persisted credentials
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Use Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Audit the lockfile, including development dependencies
+        env:
+          AUDIT_REPORT: ${{ runner.temp }}/dependency-audit-${{ matrix.label }}.json
+        run: |
+          set +e
+          npm audit --package-lock-only --ignore-scripts --include=dev --audit-level=low --registry=https://registry.npmjs.org --json > "$AUDIT_REPORT"
+          audit_status=$?
+          set -e
+          node --input-type=module <<'NODE'
+          import { readFileSync, appendFileSync } from 'node:fs';
+          const report = JSON.parse(readFileSync(process.env.AUDIT_REPORT, 'utf8'));
+          const counts = report.metadata?.vulnerabilities;
+          if (report.error || !counts || !Number.isSafeInteger(counts.total)) throw new Error('Dependency audit did not return valid vulnerability evidence');
+          console.log('LOCKED_DEPENDENCY_AUDIT', JSON.stringify(counts));
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, `Known npm vulnerability counts: ${JSON.stringify(counts)}\n\nThis covers the committed npm dependency graph at audit time, not application logic, container OS packages, native store SDKs or unknown vulnerabilities.\n`);
+          if (counts.total > 0) process.exitCode = 1;
+          NODE
+          exit "$audit_status"
+      - name: Preserve dependency evidence even when the audit fails
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-audit-${{ matrix.label }}
+          path: ${{ runner.temp }}/dependency-audit-${{ matrix.label }}.json
+          if-no-files-found: error
+          retention-days: 7
