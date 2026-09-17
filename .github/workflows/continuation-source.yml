@@ -1,0 +1,27 @@
+name: Export pinned review source
+on:
+  push:
+    branches: [implement/plan-v7-20260916]
+    paths: [.github/workflows/continuation-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 8e2e888cb81ea1ade883b3cefbc272bd5fd6f1be
+          persist-credentials: false
+      - name: Archive tracked files only
+        run: |
+          mkdir -p "$RUNNER_TEMP/review-source"
+          git archive --format=tar HEAD > "$RUNNER_TEMP/review-source/source.tar"
+          git rev-parse HEAD > "$RUNNER_TEMP/review-source/commit.txt"
+          git ls-tree -r HEAD > "$RUNNER_TEMP/review-source/tree.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: ownership-review-source
+          path: ${{ runner.temp }}/review-source/
+          retention-days: 1
