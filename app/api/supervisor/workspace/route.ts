@@ -17,7 +17,10 @@ async function scopeFor(request: Request) {
 
 function assigned(course: { universitySlug:string; specialty:string; audienceScope?:"specialty"|"institution" }, scope: Awaited<ReturnType<typeof scopeFor>>) {
   if (!scope) return false;
-  return scope.globalCatalog || scope.assignments.some((item) => (!item.institutionSlug || item.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !item.specialty : !item.specialty || item.specialty === course.specialty));
+  // A configured supervisor assignment is an allow-list. The catalog permission
+  // grants access to the workspace, but never widens an explicit assignment.
+  if (scope.user.role === "admin" || scope.assignments.length === 0) return scope.globalCatalog;
+  return scope.assignments.some((item) => (!item.institutionSlug || item.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !item.specialty : !item.specialty || item.specialty === course.specialty));
 }
 
 export async function GET(request: Request) {
