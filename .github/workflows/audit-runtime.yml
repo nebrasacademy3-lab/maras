@@ -1,0 +1,37 @@
+name: Isolated audit runtime
+
+on:
+  push:
+    branches: [implement/plan-v7-20260916]
+    paths: [.github/workflows/audit-runtime.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked review dependencies without provider credentials
+        run: npm ci --no-audit --no-fund
+      - name: Package tracked source and review dependencies only
+        run: |
+          mkdir -p "$RUNNER_TEMP/maras-audit"
+          git archive --format=tar HEAD > "$RUNNER_TEMP/maras-audit/source.tar"
+          git rev-parse HEAD > "$RUNNER_TEMP/maras-audit/source-commit.txt"
+          tar -czf "$RUNNER_TEMP/maras-audit/dependencies.tar.gz" --exclude='node_modules/.cache' node_modules
+      - uses: actions/upload-artifact@v4
+        with:
+          name: isolated-audit-runtime
+          path: ${{ runner.temp }}/maras-audit/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
