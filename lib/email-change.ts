@@ -88,7 +88,7 @@ export async function requestEmailChange(userId: number, requestedEmail: unknown
   const now = new Date().toISOString();
   const db = getDb();
   const issued = await db.transaction(async (tx) => {
-    await tx.execute(sql\`SELECT pg_advisory_xact_lock(\${userId})\`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${userId})`);
     const [user] = await tx.select().from(users).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!user) throw new EmailChangeError("الحساب غير متاح.", "ACCOUNT_UNAVAILABLE", 401);
     const currentEmail = normalizeEmail(user.email);
@@ -97,7 +97,7 @@ export async function requestEmailChange(userId: number, requestedEmail: unknown
     if (newEmail === currentEmail) throw new EmailChangeError("استخدم بريدًا مختلفًا عن بريدك الحالي.", "EMAIL_CHANGE_SAME_EMAIL", 400);
     const [taken] = await tx.select({ id: users.id }).from(users).where(and(
       ne(users.id, userId),
-      sql\`lower(\${users.email}) = lower(\${newEmail})\`,
+      sql`lower(${users.email}) = lower(${newEmail})`,
     )).limit(1);
     if (taken) throw new EmailChangeError("هذا البريد مستخدم في حساب آخر.", "EMAIL_CHANGE_EMAIL_TAKEN", 409);
     await tx.update(emailChangeRequests).set({ usedAt: now }).where(and(eq(emailChangeRequests.userId, userId), isNull(emailChangeRequests.usedAt)));
@@ -144,26 +144,26 @@ export async function requestEmailChange(userId: number, requestedEmail: unknown
 }
 
 async function migrateEmailReferences(tx: Transaction, oldEmail: string, newEmail: string) {
-  await tx.execute(sql\`UPDATE "support_tickets" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "orders" SET "customer_email" = \${newEmail} WHERE lower("customer_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "course_access" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "course_access_events" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "course_access_events" SET "actor_email" = \${newEmail} WHERE lower("actor_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "lesson_progress" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "audit_logs" SET "actor_email" = \${newEmail} WHERE lower("actor_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "analytics_events" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "favorites" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "cart_items" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "lesson_notes" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "course_reviews" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "notifications" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "invoices" SET "customer_email" = \${newEmail} WHERE lower("customer_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "support_replies" SET "author_email" = \${newEmail} WHERE lower("author_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "course_waitlist" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "refund_requests" SET "requested_by_email" = \${newEmail} WHERE lower("requested_by_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "ai_subscription_orders" SET "customer_email" = \${newEmail} WHERE lower("customer_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "store_course_grants" SET "user_email" = \${newEmail} WHERE lower("user_email") = lower(\${oldEmail})\`);
-  await tx.execute(sql\`UPDATE "admin_approvals" SET "approver_email" = \${newEmail} WHERE lower("approver_email") = lower(\${oldEmail})\`);
+  await tx.execute(sql`UPDATE "support_tickets" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "orders" SET "customer_email" = ${newEmail} WHERE lower("customer_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "course_access" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "course_access_events" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "course_access_events" SET "actor_email" = ${newEmail} WHERE lower("actor_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "lesson_progress" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "audit_logs" SET "actor_email" = ${newEmail} WHERE lower("actor_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "analytics_events" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "favorites" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "cart_items" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "lesson_notes" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "course_reviews" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "notifications" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "invoices" SET "customer_email" = ${newEmail} WHERE lower("customer_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "support_replies" SET "author_email" = ${newEmail} WHERE lower("author_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "course_waitlist" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "refund_requests" SET "requested_by_email" = ${newEmail} WHERE lower("requested_by_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "ai_subscription_orders" SET "customer_email" = ${newEmail} WHERE lower("customer_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "store_course_grants" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
+  await tx.execute(sql`UPDATE "admin_approvals" SET "approver_email" = ${newEmail} WHERE lower("approver_email") = lower(${oldEmail})`);
 }
 
 export async function verifyEmailChange(userId: number, target: EmailChangeTarget, supplied: unknown, request: Request) {
@@ -175,7 +175,7 @@ export async function verifyEmailChange(userId: number, target: EmailChangeTarge
   const rawToken = requestSessionToken(request);
   const currentTokenHash = rawToken ? await hashOpaqueToken(rawToken) : "";
   const result = await getDb().transaction(async (tx) => {
-    await tx.execute(sql\`SELECT pg_advisory_xact_lock(\${userId})\`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${userId})`);
     const [user] = await tx.select().from(users).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     const challenge = await latestRequest(tx, userId);
     const now = new Date().toISOString();
@@ -204,7 +204,7 @@ export async function verifyEmailChange(userId: number, target: EmailChangeTarge
     }
     const [taken] = await tx.select({ id: users.id }).from(users).where(and(
       ne(users.id, userId),
-      sql\`lower(\${users.email}) = lower(\${challenge.newEmail})\`,
+      sql`lower(${users.email}) = lower(${challenge.newEmail})`,
     )).limit(1);
     if (taken) {
       await tx.update(emailChangeRequests).set({ usedAt: now }).where(eq(emailChangeRequests.id, challenge.id));

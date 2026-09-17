@@ -46,7 +46,7 @@ export function EmailChangePanel() {
       setBusy("");
     }
   }
-  useEffect(() => { void load(); }, []);
+  useEffect(() => { const timer = setTimeout(() => { void load(); }, 0); return () => clearTimeout(timer); }, []);
 
   async function requestChange() {
     if (busy) return;
