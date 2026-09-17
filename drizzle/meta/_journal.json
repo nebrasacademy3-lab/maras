@@ -246,6 +246,13 @@
       "when": 1789600000000,
       "tag": "0034_ai_paid_budget",
       "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789609290719,
+      "tag": "0035_email_change_identity",
+      "breakpoints": true
     }
   ]
 }

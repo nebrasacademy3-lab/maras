@@ -35,6 +35,30 @@ export const emailVerificationCodes = pgTable("email_verification_codes", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [index("email_verification_user_purpose_created_idx").on(table.userId, table.purpose, table.createdAt)]);
 
+export const emailChangeRequests = pgTable("email_change_requests", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  currentEmail: text("current_email").notNull(),
+  newEmail: text("new_email").notNull(),
+  challengeNonce: text("challenge_nonce").notNull(),
+  currentCodeHash: text("current_code_hash").notNull(),
+  newCodeHash: text("new_code_hash").notNull(),
+  currentAttempts: integer("current_attempts").notNull().default(0),
+  newAttempts: integer("new_attempts").notNull().default(0),
+  currentSentAt: text("current_sent_at"),
+  newSentAt: text("new_sent_at"),
+  currentVerifiedAt: text("current_verified_at"),
+  newVerifiedAt: text("new_verified_at"),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [
+  index("email_change_user_created_idx").on(table.userId, table.createdAt),
+  index("email_change_user_used_idx").on(table.userId, table.usedAt),
+  check("email_change_current_attempts_check", sql`${table.currentAttempts} BETWEEN 0 AND 5`),
+  check("email_change_new_attempts_check", sql`${table.newAttempts} BETWEEN 0 AND 5`),
+]);
+
 export const oauthIdentities = pgTable("oauth_identities", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
