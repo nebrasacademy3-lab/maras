@@ -34,8 +34,8 @@ export async function POST(request: Request) {
       return Response.json(await requestEmailChange(user.id, payload.newEmail, payload.currentPassword, request), { headers });
     }
     if (action === "verify") {
-      const target = payload.target === "current" || payload.target === "new" ? payload.target : "";
-      return Response.json(await verifyEmailChange(user.id, target, payload.code, request), { headers });
+      if (payload.target !== "current" && payload.target !== "new") return jsonError("جهة الرمز غير صالحة", 400);
+      return Response.json(await verifyEmailChange(user.id, payload.target, payload.code, request), { headers });
     }
     if (action === "cancel") return Response.json(await cancelEmailChange(user.id), { headers });
     return jsonError("الإجراء غير معروف", 400);

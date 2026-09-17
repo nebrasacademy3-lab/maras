@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { CheckCircle2, Mail, ShieldCheck, X } from "lucide-react";
 import { authRequest } from "@/lib/auth-request";
 import { VerificationCodeInput } from "@/components/verification-code-input";
@@ -19,9 +20,11 @@ type ApiResult = Partial<ChangeState> & {
   ok?: boolean;
   completed?: boolean;
   revokedSessions?: number;
+  email?: string;
 };
 
 export function EmailChangeForm() {
+  const router = useRouter();
   const [state, setState] = useState<ChangeState>({ active: false, currentEmail: "", newEmail: "", currentVerified: false, newVerified: false, expiresInSeconds: 0 });
   const [newEmail, setNewEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
@@ -105,7 +108,7 @@ export function EmailChangeForm() {
         setMessage("تم تغيير البريد بنجاح وإنهاء الجلسات الأخرى لحماية الحساب.");
         setState(value => ({ ...value, active: false, currentEmail: data.email || value.newEmail, newEmail: "", currentVerified: true, newVerified: true }));
         setCurrentCode(""); setNewCode("");
-        window.setTimeout(() => window.location.assign("/dashboard?view=account"), 500);
+        window.setTimeout(() => router.push("/dashboard?view=account"), 500);
       } else {
         setState(value => ({ ...value, currentVerified: Boolean(data.currentVerified), newVerified: Boolean(data.newVerified) }));
         setMessage(target === "current" ? "تم تأكيد بريدك الحالي. أكّد الرمز المرسل إلى البريد الجديد." : "تم تأكيد البريد الجديد. أكّد الرمز المرسل إلى بريدك الحالي.");
@@ -140,7 +143,7 @@ export function EmailChangeForm() {
       ? <form onSubmit={requestChange}>
           <label className={styles.field}>البريد الجديد<input type="email" required value={newEmail} onChange={event => setNewEmail(event.target.value)} autoComplete="email" dir="ltr" maxLength={180} /></label>
           <label className={styles.field}>كلمة المرور الحالية (إن وُجدت)<input type="password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} autoComplete="current-password" dir="ltr" maxLength={128} /></label>
-          <button className={"button button-primary " + styles.submit} disabled={busy !== "" || busy === "loading"}>{busy === "request" ? "جارٍ إرسال الرموز…" : "إرسال رموز التأكيد"}</button>
+          <button className={"button button-primary " + styles.submit} disabled={busy !== ""}>{busy === "request" ? "جارٍ إرسال الرموز…" : "إرسال رموز التأكيد"}</button>
         </form>
       : <div>
           <p className={styles.note}><ShieldCheck size={18} />الحالة: {state.currentVerified ? "تم تأكيد البريد الحالي" : "بانتظار تأكيد البريد الحالي"} · {state.newVerified ? "تم تأكيد البريد الجديد" : "بانتظار تأكيد البريد الجديد"}.</p>
