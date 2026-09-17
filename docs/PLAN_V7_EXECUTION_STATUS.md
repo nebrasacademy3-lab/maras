@@ -89,3 +89,13 @@ Evidence for this exact branch head:
 - The branch remains an open draft in [PR #3](https://github.com/nebrasacademy3-lab/maras/pull/3); it is not merged into `main`, and no deployment or store submission was performed.
 
 These results are strong CI evidence for the changed source, not proof of the entire 192-case plan. Identity/email/phone ownership migration, exact per-university permission auditing across every legacy endpoint, resumable large-file production rollout, full teacher/quiz/translation/speech/PDF feature parity, load testing at approximately 1,000 concurrent users, physical-device testing, signed store binaries, live payment/RevenueCat configuration, live email/push delivery and an independent penetration review remain release gates. The platform is not declared absolutely vulnerability-free.
+
+
+## Final verification checkpoint — 2026-09-17 — phone identity lock
+
+The latest application commit is [e6c7a85](https://github.com/nebrasacademy3-lab/maras/commit/e6c7a85ca03dda8bd56bf0e36410d5419115387b). It adds a server-side identity safeguard: a student whose profile is complete cannot change the registered phone number through the student profile route. A documented administrative path may change the number, and any changed number loses its previous verification timestamp. A contract test covers the lock, the recovery message, verification reset and uniqueness enforcement.
+
+- [Quality gates — run 35169785384](https://github.com/nebrasacademy3-lab/maras/actions/runs/35169785384): **success**. Web lint/build, committed-source checks, contract/smoke tests, isolated PostgreSQL integration and platform security/responsive/browser checks completed successfully. The browser evidence recorded 8/8 checks and no client exceptions; tests use synthetic data and no live providers.
+- [Mobile release validation — run 35169785451](https://github.com/nebrasacademy3-lab/maras/actions/runs/35169785451): **success** for Expo compatibility, TypeScript/lint, native prebuild and JavaScript/assets export.
+
+This remains a scoped, unmerged PR checkpoint. It does not certify signed store binaries, physical-device execution, production configuration, load capacity, an independent penetration test or completion of all 192 acceptance cases.
