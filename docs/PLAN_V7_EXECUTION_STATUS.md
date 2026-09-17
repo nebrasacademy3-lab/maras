@@ -84,8 +84,8 @@ The application source in this continuation has passed the final CI runs linked 
 
 Evidence for this exact branch head:
 
-- Quality gates run [35163332187](https://github.com/nebrasacademy3-lab/maras/actions/runs/35163332187) passed: production lint/build, **523/523 web tests**, isolated study/security/device/admin checks, and **8/8 Chromium, 8/8 Firefox and 8/8 WebKit** browser checks.
-- Mobile release validation run [35163332105](https://github.com/nebrasacademy3-lab/maras/actions/runs/35163332105) passed Android and iOS Expo compatibility, TypeScript, native prebuild and JavaScript/assets export. The mobile behavior suite in the quality run passed **90/90** tests.
+- Quality gates run [35165814294](https://github.com/nebrasacademy3-lab/maras/actions/runs/35165814294) passed: production lint/build, **523/523 web tests**, isolated study/security/device/admin checks, and **8/8 Chromium, 8/8 Firefox and 8/8 WebKit** browser checks.
+- Mobile release validation run [35165814250](https://github.com/nebrasacademy3-lab/maras/actions/runs/35165814250) passed Android and iOS Expo compatibility, TypeScript, native prebuild and JavaScript/assets export. The mobile behavior suite in the quality run passed **90/90** tests.
 - The branch remains an open draft in [PR #3](https://github.com/nebrasacademy3-lab/maras/pull/3); it is not merged into `main`, and no deployment or store submission was performed.
 
 These results are strong CI evidence for the changed source, not proof of the entire 192-case plan. Identity/email/phone ownership migration, exact per-university permission auditing across every legacy endpoint, resumable large-file production rollout, full teacher/quiz/translation/speech/PDF feature parity, load testing at approximately 1,000 concurrent users, physical-device testing, signed store binaries, live payment/RevenueCat configuration, live email/push delivery and an independent penetration review remain release gates. The platform is not declared absolutely vulnerability-free.
