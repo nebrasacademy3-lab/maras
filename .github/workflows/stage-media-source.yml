@@ -38,8 +38,6 @@ jobs:
                   </span></fieldset>
                   <p><ShieldCheck size={14} /> عند توفر البث المتكيف يختار المشغل أفضل جودة للاتصال تلقائيًا، مع بقاء الفيديو الأصلي خيارًا احتياطيًا.</p>
                 </div>}'''
-          # Remove YAML/Python continuation indentation, preserving reviewed JSX indentation.
-          replacement = '\n'.join([replacement.splitlines()[0]] + [line[10:] for line in replacement.splitlines()[1:]])
           css = '''/* A fieldset names a group without relabelling its first button as a <label> does. */
           .secure-player .player-setting-group { min-width: 0; margin: 11px 0 0; padding: 0; border: 0; }
           .secure-player .player-setting-group legend { padding: 0; color: #9fb0cf; font-size: calc(10px * var(--font-scale, 1)); }
