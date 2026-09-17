@@ -1,12 +1,12 @@
 "use client";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
 import { CheckCircle2, Mail, ShieldCheck, X } from "lucide-react";
 import { authRequest } from "@/lib/auth-request";
 import { VerificationCodeInput } from "@/components/verification-code-input";
 import styles from "./security-form.module.css";
 
 type ChangeState = {
+  enabled?: boolean;
   active: boolean;
   currentEmail: string;
   newEmail: string;
@@ -24,8 +24,7 @@ type ApiResult = Partial<ChangeState> & {
 };
 
 export function EmailChangeForm() {
-  const router = useRouter();
-  const [state, setState] = useState<ChangeState>({ active: false, currentEmail: "", newEmail: "", currentVerified: false, newVerified: false, expiresInSeconds: 0 });
+  const [state, setState] = useState<ChangeState>({ enabled: false, active: false, currentEmail: "", newEmail: "", currentVerified: false, newVerified: false, expiresInSeconds: 0 });
   const [newEmail, setNewEmail] = useState("");
   const [currentPassword, setCurrentPassword] = useState("");
   const [currentCode, setCurrentCode] = useState("");
@@ -57,6 +56,7 @@ export function EmailChangeForm() {
       .then(data => {
         if (!alive) return;
         setState({
+          enabled: data.enabled === true,
           active: Boolean(data.active),
           currentEmail: data.currentEmail || "",
           newEmail: data.newEmail || "",
@@ -83,6 +83,7 @@ export function EmailChangeForm() {
     try {
       const data = await call({ action: "request", newEmail, currentPassword });
       setState({
+        enabled: true,
         active: true,
         currentEmail: data.currentEmail || "",
         newEmail: data.newEmail || newEmail,
@@ -105,10 +106,12 @@ export function EmailChangeForm() {
     try {
       const data = await call({ action: "verify", target, code: target === "current" ? currentCode : newCode });
       if (data.completed) {
-        setMessage("تم تغيير البريد بنجاح وإنهاء الجلسات الأخرى لحماية الحساب.");
+        setMessage("تم تغيير البريد بنجاح. سجّل الدخول بالبريد الجديد لحماية الحساب.");
         setState(value => ({ ...value, active: false, currentEmail: data.email || value.newEmail, newEmail: "", currentVerified: true, newVerified: true }));
         setCurrentCode(""); setNewCode("");
-        window.setTimeout(() => router.push("/dashboard?view=account"), 500);
+        // Identity changes must discard cached profile and permission state.
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination -- Full cache boundary after identity change.
+        window.location.assign("/login?reason=email-changed");
       } else {
         setState(value => ({ ...value, currentVerified: Boolean(data.currentVerified), newVerified: Boolean(data.newVerified) }));
         setMessage(target === "current" ? "تم تأكيد بريدك الحالي. أكّد الرمز المرسل إلى البريد الجديد." : "تم تأكيد البريد الجديد. أكّد الرمز المرسل إلى بريدك الحالي.");
@@ -139,7 +142,7 @@ export function EmailChangeForm() {
   return <section className={styles.panel + " " + styles.account} dir="rtl" aria-labelledby="email-change-title">
     <h3 id="email-change-title"><Mail size={20} />تغيير البريد الإلكتروني</h3>
     <p>لحماية الحساب، نرسل رمزًا إلى البريد الحالي وإلى البريد الجديد. عند اكتمال التحقق تبقى مشترياتك وتقدمك وفواتيرك مرتبطة بالحساب نفسه.</p>
-    {!state.active
+    {state.enabled !== true ? <p className={styles.note}>تغيير البريد غير متاح حاليًا. تواصل مع الدعم لتصحيح بيانات الحساب.</p> : !state.active
       ? <form onSubmit={requestChange}>
           <label className={styles.field}>البريد الجديد<input type="email" required value={newEmail} onChange={event => setNewEmail(event.target.value)} autoComplete="email" dir="ltr" maxLength={180} /></label>
           <label className={styles.field}>كلمة المرور الحالية (إن وُجدت)<input type="password" value={currentPassword} onChange={event => setCurrentPassword(event.target.value)} autoComplete="current-password" dir="ltr" maxLength={128} /></label>

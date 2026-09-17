@@ -37,7 +37,7 @@ export async function POST(request: Request) {
       if (payload.target !== "current" && payload.target !== "new") return jsonError("جهة الرمز غير صالحة", 400);
       return Response.json(await verifyEmailChange(user.id, payload.target, payload.code, request), { headers });
     }
-    if (action === "cancel") return Response.json(await cancelEmailChange(user.id), { headers });
+    if (action === "cancel") return Response.json(await cancelEmailChange(user.id, request), { headers });
     return jsonError("الإجراء غير معروف", 400);
   } catch (error) {
     if (error instanceof EmailChangeError || error instanceof EmailDeliveryError) return jsonError(error.message, error.status, error.code);
