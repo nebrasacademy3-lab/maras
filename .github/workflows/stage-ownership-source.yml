@@ -1,0 +1,76 @@
+name: Stage reviewed ownership source objects
+on:
+  push:
+    branches: [implement/plan-v7-20260916]
+    paths: [.github/workflows/stage-ownership-source.yml]
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify reviewed data and create immutable source objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, io, json, os, pathlib, re, urllib.request
+          root = 'https://api.github.com/repos/nebrasacademy3-lab/maras/git/blobs'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  raise RuntimeError('Redirect refused')
+          opener = urllib.request.build_opener(NoRedirect())
+          def sha(data):
+              return hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          def api(url, body=None):
+              assert url == root or re.fullmatch(re.escape(root) + r'/[a-f0-9]{40}', url)
+              request = urllib.request.Request(url, data=None if body is None else json.dumps(body).encode(), headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json', 'Content-Type':'application/json', 'User-Agent':'Maras-reviewed-source'})
+              with opener.open(request, timeout=30) as response:
+                  return json.loads(response.read(2000000))
+          def blob(identity):
+              record = api(root + '/' + identity)
+              data = base64.b64decode(record['content'])
+              assert len(data) < 1000000 and sha(data) == identity
+              return data
+          parts = [
+              'ef4005cc6c7b91e745319806f3d693b2c9789963',
+              'b9fd0af7148e0a5b9c9f00a23991795a3be9f506',
+              'eaebe1e0bc258f25ede131596b5ec1f1e412c5f9',
+              '9f1750f997ce80c48a9e87cab9e42a1016567a71',
+              'af6009227ec378648ebf221d6d3b7603c8b2df95',
+              'd91f42e02ec17db62dba7e52113e73bdb5244f33',
+              '158c6dd5e7e79cd45eda34510a396585935dedec',
+              '9b0355ada26c742db3f7409dc56ef20e9dc3817c',
+          ]
+          packed = b''.join(blob(identity) for identity in parts)
+          assert sha(packed) == 'fc8151c3440d7850318587f0b15dcd94c1122304'
+          with gzip.GzipFile(fileobj=io.BytesIO(packed)) as stream:
+              payload = stream.read(1000001)
+          assert len(payload) < 1000000
+          changes = json.loads(payload)
+          assert len(changes) == 48
+          prepared = []
+          for change in changes:
+              path = pathlib.PurePosixPath(change['path'])
+              assert not path.is_absolute() and '..' not in path.parts
+              assert path.parts[0] in ['.github','app','components','db','docs','drizzle','lib','scripts','tests']
+              text = blob(change['before']).decode('utf-8') if change['before'] else ''
+              original_length = len(text)
+              previous_end = 0
+              for start, end, replacement in change['edits']:
+                  assert isinstance(replacement, str) and 0 <= previous_end <= start <= end <= original_length
+                  previous_end = end
+              for start, end, replacement in reversed(change['edits']):
+                  text = text[:start] + replacement + text[end:]
+              data = text.encode('utf-8')
+              assert len(data) < 1000000 and sha(data) == change['after'], str(path)
+              prepared.append((str(path), data, change['after']))
+          for path, data, expected in prepared:
+              created = api(root, {'content':base64.b64encode(data).decode(), 'encoding':'base64'})
+              assert created['sha'] == expected, path
+              print(json.dumps({'path':path,'mode':'100644','type':'blob','sha':expected}))
+          print('VERIFIED_SOURCE_OBJECTS', len(prepared))
+          # This job never creates a commit, updates a branch, executes patched code,
+          # reads repository secrets, or connects to application/provider services.
+          PY
