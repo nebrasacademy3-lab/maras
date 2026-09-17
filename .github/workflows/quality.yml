@@ -65,6 +65,12 @@ jobs:
         run: node scripts/verify-source-integrity.mjs
       - name: Install isolated browser engines
         run: node node_modules/playwright/cli.js install --with-deps chromium firefox webkit
+      - name: Install private-media test tooling
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
       - name: Verify platform security and responsive interfaces
         env:
           QA_DATABASE_URL: postgresql://maras_qa:synthetic-ci-only@127.0.0.1:55439/maras_qa
@@ -81,6 +87,8 @@ jobs:
             .data/qa-device-return-report.json
             .data/qa-supervisor-scope-report.json
             .data/qa-email-change-results.json
+            .data/protected-video/report.json
+            .data/protected-video/real-playback.png
           include-hidden-files: true
           retention-days: 7
 

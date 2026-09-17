@@ -20,6 +20,7 @@ await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "sc
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-admin-navigation-security.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-email-change.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-supervisor-data-scope.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-protected-video.ts", "--prepare"]);
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3100"], { env, stdio: ["ignore", openSync(".data/study-server.log", "w"), "inherit"] });
 const worker = spawn(process.execPath, ["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/ai-worker.ts"], { env, stdio: ["ignore", openSync(".data/study-worker.log", "w"), "inherit"] });
 try {
@@ -32,6 +33,7 @@ try {
   const html = await response.text();
   if (server.exitCode !== null) throw new Error(`A stale listener answered instead of this server: ${readFileSync(".data/study-server.log", "utf8").slice(-3000)}`);
   console.log("PUBLIC_CANONICAL_DIAGNOSTIC", JSON.stringify({ status: response.status, expected: env.NEXT_PUBLIC_SITE_URL, canonicalTags: html.match(/<link\b[^>]*rel=["']canonical["'][^>]*>/g) || [] }));
+  await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-protected-video.ts"]);
   await run(["scripts/qa-study-browser.mjs"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-browser.mjs"]);
 } finally { server.kill("SIGTERM"); worker.kill("SIGTERM"); }

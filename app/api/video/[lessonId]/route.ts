@@ -54,6 +54,7 @@ async function serveVideo(request: Request, context: RouteContext, headOnly: boo
   } else {
     headers.set("Content-Length", String(asset.sizeBytes));
   }
+  if (headOnly) await object.body.cancel();
   return new Response(headOnly ? null : object.body as BodyInit, { status: range ? 206 : 200, headers });
 }
 
