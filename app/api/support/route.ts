@@ -1,3 +1,4 @@
+import { supervisorScopeId, scopedStudentSql } from "@/lib/supervisor-data-scope";
 import { hasPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { readBoundedJsonObject } from "@/lib/request-body";
@@ -102,6 +103,7 @@ export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
   const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
+  const scopeId = manager ? await supervisorScopeId(current) : null;
   if (!current) return jsonError("سجّل الدخول أولًا للدعم", 401);
   if (!await checkRateLimit("support-write", `${current.id}:${clientIp(request)}`, 60, 60 * 60)) return jsonError("تم إرسال طلبات كثيرة. حاول لاحقًا.", 429);
   const db = getDb();
@@ -135,7 +137,7 @@ export async function POST(request: Request) {
   if (!Number.isSafeInteger(ticketId) || ticketId < 0) { await discardFiles(); return jsonError("معرّف التذكرة غير صالح"); }
   const body = cleanText(values.message ?? values.body, 4000);
   if (ticketId) {
-    const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+    const [ticket] = await db.select().from(supportTickets).where(and(eq(supportTickets.id, ticketId), scopedStudentSql(scopeId, supportTickets.userEmail))).limit(1);
     if (!ticket) { await discardFiles(); return jsonError("التذكرة غير موجودة", 404); }
     if (!manager && ticket.userEmail !== current.email) { await discardFiles(); return jsonError("غير مصرح", 403); }
     if (!body && !files.length) { await discardFiles(); return jsonError("اكتب رسالة أو أرفق ملفًا"); }
@@ -209,11 +211,12 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const current = await getSessionUser(request);
   const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
+  const scopeId = manager ? await supervisorScopeId(current) : null;
   if (!current && !isAdminRequest(request)) return jsonError("سجّل الدخول لمتابعة التذاكر", 401);
   const db = getDb();
 
   const tickets = manager
-    ? await db.select().from(supportTickets).orderBy(desc(supportTickets.updatedAt)).limit(300)
+    ? await db.select().from(supportTickets).where(scopedStudentSql(scopeId, supportTickets.userEmail)).orderBy(desc(supportTickets.updatedAt)).limit(300)
     : current
       ? await db.select().from(supportTickets).where(eq(supportTickets.userEmail, current.email)).orderBy(desc(supportTickets.updatedAt)).limit(100)
       : [];
@@ -233,6 +236,7 @@ export async function DELETE(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
   const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
+  const scopeId = manager ? await supervisorScopeId(current) : null;
   if (!current || !manager || !await hasPermission(current, ADMIN_PERMISSIONS.RECORDS_DELETE)) return jsonError("غير مصرح بحذف التذاكر", 403);
   try { await requireAdminStepUp(request, current!); } catch (error) {
     if (error instanceof AdminMfaError) return jsonError(error.message, error.status, error.code);
@@ -245,7 +249,7 @@ export async function DELETE(request: Request) {
   const ticketId = finiteNumber(payload.ticketId);
   if (!Number.isSafeInteger(ticketId) || ticketId <= 0) return jsonError("معرّف التذكرة غير صالح");
   const db = getDb();
-  const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+  const [ticket] = await db.select().from(supportTickets).where(and(eq(supportTickets.id, ticketId), scopedStudentSql(scopeId, supportTickets.userEmail))).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
   const files = await db.select({ objectKey: supportReplyFiles.objectKey }).from(supportReplyFiles).where(eq(supportReplyFiles.ticketId, ticketId));
   await db.transaction(async (tx) => {
@@ -262,6 +266,7 @@ export async function PATCH(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
   const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
+  const scopeId = manager ? await supervisorScopeId(current) : null;
   if (!current) return jsonError("سجّل الدخول أولًا", 401);
   let payload: Record<string, unknown>;
   try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات غير صالحة"); }
@@ -269,7 +274,7 @@ export async function PATCH(request: Request) {
   const action = cleanText(payload.action, 20);
   if (!Number.isSafeInteger(ticketId) || ticketId <= 0 || !["reopen", "close", "rate"].includes(action)) return jsonError("إجراء التذكرة غير صالح");
   const db = getDb();
-  const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+  const [ticket] = await db.select().from(supportTickets).where(and(eq(supportTickets.id, ticketId), scopedStudentSql(scopeId, supportTickets.userEmail))).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
   if (!manager && ticket.userEmail !== current.email) return jsonError("غير مصرح", 403);
   if (action === "rate") {

@@ -43,6 +43,9 @@ try {
   await db.insert(s.staffPermissions).values({ userId: staff.id, permission: "students.manage", grantedBy: owner.id });
   assert.equal((await controller.GET(request(endpoint, staffSession.token), context)).status, 403);
   await db.insert(s.staffPermissions).values({ userId: staff.id, permission: "students.devices.view", grantedBy: owner.id });
+  assert.equal((await controller.GET(request(endpoint, staffSession.token), context)).status, 404, "device-view still needs a data scope");
+  await db.update(s.users).set({ universitySlug: "qa-university", specialty: "علوم الاختبار" }).where(eq(s.users.id, student.id));
+  await db.insert(s.supervisorAssignments).values({ supervisorId: staff.id, institutionSlug: "qa-university", specialty: "علوم الاختبار", active: true });
   assert.equal((await controller.GET(request(endpoint, staffSession.token), context)).status, 200);
   assert.equal((await controller.POST(request(endpoint, staffSession.token, { action: "end_sessions" }), context)).status, 403);
   pass("editing a student profile does not grant device access; explicit read permission cannot write");

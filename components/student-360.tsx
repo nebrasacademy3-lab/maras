@@ -34,7 +34,7 @@ import { AdminRegisteredDevices } from "@/components/admin-registered-devices";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import styles from "@/components/student-360.module.css";
 
-const STUDENT_PANEL_PERMISSIONS: Record<string,string[]> = {"profile":["students.view"],"progress":["students.view"],"subscriptions":["subscriptions.manage"],"orders":["finance.view"],"referrals":["referrals.manage"],"ai":["ai.manage"],"interest":["students.view","catalog.view"],"requests":["requests.manage"],"support":["support.manage"],"notifications":["notifications.manage"],"sessions":["students.devices.view"]};
+const STUDENT_PANEL_PERMISSIONS: Record<string,string[]> = {"profile":["students.view"],"progress":["students.view"],"subscriptions":["subscriptions.manage"],"orders":["finance.view"],"referrals":["referrals.manage", "data.all"],"ai":["ai.manage", "data.all"],"interest":["students.view","catalog.view"],"requests":["requests.manage"],"support":["support.manage"],"notifications":["notifications.manage", "data.all"],"sessions":["students.devices.view"]};
 type RelatedUser = { id: number; email: string; fullName: string };
 type ReferralsBlock = {
   code: { code: string; shareCount: number; createdAt: string } | null;
@@ -50,7 +50,7 @@ type AiBlock = {
 };
 type WaitlistRow = { id: number; courseSlug: string; source: string; status: string; notifiedAt: string | null; convertedAt: string | null; createdAt: string };
 type TrackInterest = { id: number; status: string; source: string; lastNotifiedVersion: number; createdAt: string; trackTitle: string; trackSlug: string; trackStatus: string };
-type PushDevice = { id: number; deviceId: string | null; platform: string; deviceLabel: string | null; status: string; lastSeenAt: string; createdAt: string };
+type PushDevice = { id: number; deviceId?: string | null; platform: string; deviceLabel: string | null; status: string; lastSeenAt: string; createdAt: string };
 type RefundRow = { id: number; requestNumber: string; orderNumber: string; amountMinor: number; currency: string; status: string; reason: string; createdAt: string; completedAt: string | null };
 
 type Student = {
@@ -489,15 +489,15 @@ export function Student360({ email }: { email: string }) {
           {can(["subscriptions.manage"]) && <Link href={`/admin?view=subscriptions&q=${encodeURIComponent(data.student.email)}`}><ShieldCheck size={14} /> الاشتراكات في اللوحة</Link>}
           {can(["finance.view"]) && <Link href={`/admin?view=orders&q=${encodeURIComponent(data.student.email)}`}><ReceiptText size={14} /> الطلبات</Link>}
           {can(["support.manage"]) && <Link href={`/admin?view=support&q=${encodeURIComponent(data.student.email)}`}><Headphones size={14} /> الدعم</Link>}
-          {can(["referrals.manage"]) && <Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}><Gift size={14} /> الإحالات والهدايا</Link>}
-          {can(["ai.manage"]) && <Link href={`/admin/ai?user=${encodeURIComponent(data.student.email)}`}><Bot size={14} /> أدوات مراس</Link>}
-          {can(["finance.view"]) && <Link href={`/admin/finance?search=${encodeURIComponent(data.student.email)}`}><CircleDollarSign size={14} /> المركز المالي</Link>}
+          {can(["referrals.manage", "data.all"]) && <Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}><Gift size={14} /> الإحالات والهدايا</Link>}
+          {can(["ai.manage", "data.all"]) && <Link href={`/admin/ai?user=${encodeURIComponent(data.student.email)}`}><Bot size={14} /> أدوات مراس</Link>}
+          {can(["finance.view", "data.all"]) && <Link href={`/admin/finance?search=${encodeURIComponent(data.student.email)}`}><CircleDollarSign size={14} /> المركز المالي</Link>}
         </div>
         <div className={styles.quickActions}>
           {can(["students.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("profile")}>تعديل بيانات الطالب</button>}
           {can(["students.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("status")}>{data.student.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب"}</button>}
           {can(["subscriptions.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("grant")}>منح مادة / تسجيل دفعة</button>}
-          {can(["notifications.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("notification")}>إرسال إشعار للطالب</button>}
+          {can(["notifications.manage", "data.all"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("notification")}>إرسال إشعار للطالب</button>}
           {owner && data.student.mfaEnabled && <button type="button" disabled={Boolean(busy)} onClick={() => void resetMfa()}>إعادة ضبط MFA</button>}
           <button type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> تحديث</button>
         </div>
@@ -514,8 +514,8 @@ export function Student360({ email }: { email: string }) {
           { icon: ReceiptText, permissions: ["finance.view"], label: "طلبات مدفوعة", value: data.summary.paidOrders.toLocaleString("ar-SA") },
           { icon: CircleDollarSign, permissions: ["finance.view"], label: "قيمة الطلبات المدفوعة", value: money(data.summary.paidValue) },
           { icon: Headphones, permissions: ["support.manage","notifications.manage"], label: "دعم مفتوح / إشعارات", value: `${data.summary.openTickets.toLocaleString("ar-SA")} / ${data.summary.unreadNotifications.toLocaleString("ar-SA")}` },
-          { icon: Gift, permissions: ["referrals.manage"], label: "إحالات مؤهلة / هدايا نشطة", value: `${(data.summary.qualifiedReferrals || 0).toLocaleString("ar-SA")} / ${(data.summary.activeRewards || 0).toLocaleString("ar-SA")}` },
-          { icon: Bot, permissions: ["ai.manage"], label: "أدوات مراس", value: data.summary.aiActive ? "اشتراك نشط" : "خطة مجانية" },
+          { icon: Gift, permissions: ["referrals.manage", "data.all"], label: "إحالات مؤهلة / هدايا نشطة", value: `${(data.summary.qualifiedReferrals || 0).toLocaleString("ar-SA")} / ${(data.summary.activeRewards || 0).toLocaleString("ar-SA")}` },
+          { icon: Bot, permissions: ["ai.manage", "data.all"], label: "أدوات مراس", value: data.summary.aiActive ? "اشتراك نشط" : "خطة مجانية" },
         ].filter(metric=>can(metric.permissions)).map(({ icon: Icon, label: metricLabel, value }) => <article className={styles.metric} key={metricLabel}><i><Icon size={17} /></i><span>{metricLabel}<strong>{value}</strong></span></article>)}
       </section>
 
@@ -583,7 +583,7 @@ export function Student360({ email }: { email: string }) {
         {can(["finance.view"]) && <section className={styles.panel} id="orders">
           <PanelHead icon={ReceiptText} title="الطلبات والفواتير" copy="العناصر والمبالغ وحالة الدفع والفاتورة المرتبطة" count={data.pagination?.orders?.total ?? data.orders.length} />{pager("orders")}
           {data.orders.length ? <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>الطلب</th><th>العناصر</th><th>المبلغ</th><th>الدفع</th><th>الحالة</th><th>التاريخ والفاتورة</th></tr></thead><tbody>{data.orders.map((order) => <tr key={order.orderNumber}>
-            <td><strong>{can(["finance.view"]) && <Link href={`/admin/finance?search=${encodeURIComponent(order.orderNumber)}`}><bdi className={styles.ltr}>{order.orderNumber}</bdi></Link>}</strong>{order.couponCode && <small>كوبون: <bdi className={styles.ltr}>{order.couponCode}</bdi></small>}</td>
+            <td><strong>{can(["finance.view", "data.all"]) ? <Link href={`/admin/finance?search=${encodeURIComponent(order.orderNumber)}`}><bdi className={styles.ltr}>{order.orderNumber}</bdi></Link> : <bdi className={styles.ltr}>{order.orderNumber}</bdi>}</strong>{order.couponCode && <small>كوبون: <bdi className={styles.ltr}>{order.couponCode}</bdi></small>}</td>
             <td><span className={styles.itemList}>{order.items.length ? order.items.map((item) => <span key={item.id}><strong>{courseName(item.courseSlug)}</strong><small>{money(item.total, order.currency)}{item.accessDurationDays ? ` · ${item.accessDurationDays.toLocaleString("ar-SA")} يوم وصول` : ""}</small></span>) : <span>لا توجد عناصر محفوظة</span>}</span></td>
             <td><span className={styles.money}>{money(order.total, order.currency)}</span><small>خصم {money(order.discount, order.currency)}</small></td>
             <td>{label(order.paymentMethod)}{order.tapChargeId && <small><bdi className={styles.ltr}>{order.tapChargeId}</bdi></small>}</td>
@@ -592,14 +592,14 @@ export function Student360({ email }: { email: string }) {
           </tr>)}</tbody></table></div> : <Empty>لا توجد طلبات أو فواتير مرتبطة بهذا الطالب.</Empty>}
         </section>}
 
-        {can(["referrals.manage"]) && <section className={styles.panel} id="referrals">
+        {can(["referrals.manage", "data.all"]) && <section className={styles.panel} id="referrals">
           <PanelHead icon={Gift} title="الإحالات والهدايا" copy="رمز الدعوة، من دعاه ومن دعا، والهدايا والكوبونات المملوكة" count={(data.referrals?.rewards.length || 0) + (data.referrals?.referred.length || 0)} />{pager("referrals", "الإحالات")}{pager("rewards", "الهدايا")}
           {data.referrals ? <>
             <div className={styles.facts}>
               <span className={styles.fact}><span>رمز الإحالة</span><strong><bdi className={styles.ltr}>{data.referrals.code?.code || "لم يُنشأ بعد"}</bdi></strong></span>
               <span className={styles.fact}><span>مرات المشاركة</span><strong>{(data.referrals.code?.shareCount || 0).toLocaleString("ar-SA")}</strong></span>
               <span className={styles.fact}><span>دُعي بواسطة</span><strong>{data.referrals.referredBy[0] ? `${data.referrals.referredBy[0].referrer.fullName} · ${label(data.referrals.referredBy[0].status)}` : "دخل مباشرة"}</strong></span>
-              <span className={styles.fact}><span>إدارة الإحالات</span><strong>{can(["referrals.manage"]) && <Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}>فتح في مركز الإحالات</Link>}</strong></span>
+              <span className={styles.fact}><span>إدارة الإحالات</span><strong>{can(["referrals.manage", "data.all"]) && <Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}>فتح في مركز الإحالات</Link>}</strong></span>
             </div>
             {data.referrals.referred.length ? <div className={styles.list}>{data.referrals.referred.map((row) => <article className={styles.listItem} key={row.id}><span><strong>{row.referred.fullName}</strong><small><bdi className={styles.ltr}>{row.referred.email}</bdi> · سُجل {safeDate(row.createdAt)}{row.qualifiedAt ? ` · تأهل ${safeDate(row.qualifiedAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={row.status === "qualified" ? "success" : row.status === "rejected" ? "danger" : "warning"}>{label(row.status)}</span>{row.reviewReason && <p>سبب المراجعة: {row.reviewReason}</p>}</article>)}</div> : <Empty>لم يدعُ الطالب أحدًا بعد.</Empty>}
             {data.referrals.rewards.length ? <div className={styles.cardGrid}>{data.referrals.rewards.map((reward) => <article className={styles.card} key={reward.id}><div className={styles.cardHead}><span><h3>{reward.rewardLabel}</h3><p>{label(reward.sourceType)} · صدرت {safeDate(reward.issuedAt, false)}</p></span><span className={styles.badge} data-tone={tone(reward.status)}>{label(reward.status)}</span></div><div className={styles.facts}><span className={styles.fact}><span>الكوبون</span><strong><bdi className={styles.ltr}>{reward.coupon?.code || "اشتراك رقمي"}</bdi></strong></span><span className={styles.fact}><span>الاستخدام</span><strong>{reward.coupon ? `${reward.coupon.usedCount.toLocaleString("ar-SA")} مرة` : "—"}</strong></span><span className={styles.fact}><span>الصلاحية</span><strong>{reward.expiresAt ? safeDate(reward.expiresAt, false) : "دون انتهاء"}</strong></span><span className={styles.fact}><span>النطاق</span><strong>{reward.coupon?.courseSlug ? courseName(reward.coupon.courseSlug) : "كل المواد"}</strong></span></div>{reward.note && <p className={styles.reason}>{reward.note}</p>}</article>)}</div> : <Empty>لم تصدر هدايا لهذا الطالب.</Empty>}
@@ -607,8 +607,8 @@ export function Student360({ email }: { email: string }) {
           </> : <Empty>بيانات الإحالات غير متاحة.</Empty>}
         </section>}
 
-        {can(["ai.manage"]) && <section className={`${styles.panel} ${styles.half}`} id="ai">
-          <PanelHead icon={Bot} title="أدوات مراس" copy="الاستحقاقات والاشتراكات المدفوعة واستخدام آخر 30 يومًا" count={data.pagination?.ai?.total ?? data.ai?.entitlements.length ?? 0} />{pager("ai", "الاستحقاقات")}{pager("aiOrders", "طلبات الأدوات")}<p>{can(["ai.manage"]) && <Link href={`/admin/ai?user=${encodeURIComponent(data.student.email)}`}>إدارة اشتراك الأدوات لهذا الطالب</Link>}</p>
+        {can(["ai.manage", "data.all"]) && <section className={`${styles.panel} ${styles.half}`} id="ai">
+          <PanelHead icon={Bot} title="أدوات مراس" copy="الاستحقاقات والاشتراكات المدفوعة واستخدام آخر 30 يومًا" count={data.pagination?.ai?.total ?? data.ai?.entitlements.length ?? 0} />{pager("ai", "الاستحقاقات")}{pager("aiOrders", "طلبات الأدوات")}<p>{can(["ai.manage", "data.all"]) && <Link href={`/admin/ai?user=${encodeURIComponent(data.student.email)}`}>إدارة اشتراك الأدوات لهذا الطالب</Link>}</p>
           {data.ai && (data.ai.entitlements.length || data.ai.orders.length || data.ai.usage.length) ? <div className={styles.list}>
             {data.ai.entitlements.map((row) => <article className={styles.listItem} key={`ent-${row.id}`}><span><strong>{label(row.source)}</strong><small>من {safeDate(row.startsAt, false)} · {row.expiresAt ? `حتى ${safeDate(row.expiresAt, false)}` : "مفتوح"}{row.createdBy ? ` · بواسطة ${row.createdBy}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
             {data.ai.orders.map((row) => <article className={styles.listItem} key={`ai-order-${row.id}`}><span><strong>اشتراك مدفوع <bdi className={styles.ltr}>{row.orderNumber}</bdi></strong><small>{money(row.amount, row.currency)} · {safeDate(row.paidAt || row.createdAt)}{row.entitlementExpiresAt ? ` · حتى ${safeDate(row.entitlementExpiresAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
@@ -631,7 +631,7 @@ export function Student360({ email }: { email: string }) {
           {data.support.length ? <div className={styles.list}>{data.support.map((ticket) => <article className={styles.listItem} key={ticket.id}><span><strong>{can(["support.manage"]) && <Link href={`/admin?view=support&q=${encodeURIComponent(ticket.ticketNumber)}`}>{ticket.title}</Link>}</strong><small><bdi className={styles.ltr}>{ticket.ticketNumber}</bdi> · {label(ticket.category)} · {safeDate(ticket.createdAt)}</small></span><span className={styles.badge} data-tone={tone(ticket.status)}>{label(ticket.status)}</span><p>{ticket.message}</p>{ticket.replies.length > 0 && <details className={styles.details}><summary>{ticket.replies.length.toLocaleString("ar-SA")} ردود</summary>{ticket.replies.map((reply) => <div className={styles.reply} key={reply.id}><strong>{reply.authorRole === "student" ? "الطالب" : "فريق مراس"}{reply.internal ? " · ملاحظة داخلية" : ""}</strong><p>{reply.body}</p><small>{safeDate(reply.createdAt)}</small></div>)}</details>}</article>)}</div> : <Empty>لا توجد تذاكر دعم.</Empty>}
         </section>}
 
-        {can(["notifications.manage"]) && <section className={`${styles.panel} ${styles.half}`} id="notifications">
+        {can(["notifications.manage", "data.all"]) && <section className={`${styles.panel} ${styles.half}`} id="notifications">
           <PanelHead icon={Bell} title="الإشعارات" copy="حالة القراءة والإرسال الفوري وموضع العرض" count={data.pagination?.notifications?.total ?? data.notifications.length} />{pager("notifications")}
           {data.notifications.length ? <div className={styles.list}>{data.notifications.map((notice) => <article className={`${styles.listItem} ${!notice.readAt ? styles.notificationUnread : ""}`} key={notice.id}><span><strong>{notice.title}</strong><small>{safeDate(notice.createdAt)} · {label(notice.presentation)}</small></span><span className={styles.badge} data-tone={notice.readAt ? "success" : "warning"}>{notice.readAt ? "مقروء" : "غير مقروء"}</span><p>{notice.body}</p><p>{notice.pushEnabled ? `إشعار فوري: ${label(notice.pushStatus)} · ${notice.pushAttempts.toLocaleString("ar-SA")} محاولة` : "إشعار داخل المنصة فقط"}{notice.actionLabel ? ` · الإجراء: ${notice.actionLabel}` : ""}</p></article>)}</div> : <Empty>لا توجد إشعارات مخصصة لهذا الطالب.</Empty>}
         </section>}

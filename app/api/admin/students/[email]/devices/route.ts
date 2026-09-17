@@ -1,3 +1,4 @@
+import { supervisorScopeId, scopedStudentSql } from "@/lib/supervisor-data-scope";
 import { and, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { authDevices, users } from "@/db/schema";
@@ -25,12 +26,12 @@ async function authorize(request: Request, mutation: boolean) {
   }
   return { error: null, admin };
 }
-async function studentFor(context: Context) {
+async function studentFor(context: Context, admin: NonNullable<Awaited<ReturnType<typeof getSessionUser>>>) {
   const raw = (await context.params).email;
   let email: string;
   try { email = cleanText(decodeURIComponent(raw), 180).toLowerCase(); } catch { return null; }
   if (!/^\S+@\S+\.\S+$/.test(email)) return null;
-  const [student] = await getDb().select({ id: users.id }).from(users).where(and(eq(users.email, email), eq(users.role, "student"))).limit(1);
+  const [student] = await getDb().select({ id: users.id }).from(users).where(and(eq(users.email, email), eq(users.role, "student"), scopedStudentSql(await supervisorScopeId(admin), users.id, "id"))).limit(1);
   return student || null;
 }
 async function snapshot(userId: number) {
@@ -39,14 +40,14 @@ async function snapshot(userId: number) {
 }
 export async function GET(request: Request, context: Context) {
   const auth = await authorize(request, false); if (auth.error) return auth.error;
-  const student = await studentFor(context); if (!student) return jsonError("الطالب غير موجود", 404);
+  const student = await studentFor(context, auth.admin!); if (!student) return jsonError("الطالب غير موجود", 404);
   return Response.json(await snapshot(student.id), { headers: HEADERS });
 }
 async function mutate(request: Request, context: Context, legacyDelete: boolean) {
   const auth = await authorize(request, true); if (auth.error) return auth.error;
   try {
     const command = parseDeviceCommand(await readBoundedJsonObject(request, 8192), legacyDelete);
-    const student = await studentFor(context); if (!student) return jsonError("الطالب غير موجود", 404);
+    const student = await studentFor(context, auth.admin!); if (!student) return jsonError("الطالب غير موجود", 404);
     const result = await getDb().transaction(tx => manageRegisteredDeviceTx(tx, { ...command, userId: student.id, actorEmail: auth.admin!.email, ipAddress: clientIp(request), now: new Date().toISOString() }));
     if (!result.found) return jsonError("الجهاز غير موجود في حساب الطالب", 404);
     return Response.json({ ok: true, changed: result.changed, sessionsRevoked: result.sessionsRevoked, ...await snapshot(student.id) }, { headers: HEADERS });

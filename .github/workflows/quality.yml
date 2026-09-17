@@ -79,6 +79,8 @@ jobs:
             .data/study-browser/
             .data/platform-browser/
             .data/qa-device-return-report.json
+            .data/qa-supervisor-scope-report.json
+            .data/qa-email-change-results.json
           include-hidden-files: true
           retention-days: 7
 

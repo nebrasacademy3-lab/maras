@@ -201,7 +201,7 @@ function AdminWorkspace() {
     {tab === "pages" && <PublicContentEditor />}
     {tab === "requests" && <Requests rows={data.requests} courses={data.courses} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "support" && <Support rows={data.tickets} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
-    {tab === "catalog" && (capabilities.can(["catalog.manage"])?<CatalogAdmin key={destinationId} section={destinationId} data={data} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity}/>:<CatalogReadOnly section={destinationId} data={data} colors={colors}/>)}
+    {tab === "catalog" && (capabilities.can(["catalog.manage"]) && (!["institutions", "specialties"].includes(destinationId) || capabilities.can(["data.all"]))?<CatalogAdmin key={destinationId} section={destinationId} data={data} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity}/>:<CatalogReadOnly section={destinationId} data={data} colors={colors}/>)}
     {tab === "commerce" && <Commerce section={destinationId} data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "finance" && <AdminFinance key={serverSearch} initialSearch={serverSearch} onStepUpRequired={stepUpRequired} />}
     {tab === "operations" && <AdminOperations onStepUpRequired={stepUpRequired} />}
@@ -231,7 +231,7 @@ function Overview({ data, colors }: { data: AdminData; colors: Colors }) {
     <View style={styles.metricGrid}>{metrics.filter(item=>capabilities.can([item.permission])).map((item) => <Card key={item.label} style={styles.metric}><Ionicons name={item.icon} size={24} color={colors.primary} /><Text style={[styles.metricValue, { color: colors.text }]}>{item.value}</Text><Text style={[styles.metricLabel, { color: colors.textSoft }]}>{item.label}</Text></Card>)}</View>
     <SectionTitle title="طابور العمل" />
     <Card>{capabilities.can(["requests.manage"])&&<Queue label="طلبات مواد مفتوحة" value={data.metrics.openRequests} colors={colors}/>}{capabilities.can(["support.manage"])&&<Queue label="تذاكر دعم مفتوحة" value={data.metrics.openTickets} colors={colors}/>}{capabilities.can(["catalog.manage"])&&<Queue label="تقييمات تنتظر المراجعة" value={data.metrics.pendingReviews} colors={colors}/>}</Card>
-    {capabilities.can(["operations.manage"])&&<>
+    {capabilities.can(["operations.manage", "data.all"])&&<>
     <SectionTitle title="جاهزية الخدمات" />
     <Card>{Object.entries(data.services).map(([key, ready]) => <View key={key} style={styles.service}><Ionicons name={ready ? "checkmark-circle" : "alert-circle"} size={21} color={ready ? colors.success : colors.warning} /><Text style={[styles.serviceText, { color: colors.text }]}>{({ assistant: "المساعد المعرفي", payments: "بوابة Tap للدفع", email: "استعادة الحساب", videoSigning: "الفيديو الخاص" } as Record<string, string>)[key] || "خدمة إضافية"}</Text><Text style={{ color: ready ? colors.success : colors.warning, fontSize: 9, fontWeight: "900" }}>{ready ? "جاهز" : "يحتاج إعداد"}</Text></View>)}</Card>
     </>}

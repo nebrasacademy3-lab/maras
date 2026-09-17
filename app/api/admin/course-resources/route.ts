@@ -1,3 +1,4 @@
+import { supervisorScopeId, supervisorInstitutionAllowed, scopedCourseSql, supervisorCourseAllowed } from "@/lib/supervisor-data-scope";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, catalogCourses, catalogInstitutions, catalogSpecialties, courseResources, lessonsDb } from "@/db/schema";
@@ -138,8 +139,10 @@ export async function GET(request: Request) {
   const selectedCourse = cleanText(new URL(request.url).searchParams.get("course"), 120).toLowerCase();
   if (selectedCourse && !/^[a-z0-9][a-z0-9._-]*$/.test(selectedCourse)) return jsonError("معرّف المادة غير صالح");
   const db = getDb();
+  const scopeId = await supervisorScopeId(guarded.authorization.user);
+  if (selectedCourse && !await supervisorCourseAllowed(guarded.authorization.user, selectedCourse)) return jsonError("المادة خارج نطاق إشرافك", 403);
   const [courseRows, institutionRows, specialtyRows, resourceRows, lessonRows] = await Promise.all([
-    db.select().from(catalogCourses).orderBy(asc(catalogCourses.institutionSlug), asc(catalogCourses.specialtySlug), asc(catalogCourses.title)),
+    db.select().from(catalogCourses).where(scopedCourseSql(scopeId, catalogCourses.slug)).orderBy(asc(catalogCourses.institutionSlug), asc(catalogCourses.specialtySlug), asc(catalogCourses.title)),
     db.select({ slug: catalogInstitutions.slug, name: catalogInstitutions.name }).from(catalogInstitutions),
     db.select({ slug: catalogSpecialties.slug, name: catalogSpecialties.name }).from(catalogSpecialties),
     selectedCourse
@@ -175,6 +178,7 @@ export async function POST(request: Request) {
   try { courseSlug = safeSlug(new URL(request.url).searchParams.get("course")); }
   catch (error) { return jsonError(error instanceof Error ? error.message : "معرّف المادة غير صالح"); }
   const db = getDb();
+  if (!await supervisorCourseAllowed(guarded.authorization.user, courseSlug)) return jsonError("المادة خارج نطاق إشرافك", 403);
   const [course] = await db.select({ slug: catalogCourses.slug }).from(catalogCourses).where(eq(catalogCourses.slug, courseSlug)).limit(1);
   if (!course) return jsonError("المادة غير موجودة", 404);
 
@@ -251,12 +255,14 @@ export async function PATCH(request: Request) {
     const now = new Date().toISOString();
     if (action === "scope") {
       const courseSlug = safeSlug(payload.courseSlug);
+      if (!await supervisorCourseAllowed(guarded.authorization.user, courseSlug)) return jsonError("المادة خارج نطاق إشرافك", 403);
       const audienceScope = cleanText(payload.audienceScope, 30);
       if (audienceScope !== "specialty" && audienceScope !== "institution") throw new ResourceInputError("نطاق ظهور المادة غير صالح");
       const updated = await db.transaction(async (tx) => {
         await tx.execute(sql`SELECT slug FROM catalog_courses WHERE slug = ${courseSlug} FOR UPDATE`);
         const [before] = await tx.select().from(catalogCourses).where(eq(catalogCourses.slug, courseSlug)).limit(1);
         if (!before) throw new ResourceInputError("المادة غير موجودة");
+        if (audienceScope === "institution" && !await supervisorInstitutionAllowed(guarded.authorization.user, before.institutionSlug)) throw new ResourceInputError("توسيع نطاق المادة يحتاج تفويض الجامعة كاملة");
         const [after] = await tx.update(catalogCourses).set({ audienceScope, updatedAt: now }).where(eq(catalogCourses.slug, courseSlug)).returning();
         await tx.insert(auditLogs).values({ actorEmail: guarded.authorization.actor, action: "update_audience_scope", entityType: "catalog_course", entityId: courseSlug, beforeJson: json({ audienceScope: before.audienceScope }), afterJson: json({ audienceScope: after.audienceScope }), ipAddress: clientIp(request), createdAt: now });
         return after;
@@ -267,6 +273,7 @@ export async function PATCH(request: Request) {
     const id = integer(payload.id, "معرّف الملف", 1, 2_147_483_647);
     const [before] = await db.select().from(courseResources).where(eq(courseResources.id, id)).limit(1);
     if (!before) return jsonError("الملف غير موجود", 404);
+    if (!await supervisorCourseAllowed(guarded.authorization.user, before.courseSlug)) return jsonError("الملف خارج نطاق إشرافك", 403);
     if (action === "rescan") {
       const scan = await scanStoredFile(before);
       const values = {
@@ -314,6 +321,7 @@ export async function DELETE(request: Request) {
   const db = getDb();
   const [before] = await db.select().from(courseResources).where(eq(courseResources.id, id)).limit(1);
   if (!before) return jsonError("الملف غير موجود", 404);
+    if (!await supervisorCourseAllowed(guarded.authorization.user, before.courseSlug)) return jsonError("الملف خارج نطاق إشرافك", 403);
   const now = new Date().toISOString();
   try {
     await db.transaction(async (tx) => {

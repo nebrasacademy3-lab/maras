@@ -1,3 +1,4 @@
+import { supervisorCourseAllowed } from "@/lib/supervisor-data-scope";
 import { timingSafeEqual } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -150,6 +151,7 @@ export async function POST(request: Request) {
   if (!compatibleVideoType(declaredType, detectedType)) { await discardRawUpload(); return jsonError("محتوى الفيديو لا يطابق نوع الملف"); }
   const contentType = declaredType === "video/quicktime" && detectedType === "video/mp4" ? "video/quicktime" : declaredType || detectedType;
 
+  if (!await supervisorCourseAllowed(user, courseSlug)) { await discardRawUpload(); return jsonError("المادة خارج نطاق إشرافك", 403); }
   const course = await getCourseCatalog(courseSlug, true);
   if (!course?.units.some((unit) => unit.lessons.some((lesson) => lesson.id === lessonId))) { await discardRawUpload(); return jsonError("تعذر مطابقة المادة أو الدرس"); }
 

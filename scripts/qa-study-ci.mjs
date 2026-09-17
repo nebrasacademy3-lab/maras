@@ -19,6 +19,7 @@ await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "sc
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-device-return.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-admin-navigation-security.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-email-change.mjs"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-supervisor-data-scope.ts"]);
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3100"], { env, stdio: ["ignore", openSync(".data/study-server.log", "w"), "inherit"] });
 const worker = spawn(process.execPath, ["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/ai-worker.ts"], { env, stdio: ["ignore", openSync(".data/study-worker.log", "w"), "inherit"] });
 try {

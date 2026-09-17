@@ -31,7 +31,11 @@ try{
  assert.deepEqual(scoped.settings,{});assert.equal(Object.keys(scoped.services).length,0);
  const wrongActor=await consoleApi.GET(req("/api/admin/console?view=courses&scope=screen",staffSession.token,undefined,{"x-meras-acting-user":String(other.id)}));assert.equal(wrongActor.status,403);
  pass("scoped catalog response omits unrelated domains; a stale actor header cannot authorize another account");
- const context={params:Promise.resolve({email:student.email})};const student360=await profile.GET(req(`/api/admin/students/${student.email}`,staffSession.token),context);assert.equal(student360.status,200);const data=await student360.json();
+ const context={params:Promise.resolve({email:student.email})};
+ assert.equal((await profile.GET(req(`/api/admin/students/${student.email}`,staffSession.token),context)).status,403,"student-view alone cannot replace a missing data scope");
+ await db.update(s.users).set({universitySlug:"qa-university",specialty:"علوم الاختبار"}).where(eq(s.users.id,student.id));
+ await db.insert(s.supervisorAssignments).values({supervisorId:staff.id,institutionSlug:"qa-university",specialty:"علوم الاختبار",active:true});
+ const student360=await profile.GET(req(`/api/admin/students/${student.email}`,staffSession.token),context);assert.equal(student360.status,200);const data=await student360.json();
  assert.deepEqual(data.orders,[]);assert.deepEqual(data.sessions,[]);assert.deepEqual(data.support,[]);assert.deepEqual(data.ai.orders,[]);assert.equal(data.summary.paidValue,0);
  pass("student-view staff receive no financial, device or support data from the full student profile");
  assert.equal((await partners.POST(req("/api/admin/partners",ownerFixture.token,form()))).status,428);

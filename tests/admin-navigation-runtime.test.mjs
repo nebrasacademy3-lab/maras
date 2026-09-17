@@ -19,7 +19,7 @@ test('admin navigation has exactly eight groups, no duplicate task IDs or destin
 });
 test('ungranted student, finance, staff, metadata and counts never enter a material supervisor navigation/search',()=>{
  const groups=nav.visibleAdminNavigation(['catalog.manage'],false);
- assert.deepEqual(groups.map(g=>g.id),['home','education','finance']); // Only catalog-owned bundles live in finance.
+ assert.deepEqual(groups.map(g=>g.id),['home','education']); // Cross-course bundles require an explicit global-data scope.
  const items=groups.flatMap(g=>g.items);
  for(const id of ['students','roster','subscriptions','finance','orders','coupons','audit','staff','seo','pages'])assert.equal(items.some(i=>i.id===id),false,id);
  for(const word of ['الطلاب','المدفوعات','المشرفون','الاستردادات'])assert.equal(nav.searchAdminNavigation(groups,word).length,0,word);

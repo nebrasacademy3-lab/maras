@@ -1,3 +1,4 @@
+import { supervisorCourseAllowed } from "@/lib/supervisor-data-scope";
 import { timingSafeEqual } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -182,6 +183,8 @@ export async function GET(request: Request) {
     return jsonError("حجم الفيديو غير صالح", 413);
   }
 
+  if (!await supervisorCourseAllowed(access.user, courseSlug)) return jsonError("المادة خارج نطاق إشرافك", 403);
+
   if (activeStorageProvider() !== "s3") {
     return jsonError("التخزين المباشر غير مفعّل", 503);
   }
@@ -282,6 +285,7 @@ export async function POST(request: Request) {
     return jsonError("حجم الفيديو غير صالح", 413);
   }
 
+  if (!await supervisorCourseAllowed(access.user, courseSlug)) return jsonError("المادة خارج نطاق إشرافك", 403);
   const course = await getCourseCatalog(courseSlug, true);
 
   if (!course?.units.some((unit) =>

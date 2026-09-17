@@ -11,6 +11,7 @@ export type SupervisorScope = {
 };
 
 export type ScopedCourse = {
+  audienceScope?: "specialty" | "institution";
   universitySlug?: string | null;
   specialty?: string | null;
   specialtySlug?: string | null;
@@ -29,9 +30,10 @@ export async function getSupervisorScopes(supervisorId: number): Promise<Supervi
 
 /** A configured assignment is an allow-list. Null fields are explicit wildcards for future admin-only scopes. */
 export function supervisorScopeAllows(scope: Pick<SupervisorScope, "institutionSlug" | "specialty">, subject: ScopedCourse | ScopedStudent) {
-  const institutionMatches = !scope.institutionSlug || scope.institutionSlug === (subject.universitySlug || "");
+  const institutionMatches = scope.institutionSlug === null || scope.institutionSlug === (subject.universitySlug || "");
   const specialtyValue = subject.specialty || subject.specialtySlug || "";
-  const specialtyMatches = !scope.specialty || scope.specialty === specialtyValue || scope.specialty === (subject.specialtySlug || "");
+  const institutionWide = "audienceScope" in subject && subject.audienceScope === "institution";
+  const specialtyMatches = scope.specialty === null || !institutionWide && (scope.specialty === specialtyValue || scope.specialty === (subject.specialtySlug || ""));
   return institutionMatches && specialtyMatches;
 }
 

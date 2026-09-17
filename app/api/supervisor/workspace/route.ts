@@ -1,3 +1,5 @@
+import { supervisorScopeId, scopedCourseSql } from "@/lib/supervisor-data-scope";
+import { supervisorScopesAllow } from "@/lib/supervisor-scope";
 import { hasPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, asc, desc, eq } from "drizzle-orm";
@@ -12,15 +14,15 @@ async function scopeFor(request: Request) {
   const user = await getSessionUser(request);
   if (!roleAllowed(user, ["supervisor", "admin"])) return null;
   const assignments = user!.role === "admin" ? [] : await getDb().select().from(supervisorAssignments).where(and(eq(supervisorAssignments.supervisorId, user!.id), eq(supervisorAssignments.active, true)));
-  return { user: user!, assignments, globalCatalog: await hasPermission(user, ADMIN_PERMISSIONS.CATALOG_VIEW) };
+  return { user: user!, assignments, globalCatalog: await hasPermission(user, ADMIN_PERMISSIONS.CATALOG_VIEW), globalData: await hasPermission(user, ADMIN_PERMISSIONS.DATA_ALL) };
 }
 
 function assigned(course: { universitySlug:string; specialty:string; audienceScope?:"specialty"|"institution" }, scope: Awaited<ReturnType<typeof scopeFor>>) {
   if (!scope) return false;
   // A configured supervisor assignment is an allow-list. The catalog permission
   // grants access to the workspace, but never widens an explicit assignment.
-  if (scope.user.role === "admin" || scope.assignments.length === 0) return scope.globalCatalog;
-  return scope.assignments.some((item) => (!item.institutionSlug || item.institutionSlug === course.universitySlug) && (course.audienceScope === "institution" ? !item.specialty : !item.specialty || item.specialty === course.specialty));
+  if (scope.user.role === "admin" || scope.globalData) return scope.globalCatalog;
+  return supervisorScopesAllow(scope.assignments, course);
 }
 
 export async function GET(request: Request) {
@@ -28,11 +30,12 @@ export async function GET(request: Request) {
   if (!scope) return jsonError("غير مصرح", 403);
   if (!await checkRateLimit("supervisor-workspace-read", `user:${scope.user.id}:${clientIp(request)}`, 60, 60)) return jsonError("طلبات كثيرة. حاول بعد دقيقة.", 429);
   const db = getDb();
+  const scopeId = await supervisorScopeId(scope.user);
   const [allCourses, units, lessons, videos] = await Promise.all([
     getCoursesCatalog(true),
-    db.select().from(courseUnitsDb).orderBy(asc(courseUnitsDb.position)),
-    db.select().from(lessonsDb).orderBy(asc(lessonsDb.position)),
-    db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(400),
+    db.select().from(courseUnitsDb).where(scopedCourseSql(scopeId, courseUnitsDb.courseSlug)).orderBy(asc(courseUnitsDb.position)),
+    db.select().from(lessonsDb).where(scopedCourseSql(scopeId, lessonsDb.courseSlug)).orderBy(asc(lessonsDb.position)),
+    db.select().from(videoAssets).where(scopedCourseSql(scopeId, videoAssets.courseSlug)).orderBy(desc(videoAssets.createdAt)).limit(400),
   ]);
   const courses = allCourses.filter((course) => assigned(course, scope));
   const slugs = new Set(courses.map((course) => course.slug));

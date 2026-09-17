@@ -21,7 +21,7 @@ export const ADMIN_NAVIGATION: readonly AdminGroup[] = [
     destination("content", "الوحدات والدروس والفيديو", "/admin?view=content", "catalog", ["catalog.view"]),
     destination("resources", "ملفات الدروس", "/admin/course-resources", "catalog", ["catalog.view"]),
     destination("reviews", "مراجعة التقييمات", "/admin?view=reviews", "reviews", ["catalog.manage"]),
-    destination("tracks", "المسارات وقوائم الاهتمام", "/admin/learning-tracks", "tracks", ["roadmap.manage"]),
+    destination("tracks", "المسارات وقوائم الاهتمام", "/admin/learning-tracks", "tracks", ["roadmap.manage", "data.all"]),
   ] },
   { id: "students", title: "الطلاب والاشتراكات", description: "الملف والوصول والأجهزة", items: [
     destination("students", "الطلاب وملفاتهم", "/admin?view=students", "users", ["students.view"]),
@@ -30,16 +30,16 @@ export const ADMIN_NAVIGATION: readonly AdminGroup[] = [
   ] },
   { id: "finance", title: "المبيعات والمالية", description: "كل عملية بسجل واضح", items: [
     destination("orders", "الطلبات والمدفوعات", "/admin?view=orders", "commerce", ["finance.view"]),
-    destination("finance", "الاستردادات والتسويات", "/admin/finance", "finance", ["finance.view"]),
-    destination("purchases", "مشتريات التطبيقات", "/admin/purchases", "purchases", ["finance.view"]),
-    destination("bundles", "الباقات والعروض", "/admin/bundles", "bundles", ["catalog.view"]),
+    destination("finance", "الاستردادات والتسويات", "/admin/finance", "finance", ["finance.view", "data.all"]),
+    destination("purchases", "مشتريات التطبيقات", "/admin/purchases", "purchases", ["finance.view", "data.all"]),
+    destination("bundles", "الباقات والعروض", "/admin/bundles", "bundles", ["catalog.view", "data.all"]),
     destination("coupons", "الكوبونات", "/admin?view=coupons", "commerce", ["finance.manage"]),
   ] },
   { id: "communication", title: "التواصل والتسويق", description: "الدعم والطلبات والإحالات", items: [
     destination("support", "تذاكر الدعم", "/admin?view=support", "support", ["support.manage"]),
     destination("requests", "طلبات توفير المواد", "/admin?view=requests", "requests", ["requests.manage"]),
-    destination("notifications", "الإعلانات والإشعارات", "/admin?view=notifications", "communication", ["notifications.manage"]),
-    destination("referrals", "الإحالات والمكافآت", "/admin/referrals", "referrals", ["referrals.manage"]),
+    destination("notifications", "الإعلانات والإشعارات", "/admin?view=notifications", "communication", ["notifications.manage", "data.all"]),
+    destination("referrals", "الإحالات والمكافآت", "/admin/referrals", "referrals", ["referrals.manage", "data.all"]),
     destination("partners", "الشركاء والبيانات المثبتة", "/admin/partners", "partners", ["content.manage"]),
   ] },
   { id: "website", title: "الموقع والهوية", description: "المحتوى العام والاكتشاف", items: [
@@ -52,9 +52,9 @@ export const ADMIN_NAVIGATION: readonly AdminGroup[] = [
     destination("audit", "سجل التدقيق", "/admin?view=audit", "audit", ["audit.view"]),
   ] },
   { id: "operations", title: "التشغيل والإعدادات", description: "صحة الخدمات والمهام", items: [
-    destination("operations", "مهام التشغيل وصحة الخدمات", "/admin/operations", "operations", ["operations.manage"]),
-    destination("files", "فحص الملفات والحجر", "/admin/files", "files", ["operations.manage"]),
-    destination("ai", "أدوات مراس وموارد Gemini", "/admin/ai", "ai", ["ai.manage"]),
+    destination("operations", "مهام التشغيل وصحة الخدمات", "/admin/operations", "operations", ["operations.manage", "data.all"]),
+    destination("files", "فحص الملفات والحجر", "/admin/files", "files", ["operations.manage", "data.all"]),
+    destination("ai", "أدوات مراس وموارد Gemini", "/admin/ai", "ai", ["ai.manage", "data.all"]),
   ] },
 ];
 export const ADMIN_SELF_SECURITY = destination("security", "حسابي وأماني", "/admin/security", "security", []);

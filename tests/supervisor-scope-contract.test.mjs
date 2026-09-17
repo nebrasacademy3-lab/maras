@@ -26,7 +26,8 @@ test("configured supervisor assignments are an allow-list across rosters, consol
   assert.match(consoleRoute, /visibleTicketRows/);
   assert.match(consoleRoute, /scopedSupervisor/);
   assert.match(studentRoute, /هذا الطالب خارج نطاق إشرافك المحدد/);
-  assert.match(workspaceRoute, /scope\.assignments\.length === 0/);
+  assert.doesNotMatch(workspaceRoute, /scope\.assignments\.length === 0/);
+  assert.match(workspaceRoute, /scope\.globalData/);
   assert.match(workspaceRoute, /scope\.user\.role === "admin"/);
   assert.match(workspaceRoute, /configured supervisor assignment is an allow-list/);
 });

@@ -1,3 +1,4 @@
+import { supervisorCourseAllowed } from "@/lib/supervisor-data-scope";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { auditLogs, catalogCourses } from "@/db/schema";
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
   try { form = await readBoundedFormData(request, MAX_COVER_BYTES + 1024 * 1024); }
   catch (error) { return jsonError(error instanceof RequestBodyTooLargeError ? error.message : "تعذر قراءة الغلاف", error instanceof RequestBodyTooLargeError ? 413 : 400); }
   const slug = cleanText(form.get("courseSlug"), 80).toLowerCase();
+  if (!await supervisorCourseAllowed(user, slug)) return jsonError("المادة خارج نطاق إشرافك", 403);
   const file = form.get("file");
   if (!await getCourseCatalog(slug, true)) return jsonError("المادة غير موجودة", 404);
   if (!(file instanceof File) || !allowedTypes.has(file.type.toLowerCase())) return jsonError("ارفع غلاف PNG أو JPG أو WebP");

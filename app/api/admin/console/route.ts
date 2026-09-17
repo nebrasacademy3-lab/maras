@@ -1,3 +1,5 @@
+import { supervisorConsoleMutationAllowed } from "@/lib/supervisor-console-policy";
+import { supervisorCourseAllowed, supervisorScopeId, scopedInstitutionSql, scopedSubjectSql, scopedCourseSql, scopedStudentSql, scopedOrderSql, scopedRequestSql } from "@/lib/supervisor-data-scope";
 import {adminConsoleNeeds} from "@/lib/admin-console-scope";
 import { revalidatePath } from "next/cache";
 import { CONSOLE_VIEWS, consoleActionPermissions, permissionsCover } from "@/lib/staff-policy";
@@ -101,7 +103,9 @@ export async function GET(request: Request) {
   const query = new URL(request.url).searchParams;
   const grants = authorization.user ? await permissionsForUser(authorization.user) : new Set(Object.values(ADMIN_PERMISSIONS));
   const owner = Boolean(authorization.user?.isPlatformOwner);
-  const supervisorScopes = authorization.user?.role === "supervisor" ? await getSupervisorScopes(authorization.user.id) : [];
+  const scopeId = await supervisorScopeId(authorization.user);
+  const scopedSupervisor = scopeId !== null;
+  const supervisorScopes = scopedSupervisor ? await getSupervisorScopes(scopeId) : [];
   const can = (permission: string) => permissionsCover(grants, [permission]);
   const compactMobile = query.get("client") === "mobile";
   const view = query.get("view") || "overview";
@@ -111,12 +115,12 @@ export async function GET(request: Request) {
   const page = adminPage(query.get("page"));
   const needle = (query.get("q") || "").trim().slice(0, 160);
   const pattern = `%${needle.replace(/[\\%_]/g, "\\$&")}%`;
-  const userFilter = !owner ? and(eq(users.role, "student"), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern)) : undefined) : ["students", "staff"].includes(view) ? and(view === "students" ? eq(users.role, "student") : inArray(users.role, ["admin", "supervisor"]), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern), ilike(users.specialty, pattern)) : undefined) : undefined;
-  const orderFilter = view === "orders" && needle ? or(ilike(orders.orderNumber, pattern), ilike(orders.customerEmail, pattern), ilike(orders.customerName, pattern), ilike(orders.courseSlug, pattern), ilike(orders.status, pattern)) : undefined;
-  const requestFilter = view === "requests" && needle ? or(sql`${courseRequests.id}::text = ${needle}`, ilike(courseRequests.name, pattern), ilike(courseRequests.courseName, pattern), ilike(courseRequests.phone, pattern), ilike(courseRequests.university, pattern), ilike(courseRequests.specialty, pattern), sql`${courseRequests.userId} IN (SELECT id FROM users WHERE email ILIKE ${pattern})`) : undefined;
-  const ticketFilter = view === "support" && needle ? or(ilike(supportTickets.ticketNumber, pattern), ilike(supportTickets.userEmail, pattern), ilike(supportTickets.title, pattern), ilike(supportTickets.message, pattern)) : undefined;
-  const accessFilter = view === "subscriptions" && needle ? or(ilike(courseAccess.userEmail, pattern), ilike(courseAccess.courseSlug, pattern), ilike(courseAccess.orderNumber, pattern), sql`${courseAccess.userEmail} IN (SELECT email FROM users WHERE full_name ILIKE ${pattern} OR phone ILIKE ${pattern})`) : undefined;
-  const reviewFilter = view === "reviews" && needle ? or(ilike(courseReviews.userEmail, pattern), ilike(courseReviews.courseSlug, pattern), ilike(courseReviews.body, pattern), ilike(courseReviews.status, pattern)) : undefined;
+  const userFilter = and(scopedStudentSql(scopeId, users.id, "id"), !owner ? and(eq(users.role, "student"), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern)) : undefined) : ["students", "staff"].includes(view) ? and(view === "students" ? eq(users.role, "student") : inArray(users.role, ["admin", "supervisor"]), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern), ilike(users.specialty, pattern)) : undefined) : undefined);
+  const orderFilter = and(scopedOrderSql(scopeId, orders.orderNumber), view === "orders" && needle ? or(ilike(orders.orderNumber, pattern), ilike(orders.customerEmail, pattern), ilike(orders.customerName, pattern), ilike(orders.courseSlug, pattern), ilike(orders.status, pattern)) : undefined);
+  const requestFilter = and(scopedRequestSql(scopeId, courseRequests.id), view === "requests" && needle ? or(sql`${courseRequests.id}::text = ${needle}`, ilike(courseRequests.name, pattern), ilike(courseRequests.courseName, pattern), ilike(courseRequests.phone, pattern), ilike(courseRequests.university, pattern), ilike(courseRequests.specialty, pattern), sql`${courseRequests.userId} IN (SELECT id FROM users WHERE email ILIKE ${pattern})`) : undefined);
+  const ticketFilter = and(scopedStudentSql(scopeId, supportTickets.userEmail), view === "support" && needle ? or(ilike(supportTickets.ticketNumber, pattern), ilike(supportTickets.userEmail, pattern), ilike(supportTickets.title, pattern), ilike(supportTickets.message, pattern)) : undefined);
+  const accessFilter = and(and(scopedCourseSql(scopeId, courseAccess.courseSlug), scopedStudentSql(scopeId, courseAccess.userEmail)), view === "subscriptions" && needle ? or(ilike(courseAccess.userEmail, pattern), ilike(courseAccess.courseSlug, pattern), ilike(courseAccess.orderNumber, pattern), sql`${courseAccess.userEmail} IN (SELECT email FROM users WHERE full_name ILIKE ${pattern} OR phone ILIKE ${pattern})`) : undefined);
+  const reviewFilter = and(scopedCourseSql(scopeId, courseReviews.courseSlug), view === "reviews" && needle ? or(ilike(courseReviews.userEmail, pattern), ilike(courseReviews.courseSlug, pattern), ilike(courseReviews.body, pattern), ilike(courseReviews.status, pattern)) : undefined);
   const auditFilter = view === "audit" && needle ? or(ilike(auditLogs.actorEmail, pattern), ilike(auditLogs.action, pattern), ilike(auditLogs.entityType, pattern), ilike(auditLogs.entityId, pattern)) : undefined;
   const take = (target: string, fallback: number) => view === target || target === "students" && view === "staff" ? page.pageSize : fallback;
   const skip = (target: string) => view === target || target === "students" && view === "staff" ? page.offset : 0;
@@ -127,38 +131,30 @@ export async function GET(request: Request) {
     needs("institutions") && can("catalog.view") ? getInstitutionsCatalog(true) : [],
     needs("courses") && can("catalog.view") ? getCoursesCatalog(true) : [],
     needs("specialties") && can("catalog.view") ? db.select().from(catalogSpecialties).orderBy(catalogSpecialties.name) : [],
-    needs("links") && can("catalog.view") ? db.select().from(institutionSpecialties) : [],
-    needs("units") && can("catalog.view") ? db.select().from(courseUnitsDb).orderBy(courseUnitsDb.position) : [],
-    needs("lessons") && can("catalog.view") ? db.select().from(lessonsDb).orderBy(lessonsDb.position) : [],
-    needs("videos") && can("catalog.view") ? db.select().from(videoAssets).orderBy(desc(videoAssets.createdAt)).limit(limits.videos) : [],
+    needs("links") && can("catalog.view") ? db.select().from(institutionSpecialties).where(scopedSubjectSql(scopeId, institutionSpecialties.institutionSlug, sql`(SELECT name FROM catalog_specialties WHERE slug = ${institutionSpecialties.specialtySlug})`, institutionSpecialties.specialtySlug)) : [],
+    needs("units") && can("catalog.view") ? db.select().from(courseUnitsDb).where(scopedCourseSql(scopeId, courseUnitsDb.courseSlug)).orderBy(courseUnitsDb.position) : [],
+    needs("lessons") && can("catalog.view") ? db.select().from(lessonsDb).where(scopedCourseSql(scopeId, lessonsDb.courseSlug)).orderBy(lessonsDb.position) : [],
+    needs("videos") && can("catalog.view") ? db.select().from(videoAssets).where(scopedCourseSql(scopeId, videoAssets.courseSlug)).orderBy(desc(videoAssets.createdAt)).limit(limits.videos) : [],
     needs("users") && (can("students.view") || view === "staff" && can("staff.manage")) ? db.select({ id: users.id, mfaEnabled: sql<boolean>`EXISTS (SELECT 1 FROM admin_mfa_factors f WHERE f.user_id = ${users.id} AND f.verified_at IS NOT NULL AND f.disabled_at IS NULL)`, email: users.email, phone: users.phone, fullName: users.fullName, role: users.role, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, profileCompletedAt: users.profileCompletedAt, onboardingCompletedAt: users.onboardingCompletedAt, lastLoginAt: users.lastLoginAt, status: users.status, createdAt: users.createdAt }).from(users).where(userFilter).orderBy(desc(users.createdAt), desc(users.id)).limit(take("students", limits.users)).offset(skip("students")) : [],
-    needs("sessions") && can("students.devices.view") ? db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).where(owner ? undefined : sql`${authSessions.userId} IN (SELECT id FROM users WHERE role = 'student')`).orderBy(desc(authSessions.lastSeenAt)).limit(limits.sessions) : [],
+    needs("sessions") && can("students.devices.view") ? db.select({ id: authSessions.id, userId: authSessions.userId, deviceId: authSessions.deviceId, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, userAgent: authSessions.userAgent, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).where(and(scopedStudentSql(scopeId, authSessions.userId, "id"), owner ? undefined : sql`${authSessions.userId} IN (SELECT id FROM users WHERE role = 'student')`)).orderBy(desc(authSessions.lastSeenAt)).limit(limits.sessions) : [],
     needs("orders") && can("finance.view") ? db.select().from(orders).where(orderFilter).orderBy(desc(orders.createdAt), desc(orders.id)).limit(scoped && view==="overview" ? 5 : take("orders", limits.orders)).offset(skip("orders")) : [],
     needs("requests") && can("requests.manage") ? db.select().from(courseRequests).where(requestFilter).orderBy(desc(courseRequests.createdAt), desc(courseRequests.id)).limit(take("requests", limits.requests)).offset(skip("requests")) : [],
     needs("tickets") && can("support.manage") ? db.select().from(supportTickets).where(ticketFilter).orderBy(desc(supportTickets.createdAt), desc(supportTickets.id)).limit(take("support", limits.tickets)).offset(skip("support")) : [],
     needs("reviews") && can("catalog.manage") ? db.select().from(courseReviews).where(reviewFilter).orderBy(desc(courseReviews.createdAt), desc(courseReviews.id)).limit(take("reviews", limits.reviews)).offset(skip("reviews")) : [],
     needs("access") && can("subscriptions.manage") ? db.select().from(courseAccess).where(accessFilter).orderBy(desc(courseAccess.startsAt), desc(courseAccess.id)).limit(take("subscriptions", limits.access)).offset(skip("subscriptions")) : [],
     needs("assignments") && can("staff.manage") ? db.select().from(supervisorAssignments).orderBy(desc(supervisorAssignments.createdAt)).limit(limits.assignments) : [],
-    needs("notifications") && can("notifications.manage") ? db.select().from(notificationsDb).orderBy(desc(notificationsDb.createdAt)).limit(limits.notifications) : [],
-    needs("coupons") && can("finance.manage") ? db.select().from(couponsDb).orderBy(desc(couponsDb.createdAt)).limit(limits.coupons) : [],
+    needs("notifications") && can("notifications.manage") && can("data.all") ? db.select().from(notificationsDb).orderBy(desc(notificationsDb.createdAt)).limit(limits.notifications) : [],
+    needs("coupons") && can("finance.manage") ? db.select().from(couponsDb).where(scopedCourseSql(scopeId, couponsDb.courseSlug)).orderBy(desc(couponsDb.createdAt)).limit(limits.coupons) : [],
     needs("settings") && can("settings.manage") ? db.select().from(platformSettings) : [],
     needs("audit") && can("audit.view") ? db.select().from(auditLogs).where(auditFilter).orderBy(desc(auditLogs.createdAt), desc(auditLogs.id)).limit(take("audit", limits.audits)).offset(skip("audit")) : [],
   ]);
 
-  const scopedSupervisor = authorization.user?.role === "supervisor" && supervisorScopes.length > 0;
   const visibleCourses = scopedSupervisor ? courses.filter((course) => supervisorScopesAllow(supervisorScopes, course)) : courses;
-  const visibleInstitutionRows = scopedSupervisor ? institutionRows.filter((row) => visibleCourses.some((course) => course.universitySlug === row.slug)) : institutionRows;
-  const visibleStudentRows = scopedSupervisor ? studentRows.filter((student) => supervisorScopesAllow(supervisorScopes, student)) : studentRows;
-  const visibleSpecialtyRows = scopedSupervisor ? specialtyRows.filter((row) => visibleCourses.some((course) => course.specialtySlug === row.slug)) : specialtyRows;
-  const visibleCourseSlugs = new Set(visibleCourses.map((course) => course.slug));
-  const visibleUnitRows = scopedSupervisor ? unitRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : unitRows;
-  const visibleLessonRows = scopedSupervisor ? lessonRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : lessonRows;
-  const visibleVideoRows = scopedSupervisor ? videoRows.filter((row) => visibleLessonRows.some((lesson) => lesson.id === row.lessonId)) : videoRows;
-  const visibleOrderRows = scopedSupervisor ? orderRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : orderRows;
-  const visibleRequestRows = scopedSupervisor ? requestRows.filter((row) => supervisorScopesAllow(supervisorScopes, { universitySlug: row.universitySlug, specialty: row.specialty })) : requestRows;
-  const visibleReviewRows = scopedSupervisor ? reviewRows.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : reviewRows;
-  const visibleStudentEmails = new Set(visibleStudentRows.map((student) => student.email.toLowerCase()));
-  const visibleTicketRows = scopedSupervisor ? ticketRows.filter((row) => row.userEmail ? visibleStudentEmails.has(row.userEmail.toLowerCase()) : false) : ticketRows;
+  const visibleInstitutionRows = scopedSupervisor ? institutionRows.filter(row => supervisorScopes.some(scope => scope.institutionSlug === null || scope.institutionSlug === row.slug)) : institutionRows;
+  const visibleSpecialtyRows = scopedSupervisor ? specialtyRows.filter(row => links.some(link => link.specialtySlug === row.slug)) : specialtyRows;
+  const visibleStudentRows = studentRows;
+  const visibleUnitRows = unitRows, visibleLessonRows = lessonRows, visibleVideoRows = videoRows;
+  const visibleOrderRows = orderRows, visibleRequestRows = requestRows, visibleReviewRows = reviewRows, visibleTicketRows = ticketRows;
   const [requestFileRows, replyRows, supportFileRows] = await Promise.all([
     visibleRequestRows.length ? db.select().from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, visibleRequestRows.map(row=>row.id))).orderBy(asc(courseRequestFiles.id)).limit(limits.files) : [],
     visibleTicketRows.length ? db.select().from(supportReplies).where(inArray(supportReplies.ticketId,visibleTicketRows.map(row=>row.id))).orderBy(asc(supportReplies.id)).limit(limits.replies) : [],
@@ -173,54 +169,54 @@ export async function GET(request: Request) {
     : view === "audit" ? await db.select({ total: count() }).from(auditLogs).where(auditFilter) : null;
   const relatedUserIds = visibleRequestRows.flatMap((row) => row.userId ? [row.userId] : []);
   const relatedUserEmails = visibleTicketRows.flatMap((row) => row.userEmail ? [row.userEmail] : []);
-  const relatedStudents = relatedUserIds.length || relatedUserEmails.length ? await db.select({ id: users.id, email: users.email, fullName: users.fullName, phone: users.phone, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, status: users.status }).from(users).where(or(relatedUserIds.length ? inArray(users.id, relatedUserIds) : undefined, relatedUserEmails.length ? inArray(users.email, relatedUserEmails) : undefined)) : [];
+  const relatedStudents = can("students.view") && (relatedUserIds.length || relatedUserEmails.length) ? await db.select({ id: users.id, email: users.email, fullName: users.fullName, phone: users.phone, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, status: users.status }).from(users).where(and(scopedStudentSql(scopeId, users.id, "id"), or(relatedUserIds.length ? inArray(users.id, relatedUserIds) : undefined, relatedUserEmails.length ? inArray(users.email, relatedUserEmails) : undefined))) : [];
   const effectiveAccess = await effectiveAccessRows(accessRows);
   const registeredDeviceRows = needs("devices") && can("students.devices.view") && studentRows.length ? await db.select({ id: authDevices.id, userId: authDevices.userId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(inArray(authDevices.userId, studentRows.map(student => student.id)), isNull(authDevices.revokedAt))) : [];
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...ADMIN_SETTING_DEFAULTS } as Record<string, string>;
   for (const row of settingRows) if (row.key in SETTING_META) settings[row.key] = row.value;
   const [managedInstitutionRows, managedCourseRows, totals, waitlistRows, activeAiKeys] = await Promise.all([
-    needs("institutions") && can("catalog.view") ? db.select().from(catalogInstitutions) : [],
-    needs("courses") && can("catalog.view") ? db.select().from(catalogCourses) : [],
+    needs("institutions") && can("catalog.view") ? db.select().from(catalogInstitutions).where(scopedInstitutionSql(scopeId, catalogInstitutions.slug)) : [],
+    needs("courses") && can("catalog.view") ? db.select().from(catalogCourses).where(scopedCourseSql(scopeId, catalogCourses.slug)) : [],
     needs("metrics") ? db.execute(sql`SELECT
-      (SELECT count(*)::int FROM users WHERE role = 'student') AS students,
-      (SELECT count(*)::int FROM users WHERE role = 'student' AND status = 'active') AS active_students,
-      (SELECT count(*)::int FROM orders) AS orders,
-      (SELECT count(*)::int FROM orders WHERE status = 'paid') AS paid_orders,
-      (SELECT coalesce(sum(total), 0)::float FROM orders WHERE status = 'paid') AS revenue,
-      (SELECT count(*)::int FROM orders WHERE status IN ('verification_pending', 'payment_review')) AS review_orders,
-      (SELECT count(*)::int FROM course_requests WHERE status NOT IN ('available', 'declined')) AS open_requests,
-      (SELECT count(*)::int FROM support_tickets WHERE status NOT IN ('resolved', 'closed')) AS open_tickets,
-      (SELECT count(*)::int FROM course_reviews WHERE status = 'pending') AS pending_reviews`) : {rows:[]},
-    needs("courses") && can("students.view") ? db.select({ courseSlug: courseWaitlist.courseSlug, total: count() }).from(courseWaitlist).where(eq(courseWaitlist.status, "active")).groupBy(courseWaitlist.courseSlug) : [],
-    needs("services") && can("operations.manage") ? db.select({ total: count() }).from(aiApiKeys).where(eq(aiApiKeys.status, "active")) : [],
+      (SELECT count(*)::int FROM users WHERE role = 'student' AND ${can("students.view")} AND ${scopedStudentSql(scopeId, sql`users.id`, "id")}) AS students,
+      (SELECT count(*)::int FROM users WHERE role = 'student' AND status = 'active' AND ${can("students.view")} AND ${scopedStudentSql(scopeId, sql`users.id`, "id")}) AS active_students,
+      (SELECT count(*)::int FROM orders WHERE ${can("finance.view")} AND ${scopedOrderSql(scopeId, sql`orders.order_number`)}) AS orders,
+      (SELECT count(*)::int FROM orders WHERE status = 'paid' AND ${can("finance.view")} AND ${scopedOrderSql(scopeId, sql`orders.order_number`)}) AS paid_orders,
+      (SELECT coalesce(sum(total), 0)::float FROM orders WHERE status = 'paid' AND ${can("finance.view")} AND ${scopedOrderSql(scopeId, sql`orders.order_number`)}) AS revenue,
+      (SELECT count(*)::int FROM orders WHERE status IN ('verification_pending', 'payment_review') AND ${can("finance.view")} AND ${scopedOrderSql(scopeId, sql`orders.order_number`)}) AS review_orders,
+      (SELECT count(*)::int FROM course_requests WHERE status NOT IN ('available', 'declined') AND ${can("requests.manage")} AND ${scopedRequestSql(scopeId, sql`course_requests.id`)}) AS open_requests,
+      (SELECT count(*)::int FROM support_tickets WHERE status NOT IN ('resolved', 'closed') AND ${can("support.manage")} AND ${scopedStudentSql(scopeId, sql`support_tickets.user_email`)}) AS open_tickets,
+      (SELECT count(*)::int FROM course_reviews WHERE status = 'pending' AND ${can("catalog.manage")} AND ${scopedCourseSql(scopeId, sql`course_reviews.course_slug`)}) AS pending_reviews`) : {rows:[]},
+    needs("courses") && can("students.view") ? db.select({ courseSlug: courseWaitlist.courseSlug, total: count() }).from(courseWaitlist).where(and(eq(courseWaitlist.status, "active"), scopedCourseSql(scopeId, courseWaitlist.courseSlug), scopedStudentSql(scopeId, courseWaitlist.userEmail))).groupBy(courseWaitlist.courseSlug) : [],
+    needs("services") && can("operations.manage") && can("data.all") ? db.select({ total: count() }).from(aiApiKeys).where(eq(aiApiKeys.status, "active")) : [],
   ]);
   const managedInstitutionMap = new Map(managedInstitutionRows.map((row) => [row.slug, row]));
   const managedCourseMap = new Map(managedCourseRows.map((row) => [row.slug, row]));
   const totalRow = (totals.rows[0] || {}) as Record<string, unknown>;
   const waitlistByCourse = new Map(waitlistRows.map((row) => [row.courseSlug, Number(row.total)]));
-  const environmentAiKeys = needs("services") && can("operations.manage") ? geminiEnvironmentKeys().length : 0;
+  const environmentAiKeys = needs("services") && can("operations.manage") && can("data.all") ? geminiEnvironmentKeys().length : 0;
   return Response.json({
     ok: true,
     permissions: [...grants], isPlatformOwner: owner,
     generatedAt: new Date().toISOString(),
-    pagination: paginatedTotal && !scopedSupervisor ? { view, page: page.page, pageSize: page.pageSize, total: Number(paginatedTotal[0]?.total || 0) } : null,
+    pagination: paginatedTotal ? { view, page: page.page, pageSize: page.pageSize, total: Number(paginatedTotal[0]?.total || 0) } : null,
     metrics: {
-      students: can("students.view") ? (scopedSupervisor ? visibleStudentRows.length : Number(totalRow.students || 0)) : 0,
-      activeStudents: can("students.view") ? (scopedSupervisor ? visibleStudentRows.filter((row) => row.status === "active").length : Number(totalRow.active_students || 0)) : 0,
+      students: can("students.view") ? Number(totalRow.students || 0) : 0,
+      activeStudents: can("students.view") ? Number(totalRow.active_students || 0) : 0,
       institutions: can("catalog.view") ? visibleInstitutionRows.length : 0,
       publishedCourses: can("catalog.view") ? visibleCourses.filter((row) => row.lessons > 0).length : 0,
-      orders: can("finance.view") ? (scopedSupervisor ? visibleOrderRows.length : Number(totalRow.orders || 0)) : 0,
-      paidOrders: can("finance.view") ? (scopedSupervisor ? visibleOrderRows.filter((row) => row.status === "paid").length : Number(totalRow.paid_orders || 0)) : 0,
-      revenue: can("finance.view") ? (scopedSupervisor ? visibleOrderRows.filter((row) => row.status === "paid").reduce((sum, row) => sum + Number(row.total || 0), 0) : Number(totalRow.revenue || 0)) : 0,
-      reviewOrders: can("finance.view") ? (scopedSupervisor ? visibleOrderRows.filter((row) => ["verification_pending", "payment_review"].includes(row.status)).length : Number(totalRow.review_orders || 0)) : 0,
-      openRequests: can("requests.manage") ? (scopedSupervisor ? visibleRequestRows.filter((row) => !["available", "declined"].includes(row.status)).length : Number(totalRow.open_requests || 0)) : 0,
-      openTickets: can("support.manage") ? (scopedSupervisor ? visibleTicketRows.filter((row) => !["resolved", "closed"].includes(row.status)).length : Number(totalRow.open_tickets || 0)) : 0,
-      pendingReviews: can("catalog.manage") ? (scopedSupervisor ? visibleReviewRows.filter((row) => row.status === "pending").length : Number(totalRow.pending_reviews || 0)) : 0,
+      orders: can("finance.view") ? Number(totalRow.orders || 0) : 0,
+      paidOrders: can("finance.view") ? Number(totalRow.paid_orders || 0) : 0,
+      revenue: can("finance.view") ? Number(totalRow.revenue || 0) : 0,
+      reviewOrders: can("finance.view") ? Number(totalRow.review_orders || 0) : 0,
+      openRequests: can("requests.manage") ? Number(totalRow.open_requests || 0) : 0,
+      openTickets: can("support.manage") ? Number(totalRow.open_tickets || 0) : 0,
+      pendingReviews: can("catalog.manage") ? Number(totalRow.pending_reviews || 0) : 0,
     },
     institutions: visibleInstitutionRows.map((row) => ({ ...row, status: managedInstitutionMap.get(row.slug)?.status || "published" })),
     courses: visibleCourses.map((row) => ({ ...row, status: managedCourseMap.get(row.slug)?.status || "published", specialtySlug: managedCourseMap.get(row.slug)?.specialtySlug || "", audienceScope: managedCourseMap.get(row.slug)?.audienceScope === "institution" ? "institution" : "specialty", coverTheme: managedCourseMap.get(row.slug)?.coverTheme || "blue-violet", waitlistCount: waitlistByCourse.get(row.slug) || 0 })),
     specialties: visibleSpecialtyRows,
-    specialtyLinks: scopedSupervisor ? links.filter((row) => visibleCourseSlugs.has(row.institutionSlug) || visibleSpecialtyRows.some((specialty) => specialty.slug === row.specialtySlug)) : links,
+    specialtyLinks: links,
     units: visibleUnitRows,
     lessons: visibleLessonRows,
     videos: visibleVideoRows,
@@ -264,13 +260,13 @@ export async function GET(request: Request) {
       };
     }),
     reviews: visibleReviewRows,
-    access: scopedSupervisor ? effectiveAccess.filter((row) => visibleCourseSlugs.has(row.courseSlug)) : effectiveAccess,
+    access: effectiveAccess,
     supervisorAssignments: supervisorRows,
     notifications: notificationRows,
     coupons: couponRows,
     settings: needs("settings") && can("settings.manage") ? settings : {},
     audit: audits,
-    services: needs("services") && can("operations.manage") ? {
+    services: needs("services") && can("operations.manage") && can("data.all") ? {
       assistant: true,
       merasAi: environmentAiKeys > 0 || Number(activeAiKeys[0]?.total || 0) > 0,
       payments: Boolean(process.env.TAP_SECRET_KEY?.trim()),
@@ -303,10 +299,11 @@ export async function POST(request: Request) {
   if (action === "grantAccess" && payload.grantType === "manual_payment" && !permissionsCover(grants, ["finance.manage"])) return jsonError("تسجيل دفعة يدوية يتطلب صلاحية إدارة المالية أيضًا", 403);
   const identity = authorization.user ? `user:${authorization.user.id}` : `machine:${clientIp(request)}`;
   if (!await checkRateLimit("admin-console-write", identity, 60, 60)) return jsonError("طلبات إدارية كثيرة. حاول بعد دقيقة.", 429);
+  if (!await supervisorConsoleMutationAllowed(authorization.user, payload)) return jsonError("السجل أو الوجهة خارج نطاق إشرافك المحدد", 403);
   const db = getDb();
   const now = new Date().toISOString();
   if (["updateUser", "updateStudentProfile"].includes(action) || action === "deleteEntity" && payload.entityType === "user") {
-    const id = Number(action === "deleteEntity" ? payload.entityId : payload.id);
+    const id = finiteNumber(action === "deleteEntity" ? payload.entityId : payload.id);
     if (!Number.isSafeInteger(id) || id < 1) return jsonError("معرف مستخدم غير صالح");
     const [target] = await db.select({ role: users.role, isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, id));
     if (!target) return jsonError("الحساب غير موجود", 404);
@@ -315,11 +312,11 @@ export async function POST(request: Request) {
     if (action === "updateUser" && payload.role === "admin") return jsonError("أضف مشرفًا بصلاحيات محددة بدل إنشاء مدير أعلى آخر", 400);
   }
   if (action === "revokeUserSession") {
-    const [target] = await db.select({ userId: authSessions.userId }).from(authSessions).where(eq(authSessions.id, Number(payload.sessionId ?? payload.id) || -1));
+    const [target] = await db.select({ userId: authSessions.userId }).from(authSessions).where(eq(authSessions.id, finiteNumber(payload.sessionId ?? payload.id) || -1));
     const [subject] = target ? await db.select({ role: users.role, isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, target.userId)) : [];
     if (subject && (subject.isPlatformOwner || subject.role !== "student" && !authorization.user?.isPlatformOwner)) return jsonError("لا تملك إدارة جلسات هذا الحساب", 403);
   }
-  if (["updateUser", "updateStudentProfile", "grantAccess", "updateAccess", "revokeUserSession"].includes(action)) {
+  if (["updateUser", "updateStudentProfile", "grantAccess", "updateAccess", "revokeUserSession", "saveSupervisorAssignment"].includes(action)) {
     if (!authorization.user) return jsonError("هذا الإجراء يتطلب جلسة مدير موثقة", 403);
     try { await requireAdminStepUp(request, authorization.user); }
     catch (error) {
@@ -598,12 +595,12 @@ export async function POST(request: Request) {
   }
 
   if (action === "saveSupervisorAssignment") {
-    const id = Math.floor(finiteNumber(payload.id));
-    const supervisorId = Math.floor(finiteNumber(payload.supervisorId));
+    const id = payload.id === undefined ? 0 : finiteNumber(payload.id);
+    const supervisorId = finiteNumber(payload.supervisorId);
     const institutionSlug = cleanText(payload.institutionSlug, 80).toLowerCase();
     const specialty = cleanText(payload.specialty, 140);
     const active = payload.active !== false;
-    if (!supervisorId || !institutionSlug || !specialty) return jsonError("اختر المشرف والجامعة والتخصص");
+    if (!Number.isSafeInteger(id) || id < 0 || !Number.isSafeInteger(supervisorId) || supervisorId <= 0 || !institutionSlug || !specialty) return jsonError("اختر المشرف والجامعة والتخصص بمعرفات صحيحة");
     const [supervisor] = await db.select({ id: users.id, role: users.role, email: users.email }).from(users).where(eq(users.id, supervisorId)).limit(1);
     if (!supervisor || supervisor.role !== "supervisor") return jsonError("الحساب المحدد ليس مشرفًا");
     if (!await getInstitutionCatalog(institutionSlug, true)) return jsonError("الجهة غير موجودة");
@@ -611,16 +608,22 @@ export async function POST(request: Request) {
     if (!managedSpecialty) return jsonError("أنشئ التخصص الإداري أولًا");
     const [specialtyLink] = await db.select({ id: institutionSpecialties.id }).from(institutionSpecialties).where(and(eq(institutionSpecialties.institutionSlug, institutionSlug), eq(institutionSpecialties.specialtySlug, managedSpecialty.slug), eq(institutionSpecialties.status, "published"))).limit(1);
     if (!specialtyLink) return jsonError("التخصص غير مربوط بهذه الجهة");
-    if (id) {
-      const [before] = await db.select().from(supervisorAssignments).where(eq(supervisorAssignments.id, id)).limit(1);
-      if (!before) return jsonError("نطاق الإشراف غير موجود", 404);
-      await db.update(supervisorAssignments).set({ supervisorId, institutionSlug, specialty, active }).where(eq(supervisorAssignments.id, id));
-      await audit(request, authorization.actor, "update", "supervisor_assignment", String(id), before, { supervisorId, institutionSlug, specialty, active });
-      return Response.json({ ok: true, id });
-    }
-    const [created] = await db.insert(supervisorAssignments).values({ supervisorId, institutionSlug, specialty, active, createdAt: now }).onConflictDoUpdate({ target: [supervisorAssignments.supervisorId, supervisorAssignments.institutionSlug, supervisorAssignments.specialty], set: { active } }).returning({ id: supervisorAssignments.id });
-    await audit(request, authorization.actor, "create", "supervisor_assignment", String(created.id), null, { supervisorId, institutionSlug, specialty, active });
-    return Response.json({ ok: true, id: created.id }, { status: 201 });
+    const saved = await db.transaction(async tx => {
+      const [before] = id ? await tx.select().from(supervisorAssignments).where(eq(supervisorAssignments.id, id)).limit(1).for("update") : [];
+      if (id && !before) return null;
+      const affected = [...new Set([supervisorId, ...(before ? [before.supervisorId] : [])])].sort((a, b) => a - b);
+      for (const userId of affected) await tx.execute(sql`SELECT pg_advisory_xact_lock(${userId})`);
+      const values = { supervisorId, institutionSlug, specialty, active };
+      const [changed] = id
+        ? await tx.update(supervisorAssignments).set(values).where(eq(supervisorAssignments.id, id)).returning({ id: supervisorAssignments.id })
+        : await tx.insert(supervisorAssignments).values({ ...values, createdAt: now }).onConflictDoUpdate({ target: [supervisorAssignments.supervisorId, supervisorAssignments.institutionSlug, supervisorAssignments.specialty], set: { active } }).returning({ id: supervisorAssignments.id });
+      await tx.update(authSessions).set({ revokedAt: now }).where(and(inArray(authSessions.userId, affected), isNull(authSessions.revokedAt)));
+      await tx.update(pushDevices).set({ status: "revoked", lastSeenAt: now }).where(inArray(pushDevices.userId, affected));
+      await tx.insert(auditLogs).values({ actorEmail: authorization.actor, action: id ? "update" : "create", entityType: "supervisor_assignment", entityId: String(changed.id), beforeJson: before ? asJson(before) : null, afterJson: asJson(values), ipAddress: clientIp(request), createdAt: now });
+      return changed;
+    });
+    if (!saved) return jsonError("نطاق الإشراف غير موجود", 404);
+    return Response.json({ ok: true, id: saved.id }, { status: id ? 200 : 201, headers: { "cache-control": "no-store" } });
   }
 
   if (action === "grantAccess") {
@@ -832,6 +835,7 @@ export async function POST(request: Request) {
     const selectedCourse = status === "available" && selectedCourseSlug ? await getCourseCatalog(selectedCourseSlug, true) : null;
     const matchedCourse = status === "available" ? selectedCourse || (await getCoursesCatalog()).find((course) => course.title.trim() === before.courseName.trim() && (!before.universitySlug || course.universitySlug === before.universitySlug) && (course.audienceScope === "institution" || !before.specialty || course.specialty === before.specialty)) : null;
     if (status === "available" && selectedCourseSlug && !selectedCourse) return jsonError("المادة المختارة غير موجودة أو غير منشورة", 404);
+    if (matchedCourse && !await supervisorCourseAllowed(authorization.user, matchedCourse.slug)) return jsonError("المادة المرتبطة خارج نطاق الإشراف", 403);
     await db.update(courseRequests).set({ status, preparedCourseSlug: matchedCourse?.slug || before.preparedCourseSlug || null, updatedAt: now }).where(eq(courseRequests.id, id));
     if (before.userId) {
       const [student] = await db.select({ email: users.email }).from(users).where(eq(users.id, before.userId)).limit(1);
@@ -859,9 +863,10 @@ export async function POST(request: Request) {
     if (!before) return jsonError("التذكرة غير موجودة", 404);
     await db.update(supportTickets).set({ status, assignedTo: authorization.actor, updatedAt: now }).where(eq(supportTickets.id, id));
     if (reply) await db.insert(supportReplies).values({ ticketId: id, authorEmail: authorization.actor, authorRole: authorization.user?.role || "admin", body: reply, internal: payload.internal === true, createdAt: now });
-    if (before.userEmail && (reply || before.status !== status)) {
-      const title = reply ? "رد جديد من دعم مراس" : "تحديث تذكرة الدعم";
-      const body = reply ? reply.slice(0, 240) : `تغيرت حالة التذكرة ${before.ticketNumber} إلى «${supportStatusArabic[status] || status}».`;
+    const visibleReply = payload.internal === true ? "" : reply;
+    if (before.userEmail && (visibleReply || before.status !== status)) {
+      const title = visibleReply ? "رد جديد من دعم مراس" : "تحديث تذكرة الدعم";
+      const body = visibleReply ? visibleReply.slice(0, 240) : `تغيرت حالة التذكرة ${before.ticketNumber} إلى «${supportStatusArabic[status] || status}».`;
       await createAndSendNotification({
         values: { userEmail: before.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة", createdAt: now },
         target: { userEmail: before.userEmail },
