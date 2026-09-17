@@ -1,0 +1,106 @@
+# Temporary source-authoring adapter, NOT a test workflow or production deployment.
+# It materializes reviewed bytes and creates an unreferenced commit only.
+# The final expected tree contains neither this workflow nor a patch payload.
+name: Stage reviewed scope source
+on:
+  push:
+    branches: [implement/plan-v7-20260916]
+    paths: [.github/workflows/stage-reviewed-source.yml]
+permissions:
+  contents: write
+jobs:
+  stage:
+    if: github.repository == 'nebrasacademy3-lab/maras' && github.ref == 'refs/heads/implement/plan-v7-20260916'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: c96c9b7f784e84fa8f292742e060d131c3c82267
+          persist-credentials: false
+      - name: Verify exact source bytes and stage Git objects without running application code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REVIEW_PARENT: ${{ github.sha }}
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
+          repo = 'nebrasacademy3-lab/maras'
+          assert os.environ['GITHUB_REPOSITORY'] == repo
+          base = 'c96c9b7f784e84fa8f292742e060d131c3c82267'
+          expected_tree = 'bb47a660296d411bcf9f07ae98c8960c569588e4'
+          parts = ['af40d78e90cd85f86f96a6de0c245ea33461f019', '878c507d675eb4186abe7c5767a29d6893908a25', '9ac405fc26d13fac90a6643b6e245c28c0a12972']
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  raise RuntimeError('Git API redirects are not allowed')
+          opener = urllib.request.build_opener(NoRedirect())
+          def api(path, data=None):
+              request = urllib.request.Request('https://api.github.com/repos/' + repo + path,
+                  data=None if data is None else json.dumps(data).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'User-Agent': 'Maras-reviewed-source-authoring', 'X-GitHub-Api-Version': '2022-11-28'})
+              with opener.open(request, timeout=30) as response:
+                  return json.load(response)
+          git = lambda *args: subprocess.check_output(['git', *args])
+          blob_hash = lambda data: hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest()
+          assert git('rev-parse', 'HEAD').decode().strip() == base
+          compressed = b''
+          for sha in parts:
+              part = api('/git/blobs/' + sha)
+              assert part['encoding'] == 'base64'
+              decoded = base64.b64decode(part['content'])
+              assert blob_hash(decoded) == sha
+              compressed += decoded
+          assert len(compressed) == 22424
+          assert hashlib.sha256(compressed).hexdigest() == '2ec3c7ac94a22c7dc06a62f24175fd1e6a29a3d1b2fa7d7a196be9a2b5ec512c'
+          raw = lzma.decompress(compressed, memlimit=128 * 1024 * 1024)
+          assert len(raw) < 1000000
+          delta = json.loads(raw)
+          assert delta['base'] == base and delta['tree'] == expected_tree
+          assert git('rev-parse', 'HEAD^{tree}').decode().strip() == delta['baseTree']
+          assert len(delta['files']) == 41
+          assert len(set(item['path'] for item in delta['files'])) == 41
+          entries, stored = [], set()
+          for item in delta['files']:
+              path = item['path']
+              parsed = pathlib.PurePosixPath(path)
+              assert not parsed.is_absolute() and '..' not in parsed.parts and '.git' not in parsed.parts
+              assert parsed.parts[0] in ['app', 'components', 'lib', 'mobile', 'scripts', 'tests', 'docs', '.github']
+              if parsed.parts[0] == '.github':
+                  assert path in ['.github/workflows/quality.yml', '.github/workflows/review-source.yml']
+              before = git('show', 'HEAD:' + path) if item['before'] else b''
+              assert item['before'] is None or blob_hash(before) == item['before']
+              if item['after'] is None:
+                  assert item['before'] is not None
+                  entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': None})
+                  continue
+              text = before.decode('utf-8')
+              last = 0
+              for start, end, replacement in item['edits']:
+                  assert isinstance(start, int) and isinstance(end, int) and isinstance(replacement, str)
+                  assert last <= start <= end <= len(text)
+                  last = end
+              for start, end, replacement in reversed(item['edits']):
+                  text = text[:start] + replacement + text[end:]
+              content = text.encode('utf-8')
+              assert blob_hash(content) == item['after'], path
+              if item['after'] not in stored:
+                  created = api('/git/blobs', {'content': base64.b64encode(content).decode(), 'encoding': 'base64'})
+                  assert created['sha'] == item['after'], path
+                  stored.add(item['after'])
+              entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': item['after']})
+          tree = api('/git/trees', {'base_tree': delta['baseTree'], 'tree': entries})
+          assert tree['sha'] == expected_tree
+          parent = os.environ['REVIEW_PARENT']
+          assert len(parent) == 40 and all(c in '0123456789abcdef' for c in parent)
+          commit = api('/git/commits', {'message': 'feat(v7): enforce supervisor record scopes and protect internal support notes', 'tree': expected_tree, 'parents': [parent]})
+          result = {'commit': commit['sha'], 'tree': expected_tree, 'parent': parent, 'base': base, 'files': len(entries), 'applicationExecuted': False, 'branchUpdated': False}
+          print('REVIEWED_SOURCE_COMMIT ' + json.dumps(result))
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'reviewed-source-result.json').write_text(json.dumps(result, indent=2))
+          PY
+      - name: Preserve authoring metadata only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewed-scope-source-commit
+          path: ${{ runner.temp }}/reviewed-source-result.json
+          retention-days: 1
+          if-no-files-found: error
