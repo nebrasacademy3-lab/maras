@@ -1,0 +1,43 @@
+name: Read isolated media failure evidence
+on:
+  push:
+    branches: [implement/plan-v7-20260916]
+    paths: [.github/workflows/media-failure-evidence.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read the failed synthetic QA step without running application code
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import os, re, urllib.request, urllib.error, urllib.parse
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, *args, **kwargs):
+                  return None
+          endpoint = 'https://api.github.com/repos/nebrasacademy3-lab/maras/actions/jobs/105098453482/logs'
+          request = urllib.request.Request(endpoint, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'User-Agent': 'Maras-read-only-QA'})
+          try:
+              with urllib.request.build_opener(NoRedirect()).open(request, timeout=30) as response:
+                  data = response.read(2000000)
+          except urllib.error.HTTPError as error:
+              if error.code != 302: raise
+              location = error.headers['Location']
+              parsed = urllib.parse.urlsplit(location)
+              assert parsed.scheme == 'https' and (parsed.hostname.endswith('.blob.core.windows.net') or parsed.hostname.endswith('.githubusercontent.com'))
+              # Never forward the GitHub credential to the artifact download host.
+              with urllib.request.urlopen(location, timeout=30) as response:
+                  data = response.read(2000000)
+          log = data.decode('utf-8-sig', errors='replace')
+          start = log.find('##[group]Run node scripts/qa-study-ci.mjs')
+          assert start >= 0, 'Expected isolated QA step was not found'
+          step = log[start:].split('##[group]Run actions/upload-artifact')[0]
+          step = re.sub(r'(?i)(token|code|signature|sig)=([^\s&"<>]+)', r'\1=[redacted]', step)
+          step = re.sub(r'(?i)(Bearer|meras_session=)\s*[^\s;"<>]+', r'\1 [redacted]', step)
+          print('\n'.join(step.splitlines()[-85:]))
+          PY
