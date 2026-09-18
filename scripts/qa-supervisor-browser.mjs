@@ -38,7 +38,7 @@ try {
   const links = await page.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').evaluateAll(nodes => nodes.map(node => ({ href: node.getAttribute("href"), text: node.textContent?.slice(0, 100), container: node.parentElement?.className })));
   console.log(JSON.stringify({ event: "supervisor.navigation.boundary", status: response.status(), path: new URL(page.url()).pathname, owner: identity.user.isPlatformOwner, permissions: identity.permissions, forbiddenLinks: links }, null, 2));
   await page.getByRole("heading", { name: "نظرة عامة", exact: true }).waitFor();
-  await page.getByRole("main").getByText("مشرف بصلاحيات محددة", { exact: true }).waitFor();
+  await page.getByRole("banner").getByText("مشرف بصلاحيات محددة", { exact: true }).waitFor();
   const hydrated = await page.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').evaluateAll(nodes => nodes.map(node => ({ href: node.getAttribute("href"), text: node.textContent?.slice(0, 100), container: node.parentElement?.className })));
   console.log(JSON.stringify({ event: "supervisor.navigation.ready", forbiddenLinks: hydrated }, null, 2));
   mkdirSync(".data/platform-browser", { recursive: true });
