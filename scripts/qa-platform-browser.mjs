@@ -31,8 +31,8 @@ try {
     let factorId;
     const checks = [], errors = [], accessFailures = [];
     const observePage = page => {
-      page.on("pageerror", error => errors.push(error.message));
-      page.on("requestfailed", request => {
+      const onPageError = error => errors.push(error.message);
+      const onRequestFailed = request => {
         const failure = request.failure();
         if (!failure?.errorText?.toLowerCase().includes("access control")) return;
         const headers = request.headers();
@@ -44,25 +44,43 @@ try {
           origin: headers.origin || null,
           secFetchSite: headers["sec-fetch-site"] || null,
         });
-      });
+      };
+      page.on("pageerror", onPageError);
+      page.on("requestfailed", onRequestFailed);
+      return () => {
+        page.off("pageerror", onPageError);
+        page.off("requestfailed", onRequestFailed);
+      };
     };
     try {
       const context = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
       context.setDefaultTimeout(15000);
-      const page = await context.newPage(); observePage(page);
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
-        const response = await page.goto(origin + path, { waitUntil: "domcontentloaded" }); assert.equal(response.status(), 200, path);
-        await page.locator("h1").first().waitFor({ state: "visible" });
-        await page.waitForFunction(() => Boolean(document.documentElement.dataset.palette));
-        await page.locator('link[rel="canonical"]').waitFor({ state: "attached" });
-        assert.ok((await page.locator('link[rel="canonical"]').getAttribute("href")).startsWith("https://maras-qa.example/"));
-        for (const width of [320, 390, 768, 1440]) {
-          await page.setViewportSize({ width, height: width < 500 ? 844 : 1000 });
-          await assertFits(page, `${path}/${width}`);
+        const routePage = await context.newPage();
+        const stopRouteObservation = observePage(routePage);
+        const errorCount = errors.length, failureCount = accessFailures.length;
+        try {
+          const response = await routePage.goto(origin + path, { waitUntil: "domcontentloaded" }); assert.equal(response.status(), 200, path);
+          await routePage.locator("h1").first().waitFor({ state: "visible" });
+          await routePage.waitForFunction(() => Boolean(document.documentElement.dataset.palette));
+          await routePage.locator('link[rel="canonical"]').waitFor({ state: "attached" });
+          assert.ok((await routePage.locator('link[rel="canonical"]').getAttribute("href")).startsWith("https://maras-qa.example/"));
+          for (const width of [320, 390, 768, 1440]) {
+            await routePage.setViewportSize({ width, height: width < 500 ? 844 : 1000 });
+            await assertFits(routePage, `${path}/${width}`);
+          }
+          await routePage.waitForTimeout(250);
+          assert.equal(errors.length, errorCount, `${path}: no active-page JavaScript exceptions`);
+          assert.equal(accessFailures.length, failureCount, `${path}: no active-page access-control request failures`);
+        } finally {
+          stopRouteObservation();
+          await routePage.close();
         }
       }
       checks.push("eight public routes render headings and canonical URLs; 320/390/768/1440px have no page overflow");
+      const page = await context.newPage();
+      const stopPublicObservation = observePage(page);
       await page.goto(origin + "/faq", { waitUntil: "domcontentloaded" });
       const count = await page.locator("details").count(); assert.equal(count, 35);
       const schemaContent = await page.locator('script[type="application/ld+json"]').allTextContents();
@@ -71,18 +89,30 @@ try {
       await page.getByLabel("البحث في الأسئلة الشائعة").fill("");
       checks.push("35 rendered FAQ answers match structured data and search filters the real visible content");
       for (const theme of ["light", "dark"]) {
-        await page.evaluate(value => localStorage.setItem("meras-theme", value), theme);
-        await page.reload({ waitUntil: "domcontentloaded" });
-        await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, theme === "dark");
+        const desiredDark = theme === "dark";
+        const currentDark = await page.evaluate(() => document.documentElement.classList.contains("dark"));
+        if (currentDark !== desiredDark) {
+          await page.getByRole("button", { name: desiredDark ? "تفعيل الوضع الليلي" : "تفعيل الوضع الفاتح" }).first().click();
+        }
+        await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, desiredDark);
         await page.screenshot({ path: `${dir}/faq-${theme}.png`, fullPage: true, animations: "disabled" });
-        await page.goto(origin + "/about", { waitUntil: "domcontentloaded" });
+        const aboutLink = page.locator('a[href="/about"]').first();
+        await aboutLink.waitFor({ state: "visible" });
+        await Promise.all([page.waitForURL(origin + "/about"), aboutLink.click()]);
+        await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, desiredDark);
         await page.screenshot({ path: `${dir}/about-${theme}.png`, fullPage: true, animations: "disabled" });
         await page.setViewportSize({ width: 390, height: 844 }); await assertFits(page, `about/${theme}/phone`);
         await page.screenshot({ path: `${dir}/about-${theme}-phone.png`, fullPage: true, animations: "disabled" });
         await page.setViewportSize({ width: 1440, height: 1000 });
-        await page.goto(origin + "/faq", { waitUntil: "domcontentloaded" });
+        const faqLink = page.locator('a[href="/faq"]').first();
+        await faqLink.waitFor({ state: "visible" });
+        await Promise.all([page.waitForURL(origin + "/faq"), faqLink.click()]);
+        await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, desiredDark);
       }
-      checks.push("public light/dark theme persists across navigation; desktop and phone screenshots captured");
+      await page.waitForTimeout(250);
+      checks.push("public light/dark theme persists across real Next navigation; desktop and phone screenshots captured");
+      stopPublicObservation();
+      await page.close();
       await context.close();
       const enrollmentFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8")).enrollment[name];
       const enrolling = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
