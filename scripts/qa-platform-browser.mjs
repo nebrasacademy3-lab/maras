@@ -29,11 +29,27 @@ try {
     const dir = `.data/platform-browser/${name}`; mkdirSync(dir, { recursive: true });
     const browser = await engines[name].launch({ headless: true, ...(name === "chromium" && process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
     let factorId;
-    const checks = [], errors = [];
+    const checks = [], errors = [], accessFailures = [];
+    const observePage = page => {
+      page.on("pageerror", error => errors.push(error.message));
+      page.on("requestfailed", request => {
+        const failure = request.failure();
+        if (!failure?.errorText?.toLowerCase().includes("access control")) return;
+        const headers = request.headers();
+        accessFailures.push({
+          url: request.url(),
+          method: request.method(),
+          resourceType: request.resourceType(),
+          error: failure.errorText,
+          origin: headers.origin || null,
+          secFetchSite: headers["sec-fetch-site"] || null,
+        });
+      });
+    };
     try {
       const context = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
       context.setDefaultTimeout(15000);
-      const page = await context.newPage(); page.on("pageerror", error => errors.push(error.message));
+      const page = await context.newPage(); observePage(page);
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
         const response = await page.goto(origin + path, { waitUntil: "domcontentloaded" }); assert.equal(response.status(), 200, path);
@@ -72,7 +88,7 @@ try {
       const enrolling = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
       enrolling.setDefaultTimeout(15000);
       await enrolling.addCookies([cookie(enrollmentFixture.token)]);
-      const security = await enrolling.newPage(); security.on("pageerror", error => errors.push(error.message));
+      const security = await enrolling.newPage(); observePage(security);
       await security.goto(origin + "/admin/security", { waitUntil: "domcontentloaded" });
       const securityCard = security.locator("article").first();
       await securityCard.getByLabel("كلمة المرور الحالية — مطلوبة للإعداد والتعطيل").fill(enrollmentFixture.password);
@@ -101,7 +117,7 @@ try {
       await db.update(schema.authSessions).set({ mfaVerifiedAt: now }).where(eq(schema.authSessions.tokenHash, createHash("sha256").update(owner.token).digest("hex")));
       const admin = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } }); await admin.addCookies([cookie(owner.token)]);
       admin.setDefaultTimeout(15000);
-      const editor = await admin.newPage(); editor.on("pageerror", error => errors.push(error.message));
+      const editor = await admin.newPage(); observePage(editor);
       await editor.goto(origin + "/admin/staff", { waitUntil: "domcontentloaded" });
       await editor.getByRole("button", { name: "إضافة مشرف", exact: true }).click();
       const uniqueEmail = `qa-browser-${name}-${randomBytes(5).toString("hex")}@example.test`;
@@ -156,7 +172,16 @@ try {
       assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/staff")).status()));
       assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status()));
       checks.push("catalog-view supervisor has no owner/finance/content navigation and is denied staff and upload-signing APIs");
-      await viewer.close(); assert.deepEqual(errors, [], "no client JavaScript exceptions");
+      observePage(viewerPage);
+      await viewer.close();
+      if (errors.length) {
+        throw new assert.AssertionError({
+          message: "no client JavaScript exceptions",
+          actual: { errors, accessFailures: accessFailures.slice(0, 40) },
+          expected: { errors: [], accessFailures: [] },
+          operator: "deepStrictEqual",
+        });
+      }
       const report = { engine: name, passed: checks.length, checks, clientExceptions: errors, liveProviders: false, devices: "browser viewport emulation, not physical phones" };
       writeFileSync(`${dir}/report.json`, JSON.stringify(report, null, 2)); reports.push(report); console.log(JSON.stringify(report, null, 2));
     } finally { if (factorId) await db.delete(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.id, factorId)); await browser.close(); }

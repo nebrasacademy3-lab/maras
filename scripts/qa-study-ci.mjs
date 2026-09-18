@@ -22,6 +22,16 @@ try {
   let ready = false;
   for (let i = 0; i < 60; i++) { try { await fetch("http://127.0.0.1:3100/login", { signal: AbortSignal.timeout(2000) }); ready = true; break; } catch { await new Promise(r => setTimeout(r, 1000)); } }
   if (!ready) throw new Error("Synthetic web server did not start");
+  const qaResponse = await fetch("http://127.0.0.1:3100/", { signal: AbortSignal.timeout(5000) });
+  const qaHeaders = qaResponse.headers;
+  await qaResponse.body?.cancel();
+  if (qaHeaders.get("cross-origin-resource-policy") !== "cross-origin"
+      || qaHeaders.get("cross-origin-opener-policy") !== "unsafe-none"
+      || qaHeaders.get("origin-agent-cluster") !== "?0"
+      || qaHeaders.get("access-control-allow-origin") !== "http://127.0.0.1:3100"
+      || !/connect-src[^;]*http:\/\/127\.0\.0\.1:3100/.test(qaHeaders.get("content-security-policy") || "")) {
+    throw new Error("Loopback browser security profile was not baked into the QA build");
+  }
   await run(["scripts/qa-study-browser.mjs"]);
   await run(["scripts/qa-supervisor-browser.mjs"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-browser.mjs"]);

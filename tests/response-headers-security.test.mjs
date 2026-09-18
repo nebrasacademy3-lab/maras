@@ -87,6 +87,7 @@ test("production isolation headers stay strict and never expose loopback CORS", 
   assert.equal(headers.get("cross-origin-resource-policy"), "same-origin");
   assert.equal(headers.has("access-control-allow-origin"), false);
   assert.equal(headers.has("access-control-allow-credentials"), false);
+  assert.doesNotMatch(headers.get("content-security-policy") || "", /http:\/\/127\.0\.0\.1:3100/);
 });
 
 test("isolated loopback QA gets an explicit browser-compatibility profile only when opted in", async () => {
@@ -96,6 +97,7 @@ test("isolated loopback QA gets an explicit browser-compatibility profile only w
   assert.equal(headers.get("cross-origin-resource-policy"), "cross-origin");
   assert.equal(headers.get("access-control-allow-origin"), "http://127.0.0.1:3100");
   assert.equal(headers.get("access-control-allow-credentials"), "true");
+  assert.match(headers.get("content-security-policy") || "", /connect-src[^;]*http:\/\/127\.0\.0\.1:3100/);
 });
 
 test("public caching has one unambiguous rule and no rule repeats a header key", async () => {
