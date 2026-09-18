@@ -1,6 +1,6 @@
 /** Run only against the dedicated loopback CI PostgreSQL service; never load application secrets. */
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync, openSync } from "node:fs";
+import { mkdirSync, writeFileSync, readFileSync, openSync } from "node:fs";
 import pg from "pg";
 import { randomBytes } from "node:crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
@@ -13,15 +13,22 @@ const env = { ...process.env, MARAS_LOOPBACK_QA: "true", DATABASE_URL: url, DATA
 const run = (args, settings = env) => new Promise((resolve, reject) => { const child = spawn(process.execPath, args, { env: settings, stdio: "inherit" }); child.on("error", reject); child.on("exit", code => code === 0 ? resolve() : reject(new Error(`Command ${args[0]} exited ${code}`))); });
 const pool = new pg.Pool({ connectionString: url });
 try { await migrate(drizzle(pool), { migrationsFolder: "./drizzle" }); } finally { await pool.end(); }
+await run(["scripts/qa-order-ownership-migration.mjs"]);
 await run(["scripts/qa-seed.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-tools.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-security.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-device-return.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-admin-navigation-security.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-email-change.mjs"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-supervisor-data-scope.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-order-ownership.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-protected-video.ts", "--prepare"]);
 const server = spawn(process.execPath, ["node_modules/next/dist/bin/next", "start", "--hostname", "127.0.0.1", "--port", "3100"], { env, stdio: ["ignore", openSync(".data/study-server.log", "w"), "inherit"] });
 const worker = spawn(process.execPath, ["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/ai-worker.ts"], { env, stdio: ["ignore", openSync(".data/study-worker.log", "w"), "inherit"] });
 try {
   let ready = false;
-  for (let i = 0; i < 60; i++) { try { await fetch("http://127.0.0.1:3100/login", { signal: AbortSignal.timeout(2000) }); ready = true; break; } catch { await new Promise(r => setTimeout(r, 1000)); } }
-  if (!ready) throw new Error("Synthetic web server did not start");
+  for (let i = 0; i < 60; i++) { try { const response = await fetch("http://127.0.0.1:3100/login", { signal: AbortSignal.timeout(2000) }); if (response.ok) { ready = true; break; } } catch { /* isolated server may still be starting */ } await new Promise(r => setTimeout(r, 1000)); }
+  if (!ready || server.exitCode !== null) throw new Error(`Synthetic server failed to own its listener: ${readFileSync(".data/study-server.log", "utf8").slice(-3000)}`);
   const qaResponse = await fetch("http://127.0.0.1:3100/", { signal: AbortSignal.timeout(5000) });
   const qaHeaders = qaResponse.headers;
   await qaResponse.body?.cancel();
@@ -32,6 +39,7 @@ try {
       || !/connect-src[^;]*http:\/\/127\.0\.0\.1:3100/.test(qaHeaders.get("content-security-policy") || "")) {
     throw new Error("Loopback browser security profile was not baked into the QA build");
   }
+  await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-protected-video.ts"]);
   await run(["scripts/qa-study-browser.mjs"]);
   await run(["scripts/qa-supervisor-browser.mjs"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-browser.mjs"]);

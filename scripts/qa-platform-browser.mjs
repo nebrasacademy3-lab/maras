@@ -4,6 +4,7 @@ import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { randomBytes, createHash } from "node:crypto";
 import { chromium, firefox, webkit } from "playwright";
 import { eq } from "drizzle-orm";
+import { observeBrowserContext } from "./qa-browser-observations.mjs";
 const fixture = JSON.parse(readFileSync(".data/qa-fixtures.json", "utf8"));
 const database = JSON.parse(readFileSync(".data/qa-database.json", "utf8"));
 const origin = "http://127.0.0.1:3100";
@@ -29,7 +30,8 @@ try {
     const dir = `.data/platform-browser/${name}`; mkdirSync(dir, { recursive: true });
     const browser = await engines[name].launch({ headless: true, ...(name === "chromium" && process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
     let factorId;
-    const checks = [], errors = [], accessFailures = [];
+    const checks = [], errors = [], accessFailures = [], observations = [];
+    const stage = label => { const progress = { engine: name, stage: label, timestamp: new Date().toISOString() }; writeFileSync(`${dir}/progress.json`, JSON.stringify(progress)); console.log("BROWSER_STAGE", JSON.stringify(progress)); };
     const observePage = page => {
       const onPageError = error => errors.push(error.message);
       const onRequestFailed = request => {
@@ -54,7 +56,8 @@ try {
     };
     try {
       const context = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
-      context.setDefaultTimeout(15000);
+      context.setDefaultTimeout(30000); context.setDefaultNavigationTimeout(30000);
+      await observeBrowserContext(context, observations, "public");
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
         const routePage = await context.newPage();
@@ -116,7 +119,8 @@ try {
       await context.close();
       const enrollmentFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8")).enrollment[name];
       const enrolling = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
-      enrolling.setDefaultTimeout(15000);
+      enrolling.setDefaultTimeout(30000); enrolling.setDefaultNavigationTimeout(30000);
+      await observeBrowserContext(enrolling, observations, "enrollment");
       await enrolling.addCookies([cookie(enrollmentFixture.token)]);
       const security = await enrolling.newPage(); observePage(security);
       await security.goto(origin + "/admin/security", { waitUntil: "domcontentloaded" });
@@ -146,8 +150,29 @@ try {
       const [factor] = await db.insert(schema.adminMfaFactors).values({ userId: owner.id, type: "totp", label: "Synthetic browser QA", secretEncrypted: mfa.encryptAdminMfaSecret(secret), counter: Math.floor(Date.now() / 30_000) - 1, verifiedAt: now }).returning({ id: schema.adminMfaFactors.id }); factorId = factor.id;
       await db.update(schema.authSessions).set({ mfaVerifiedAt: now }).where(eq(schema.authSessions.tokenHash, createHash("sha256").update(owner.token).digest("hex")));
       const admin = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } }); await admin.addCookies([cookie(owner.token)]);
-      admin.setDefaultTimeout(15000);
+      admin.setDefaultTimeout(30000); admin.setDefaultNavigationTimeout(30000);
+      await observeBrowserContext(admin, observations, "owner");
       const editor = await admin.newPage(); observePage(editor);
+      stage("owner-navigation");
+      await editor.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
+      await editor.locator("aside").first().waitFor({ state: "visible" });
+      const sidebar = editor.locator("aside").first();
+      assert.equal(await sidebar.locator("details > summary").count(), 8, "single eight-group owner navigation");
+      assert.equal(await editor.locator(".admin-sidebar").count(), 0, "legacy duplicated sidebar removed, not hidden");
+      await editor.getByRole("heading", { name: "ما يحتاج متابعتك", exact: true }).waitFor({ state: "visible" });
+      await assertFits(editor, "admin/owner/desktop");
+      await editor.screenshot({ path: `${dir}/unified-admin-desktop.png`, fullPage: true, animations: "disabled" });
+      await editor.setViewportSize({ width: 390, height: 844 });
+      await editor.getByRole("button", { name: "فتح أقسام الإدارة", exact: true }).click();
+      const navigation = editor.getByRole("dialog", { name: "أقسام الإدارة", exact: true });
+      await navigation.waitFor({ state: "visible" });
+      await navigation.getByLabel("البحث في أقسام الإدارة المسموحة").fill("الطلاب");
+      assert.ok(await navigation.getByRole("link", { name: /الطلاب/ }).count() > 0);
+      await editor.keyboard.press("Escape");
+      await navigation.waitFor({ state: "hidden" });
+      await assertFits(editor, "admin/owner/phone");
+      checks.push("owner navigation has eight unified groups, no legacy sidebar, and a searchable keyboard-accessible mobile drawer");
+      await editor.setViewportSize({ width: 1440, height: 1000 });
       await editor.goto(origin + "/admin/staff", { waitUntil: "domcontentloaded" });
       await editor.getByRole("button", { name: "إضافة مشرف", exact: true }).click();
       const uniqueEmail = `qa-browser-${name}-${randomBytes(5).toString("hex")}@example.test`;
@@ -193,16 +218,31 @@ try {
       assert.equal(await title.inputValue(), "عنوان اختبار لم ينشر — مراس العلم"); await assertFits(editor, "admin/content/phone");
       await editor.screenshot({ path: `${dir}/content-editor-phone.png`, fullPage: true, animations: "disabled" });
       checks.push("branded publish confirmation cancellation retains the draft and responsive content editor remains usable");
+      stage("financial-owner-review");
+      const reviewOrder = JSON.parse(readFileSync(".data/qa-order-ownership-report.json", "utf8")).reviewOrder;
+      assert.ok(/^OWNER-[a-f0-9]+-unbound$/.test(reviewOrder));
+      await editor.setViewportSize({ width: 1440, height: 1000 });
+      await editor.goto(origin + "/admin/finance", { waitUntil: "domcontentloaded" });
+      await editor.getByLabel("بحث مباشر", { exact: true }).fill(reviewOrder);
+      await editor.getByRole("button", { name: "تطبيق المرشحات", exact: true }).click();
+      await editor.getByRole("row").filter({ hasText: reviewOrder }).click();
+      const financialDetail = editor.getByRole("dialog", { name: "تفاصيل الطلب", exact: true });
+      await financialDetail.getByText("ملكية هذا الطلب غير مثبتة.", { exact: false }).waitFor();
+      assert.equal(await financialDetail.getByRole("button", { name: "اعتماد الدفعة وتفعيل المواد", exact: true }).isDisabled(), true);
+      assert.equal(await financialDetail.getByRole("button", { name: "إنشاء طلب استرداد", exact: true }).isEnabled(), true);
+      await financialDetail.getByText("البريد وقت الشراء", { exact: true }).waitFor();
+      await editor.screenshot({ path: `${dir}/financial-owner-review.png`, fullPage: true, animations: "disabled" });
+      checks.push("financial review explains unresolved ownership and disables activation without hiding the refund path or rewriting historical contact data");
       await admin.close();
       const viewerFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8"));
       const viewer = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await viewer.addCookies([cookie(viewerFixture.supervisor.token)]);
-      viewer.setDefaultTimeout(15000);
-      const viewerPage = await viewer.newPage(); await viewerPage.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
+      viewer.setDefaultTimeout(30000); viewer.setDefaultNavigationTimeout(30000);
+      await observeBrowserContext(viewer, observations, "restricted-supervisor");
+      const viewerPage = await viewer.newPage(); observePage(viewerPage); await viewerPage.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
       assert.equal(await viewerPage.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').count(), 0);
       assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/staff")).status()));
       assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status()));
       checks.push("catalog-view supervisor has no owner/finance/content navigation and is denied staff and upload-signing APIs");
-      observePage(viewerPage);
       await viewer.close();
       if (errors.length) {
         throw new assert.AssertionError({
@@ -214,7 +254,7 @@ try {
       }
       const report = { engine: name, passed: checks.length, checks, clientExceptions: errors, liveProviders: false, devices: "browser viewport emulation, not physical phones" };
       writeFileSync(`${dir}/report.json`, JSON.stringify(report, null, 2)); reports.push(report); console.log(JSON.stringify(report, null, 2));
-    } finally { if (factorId) await db.delete(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.id, factorId)); await browser.close(); }
+    } finally { writeFileSync(`${dir}/observations.json`, JSON.stringify(observations, null, 2)); if (factorId) await db.delete(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.id, factorId)); await browser.close(); }
   }
   writeFileSync(".data/platform-browser/report.json", JSON.stringify({ engines: reports.map(r => r.engine), checks: reports.reduce((n,r) => n + r.passed, 0), reports }, null, 2));
 } finally { await closeDb(); }

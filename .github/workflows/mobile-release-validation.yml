@@ -3,7 +3,7 @@ name: Mobile release validation
 on:
   pull_request:
   push:
-    branches: [main, implement/plan-v7-20260916]
+    branches: [main]
 
 permissions:
   contents: read
@@ -32,11 +32,11 @@ jobs:
       EAS_BUILD_PROFILE: production
     steps:
       - name: Checkout exact source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           persist-credentials: false
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '22'
           cache: npm
@@ -52,7 +52,7 @@ jobs:
       - name: Bundle production JavaScript and assets
         run: npx expo export --platform ${{ matrix.platform }} --output-dir dist-ci/${{ matrix.platform }}
       - name: Preserve non-secret bundle evidence
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: mobile-${{ matrix.platform }}-bundle-evidence
           path: mobile/dist-ci/${{ matrix.platform }}/metadata.json
