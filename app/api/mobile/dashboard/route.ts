@@ -1,3 +1,4 @@
+import { notificationRecipientWhere } from "@/lib/notification-visibility";
 import { effectiveAccessRows } from "@/lib/course-access";
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -13,10 +14,7 @@ export async function GET(request: Request) {
   const db = getDb();
   const now = new Date().toISOString();
   const visibleNotifications = and(
-    or(
-      eq(notificationsDb.userEmail, user.email),
-      and(isNull(notificationsDb.userEmail), or(eq(notificationsDb.audience, user.role), eq(notificationsDb.audience, "public"))),
-    ),
+    notificationRecipientWhere(user),
     or(eq(notificationsDb.presentation, "inbox"), eq(notificationsDb.presentation, "all")),
     or(isNull(notificationsDb.startsAt), lte(notificationsDb.startsAt, now)),
     or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now)),
@@ -24,8 +22,11 @@ export async function GET(request: Request) {
   const [accessRows, progressRows, orderRows, invoiceRows, requestRows, noticeRows, ticketRows] = await Promise.all([
     db.select().from(courseAccess).where(eq(courseAccess.userEmail, user.email)).then(rows => effectiveAccessRows(rows)),
     db.select().from(lessonProgress).where(eq(lessonProgress.userEmail, user.email)),
-    db.select().from(orders).where(eq(orders.customerEmail, user.email)).orderBy(desc(orders.createdAt)).limit(50),
-    db.select().from(invoices).where(eq(invoices.customerEmail, user.email)).orderBy(desc(invoices.issuedAt)).limit(50),
+    db.select().from(orders).where(eq(orders.userId, user.id)).orderBy(desc(orders.createdAt)).limit(50),
+    db.select({ invoice: invoices }).from(invoices)
+      .innerJoin(orders, eq(orders.orderNumber, invoices.orderNumber))
+      .where(eq(orders.userId, user.id)).orderBy(desc(invoices.issuedAt)).limit(50)
+      .then(rows => rows.map(row => row.invoice)),
     db.select().from(courseRequests).where(eq(courseRequests.userId, user.id)).orderBy(desc(courseRequests.createdAt)).limit(50),
     db.select({ notification: notificationsDb, readAt: notificationReads.readAt }).from(notificationsDb)
       .leftJoin(notificationReads, and(eq(notificationReads.notificationId, notificationsDb.id), eq(notificationReads.userId, user.id)))

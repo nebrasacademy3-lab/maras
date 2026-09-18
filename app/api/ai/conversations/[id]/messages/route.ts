@@ -40,7 +40,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         const [updated] = await tx.update(aiConversations).set({ title, updatedAt: new Date().toISOString() }).where(eq(aiConversations.id, conversationId)).returning();
         return { assistantMessage, updated };
       });
-      await finishAiUsage({ eventId: reservation.eventId, status: "succeeded", keyId: generated.keyId, model: generated.model, inputTokens: generated.inputTokens, outputTokens: generated.outputTokens });
+      await finishAiUsage({ eventId: reservation.eventId, status: "succeeded", keyId: generated.keyId, model: generated.model, inputTokens: generated.inputTokens, outputTokens: generated.outputTokens, providerTier: generated.providerTier });
       return aiJson({
         ok: true,
         userMessage: messagePayload(userMessage),

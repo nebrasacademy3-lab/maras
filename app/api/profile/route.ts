@@ -32,6 +32,7 @@ export async function PATCH(request: Request) {
   const fullName = cleanText(payload.fullName, 120).replace(/\s+/g, " ");
   const rawPhone = normalizePhone(payload.phone);
   const phone = canonicalPhone(rawPhone);
+  if (current.role === "student" && current.profileCompleted && phone !== current.phone) return jsonError("لا يمكن تغيير رقم الجوال بعد إكمال التسجيل. تواصل مع الإدارة.", 403);
   const universitySlug = cleanText(payload.universitySlug, 120);
   const specialty = cleanText(payload.specialty, 120) || current.specialty || "";
   const academicLevel = cleanText(payload.academicLevel, 80) || current.academicLevel || "";

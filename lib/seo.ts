@@ -71,13 +71,23 @@ export function bingSiteVerification() {
 export function jsonLd(value: unknown) {
   return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
 }
+/** Public identity appears in both visible about content and the machine-readable entity graph. */
+export const MERAS_PUBLIC_IDENTITY = {
+  name: "مراس العلم", alternateNames: ["منصة مراس العلم", "Maras Al Elm"],
+  description: "منصة تعليمية مساندة لطلاب الجامعات في السعودية، تجمع شروحات المقررات والملفات وأدوات المذاكرة ومتابعة الاشتراك والدعم داخل حساب الطالب.",
+  distinction: "هوية المنصة هي مراس العلم مع نطاقها الرسمي الموضح هنا. عرض أسماء الجامعات أو المقررات للتنظيم لا يعني اعتمادًا أو شراكة معها، والمنصة ليست جهة مانحة للدرجات الجامعية.",
+};
+export function publicIdentityFacts() {return {...MERAS_PUBLIC_IDENTITY,url:seoUrl("/"),aboutUrl:seoUrl("/about"),contactUrl:seoUrl("/contact"),organizationId:seoUrl("/#organization"),websiteId:seoUrl("/#website")};}
+export function publicInformationSchema(path:string,title:string,intro:string) {
+  return {"@context":"https://schema.org","@type":path==="/about"?"AboutPage":path==="/contact"?"ContactPage":"WebPage","@id":seoUrl(path+"#webpage"),url:seoUrl(path),name:seoDescription(title,120),description:seoDescription(intro,320),inLanguage:"ar-SA",isPartOf:{"@id":seoUrl("/#website")},about:{"@id":seoUrl("/#organization")},publisher:{"@id":seoUrl("/#organization")}};
+}
 export function siteStructuredData(details: { legalName?: string; description?: string; sameAs?: string[] } = {}) {
   const sameAs = [...new Set(details.sameAs || [])].filter((value) => {
     try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password; } catch { return false; }
   });
   return { "@context": "https://schema.org", "@graph": [
-    { "@type": "Organization", "@id": seoUrl("/#organization"), name: "مراس العلم", url: seoUrl("/"), logo: seoUrl("/brand/mark-official.png"), ...(details.legalName?.trim() ? { legalName: seoDescription(details.legalName, 160) } : {}), ...(details.description?.trim() ? { description: seoDescription(details.description) } : {}), ...(sameAs.length ? { sameAs } : {}) },
-    { "@type": "WebSite", "@id": seoUrl("/#website"), name: "مراس العلم", url: seoUrl("/"), inLanguage: "ar-SA", publisher: { "@id": seoUrl("/#organization") } },
+    { "@type": "Organization", "@id": seoUrl("/#organization"), name: MERAS_PUBLIC_IDENTITY.name, alternateName: MERAS_PUBLIC_IDENTITY.alternateNames, disambiguatingDescription: MERAS_PUBLIC_IDENTITY.distinction, mainEntityOfPage:{"@id":seoUrl("/about#webpage")}, url: seoUrl("/"), logo: seoUrl("/brand/mark-official.png"), ...(details.legalName?.trim() ? { legalName: seoDescription(details.legalName, 160) } : {}), description:seoDescription(details.description?.trim() || MERAS_PUBLIC_IDENTITY.description,320), ...(sameAs.length ? { sameAs } : {}) },
+    { "@type": "WebSite", "@id": seoUrl("/#website"), name: MERAS_PUBLIC_IDENTITY.name, alternateName: MERAS_PUBLIC_IDENTITY.alternateNames, url: seoUrl("/"), inLanguage: "ar-SA", publisher: { "@id": seoUrl("/#organization") } },
   ] };
 }
 export function breadcrumbData(items: Array<{ name: string; path: string }>) {

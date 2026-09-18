@@ -161,7 +161,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
     const aiHistory = await db.select({ id: aiSubscriptionOrders.id }).from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.userId, targetId)).limit(1);
     const storeGrants = await db.select({ id: storeCourseGrants.id }).from(storeCourseGrants).where(eq(storeCourseGrants.userEmail, target.email)).limit(1);
     if (storeHistory.length || aiHistory.length || storeGrants.length) throw new DeletionPolicyError("لا يمكن حذف حساب مرتبط بمشتريات متجر أو أدوات؛ استخدم تعطيل الحساب للحفاظ على الحقوق والسجل المالي.");
-    const userOrders = await db.select({ orderNumber: orders.orderNumber }).from(orders).where(eq(orders.customerEmail, target.email));
+    const userOrders = await db.select({ orderNumber: orders.orderNumber }).from(orders).where(eq(orders.userId, target.id));
     const userInvoices = await db.select({ id: invoices.id }).from(invoices).where(eq(invoices.customerEmail, target.email));
     const userPayments = userOrders.length ? await db.select({ id: paymentEvents.id }).from(paymentEvents).where(inArray(paymentEvents.orderNumber, userOrders.map((row) => row.orderNumber))) : [];
     if (userOrders.length || userInvoices.length || userPayments.length) throw new DeletionPolicyError("لا يمكن حذف الحساب لأنه مرتبط بسجل طلبات أو فاتورة أو أحداث دفع؛ لحماية السجل المالي استخدم التعطيل أو إخفاء الهوية كإجراء منفصل.");
@@ -227,7 +227,10 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
     } else if (input.entityType === "user") {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"active-admin-membership"}))`);
       const targetId = Number(input.entityId);
-      const [row] = await tx.select().from(users).where(eq(users.id, targetId)).limit(1);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${targetId})`);
+      const [row] = await tx.select().from(users).where(eq(users.id, targetId)).limit(1).for("update");
+      const boundOrders = await tx.select({ id: orders.id }).from(orders).where(eq(orders.userId, targetId)).limit(1);
+      if (boundOrders.length) throw new DeletionPolicyError("هذا الحساب مرتبط بطلبات مالية محفوظة. استخدم مسار إغلاق الحساب مع حفظ سجله.");
       if (row?.isPlatformOwner) throw new DeletionPolicyError("لا يمكن حذف حساب المدير الأعلى");
       if (!row) throw new DeletionPolicyError("المستخدم غير موجود.");
       if (row.role === "admin" && row.status === "active") {
@@ -243,14 +246,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       if (requestIds.length) await tx.delete(courseRequests).where(inArray(courseRequests.id, requestIds));
       const tickets = await tx.select({ id: supportTickets.id }).from(supportTickets).where(eq(supportTickets.userEmail, row.email));
       for (const ticket of tickets) await deleteSupportTicketRows(tx, ticket.id, cleanup);
-      const authoredReplies = await tx.select({ id: supportReplies.id }).from(supportReplies).where(eq(supportReplies.authorEmail, row.email));
-      const authoredReplyIds = authoredReplies.map((reply) => reply.id);
-      if (authoredReplyIds.length) {
-        const replyFiles = await tx.select({ objectKey: supportReplyFiles.objectKey }).from(supportReplyFiles).where(inArray(supportReplyFiles.replyId, authoredReplyIds));
-        cleanup.push(...replyFiles.map((file) => ({ key: file.objectKey, source: "support" })));
-        await tx.delete(supportReplyFiles).where(inArray(supportReplyFiles.replyId, authoredReplyIds));
-        await tx.delete(supportReplies).where(inArray(supportReplies.id, authoredReplyIds));
-      }
+      // Historical authorship is not ownership of another account's support ticket.
       const storeHistory = await tx.select({ id: storeTransactions.id }).from(storeTransactions).where(eq(storeTransactions.userId, targetId)).limit(1);
       const storeGrants = await tx.select({ id: storeCourseGrants.id }).from(storeCourseGrants).where(eq(storeCourseGrants.userEmail, row.email)).limit(1);
       if (storeHistory.length || storeGrants.length) throw new DeletionPolicyError("لا يمكن حذف حساب مرتبط بحقوق مشتريات متجر.");
@@ -269,7 +265,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       await tx.delete(lessonProgress).where(eq(lessonProgress.userEmail, row.email));
       await tx.delete(courseReviews).where(eq(courseReviews.userEmail, row.email));
       await tx.delete(courseAccess).where(eq(courseAccess.userEmail, row.email));
-      await tx.delete(notificationsDb).where(eq(notificationsDb.userEmail, row.email));
+      await tx.delete(notificationsDb).where(eq(notificationsDb.targetUserId, row.id));
       await tx.delete(analyticsEvents).where(eq(analyticsEvents.userEmail, row.email));
       await tx.delete(users).where(eq(users.id, targetId));
       deletedRows = 1;

@@ -1,3 +1,4 @@
+import {adminActorMatches} from "@/lib/admin-actor";
 import { verifyLoginMfaTx, type LoginMfaProof } from "@/lib/account-mfa";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -192,6 +193,7 @@ export async function getSessionUser(request: Request) {
   const user = await getSessionUserFromHeaders(request.headers);
   const path = new URL(request.url).pathname;
   if (user && (path.startsWith("/api/admin/") || path.startsWith("/api/supervisor/"))) {
+    if (!adminActorMatches(request.headers,user.id)) return null;
     const { staffRequestAllowed } = await import("@/lib/permissions");
     if (!await staffRequestAllowed(user, request)) return null;
   }

@@ -1,4 +1,7 @@
 "use client";
+import {AdminCapability} from "@/components/admin-capability";
+
+
 import { confirmAction } from "@/lib/interaction-events";
 import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
@@ -9,7 +12,6 @@ import {
   Archive, BadgePercent, Boxes, CalendarDays, Check, ChevronLeft, CircleDollarSign,
   CopyPlus, Edit3, PackageCheck, RefreshCw, Search, Sparkles, Trash2, X,
 } from "lucide-react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { fromDateTimeLocal, toDateTimeLocal } from "@/components/admin-datetime";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { useRealtimeSync } from "@/components/realtime-sync";
@@ -247,7 +249,7 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
   };
 
   return <main className={styles.page} dir="rtl"><div className={styles.shell}>
-    <AdminCenterNav />
+
     <header className={styles.header}>
       <div><span><Boxes size={16}/> الباقات والعروض المركبة</span><h1>مركز إدارة الباقات</h1><p>{adminName} · كوّن عروضًا واضحة من مواد جاهزة مع تسعير محكوم وسجل تدقيق.</p></div>
       <nav><Link href="/admin/finance">المركز المالي</Link><Link href="/admin/operations">التشغيل والتحليلات</Link></nav>
@@ -255,7 +257,7 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
 
     {notice && notice.tone === "error" && isAdminStepUpMessage(notice.text) ? <AdminMfaNotice /> : notice ? <div className={`${styles.notice} ${styles[notice.tone]}`}>{notice.tone === "ok" ? <Check size={17}/> : <X size={17}/>}<span>{notice.text}</span></div> : null}
 
-    <section className={styles.editor}>
+    <AdminCapability all={["catalog.manage"]}><section className={styles.editor}>
       <div className={styles.editorHeading}><div><span>{editingId ? "تعديل الباقة" : "باقة جديدة"}</span><h2>{editingId ? form.title || "تعديل البيانات" : "أنشئ عرضًا متكاملًا"}</h2></div>{editingId ? <button type="button" onClick={reset}><X size={16}/> إلغاء التعديل</button> : null}</div>
       <div className={styles.formGrid}>
         <label>اسم الباقة<input value={form.title} onChange={(event)=>setForm({...form,title:event.target.value})} placeholder="مثال: باقة المستوى الأول"/></label>
@@ -273,16 +275,16 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
 
       <div className={styles.coursePicker}>
         <div className={styles.pickerHeading}><div><h3>مواد الباقة</h3><p>اختر من مادتين إلى 30 مادة. المواد غير الجاهزة متاحة للمسودة فقط.</p></div><label><Search size={16}/><input value={courseQuery} onChange={(event)=>setCourseQuery(event.target.value)} placeholder="ابحث باسم المادة أو الجامعة"/></label></div>
-        <div className={styles.courseGrid}>{filteredCourses.map((course) => { const selected=form.courseSlugs.includes(course.slug); return <button type="button" key={course.slug} className={selected ? styles.selectedCourse : ""} onClick={()=>toggleCourse(course.slug)}><i>{selected ? <Check size={15}/> : <CopyPlus size={15}/>}</i><span><b>{course.title}</b><small>{course.university} · {course.specialty}</small></span><em>{money(course.price)}{!course.availableForPurchase ? <small>قيد التجهيز</small> : null}</em></button>; })}</div>
+        <div className={styles.courseGrid}>{filteredCourses.map((course) => { const selected=form.courseSlugs.includes(course.slug); return <AdminCapability key={course.slug} all={["catalog.manage"]}><button type="button" key={course.slug} className={selected ? styles.selectedCourse : ""} onClick={()=>toggleCourse(course.slug)}><i>{selected ? <Check size={15}/> : <CopyPlus size={15}/>}</i><span><b>{course.title}</b><small>{course.university} · {course.specialty}</small></span><em>{money(course.price)}{!course.availableForPurchase ? <small>قيد التجهيز</small> : null}</em></button></AdminCapability>; })}</div>
       </div>
 
       <aside className={styles.quote}>
         <div><span><PackageCheck size={18}/> ملخص الباقة</span><strong>{form.courseSlugs.length} مواد</strong></div>
         <div><span>السعر قبل الخصم</span><b>{money(subtotal)}</b></div><div><span>الخصم</span><b className={styles.discount}>− {money(discount)}</b></div><div className={styles.total}><span>سعر الباقة</span><b>{money(total)}</b></div>
         {unavailableCount ? <p>{unavailableCount} من المواد قيد التجهيز؛ احفظ الباقة كمسودة حتى تجهز.</p> : <p className={styles.ready}>كل المواد المحددة جاهزة للنشر.</p>}
-        <button type="button" disabled={saving} onClick={()=>void save()}>{saving ? <RefreshCw className={styles.spin} size={17}/> : <Check size={17}/>} {editingId ? "حفظ التعديلات" : "إنشاء الباقة"}</button>
+        <AdminCapability all={["catalog.manage"]}><button type="button" disabled={saving} onClick={()=>void save()}>{saving ? <RefreshCw className={styles.spin} size={17}/> : <Check size={17}/>} {editingId ? "حفظ التعديلات" : "إنشاء الباقة"}</button></AdminCapability>
       </aside>
-    </section>
+    </section></AdminCapability>
 
     <section className={styles.listSection}>
       <div className={styles.listHeading}><div><span>إدارة دورة الحياة</span><h2>الباقات الحالية</h2></div><label><Search size={16}/><input value={query} onChange={(event)=>setQuery(event.target.value)} placeholder="ابحث في الباقات"/></label></div>
@@ -294,7 +296,7 @@ export function AdminBundlesCenter({ adminName }:{ adminName:string }) {
           <h3>{bundle.title}</h3><p>{bundle.description || "لا يوجد وصف لهذه الباقة."}</p>
           <div className={styles.bundleMeta}><span><PackageCheck size={15}/>{bundle.courseSlugs.length} مواد</span><span><BadgePercent size={15}/>{bundle.discountType === "percent" ? `${bundle.discountValue}%` : money(bundle.discountValue)}</span><span><CircleDollarSign size={15}/>{money(Math.max(0,bundleSubtotal-bundleDiscount))}</span></div>
           <div className={styles.dates}><span><CalendarDays size={14}/> البداية: {localDate(bundle.startsAt)}</span><span><CalendarDays size={14}/> النهاية: {localDate(bundle.expiresAt)}</span></div>
-          <footer><button type="button" onClick={()=>edit(bundle)}><Edit3 size={15}/> تعديل</button><button type="button" onClick={()=>duplicate(bundle)}><CopyPlus size={15}/> نسخ</button>{bundle.status !== "archived" ? <button type="button" onClick={()=>void archive(bundle)}><Archive size={15}/> أرشفة</button> : null}<button type="button" className={styles.delete} onClick={()=>void remove(bundle)}><Trash2 size={15}/> حذف</button></footer>
+          <footer><AdminCapability all={["catalog.manage"]}><button type="button" onClick={()=>edit(bundle)}><Edit3 size={15}/> تعديل</button></AdminCapability><AdminCapability all={["catalog.manage"]}><button type="button" onClick={()=>duplicate(bundle)}><CopyPlus size={15}/> نسخ</button></AdminCapability>{bundle.status !== "archived" ? <AdminCapability all={["catalog.manage"]}><button type="button" onClick={()=>void archive(bundle)}><Archive size={15}/> أرشفة</button></AdminCapability> : null}<AdminCapability all={["catalog.manage","records.delete"]}><button type="button" className={styles.delete} onClick={()=>void remove(bundle)}><Trash2 size={15}/> حذف</button></AdminCapability></footer>
         </article>;
       })}</div> : <div className={styles.empty}><Boxes size={26}/><h3>لا توجد باقات بعد</h3><p>ابدأ باختيار المواد من النموذج أعلاه.</p></div>}
     </section>

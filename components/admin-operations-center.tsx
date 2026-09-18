@@ -3,7 +3,6 @@ import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./admin-operations-center.module.css";
@@ -64,7 +63,7 @@ export function AdminOperationsCenter({adminName}:{adminName:string}) {
   const runOperation=async(endpoint:string,label:string)=>{setMessage("");const response=await adminFetch(endpoint,{method:"POST",credentials:"same-origin"});const payload=await response.json() as TaskResult&{error?:string};if(isAdminStepUpResponse(response)){setMessage(ADMIN_STEP_UP_MESSAGE);return;}if(!response.ok){setMessage(payload.error||"تعذر تشغيل المهمة");return;}setMessage(describeTask(label,payload));await load(undefined,true);};
 
   return <main className={styles.page}><div className={styles.shell}>
-    <AdminCenterNav />
+
     <header className={styles.header}><div><h1>مركز التشغيل والتحليلات</h1><p>{adminName} · قرارات مبنية على بيانات حية وحوكمة قابلة للتتبع</p></div><nav className={styles.links}><button type="button" onClick={()=>void load()} disabled={loading}>تحديث</button></nav></header>
     <div className={styles.tabs}><button className={tab==="analytics"?styles.active:""} onClick={()=>{setMessage("");setTab("analytics");}}>التحويل والاحتفاظ</button><button className={tab==="support"?styles.active:""} onClick={()=>{setMessage("");setTab("support");}}>تشغيل الدعم وSLA</button><button className={tab==="automation"?styles.active:""} onClick={()=>{setMessage("");setTab("automation");}}>الأتمتة والطوابير</button><button className={tab==="compliance"?styles.active:""} onClick={()=>{setMessage("");setTab("compliance");}}>ملف الامتثال</button></div>
     {message?isAdminStepUpMessage(message)?<AdminMfaNotice/>:<div className={styles.notice}>{message}</div>:null}

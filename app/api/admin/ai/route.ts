@@ -4,9 +4,10 @@ import { aiApiKeys, aiEntitlements, aiServiceSettings, aiSubscriptionOrders, aiU
 import { cleanText, isUniqueConstraintError, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest, validEmail } from "@/lib/auth";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
-import { aiKeyFingerprint, decryptAiApiKey, encryptAiApiKey, geminiEnvironmentKeys, maskAiKey, validGeminiApiKey } from "@/lib/ai-keys";
+import { aiKeyFingerprint, decryptAiApiKey, encryptAiApiKey, geminiEnvironmentKeys, geminiProjectTier, maskAiKey, validGeminiApiKey } from "@/lib/ai-keys";
 import { AI_SERVICES, isAiService } from "@/lib/ai-contracts";
 import { AiPlatformError, DEFAULT_AI_SETTINGS, getAiMonthlyPrice, getAiServiceSettings } from "@/lib/ai-platform";
+import { getAiPaidBudgetPolicy, saveAiPaidBudgetPolicy } from "@/lib/ai-paid-budget";
 import { ADMIN_PERMISSIONS, hasPermission } from "@/lib/permissions";
 import { createAndSendNotification } from "@/lib/notifications";
 import { observeRequest } from "@/lib/observability";
@@ -43,7 +44,7 @@ function keyPayload(row: typeof aiApiKeys.$inferSelect) {
   let decryptable = true;
   let decryptionError = "";
   try { masked = maskAiKey(decryptAiApiKey(row.encryptedKey)); } catch (error) { masked = "تعذر فك المفتاح"; decryptable = false; decryptionError = error instanceof AiPlatformError ? error.message : "تحقق من مفتاح تشفير الخدمة ثم أعد حفظ المفتاح."; }
-  return { decryptable, decryptionError, id: row.id, label: row.label, projectLabel: row.projectLabel, maskedKey: masked, fingerprint: row.fingerprint.slice(0, 12), priority: row.priority, status: row.status, cooldownUntil: row.cooldownUntil, consecutiveFailures: row.consecutiveFailures, lastUsedAt: row.lastUsedAt, lastSuccessAt: row.lastSuccessAt, lastErrorCode: row.lastErrorCode, lastErrorMessage: geminiErrorMessage(row.lastErrorCode), createdAt: row.createdAt, updatedAt: row.updatedAt };
+  return { decryptable, decryptionError, id: row.id, label: row.label, projectLabel: row.projectLabel, tier: geminiProjectTier(row.projectLabel), maskedKey: masked, fingerprint: row.fingerprint.slice(0, 12), priority: row.priority, status: row.status, cooldownUntil: row.cooldownUntil, consecutiveFailures: row.consecutiveFailures, lastUsedAt: row.lastUsedAt, lastSuccessAt: row.lastSuccessAt, lastErrorCode: row.lastErrorCode, lastErrorMessage: geminiErrorMessage(row.lastErrorCode), createdAt: row.createdAt, updatedAt: row.updatedAt };
 }
 
 export async function GET(request: Request) {
@@ -51,9 +52,10 @@ export async function GET(request: Request) {
     const guarded = await adminGuard(request, false);
     if (guarded.response) return guarded.response;
     const since = new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString();
-    const [settings, price, keys, entitlements, usage, subscriptionOrders, subscriptionTotals] = await Promise.all([
+    const [settings, price, paidFallback, keys, entitlements, usage, subscriptionOrders, subscriptionTotals] = await Promise.all([
       getAiServiceSettings(),
       getAiMonthlyPrice(),
+      getAiPaidBudgetPolicy(),
       getDb().select().from(aiApiKeys).orderBy(asc(aiApiKeys.priority), asc(aiApiKeys.label)),
       getDb().select({ entitlement: aiEntitlements, email: users.email, fullName: users.fullName }).from(aiEntitlements).innerJoin(users, eq(aiEntitlements.userId, users.id)).orderBy(desc(aiEntitlements.createdAt)).limit(300),
       getDb().select({ service: aiUsageEvents.service, status: aiUsageEvents.status, total: count() }).from(aiUsageEvents).where(gte(aiUsageEvents.createdAt, since)).groupBy(aiUsageEvents.service, aiUsageEvents.status),
@@ -65,6 +67,7 @@ export async function GET(request: Request) {
       ok: true,
       monthlyPrice: price,
       currency: "SAR",
+      paidFallback,
       settings: AI_SERVICES.map((service) => settings[service]),
       keys: keys.map(keyPayload),
       environmentKeyCount,
@@ -86,6 +89,13 @@ export async function POST(request: Request) {
     const db = getDb();
     const now = new Date().toISOString();
     try {
+      if (action === "setPaidFallback") {
+        if (!guarded.user.isPlatformOwner && !await hasPermission(guarded.user, ADMIN_PERMISSIONS.FINANCE_MANAGE)) return jsonError("تغيير سقف الفوترة يتطلب المدير الأعلى أو صلاحية المالية.", 403, "AI_PAID_BUDGET_PERMISSION_REQUIRED");
+        const before = await getAiPaidBudgetPolicy();
+        const saved = await saveAiPaidBudgetPolicy({ enabled: payload.enabled === true, dailyCapSar: payload.dailyCapSar, monthlyCapSar: payload.monthlyCapSar, perRequestCapSar: payload.perRequestCapSar, estimatedRequestSar: payload.estimatedRequestSar }, guarded.user.email);
+        await audit(request, guarded.user.email, "update", "ai_paid_budget_policy", "default", before, saved);
+        return Response.json({ ok: true, paidFallback: saved }, { headers: { "cache-control": "no-store" } });
+      }
       if (action === "testRuntime") {
         if (!await checkRateLimit("admin-ai-provider-check", "user:" + guarded.user.id, 5, 60)) return jsonError("انتظر دقيقة قبل تكرار الاختبار", 429);
         if (!isAiService(payload.service)) return jsonError("حدد الأداة المطلوب اختبارها");

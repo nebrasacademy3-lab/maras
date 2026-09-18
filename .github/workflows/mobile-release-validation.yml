@@ -1,0 +1,63 @@
+name: Mobile release validation
+
+on:
+  pull_request:
+  push:
+    branches: [main, implement/plan-v7-20260916]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle:
+    name: ${{ matrix.platform }} release bundle and native configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [android, ios]
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_API_URL: https://maras-qa.example
+      EXPO_PUBLIC_STORE_MODE: iap
+      EAS_BUILD_PROFILE: production
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install locked native dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Check installed Expo dependency compatibility
+        run: npx expo install --check
+      - name: Typecheck application
+        run: npm run typecheck
+      - name: Generate native project without signing or installing pods
+        run: npx expo prebuild --platform ${{ matrix.platform }} --no-install
+      - name: Bundle production JavaScript and assets
+        run: npx expo export --platform ${{ matrix.platform }} --output-dir dist-ci/${{ matrix.platform }}
+      - name: Preserve non-secret bundle evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: mobile-${{ matrix.platform }}-bundle-evidence
+          path: mobile/dist-ci/${{ matrix.platform }}/metadata.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Explain verification boundary
+        run: |
+          printf 'Validated native configuration and release JS/assets for %s. This is not a signed APK/AAB/IPA, physical-device test, or store submission.\n' '${{ matrix.platform }}' >> "$GITHUB_STEP_SUMMARY"
