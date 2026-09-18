@@ -1,3 +1,4 @@
+import { supervisorStudentAllowed } from "@/lib/supervisor-data-scope";
 import { hasPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -17,6 +18,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const [ticket] = await db.select({ userEmail: supportTickets.userEmail }).from(supportTickets).where(eq(supportTickets.id, file.ticketId)).limit(1);
   const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
   if (!ticket || (!manager && ticket.userEmail !== current.email)) return jsonError("غير مصرح", 403);
+  if (manager && !await supervisorStudentAllowed(current, ticket.userEmail || "")) return jsonError("غير مصرح", 403);
   const [reply] = await db.select({ internal: supportReplies.internal, ticketId: supportReplies.ticketId }).from(supportReplies).where(eq(supportReplies.id, file.replyId)).limit(1);
   if (!reply || reply.ticketId !== file.ticketId || (!manager && reply.internal)) return jsonError("المرفق غير موجود", 404);
   if (file.scanStatus === "quarantined") return jsonError("المرفق غير متاح لأسباب أمنية", 404);
