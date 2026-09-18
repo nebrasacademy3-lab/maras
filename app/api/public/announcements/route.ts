@@ -1,3 +1,4 @@
+import { notificationRecipientWhere } from "@/lib/notification-visibility";
 import { and, desc, eq, gt, isNull, lte, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { notificationsDb } from "@/db/schema";
@@ -6,13 +7,7 @@ import { getSessionUser } from "@/lib/auth";
 export async function GET(request: Request) {
   const now = new Date().toISOString();
   const user = await getSessionUser(request);
-  const visibility = user
-    ? or(
-        and(eq(notificationsDb.audience, "public"), isNull(notificationsDb.userEmail)),
-        and(eq(notificationsDb.audience, user.role), isNull(notificationsDb.userEmail)),
-        eq(notificationsDb.userEmail, user.email),
-      )
-    : and(eq(notificationsDb.audience, "public"), isNull(notificationsDb.userEmail));
+  const visibility = notificationRecipientWhere(user);
 
   const rows = await getDb().select({
     id: notificationsDb.id,

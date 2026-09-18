@@ -108,10 +108,10 @@ test("malformed provider responses and thought-only/safety/token-limit outputs p
 
 async function runtime(sequence, environment = {}) {
   const updates = [], calls = [], gates = [];
-  const rows = [modern, legacy].map((key, index) => ({ id: index + 1, encryptedKey: keys.encryptAiApiKey(key), fingerprint: keys.aiKeyFingerprint(key), priority: index, lastUsedAt: null, cooldownUntil: null }));
+  const rows = [modern, legacy].map((key, index) => ({ id: index + 1, status: "active", encryptedKey: keys.encryptAiApiKey(key), fingerprint: keys.aiKeyFingerprint(key), priority: index, lastUsedAt: null, cooldownUntil: null }));
   const db = { select: () => ({ from: () => ({ where: () => ({ orderBy: async () => rows }) }) }), update: () => ({ set: values => ({ where: async () => { updates.push(values); } }) }) };
   const p = await provider(async (url, init) => { calls.push({ url: String(url), init }); return sequence(calls.length); });
-  const compiledModule = await isolated("../lib/gemini.ts", { ...platform, ...config, ...errors, ...keys, ...p, createHash: crypto.createHash, asc: () => true, eq: () => true, getDb: () => db, aiApiKeys: {}, acquireAiProviderSlot: async () => { gates.push("acquire"); return async () => { gates.push("release"); }; }, deferAiProvider: async delay => gates.push(delay), process: { env: environment } });
+  const compiledModule = await isolated("../lib/gemini.ts", { ...platform, ...config, ...errors, ...keys, ...p, createHash: crypto.createHash, and: () => true, sql: () => true, asc: () => true, eq: () => true, getDb: () => db, aiApiKeys: {}, acquireAiProviderSlot: async () => { gates.push("acquire"); return async () => { gates.push("release"); }; }, deferAiProvider: async delay => gates.push(delay), process: { env: environment } });
   return { ...compiledModule, updates, calls, gates };
 }
 const generation = { config: { model: model.name, temperature: 0.2, maxOutputTokens: 4096 }, systemInstruction: "Test only", contents: [{ role: "user", parts: [{ text: "OK" }] }] };
@@ -132,9 +132,9 @@ test("invalid-key signals disable only that key while model failures do not rota
 
 
 test("corrupt encrypted key reports configuration failure instead of generic provider outage", async () => {
-  const rows=[{id:1,encryptedKey:"bad",fingerprint:"bad",priority:1,cooldownUntil:null}];
+  const rows=[{id:1,status:"active",encryptedKey:"bad",fingerprint:"bad",priority:1,cooldownUntil:null}];
   const db={select:()=>({from:()=>({where:()=>({orderBy:async()=>rows})})})};
-  const r=await isolated("../lib/gemini.ts",{...platform,...config,...errors,createHash:crypto.createHash,asc:()=>true,eq:()=>true,aiApiKeys:{},getDb:()=>db,decryptAiApiKey:()=>{throw Error("private-key-secret");},geminiEnvironmentKeys:()=>[],process:{env:{}}});
+  const r=await isolated("../lib/gemini.ts",{...platform,...config,...errors,createHash:crypto.createHash,and:()=>true,sql:()=>true,asc:()=>true,eq:()=>true,geminiProjectTier:()=>"free",aiApiKeys:{},getDb:()=>db,decryptAiApiKey:()=>{throw Error("private-key-secret");},geminiEnvironmentKeys:()=>[],process:{env:{}}});
   await assert.rejects(r.generateGeminiContent(generation),error=>error.code==="AI_KEY_DECRYPTION_FAILED"&&!error.message.includes("private-key-secret"));
   const ciphertext=keys.encryptAiApiKey(modern);
   assert.throws(()=>keys.decryptAiApiKey(ciphertext+".extra"),error=>error.code==="AI_KEY_DECRYPTION_FAILED");

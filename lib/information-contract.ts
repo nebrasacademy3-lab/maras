@@ -1,7 +1,7 @@
 /** Text-only public editorial content: no HTML, scripts or arbitrary links. */
 export const FAQ_CATEGORIES = { start: "البداية واختيار المادة", payment: "الاشتراك والدفع", learning: "الدروس والملفات", tools: "أدوات المذاكرة", security: "الحساب والأمان", referrals: "الإحالات والمكافآت", support: "المساعدة" } as const;
 export type FaqItem = { id: string; category: keyof typeof FAQ_CATEGORIES; question: string; answer: string };
-export type InformationContent = { about: { title: string; intro: string; mission: string; vision: string; why: Array<{ title: string; body: string }> }; faq: FaqItem[] };
+export type InformationContent = { about: { title: string; intro: string; mission: string; vision: string; why: { title: string; body: string }[] }; faq: FaqItem[] };
 export const DEFAULT_INFORMATION: InformationContent = {
   "about": {
     "title": "عن مراس العلم",

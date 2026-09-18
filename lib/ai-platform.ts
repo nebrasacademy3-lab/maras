@@ -207,10 +207,11 @@ export async function beginAiUsage(input: {
   return { ...created, config, entitlement, limit, remaining: Math.max(0, limit - created.used) };
 }
 
-export async function finishAiUsage(input: { eventId: number; status: "succeeded" | "failed"; billable?: boolean; keyId?: number | null; model?: string; inputTokens?: number; outputTokens?: number; errorCode?: string | null }) {
+export async function finishAiUsage(input: { eventId: number; status: "succeeded" | "failed"; billable?: boolean; keyId?: number | null; model?: string; inputTokens?: number; outputTokens?: number; providerTier?: "free" | "paid"; errorCode?: string | null }) {
   await getDb().update(aiUsageEvents).set({
     status: input.status === "failed" ? input.billable === false ? "failed" : "billable_failed" : "succeeded",
     keyId: input.keyId || null,
+    providerTier: input.providerTier || "free",
     model: input.model,
     inputTokens: boundedInteger(input.inputTokens, 0, 0, 100_000_000),
     outputTokens: boundedInteger(input.outputTokens, 0, 0, 100_000_000),

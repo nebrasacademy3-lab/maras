@@ -1,4 +1,5 @@
 "use client";
+import {useAdminAccess} from "@/components/admin-access";
 import { confirmAction } from "@/lib/interaction-events";
 import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
@@ -11,7 +12,6 @@ import {
   FileCheck2, Handshake, ImagePlus, LoaderCircle, Pencil, Plus, RefreshCw,
   Save, Search, ShieldCheck, Trash2, X,
 } from "lucide-react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import styles from "./admin-partners-center.module.css";
 
@@ -24,6 +24,7 @@ type Partner = {
   status: PartnerStatus; sortOrder: number; createdAt: string; updatedAt: string;
 };
 type EditorState = {
+  expectedUpdatedAt: string;
   id: number | null; name: string; kind: PartnerKind; description: string; logo: string;
   logoUrl: string; destinationUrl: string; credentialNumber: string; verificationUrl: string;
   rightsConfirmed: boolean; rightsReference: string;
@@ -31,9 +32,9 @@ type EditorState = {
 };
 
 const EMPTY_EDITOR: EditorState = {
-  id: null, name: "", kind: "partner", description: "", logo: "", logoUrl: "",
-  destinationUrl: "", credentialNumber: "", verificationUrl: "", rightsConfirmed: true,
-  rightsReference: "", status: "published", sortOrder: 10,
+  expectedUpdatedAt: "", id: null, name: "", kind: "partner", description: "", logo: "", logoUrl: "",
+  destinationUrl: "", credentialNumber: "", verificationUrl: "", rightsConfirmed: false,
+  rightsReference: "", status: "draft", sortOrder: 10,
 };
 const KIND_LABELS: Record<PartnerKind, string> = {
   partner: "شريك للمنصة", accreditation: "اعتماد أو ترخيص", payment: "شريك دفع",
@@ -59,6 +60,7 @@ function partnerIcon(kind: PartnerKind) {
 }
 
 export function AdminPartnersCenter({ adminName }: { adminName: string }) {
+  const {can}=useAdminAccess();
   const [partners, setPartners] = useState<Partner[]>([]);
   const [editor, setEditor] = useState<EditorState>(EMPTY_EDITOR);
   const [file, setFile] = useState<File | null>(null);
@@ -107,10 +109,10 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
 
   const editPartner = (partner: Partner) => {
     setEditor({
-      id: partner.id, name: partner.name, kind: partner.kind, description: partner.description || "",
+      expectedUpdatedAt: partner.updatedAt, id: partner.id, name: partner.name, kind: partner.kind, description: partner.description || "",
       logo: partner.logo || "", logoUrl: partner.logo?.startsWith("https://") ? partner.logo : "",
       destinationUrl: partner.destinationUrl || "", credentialNumber: partner.credentialNumber || "",
-      verificationUrl: partner.verificationUrl || "", rightsConfirmed: partner.kind === "accreditation" ? partner.rightsConfirmed : true,
+      verificationUrl: partner.verificationUrl || "", rightsConfirmed: partner.rightsConfirmed,
       rightsReference: partner.rightsReference || "", status: partner.status, sortOrder: partner.sortOrder,
     });
     setFile(null);
@@ -147,7 +149,7 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
       setError("أرفق شعارًا أو أدخل رابط صورة آمنًا يبدأ بـ HTTPS.");
       return;
     }
-    if (editor.status === "published" && editor.kind === "accreditation" && !editor.rightsConfirmed) {
+    if (editor.status === "published" && (!editor.rightsConfirmed || !editor.rightsReference.trim())) {
       setError("لا يمكن النشر قبل تأكيد حق استخدام الشعار.");
       return;
     }
@@ -162,7 +164,7 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
       }
     }
     const body = new FormData();
-    if (editor.id) body.set("id", String(editor.id));
+    if (editor.id) { body.set("id", String(editor.id)); body.set("expectedUpdatedAt",editor.expectedUpdatedAt); }
     body.set("name", editor.name.trim());
     body.set("kind", editor.kind);
     body.set("description", editor.description.trim());
@@ -200,7 +202,7 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
       const response = await adminFetch("/api/admin/partners", {
         method: "DELETE", credentials: "same-origin",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ id: partner.id }),
+        body: JSON.stringify({ id: partner.id, expectedUpdatedAt: partner.updatedAt }),
       });
       const result = await response.json().catch(() => ({})) as { error?: string };
       if (isAdminStepUpResponse(response)) throw new Error(ADMIN_STEP_UP_MESSAGE);
@@ -234,7 +236,7 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
   return (
     <main className={styles.page} dir="rtl">
       <div className={styles.shell}>
-        <AdminCenterNav />
+
         <header className={styles.hero}>
           <div className={styles.heroCopy}>
             <span><Handshake size={16} /> مركز الهوية المؤسسية</span>
@@ -281,7 +283,7 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
                 <input value={editor.name} onChange={(event) => setEditor((current) => ({ ...current, name: event.target.value }))} required minLength={2} maxLength={140} placeholder="مثال: اسم الجهة الشريكة" />
               </label>
               <label>التصنيف
-                <SearchableSelect value={editor.kind} onChange={(event) => { const kind = event.target.value as PartnerKind; setEditor((current) => ({ ...current, kind, rightsConfirmed: kind === "accreditation" ? false : true })); }}>
+                <SearchableSelect value={editor.kind} onChange={(event) => { const kind = event.target.value as PartnerKind; setEditor((current) => ({ ...current, kind, rightsConfirmed: false })); }}>
                   <option value="partner">شريك للمنصة</option><option value="accreditation">اعتماد أو ترخيص</option><option value="payment">شريك دفع</option>
                 </SearchableSelect>
               </label>
@@ -308,7 +310,7 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
                 <label>رقم الاعتماد أو الترخيص
                   <input dir="ltr" value={editor.credentialNumber} onChange={(event) => setEditor((current) => ({ ...current, credentialNumber: event.target.value }))} maxLength={180} required={editor.status === "published"} placeholder="مثال: NELC-000000" />
                 </label>
-                <label>رابط التحقق الرسمي (اختياري)
+                <label>رابط التحقق الرسمي (مطلوب عند نشر اعتماد)
                   <input dir="ltr" type="url" value={editor.verificationUrl} onChange={(event) => setEditor((current) => ({ ...current, verificationUrl: event.target.value }))} placeholder="https://..." />
                 </label>
               </> : null}
@@ -321,13 +323,13 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
                 <input type="number" min={0} max={10000} value={editor.sortOrder} onChange={(event) => setEditor((current) => ({ ...current, sortOrder: Number(event.target.value) || 0 }))} />
                 <small>الأصغر يظهر أولًا.</small>
               </label>
-              {editor.kind === "accreditation" ? <label className={styles.wide}>ملاحظة داخلية للاعتماد (اختياري)
-                <input value={editor.rightsReference} onChange={(event) => setEditor((current) => ({ ...current, rightsReference: event.target.value }))} maxLength={500} placeholder="ملاحظة للإدارة" />
-              </label> : null}
-              {editor.kind === "accreditation" ? <label className={styles.consent}>
+              <label className={styles.wide}>مرجع حق استخدام الشعار (مطلوب عند النشر)
+                <input value={editor.rightsReference} onChange={(event) => setEditor((current) => ({ ...current, rightsReference: event.target.value }))} maxLength={500} placeholder="مرجع الإذن أو الاتفاق الذي يجيز النشر" required={editor.status==="published"} />
+              </label>
+              <label className={styles.consent}>
                 <input type="checkbox" checked={editor.rightsConfirmed} onChange={(event) => setEditor((current) => ({ ...current, rightsConfirmed: event.target.checked }))} />
-                <span><BadgeCheck size={19} /><b>أنا مخوّل بإضافة هذا الشعار</b><small>تأكيد واحد مطلوب عند النشر.</small></span>
-              </label> : null}
+                <span><BadgeCheck size={19} /><b>أنا مخوّل بإضافة هذا الشعار</b><small>تأكيد مطلوب لكل شعار أو اعتماد منشور.</small></span>
+              </label>
             </div>
             <button className={styles.primaryButton} disabled={saving}>
               {saving ? <LoaderCircle className={styles.spin} size={18} /> : <Save size={18} />}
@@ -387,9 +389,9 @@ export function AdminPartnersCenter({ adminName }: { adminName: string }) {
                         {partner.verificationUrl ? <a href={partner.verificationUrl} target="_blank" rel="noopener noreferrer"><BadgeCheck size={14} /> تحقق</a> : null}
                         {partner.destinationUrl ? <a href={partner.destinationUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /> موقع الجهة</a> : null}
                         <button type="button" onClick={() => editPartner(partner)}><Pencil size={14} /> تعديل</button>
-                        <button type="button" className={styles.deleteButton} onClick={() => void deletePartner(partner)} disabled={deletingId === partner.id}>
+                        {can(["records.delete"]) && <button type="button" className={styles.deleteButton} onClick={() => void deletePartner(partner)} disabled={deletingId === partner.id}>
                           {deletingId === partner.id ? <LoaderCircle className={styles.spin} size={14} /> : <Trash2 size={14} />} حذف
-                        </button>
+                        </button>}
                       </footer>
                     </article>
                   );

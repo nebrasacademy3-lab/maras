@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Bell, BookOpen, Bot, CircleHelp, FileUp, Gift, GraduationCap, Heart, House, LayoutDashboard, LifeBuoy, LogOut, Menu, Search, ShoppingBag, UserRound, X } from "lucide-react";
@@ -22,7 +22,7 @@ const links: NavLink[] = [
   { href: "/faq", label: "الأسئلة الشائعة", icon: CircleHelp },
 ];
 
-type HeaderUser = { fullName?: string | null };
+type HeaderUser = { id?:number; fullName?: string | null };
 
 export function SiteHeader({ appMode = false, userName = "طالب مراس" }: { appMode?: boolean; userName?: string }) {
   const pathname = usePathname();
@@ -34,26 +34,36 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
   const [unreadNotifications, setUnreadNotifications] = useState(0);
   const { cartSlugs, favoriteSlugs } = useCommerceState();
 
-  useEffect(() => {
-    const controller = new AbortController();
-    fetch("/api/auth/me", { credentials: "include", cache: "no-store", signal: controller.signal })
-      .then(async (response) => response.ok ? await response.json() as { user?: HeaderUser } : null)
-      .then((payload) => setAccount(payload?.user || null))
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [pathname]);
-
-  const signedIn = appMode || Boolean(account);
-  useEffect(() => { if (signedIn) { resetCommerce(); void ensureCommerceLoaded(); } }, [signedIn]);
-  useEffect(() => {
-    if (!signedIn) return;
-    const controller = new AbortController();
-    fetch("/api/mobile/notifications", { credentials: "include", cache: "no-store", signal: controller.signal })
-      .then(async (response) => response.ok ? await response.json() as { unreadCount?: number; notifications?: Array<{ readAt: string | null }> } : null)
-      .then((payload) => { if (!controller.signal.aborted) setUnreadNotifications(typeof payload?.unreadCount === "number" ? payload.unreadCount : payload?.notifications?.filter((item) => !item.readAt).length || 0); })
-      .catch(() => undefined);
-    return () => controller.abort();
-  }, [pathname, signedIn]);
+  const accountRequest=useRef<AbortController|null>(null),notificationRequest=useRef<AbortController|null>(null);
+  const pageActive=useRef(true);
+  const refreshAccount=useCallback(async()=>{
+    if(!pageActive.current)return undefined;
+    accountRequest.current?.abort();const controller=new AbortController();accountRequest.current=controller;
+    try{const response=await fetch("/api/auth/me",{credentials:"include",cache:"no-store",signal:controller.signal});
+      if(!response.ok&&response.status!==401)return;
+      const payload=response.ok?await response.json() as {user?:HeaderUser}:null;
+      if(!controller.signal.aborted&&pageActive.current&&accountRequest.current===controller){const next=payload?.user||null;setAccount(next);return next;}
+    }catch{/* A network interruption is not a successful logout and cannot overwrite a newer account read. */}
+  },[]);
+  const refreshNotifications=useCallback(async()=>{
+    if(!pageActive.current)return;
+    notificationRequest.current?.abort();const controller=new AbortController();notificationRequest.current=controller;
+    try{const response=await fetch("/api/mobile/notifications",{credentials:"include",cache:"no-store",signal:controller.signal});if(!response.ok)return;
+      const payload=await response.json() as {unreadCount?:number;notifications?:{readAt:string|null}[]};
+      if(!controller.signal.aborted&&pageActive.current&&notificationRequest.current===controller)setUnreadNotifications(typeof payload.unreadCount==="number"?payload.unreadCount:payload.notifications?.filter(n=>!n.readAt).length||0);
+    }catch{/* Keep the last known count until a current response can be verified. */}
+  },[]);
+  useEffect(()=>{const timer=setTimeout(()=>void refreshAccount(),0);return()=>{clearTimeout(timer);accountRequest.current?.abort();};},[pathname,refreshAccount]);
+  const signedIn=appMode||Boolean(account);
+  useEffect(()=>{resetCommerce();if(signedIn)void ensureCommerceLoaded();},[signedIn,account?.id,userName]);
+  useEffect(()=>{const timer=setTimeout(()=>{if(signedIn)void refreshNotifications();else setUnreadNotifications(0);},0);return()=>{clearTimeout(timer);notificationRequest.current?.abort();};},[pathname,signedIn,account?.id,refreshNotifications]);
+  useEffect(()=>{
+    pageActive.current=true;
+    const pause=()=>{pageActive.current=false;accountRequest.current?.abort();notificationRequest.current?.abort();resetCommerce();};
+    const restore=(event:PageTransitionEvent)=>{if(!event.persisted)return;pageActive.current=true;void refreshAccount().then(current=>{if(pageActive.current&&current){void ensureCommerceLoaded();void refreshNotifications();}});};
+    window.addEventListener("pagehide",pause);window.addEventListener("pageshow",restore);
+    return()=>{pause();window.removeEventListener("pagehide",pause);window.removeEventListener("pageshow",restore);};
+  },[refreshAccount,refreshNotifications]);
   useEffect(() => {
     const syncReadState = (event: Event) => {
       const detail = (event as CustomEvent<{ unread?: number }>).detail;
@@ -65,8 +75,8 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
 
   useRealtimeSync((payload) => {
     const changed = payload.changed || [];
-    if (!changed.length || changed.includes("account")) fetch("/api/auth/me", { credentials: "include", cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { user?: HeaderUser } : null).then((payload) => setAccount(payload?.user || null)).catch(() => undefined);
-    if (signedIn && (!changed.length || changed.includes("notifications"))) fetch("/api/mobile/notifications", { credentials: "include", cache: "no-store" }).then(async (response) => response.ok ? await response.json() as { unreadCount?: number } : null).then((payload) => setUnreadNotifications(payload?.unreadCount || 0)).catch(() => undefined);
+    if (!changed.length || changed.includes("account")) void refreshAccount();
+    if (signedIn && (!changed.length || changed.includes("notifications"))) void refreshNotifications();
     if (signedIn && changed.some((channel) => channel === "account" || channel === "commerce")) { resetCommerce(); void ensureCommerceLoaded(); }
   });
 

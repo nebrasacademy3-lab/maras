@@ -57,12 +57,38 @@ export function decryptAiApiKey(value: string) {
   }
 }
 
+function parseKeyList(value: unknown) {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return [];
+  if (raw.startsWith("[")) {
+    try { const parsed: unknown = JSON.parse(raw); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; }
+    catch { return []; }
+  }
+  return raw.split(/[\r\n,;]+/);
+}
+
+export type GeminiEnvironmentKeyGroups = { free: string[]; paid: string[] };
+
+/** Parse free and paid credentials separately; paid credentials never join the free pool. */
+export function geminiEnvironmentKeyGroups(environment: { GEMINI_FREE_API_KEYS?: string; GEMINI_FREE_API_KEY?: string; GEMINI_API_KEYS?: string; GEMINI_API_KEY?: string; GOOGLE_API_KEY?: string; GEMINI_PAID_API_KEYS?: string; GEMINI_PAID_API_KEY?: string } = { GEMINI_FREE_API_KEYS: process.env.GEMINI_FREE_API_KEYS, GEMINI_FREE_API_KEY: process.env.GEMINI_FREE_API_KEY, GEMINI_API_KEYS: process.env.GEMINI_API_KEYS, GEMINI_API_KEY: process.env.GEMINI_API_KEY, GOOGLE_API_KEY: process.env.GOOGLE_API_KEY, GEMINI_PAID_API_KEYS: process.env.GEMINI_PAID_API_KEYS, GEMINI_PAID_API_KEY: process.env.GEMINI_PAID_API_KEY }) {
+  const freeValues = [
+    ...parseKeyList(environment.GEMINI_FREE_API_KEYS || environment.GEMINI_API_KEYS),
+    environment.GEMINI_FREE_API_KEY,
+    environment.GEMINI_API_KEY,
+    environment.GOOGLE_API_KEY,
+  ];
+  const paidValues = [...parseKeyList(environment.GEMINI_PAID_API_KEYS), environment.GEMINI_PAID_API_KEY];
+  const normalize = (values: unknown[]) => [...new Set(values.map(validGeminiApiKey).filter(Boolean))];
+  return { free: normalize(freeValues), paid: normalize(paidValues) };
+}
+
 /** One parser for runtime and admin health counts, including JSON arrays and GOOGLE_API_KEY. */
-export function geminiEnvironmentKeys(environment: { GEMINI_API_KEYS?: string; GEMINI_API_KEY?: string; GOOGLE_API_KEY?: string } = { GEMINI_API_KEYS: process.env.GEMINI_API_KEYS, GEMINI_API_KEY: process.env.GEMINI_API_KEY, GOOGLE_API_KEY: process.env.GOOGLE_API_KEY }) {
-  const values: unknown[] = [];
-  const multiple = environment.GEMINI_API_KEYS?.trim() || "";
-  if (multiple.startsWith("[")) { try { const parsed: unknown = JSON.parse(multiple); if (Array.isArray(parsed)) values.push(...parsed); } catch { /* Malformed JSON is not a partial credential. */ } }
-  else values.push(...multiple.split(/[\r\n,;]+/));
-  values.push(environment.GEMINI_API_KEY, environment.GOOGLE_API_KEY);
-  return [...new Set(values.map(validGeminiApiKey).filter(Boolean))];
+export function geminiEnvironmentKeys(environment: { GEMINI_FREE_API_KEYS?: string; GEMINI_FREE_API_KEY?: string; GEMINI_API_KEYS?: string; GEMINI_API_KEY?: string; GOOGLE_API_KEY?: string; GEMINI_PAID_API_KEYS?: string; GEMINI_PAID_API_KEY?: string } = { GEMINI_FREE_API_KEYS: process.env.GEMINI_FREE_API_KEYS, GEMINI_FREE_API_KEY: process.env.GEMINI_FREE_API_KEY, GEMINI_API_KEYS: process.env.GEMINI_API_KEYS, GEMINI_API_KEY: process.env.GEMINI_API_KEY, GOOGLE_API_KEY: process.env.GOOGLE_API_KEY, GEMINI_PAID_API_KEYS: process.env.GEMINI_PAID_API_KEYS, GEMINI_PAID_API_KEY: process.env.GEMINI_PAID_API_KEY }) {
+  const groups = geminiEnvironmentKeyGroups(environment);
+  return [...new Set([...groups.free, ...groups.paid])];
+}
+
+/** A database key is paid only when the project label explicitly opts into that tier. */
+export function geminiProjectTier(projectLabel: string | null | undefined): "free" | "paid" {
+  return /^(?:paid|billing|مدفوع)(?:[\s:_-]|$)/i.test((projectLabel || "").trim()) ? "paid" : "free";
 }
