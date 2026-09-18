@@ -1,3 +1,4 @@
+import { supervisorCourseAllowed } from "@/lib/supervisor-data-scope";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -13,6 +14,7 @@ async function authorizedAsset(request: Request, assetId: number) {
   if (!roleAllowed(user, ["admin", "supervisor"])) return { response: jsonError("غير مصرح بإدارة معالجة الفيديو", 401) };
   const [asset] = await getDb().select().from(videoAssets).where(eq(videoAssets.id, assetId)).limit(1);
   if (!asset) return { response: jsonError("الفيديو غير موجود", 404) };
+  if (!await supervisorCourseAllowed(user, asset.courseSlug)) return { response: jsonError("الفيديو خارج نطاق إشرافك", 403) };
   return { user: user!, asset };
 }
 
