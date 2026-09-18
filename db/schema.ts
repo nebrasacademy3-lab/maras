@@ -138,6 +138,7 @@ export const courseRequestFiles = pgTable("course_request_files", {
 
 export const supportTickets = pgTable("support_tickets", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   ticketNumber: text("ticket_number").notNull(),
   userEmail: text("user_email"),
   category: text("category").notNull(),
@@ -154,7 +155,7 @@ export const supportTickets = pgTable("support_tickets", {
   satisfactionComment: text("satisfaction_comment"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("support_ticket_number_unique").on(table.ticketNumber), index("support_status_idx").on(table.status), index("support_user_idx").on(table.userEmail)]);
+}, (table) => [uniqueIndex("support_ticket_number_unique").on(table.ticketNumber), index("support_status_idx").on(table.status), index("support_user_idx").on(table.userEmail), index("support_user_id_idx").on(table.userId, table.updatedAt)]);
 
 export const orders = pgTable("orders", {
   // Stable owner; customer fields are the immutable-at-checkout payer snapshot.
@@ -226,6 +227,7 @@ export const paymentEvents = pgTable("payment_events", {
 
 export const courseAccess = pgTable("course_access", {
   storeAccessBlockedAt: text("store_access_blocked_at"),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   id: serial("id").primaryKey(),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
@@ -238,10 +240,11 @@ export const courseAccess = pgTable("course_access", {
   revokedAt: text("revoked_at"),
   revocationReason: text("revocation_reason"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_access_user_course_unique").on(table.userEmail, table.courseSlug), index("course_access_course_idx").on(table.courseSlug)]);
+}, (table) => [uniqueIndex("course_access_owner_course_unique").on(table.userId, table.courseSlug), index("course_access_owner_idx").on(table.userId, table.updatedAt), index("course_access_course_idx").on(table.courseSlug)]);
 
 export const courseAccessEvents = pgTable("course_access_events", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   eventKey: text("event_key").notNull(),
   accessId: integer("access_id"),
   userEmail: text("user_email").notNull(),
@@ -253,17 +256,18 @@ export const courseAccessEvents = pgTable("course_access_events", {
   beforeJson: text("before_json"),
   afterJson: text("after_json"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_access_events_key_unique").on(table.eventKey), index("course_access_events_access_idx").on(table.userEmail, table.courseSlug, table.createdAt)]);
+}, (table) => [uniqueIndex("course_access_events_key_unique").on(table.eventKey), index("course_access_events_access_idx").on(table.userId, table.courseSlug, table.createdAt)]);
 
 export const lessonProgress = pgTable("lesson_progress", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   lessonId: text("lesson_id").notNull(),
   watchedSeconds: integer("watched_seconds").notNull().default(0),
   completed: boolean("completed").notNull().default(false),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("lesson_progress_unique").on(table.userEmail, table.lessonId), index("lesson_progress_course_idx").on(table.courseSlug)]);
+}, (table) => [uniqueIndex("lesson_progress_owner_lesson_unique").on(table.userId, table.lessonId), index("lesson_progress_owner_course_idx").on(table.userId, table.courseSlug), index("lesson_progress_course_idx").on(table.courseSlug)]);
 
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
@@ -586,30 +590,34 @@ export const otpChallenges = pgTable("otp_challenges", {
 
 export const favorites = pgTable("favorites", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("favorites_user_course_unique").on(table.userEmail, table.courseSlug)]);
+}, (table) => [uniqueIndex("favorites_owner_course_unique").on(table.userId, table.courseSlug)]);
 
 export const cartItems = pgTable("cart_items", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("cart_items_user_course_unique").on(table.userEmail, table.courseSlug), index("cart_items_user_idx").on(table.userEmail, table.createdAt)]);
+}, (table) => [uniqueIndex("cart_items_owner_course_unique").on(table.userId, table.courseSlug), index("cart_items_user_idx").on(table.userId, table.createdAt)]);
 
 export const lessonNotes = pgTable("lesson_notes", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   lessonId: text("lesson_id").notNull(),
   body: text("body").notNull().default(""),
   timestampSeconds: integer("timestamp_seconds").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("lesson_notes_user_lesson_idx").on(table.userEmail, table.lessonId), index("lesson_notes_lesson_time_idx").on(table.lessonId, table.timestampSeconds)]);
+}, (table) => [index("lesson_notes_user_lesson_idx").on(table.userId, table.lessonId), index("lesson_notes_lesson_time_idx").on(table.lessonId, table.timestampSeconds)]);
 
 export const courseReviews = pgTable("course_reviews", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   rating: integer("rating").notNull(),
@@ -617,7 +625,7 @@ export const courseReviews = pgTable("course_reviews", {
   status: text("status").notNull().default("pending"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_reviews_user_course_unique").on(table.userEmail, table.courseSlug), index("course_reviews_status_idx").on(table.status), index("course_reviews_course_status_idx").on(table.courseSlug, table.status)]);
+}, (table) => [uniqueIndex("course_reviews_owner_course_unique").on(table.userId, table.courseSlug), index("course_reviews_status_idx").on(table.status), index("course_reviews_course_status_idx").on(table.courseSlug, table.status)]);
 
 export const notificationsDb = pgTable("notifications", {
   // A bound target never falls back to a historical email or a broadcast audience.
@@ -882,6 +890,7 @@ export const supportReplyFiles = pgTable("support_reply_files", {
 
 export const courseWaitlist = pgTable("course_waitlist", {
   enrollmentVersion: integer("enrollment_version").notNull().default(1),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   id: serial("id").primaryKey(),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
@@ -891,7 +900,7 @@ export const courseWaitlist = pgTable("course_waitlist", {
   convertedAt: text("converted_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_waitlist_user_course_unique").on(table.userEmail, table.courseSlug), index("course_waitlist_course_status_idx").on(table.courseSlug, table.status)]);
+}, (table) => [uniqueIndex("course_waitlist_owner_course_unique").on(table.userId, table.courseSlug), index("course_waitlist_course_status_idx").on(table.courseSlug, table.status)]);
 
 export const learningTracks = pgTable("learning_tracks", {
   id: serial("id").primaryKey(),
@@ -1254,13 +1263,14 @@ export const storeTransactions = pgTable("store_transactions", {
 
 export const storeCourseGrants = pgTable("store_course_grants", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   transactionId: text("transaction_id").notNull().references(() => storeTransactions.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   startsAt: text("starts_at").notNull(),
   expiresAt: text("expires_at"),
   status: text("status").notNull(),
-}, table => [uniqueIndex("store_course_grant_unique").on(table.transactionId, table.courseSlug), index("store_course_grant_access_idx").on(table.userEmail, table.courseSlug, table.status, table.expiresAt)]);
+}, table => [uniqueIndex("store_course_grant_unique").on(table.transactionId, table.courseSlug), index("store_course_grant_access_idx").on(table.userId, table.courseSlug, table.status, table.expiresAt)]);
 
 export const storeWebhookEvents = pgTable("store_webhook_events", {
   eventId: text("event_id").primaryKey(),
