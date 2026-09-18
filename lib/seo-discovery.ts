@@ -13,9 +13,17 @@ function plainText(value: string, maximum: number) {
 }
 
 /** A bounded directory, not a ranking protocol. Never serialize raw catalog objects. */
-export function renderPublicDiscovery(intro: string, pages: SeoPage[]) {
+export function renderPublicDiscovery(intro: string, pages: SeoPage[], identity?: { name?: string; alternateNames?: string[]; description?: string; distinction?: string }) {
+  const identityLines = identity ? [
+    "## هوية مراس العلم", "",
+    `الاسم: ${plainText(identity.name || "مراس العلم", 120)}`,
+    `أسماء العرض: ${(identity.alternateNames || []).map(value => plainText(value, 100)).filter(Boolean).join(" — ")}`,
+    plainText(identity.description || "", 500),
+    plainText(identity.distinction || "", 500),
+    "",
+  ].filter(Boolean) : [];
   const prefix = [
-    "# مراس العلم", "", `> ${plainText(intro, 500)}`, "",
+    "# مراس العلم", "", `> ${plainText(intro, 500)}`, "", ...identityLines,
     "مراس منصة مساندة للمذاكرة الجامعية، وليست جامعة أو جهة مانحة للدرجات والشهادات الجامعية.",
     "الأسعار والتوفر ومدة الوصول موضحة في الصفحة العامة الحالية لكل مادة أو باقة.",
     "هذا الدليل لا يتضمن الحسابات أو بيانات الطلاب أو الإدارة أو الملفات الخاصة أو الدروس المدفوعة.", "",

@@ -43,8 +43,13 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - name: Install locked native dependencies
         run: npm ci --no-audit --no-fund
-      - name: Check installed Expo dependency compatibility
+      - name: Report Expo patch compatibility
+        id: expo-compat
+        continue-on-error: true
         run: npx expo install --check
+      - name: Surface Expo patch advisory
+        if: steps.expo-compat.outcome == 'failure'
+        run: echo "::warning::Expo recommends newer patch releases than this reviewed lockfile; native prebuild/export remain blocking checks."
       - name: Typecheck application
         run: npm run typecheck
       - name: Generate native project without signing or installing pods

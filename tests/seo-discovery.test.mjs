@@ -34,6 +34,18 @@ test("discovery exposes canonical public pages without serializing private field
   assert.doesNotMatch(body, /private-fixture-marker|paid-fixture-marker|\/courses\/hidden/);
 });
 
+test("identity copy is bounded and cannot inject links or headings", () => {
+  const body = discovery.renderPublicDiscovery("مراس", [], {
+    name: "مراس العلم",
+    alternateNames: ["Maras Al Elm", "fake ](https://evil.example)"],
+    description: "<script>bad()</script> وصف عام",
+    distinction: "# forged heading\nليست جهة مانحة",
+  });
+  assert.match(body, /هوية مراس العلم/);
+  assert.match(body, /Maras Al Elm/);
+  assert.doesNotMatch(body, /evil\.example|<script|bad\(\)|# forged heading/);
+});
+
 test("discovery rejects private, foreign, traversal and query URLs, and deduplicates entries", () => {
   const paths = ["/courses/physics", "/courses/physics", "/api/auth/me", "/admin", "/learn/physics", "//evil.example", "https://evil.example", "/courses/../admin", "/courses/%2e%2e/admin", "/courses/physics?token=x", "/courses/physics#private"];
   const body = discovery.renderPublicDiscovery("مراس", paths.map(path => ({ path, title: "الفيزياء", description: "شرح", kind: "مادة" })));

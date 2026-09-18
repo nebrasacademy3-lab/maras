@@ -3,7 +3,7 @@ import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
 import { getPublicBundleCatalog, getPublicSpecialtyCatalog } from "@/lib/seo-catalog";
 import { buildSeoPages } from "@/lib/seo-pages";
 import { renderPublicDiscovery } from "@/lib/seo-discovery";
-import { searchIndexingEnabled } from "@/lib/seo";
+import { publicIdentityFacts, searchIndexingEnabled } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
 const headers = { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
@@ -17,7 +17,13 @@ export async function GET() {
       getInformationContent(), getCoursesCatalog(), getInstitutionsCatalog(), getPublicSpecialtyCatalog(), getPublicBundleCatalog(),
     ]);
     const pages = buildSeoPages(courses, institutions, specialties, bundles);
-    return new Response(renderPublicDiscovery(content.about.intro, pages), { headers });
+    const identity = publicIdentityFacts();
+    return new Response(renderPublicDiscovery(content.about.intro, pages, {
+      name: identity.name,
+      alternateNames: identity.alternateNames,
+      description: identity.description,
+      distinction: identity.distinction,
+    }), { headers });
   } catch {
     // Do not cache a partial directory, expose provider/database details, or invent catalog entries.
     console.error("[seo] Public discovery directory is temporarily unavailable");
