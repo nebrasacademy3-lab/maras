@@ -23,5 +23,6 @@ try {
   for (let i = 0; i < 60; i++) { try { await fetch("http://127.0.0.1:3100/login", { signal: AbortSignal.timeout(2000) }); ready = true; break; } catch { await new Promise(r => setTimeout(r, 1000)); } }
   if (!ready) throw new Error("Synthetic web server did not start");
   await run(["scripts/qa-study-browser.mjs"]);
+  await run(["scripts/qa-supervisor-browser.mjs"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-browser.mjs"]);
 } finally { server.kill("SIGTERM"); worker.kill("SIGTERM"); }
