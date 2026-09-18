@@ -31,10 +31,10 @@ import {
 } from "lucide-react";
 import { SearchableSelect } from "@/components/searchable-select";
 import { AdminRegisteredDevices } from "@/components/admin-registered-devices";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import styles from "@/components/student-360.module.css";
 
+const STUDENT_PANEL_PERMISSIONS: Record<string,string[]> = {"profile":["students.view"],"progress":["students.view"],"subscriptions":["subscriptions.manage"],"orders":["finance.view"],"referrals":["referrals.manage", "data.all"],"ai":["ai.manage", "data.all"],"interest":["students.view","catalog.view"],"requests":["requests.manage"],"support":["support.manage"],"notifications":["notifications.manage", "data.all"],"sessions":["students.devices.view"]};
 type RelatedUser = { id: number; email: string; fullName: string };
 type ReferralsBlock = {
   code: { code: string; shareCount: number; createdAt: string } | null;
@@ -50,7 +50,7 @@ type AiBlock = {
 };
 type WaitlistRow = { id: number; courseSlug: string; source: string; status: string; notifiedAt: string | null; convertedAt: string | null; createdAt: string };
 type TrackInterest = { id: number; status: string; source: string; lastNotifiedVersion: number; createdAt: string; trackTitle: string; trackSlug: string; trackStatus: string };
-type PushDevice = { id: number; deviceId: string | null; platform: string; deviceLabel: string | null; status: string; lastSeenAt: string; createdAt: string };
+type PushDevice = { id: number; deviceId?: string | null; platform: string; deviceLabel: string | null; status: string; lastSeenAt: string; createdAt: string };
 type RefundRow = { id: number; requestNumber: string; orderNumber: string; amountMinor: number; currency: string; status: string; reason: string; createdAt: string; completedAt: string | null };
 
 type Student = {
@@ -469,7 +469,7 @@ export function Student360({ email }: { email: string }) {
 
   return <main className={styles.page} dir="rtl">
     <div className={styles.shell}>
-      <AdminCenterNav compact />
+
       <div className={styles.topbar}>
         <span className={styles.breadcrumb}>الإدارة <ChevronLeft size={12} /> <Link href="/admin?view=students">الطلاب</Link> <ChevronLeft size={12} /> ملف 360</span>
         <Link className={styles.back} href="/admin?view=students"><ChevronLeft size={15} /> العودة إلى قائمة الطلاب</Link>
@@ -486,18 +486,18 @@ export function Student360({ email }: { email: string }) {
 
       <section className={styles.actionsBar} aria-label="إجراءات وروابط سريعة">
         <div className={styles.quickLinks}>
-          <Link href={`/admin?view=subscriptions&q=${encodeURIComponent(data.student.email)}`}><ShieldCheck size={14} /> الاشتراكات في اللوحة</Link>
-          <Link href={`/admin?view=orders&q=${encodeURIComponent(data.student.email)}`}><ReceiptText size={14} /> الطلبات</Link>
-          <Link href={`/admin?view=support&q=${encodeURIComponent(data.student.email)}`}><Headphones size={14} /> الدعم</Link>
-          <Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}><Gift size={14} /> الإحالات والهدايا</Link>
-          <Link href={`/admin/ai?user=${encodeURIComponent(data.student.email)}`}><Bot size={14} /> أدوات مراس</Link>
-          <Link href={`/admin/finance?search=${encodeURIComponent(data.student.email)}`}><CircleDollarSign size={14} /> المركز المالي</Link>
+          {can(["subscriptions.manage"]) && <Link href={`/admin?view=subscriptions&q=${encodeURIComponent(data.student.email)}`}><ShieldCheck size={14} /> الاشتراكات في اللوحة</Link>}
+          {can(["finance.view"]) && <Link href={`/admin?view=orders&q=${encodeURIComponent(data.student.email)}`}><ReceiptText size={14} /> الطلبات</Link>}
+          {can(["support.manage"]) && <Link href={`/admin?view=support&q=${encodeURIComponent(data.student.email)}`}><Headphones size={14} /> الدعم</Link>}
+          {can(["referrals.manage", "data.all"]) && <Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}><Gift size={14} /> الإحالات والهدايا</Link>}
+          {can(["ai.manage", "data.all"]) && <Link href={`/admin/ai?user=${encodeURIComponent(data.student.email)}`}><Bot size={14} /> أدوات مراس</Link>}
+          {can(["finance.view", "data.all"]) && <Link href={`/admin/finance?search=${encodeURIComponent(data.student.email)}`}><CircleDollarSign size={14} /> المركز المالي</Link>}
         </div>
         <div className={styles.quickActions}>
           {can(["students.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("profile")}>تعديل بيانات الطالب</button>}
           {can(["students.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("status")}>{data.student.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب"}</button>}
           {can(["subscriptions.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("grant")}>منح مادة / تسجيل دفعة</button>}
-          {can(["notifications.manage"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("notification")}>إرسال إشعار للطالب</button>}
+          {can(["notifications.manage", "data.all"]) && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("notification")}>إرسال إشعار للطالب</button>}
           {owner && data.student.mfaEnabled && <button type="button" disabled={Boolean(busy)} onClick={() => void resetMfa()}>إعادة ضبط MFA</button>}
           <button type="button" onClick={() => void load()} disabled={loading}><RefreshCw size={14} /> تحديث</button>
         </div>
@@ -508,23 +508,23 @@ export function Student360({ email }: { email: string }) {
       {error && <p role="alert">{error}</p>}
       <section className={styles.metrics} aria-label="ملخص الطالب">
         {[
-          { icon: ShieldCheck, label: "اشتراكات نشطة", value: data.summary.activeSubscriptions.toLocaleString("ar-SA") },
-          { icon: BookOpenCheck, label: "دروس مكتملة", value: data.summary.completedLessons.toLocaleString("ar-SA") },
-          { icon: Clock3, label: "وقت المشاهدة", value: duration(data.summary.watchedSeconds) },
-          { icon: ReceiptText, label: "طلبات مدفوعة", value: data.summary.paidOrders.toLocaleString("ar-SA") },
-          { icon: CircleDollarSign, label: "قيمة الطلبات المدفوعة", value: money(data.summary.paidValue) },
-          { icon: Headphones, label: "دعم مفتوح / إشعارات", value: `${data.summary.openTickets.toLocaleString("ar-SA")} / ${data.summary.unreadNotifications.toLocaleString("ar-SA")}` },
-          { icon: Gift, label: "إحالات مؤهلة / هدايا نشطة", value: `${(data.summary.qualifiedReferrals || 0).toLocaleString("ar-SA")} / ${(data.summary.activeRewards || 0).toLocaleString("ar-SA")}` },
-          { icon: Bot, label: "أدوات مراس", value: data.summary.aiActive ? "اشتراك نشط" : "خطة مجانية" },
-        ].map(({ icon: Icon, label: metricLabel, value }) => <article className={styles.metric} key={metricLabel}><i><Icon size={17} /></i><span>{metricLabel}<strong>{value}</strong></span></article>)}
+          { icon: ShieldCheck, permissions: ["subscriptions.manage"], label: "اشتراكات نشطة", value: data.summary.activeSubscriptions.toLocaleString("ar-SA") },
+          { icon: BookOpenCheck, permissions: ["students.view"], label: "دروس مكتملة", value: data.summary.completedLessons.toLocaleString("ar-SA") },
+          { icon: Clock3, permissions: ["students.view"], label: "وقت المشاهدة", value: duration(data.summary.watchedSeconds) },
+          { icon: ReceiptText, permissions: ["finance.view"], label: "طلبات مدفوعة", value: data.summary.paidOrders.toLocaleString("ar-SA") },
+          { icon: CircleDollarSign, permissions: ["finance.view"], label: "قيمة الطلبات المدفوعة", value: money(data.summary.paidValue) },
+          { icon: Headphones, permissions: ["support.manage","notifications.manage"], label: "دعم مفتوح / إشعارات", value: `${data.summary.openTickets.toLocaleString("ar-SA")} / ${data.summary.unreadNotifications.toLocaleString("ar-SA")}` },
+          { icon: Gift, permissions: ["referrals.manage", "data.all"], label: "إحالات مؤهلة / هدايا نشطة", value: `${(data.summary.qualifiedReferrals || 0).toLocaleString("ar-SA")} / ${(data.summary.activeRewards || 0).toLocaleString("ar-SA")}` },
+          { icon: Bot, permissions: ["ai.manage", "data.all"], label: "أدوات مراس", value: data.summary.aiActive ? "اشتراك نشط" : "خطة مجانية" },
+        ].filter(metric=>can(metric.permissions)).map(({ icon: Icon, label: metricLabel, value }) => <article className={styles.metric} key={metricLabel}><i><Icon size={17} /></i><span>{metricLabel}<strong>{value}</strong></span></article>)}
       </section>
 
       <nav className={styles.nav} aria-label="أقسام ملف الطالب">
-        {[["profile", "الملخص"], ["subscriptions", "الاشتراكات"], ["progress", "التقدم"], ["orders", "الطلبات والفواتير"], ["referrals", "الإحالات والهدايا"], ["ai", "أدوات مراس"], ["interest", "الاهتمام والانتظار"], ["requests", "طلبات المواد"], ["support", "الدعم"], ["notifications", "الإشعارات"], ["sessions", "الجلسات والأجهزة"]].map(([id, text]) => <a href={`#${id}`} key={id}>{text}</a>)}
+        {[["profile", "الملخص"], ["subscriptions", "الاشتراكات"], ["progress", "التقدم"], ["orders", "الطلبات والفواتير"], ["referrals", "الإحالات والهدايا"], ["ai", "أدوات مراس"], ["interest", "الاهتمام والانتظار"], ["requests", "طلبات المواد"], ["support", "الدعم"], ["notifications", "الإشعارات"], ["sessions", "الجلسات والأجهزة"]].filter(([id])=>can(STUDENT_PANEL_PERMISSIONS[id])).map(([id, text]) => <a href={`#${id}`} key={id}>{text}</a>)}
       </nav>
 
       <div className={styles.grid}>
-        <section className={styles.panel} id="profile">
+        {can(["students.view"]) && <section className={styles.panel} id="profile">
           <PanelHead icon={UserRound} title="بيانات الطالب" copy="الهوية والحالة الدراسية والتحقق من الحساب" />
           <div className={styles.profileGrid}>
             {[
@@ -539,9 +539,9 @@ export function Student360({ email }: { email: string }) {
               ["تاريخ إنشاء الحساب", safeDate(data.student.createdAt)],
             ].map(([itemLabel, value, ltr]) => <div className={styles.profileItem} key={String(itemLabel)}><span>{itemLabel}</span>{ltr ? <bdi className={styles.ltr}>{value}</bdi> : <strong>{value}</strong>}</div>)}
           </div>
-        </section>
+        </section>}
 
-        <section className={styles.panel} id="subscriptions">
+        {can(["subscriptions.manage"]) && <section className={styles.panel} id="subscriptions">
           <PanelHead icon={ShieldCheck} title="الاشتراكات والوصول" copy="حالة كل مادة وسجل الإجراءات الإدارية والشرائية" count={data.pagination?.subscriptions?.total ?? data.subscriptions.length} />{pager("subscriptions")}
           {data.subscriptions.length ? <div className={styles.cardGrid}>{data.subscriptions.map((subscription) => {
             const state = subscriptionState(subscription);
@@ -555,7 +555,7 @@ export function Student360({ email }: { email: string }) {
                 <span className={styles.fact}><span>الطلب</span><strong><bdi className={styles.ltr}>{subscription.orderNumber || "—"}</bdi></strong></span>
               </div>
               {(subscription.suspensionReason || subscription.revocationReason) && <p className={styles.reason}>{subscription.revocationReason || subscription.suspensionReason}</p>}
-              <div className={styles.cardActions}><Link href={`/admin/courses/${encodeURIComponent(subscription.courseSlug)}`}>ملف المادة والمشتركون</Link>
+              <div className={styles.cardActions}>{can(["catalog.view","students.view"]) && <Link href={`/admin/courses/${encodeURIComponent(subscription.courseSlug)}`}>ملف المادة والمشتركون</Link>}
               {!subscription.revokedAt && <>
                 {state === "active" && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("access", subscription, "pause")}>إيقاف مؤقت</button>}
                 {state === "suspended" && <button type="button" disabled={Boolean(busy)} onClick={() => openAction("access", subscription, "resume")}>استئناف</button>}
@@ -565,94 +565,95 @@ export function Student360({ email }: { email: string }) {
               <details className={styles.details}><summary>سجل الوصول ({events.length.toLocaleString("ar-SA")})</summary>{events.length ? <div className={styles.timeline}>{events.map((event) => <span className={styles.timelineItem} key={event.id}><strong>{label(event.action)}</strong><small>{safeDate(event.createdAt)} · {event.actorEmail}</small>{event.reason && <small>{event.reason}</small>}</span>)}</div> : <p>لا توجد أحداث إضافية.</p>}</details>
             </article>;
           })}</div> : <Empty>لا توجد اشتراكات أو صلاحيات وصول لهذا الطالب.</Empty>}
-        </section>
+        </section>}
 
-        <section className={`${styles.panel} ${styles.half}`} id="progress">
+        {can(["students.view"]) && <section className={`${styles.panel} ${styles.half}`} id="progress">
           <PanelHead icon={BookOpenCheck} title="التقدم الدراسي" copy="الدروس في الصفحة الحالية؛ الملخص أعلاه يشمل التقدم كاملًا" count={data.pagination?.progress?.total ?? data.progress.length} />{pager("progress")}
           {groupedProgress.length ? <div className={styles.progressList}>{groupedProgress.map((row) => {
             const percent = row.lessons ? Math.round((row.completed / row.lessons) * 100) : 0;
             return <article className={styles.progressRow} key={row.courseSlug}><span><strong>{courseName(row.courseSlug)}</strong><small>{row.completed.toLocaleString("ar-SA")} مكتمل من {row.lessons.toLocaleString("ar-SA")} بدأها · {duration(row.watchedSeconds)}</small></span><span className={styles.track} aria-label={`نسبة الإنجاز ${percent}%`}><i style={{ width: `${percent}%` }} /></span><b>{percent.toLocaleString("ar-SA")}%</b></article>;
           })}</div> : <Empty>لم يبدأ الطالب أي درس بعد.</Empty>}
-        </section>
+        </section>}
 
-        <section className={`${styles.panel} ${styles.half}`} id="requests">
+        {can(["requests.manage"]) && <section className={`${styles.panel} ${styles.half}`} id="requests">
           <PanelHead icon={FileClock} title="طلبات المواد" copy="كل طلبات تجهيز المواد وحالتها" count={data.pagination?.requests?.total ?? data.requests.length} />{pager("requests")}
           {data.requests.length ? <div className={styles.list}>{data.requests.map((request) => <article className={styles.listItem} key={request.id}><span><strong><Link href={`/admin?view=requests&q=${encodeURIComponent(String(request.id))}`}>{request.courseName}</Link></strong><small>{request.university} · {request.specialty} · {safeDate(request.createdAt)}</small></span><span className={styles.badge} data-tone={tone(request.status)}>{label(request.status)}</span>{request.notes && <p>{request.notes}</p>}<p>{request.attachmentsCount.toLocaleString("ar-SA")} مرفق{request.preparedCourseSlug ? ` · جُهزت كمادة ${courseName(request.preparedCourseSlug)}` : ""}{request.notify ? " · الإشعار عند الجاهزية مفعّل" : ""}</p></article>)}</div> : <Empty>لا توجد طلبات مواد.</Empty>}
-        </section>
+        </section>}
 
-        <section className={styles.panel} id="orders">
+        {can(["finance.view"]) && <section className={styles.panel} id="orders">
           <PanelHead icon={ReceiptText} title="الطلبات والفواتير" copy="العناصر والمبالغ وحالة الدفع والفاتورة المرتبطة" count={data.pagination?.orders?.total ?? data.orders.length} />{pager("orders")}
           {data.orders.length ? <div className={styles.tableWrap}><table className={styles.table}><thead><tr><th>الطلب</th><th>العناصر</th><th>المبلغ</th><th>الدفع</th><th>الحالة</th><th>التاريخ والفاتورة</th></tr></thead><tbody>{data.orders.map((order) => <tr key={order.orderNumber}>
-            <td><strong><Link href={`/admin/finance?search=${encodeURIComponent(order.orderNumber)}`}><bdi className={styles.ltr}>{order.orderNumber}</bdi></Link></strong>{order.couponCode && <small>كوبون: <bdi className={styles.ltr}>{order.couponCode}</bdi></small>}</td>
+            <td><strong>{can(["finance.view", "data.all"]) ? <Link href={`/admin/finance?search=${encodeURIComponent(order.orderNumber)}`}><bdi className={styles.ltr}>{order.orderNumber}</bdi></Link> : <bdi className={styles.ltr}>{order.orderNumber}</bdi>}</strong>{order.couponCode && <small>كوبون: <bdi className={styles.ltr}>{order.couponCode}</bdi></small>}</td>
             <td><span className={styles.itemList}>{order.items.length ? order.items.map((item) => <span key={item.id}><strong>{courseName(item.courseSlug)}</strong><small>{money(item.total, order.currency)}{item.accessDurationDays ? ` · ${item.accessDurationDays.toLocaleString("ar-SA")} يوم وصول` : ""}</small></span>) : <span>لا توجد عناصر محفوظة</span>}</span></td>
             <td><span className={styles.money}>{money(order.total, order.currency)}</span><small>خصم {money(order.discount, order.currency)}</small></td>
             <td>{label(order.paymentMethod)}{order.tapChargeId && <small><bdi className={styles.ltr}>{order.tapChargeId}</bdi></small>}</td>
             <td><span className={styles.badge} data-tone={tone(order.status)}>{label(order.status)}</span>{data.refunds?.filter((refund) => refund.orderNumber === order.orderNumber).map((refund) => <small key={refund.id}>استرداد <bdi className={styles.ltr}>{refund.requestNumber}</bdi>: {label(refund.status)} · {money(refund.amountMinor / 100, refund.currency)}</small>)}</td>
             <td>{safeDate(order.paidAt || order.createdAt)}<details className={`${styles.details} ${styles.orderDetails}`}><summary>{order.invoice ? "تفاصيل الفاتورة" : "لا توجد فاتورة"}</summary>{order.invoice && <div className={styles.invoice}><span>رقم الفاتورة<b><bdi className={styles.ltr}>{order.invoice.invoiceNumber}</bdi></b></span><span>الإجمالي<b>{money(order.invoice.total, order.invoice.currency)}</b></span><span>الضريبة<b>{money(order.invoice.taxAmount, order.invoice.currency)}</b></span><span>تاريخ الإصدار<b>{safeDate(order.invoice.issuedAt, false)}</b></span></div>}</details></td>
           </tr>)}</tbody></table></div> : <Empty>لا توجد طلبات أو فواتير مرتبطة بهذا الطالب.</Empty>}
-        </section>
+        </section>}
 
-        <section className={styles.panel} id="referrals">
+        {can(["referrals.manage", "data.all"]) && <section className={styles.panel} id="referrals">
           <PanelHead icon={Gift} title="الإحالات والهدايا" copy="رمز الدعوة، من دعاه ومن دعا، والهدايا والكوبونات المملوكة" count={(data.referrals?.rewards.length || 0) + (data.referrals?.referred.length || 0)} />{pager("referrals", "الإحالات")}{pager("rewards", "الهدايا")}
           {data.referrals ? <>
             <div className={styles.facts}>
               <span className={styles.fact}><span>رمز الإحالة</span><strong><bdi className={styles.ltr}>{data.referrals.code?.code || "لم يُنشأ بعد"}</bdi></strong></span>
               <span className={styles.fact}><span>مرات المشاركة</span><strong>{(data.referrals.code?.shareCount || 0).toLocaleString("ar-SA")}</strong></span>
               <span className={styles.fact}><span>دُعي بواسطة</span><strong>{data.referrals.referredBy[0] ? `${data.referrals.referredBy[0].referrer.fullName} · ${label(data.referrals.referredBy[0].status)}` : "دخل مباشرة"}</strong></span>
-              <span className={styles.fact}><span>إدارة الإحالات</span><strong><Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}>فتح في مركز الإحالات</Link></strong></span>
+              <span className={styles.fact}><span>إدارة الإحالات</span><strong>{can(["referrals.manage", "data.all"]) && <Link href={`/admin/referrals?search=${encodeURIComponent(data.student.email)}`}>فتح في مركز الإحالات</Link>}</strong></span>
             </div>
             {data.referrals.referred.length ? <div className={styles.list}>{data.referrals.referred.map((row) => <article className={styles.listItem} key={row.id}><span><strong>{row.referred.fullName}</strong><small><bdi className={styles.ltr}>{row.referred.email}</bdi> · سُجل {safeDate(row.createdAt)}{row.qualifiedAt ? ` · تأهل ${safeDate(row.qualifiedAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={row.status === "qualified" ? "success" : row.status === "rejected" ? "danger" : "warning"}>{label(row.status)}</span>{row.reviewReason && <p>سبب المراجعة: {row.reviewReason}</p>}</article>)}</div> : <Empty>لم يدعُ الطالب أحدًا بعد.</Empty>}
             {data.referrals.rewards.length ? <div className={styles.cardGrid}>{data.referrals.rewards.map((reward) => <article className={styles.card} key={reward.id}><div className={styles.cardHead}><span><h3>{reward.rewardLabel}</h3><p>{label(reward.sourceType)} · صدرت {safeDate(reward.issuedAt, false)}</p></span><span className={styles.badge} data-tone={tone(reward.status)}>{label(reward.status)}</span></div><div className={styles.facts}><span className={styles.fact}><span>الكوبون</span><strong><bdi className={styles.ltr}>{reward.coupon?.code || "اشتراك رقمي"}</bdi></strong></span><span className={styles.fact}><span>الاستخدام</span><strong>{reward.coupon ? `${reward.coupon.usedCount.toLocaleString("ar-SA")} مرة` : "—"}</strong></span><span className={styles.fact}><span>الصلاحية</span><strong>{reward.expiresAt ? safeDate(reward.expiresAt, false) : "دون انتهاء"}</strong></span><span className={styles.fact}><span>النطاق</span><strong>{reward.coupon?.courseSlug ? courseName(reward.coupon.courseSlug) : "كل المواد"}</strong></span></div>{reward.note && <p className={styles.reason}>{reward.note}</p>}</article>)}</div> : <Empty>لم تصدر هدايا لهذا الطالب.</Empty>}
-            {pager("coupons", "الكوبونات")}{data.referrals.coupons.length > 0 && <div className={styles.list}>{data.referrals.coupons.map((coupon) => <article className={styles.listItem} key={coupon.id}><span><strong><bdi>{coupon.code}</bdi></strong><small>{coupon.type === "percent" ? `${coupon.value}%` : money(coupon.value)} · {coupon.courseSlug ? courseName(coupon.courseSlug) : "جميع المواد"}</small></span><span>{label(coupon.status)} · استُخدم {coupon.usedCount} مرة</span><Link href={`/admin?view=coupons&q=${encodeURIComponent(coupon.code)}`}>إدارة الكوبون</Link></article>)}</div>}
+            {pager("coupons", "الكوبونات")}{data.referrals.coupons.length > 0 && <div className={styles.list}>{data.referrals.coupons.map((coupon) => <article className={styles.listItem} key={coupon.id}><span><strong><bdi>{coupon.code}</bdi></strong><small>{coupon.type === "percent" ? `${coupon.value}%` : money(coupon.value)} · {coupon.courseSlug ? courseName(coupon.courseSlug) : "جميع المواد"}</small></span><span>{label(coupon.status)} · استُخدم {coupon.usedCount} مرة</span>{can(["finance.manage"]) && <Link href={`/admin?view=coupons&q=${encodeURIComponent(coupon.code)}`}>إدارة الكوبون</Link>}</article>)}</div>}
           </> : <Empty>بيانات الإحالات غير متاحة.</Empty>}
-        </section>
+        </section>}
 
-        <section className={`${styles.panel} ${styles.half}`} id="ai">
-          <PanelHead icon={Bot} title="أدوات مراس" copy="الاستحقاقات والاشتراكات المدفوعة واستخدام آخر 30 يومًا" count={data.pagination?.ai?.total ?? data.ai?.entitlements.length ?? 0} />{pager("ai", "الاستحقاقات")}{pager("aiOrders", "طلبات الأدوات")}<p><Link href={`/admin/ai?user=${encodeURIComponent(data.student.email)}`}>إدارة اشتراك الأدوات لهذا الطالب</Link></p>
+        {can(["ai.manage", "data.all"]) && <section className={`${styles.panel} ${styles.half}`} id="ai">
+          <PanelHead icon={Bot} title="أدوات مراس" copy="الاستحقاقات والاشتراكات المدفوعة واستخدام آخر 30 يومًا" count={data.pagination?.ai?.total ?? data.ai?.entitlements.length ?? 0} />{pager("ai", "الاستحقاقات")}{pager("aiOrders", "طلبات الأدوات")}<p>{can(["ai.manage", "data.all"]) && <Link href={`/admin/ai?user=${encodeURIComponent(data.student.email)}`}>إدارة اشتراك الأدوات لهذا الطالب</Link>}</p>
           {data.ai && (data.ai.entitlements.length || data.ai.orders.length || data.ai.usage.length) ? <div className={styles.list}>
             {data.ai.entitlements.map((row) => <article className={styles.listItem} key={`ent-${row.id}`}><span><strong>{label(row.source)}</strong><small>من {safeDate(row.startsAt, false)} · {row.expiresAt ? `حتى ${safeDate(row.expiresAt, false)}` : "مفتوح"}{row.createdBy ? ` · بواسطة ${row.createdBy}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
             {data.ai.orders.map((row) => <article className={styles.listItem} key={`ai-order-${row.id}`}><span><strong>اشتراك مدفوع <bdi className={styles.ltr}>{row.orderNumber}</bdi></strong><small>{money(row.amount, row.currency)} · {safeDate(row.paidAt || row.createdAt)}{row.entitlementExpiresAt ? ` · حتى ${safeDate(row.entitlementExpiresAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
             {data.ai.usage.length > 0 && <p>{data.ai.usage.map((row) => `${label(row.service)}: ${row.total.toLocaleString("ar-SA")} ${label(row.status)}`).join(" · ")}</p>}
           </div> : <Empty>لا يوجد اشتراك مستقل في أدوات مراس؛ يحصل الطالب على خطة المشترك تلقائيًا مع أي مادة نشطة.</Empty>}
-        </section>
+        </section>}
 
-        <section className={`${styles.panel} ${styles.half}`} id="interest">
+        {can(["students.view","catalog.view"]) && <section className={`${styles.panel} ${styles.half}`} id="interest">
           <PanelHead icon={Route} title="الاهتمام وقوائم الانتظار" copy="المسارات التي سجل اهتمامه بها والمواد التي ينتظر إتاحتها، مع المفضلة والسلة" count={(data.trackInterests?.length || 0) + (data.waitlist?.length || 0)} />{pager("waitlist", "الانتظار")}{pager("tracks", "المسارات")}{pager("favorites", "المفضلة")}{pager("cart", "السلة")}
           {(data.trackInterests?.length || data.waitlist?.length || data.favorites?.length || data.cart?.length) ? <div className={styles.list}>
             {data.trackInterests?.map((row) => <article className={styles.listItem} key={`track-${row.id}`}><i className={styles.sessionIcon}><Route size={16} /></i><span><strong>{row.trackTitle}</strong><small>مسار {label(row.trackStatus)} · سُجل {safeDate(row.createdAt, false)} · {row.lastNotifiedVersion > 0 ? "أُبلغ بالإطلاق" : "لم يُبلغ بعد"}</small></span><span className={styles.badge} data-tone={row.status === "active" ? "success" : "warning"}>{row.status === "active" ? "مهتم" : "ألغى"}</span></article>)}
-            {data.waitlist?.map((row) => <article className={styles.listItem} key={`wait-${row.id}`}><i className={styles.sessionIcon}><BellRing size={16} /></i><span><strong><Link href={`/admin/courses/${encodeURIComponent(row.courseSlug)}`}>{courseName(row.courseSlug)}</Link></strong><small>قائمة انتظار · {safeDate(row.createdAt, false)}{row.notifiedAt ? ` · أُبلغ ${safeDate(row.notifiedAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
+            {data.waitlist?.map((row) => <article className={styles.listItem} key={`wait-${row.id}`}><i className={styles.sessionIcon}><BellRing size={16} /></i><span><strong>{can(["catalog.view","students.view"]) && <Link href={`/admin/courses/${encodeURIComponent(row.courseSlug)}`}>{courseName(row.courseSlug)}</Link>}</strong><small>قائمة انتظار · {safeDate(row.createdAt, false)}{row.notifiedAt ? ` · أُبلغ ${safeDate(row.notifiedAt, false)}` : ""}</small></span><span className={styles.badge} data-tone={tone(row.status)}>{label(row.status)}</span></article>)}
             {data.favorites?.length ? <article className={styles.listItem}><i className={styles.sessionIcon}><Heart size={16} /></i><span><strong>المفضلة ({data.favorites.length.toLocaleString("ar-SA")})</strong><small>{data.favorites.map((row) => courseName(row.courseSlug)).join("، ")}</small></span></article> : null}
             {data.cart?.length ? <article className={styles.listItem}><i className={styles.sessionIcon}><ShoppingCart size={16} /></i><span><strong>السلة ({data.cart.length.toLocaleString("ar-SA")})</strong><small>{data.cart.map((row) => courseName(row.courseSlug)).join("، ")}</small></span></article> : null}
           </div> : <Empty>لا توجد اهتمامات أو قوائم انتظار أو عناصر في المفضلة والسلة.</Empty>}
-        </section>
+        </section>}
 
-        <section className={`${styles.panel} ${styles.half}`} id="support">
+        {can(["support.manage"]) && <section className={`${styles.panel} ${styles.half}`} id="support">
           <PanelHead icon={Headphones} title="الدعم" copy="التذاكر والمحادثات وحالة المعالجة" count={data.pagination?.support?.total ?? data.support.length} />{pager("support")}
-          {data.support.length ? <div className={styles.list}>{data.support.map((ticket) => <article className={styles.listItem} key={ticket.id}><span><strong><Link href={`/admin?view=support&q=${encodeURIComponent(ticket.ticketNumber)}`}>{ticket.title}</Link></strong><small><bdi className={styles.ltr}>{ticket.ticketNumber}</bdi> · {label(ticket.category)} · {safeDate(ticket.createdAt)}</small></span><span className={styles.badge} data-tone={tone(ticket.status)}>{label(ticket.status)}</span><p>{ticket.message}</p>{ticket.replies.length > 0 && <details className={styles.details}><summary>{ticket.replies.length.toLocaleString("ar-SA")} ردود</summary>{ticket.replies.map((reply) => <div className={styles.reply} key={reply.id}><strong>{reply.authorRole === "student" ? "الطالب" : "فريق مراس"}{reply.internal ? " · ملاحظة داخلية" : ""}</strong><p>{reply.body}</p><small>{safeDate(reply.createdAt)}</small></div>)}</details>}</article>)}</div> : <Empty>لا توجد تذاكر دعم.</Empty>}
-        </section>
+          {data.support.length ? <div className={styles.list}>{data.support.map((ticket) => <article className={styles.listItem} key={ticket.id}><span><strong>{can(["support.manage"]) && <Link href={`/admin?view=support&q=${encodeURIComponent(ticket.ticketNumber)}`}>{ticket.title}</Link>}</strong><small><bdi className={styles.ltr}>{ticket.ticketNumber}</bdi> · {label(ticket.category)} · {safeDate(ticket.createdAt)}</small></span><span className={styles.badge} data-tone={tone(ticket.status)}>{label(ticket.status)}</span><p>{ticket.message}</p>{ticket.replies.length > 0 && <details className={styles.details}><summary>{ticket.replies.length.toLocaleString("ar-SA")} ردود</summary>{ticket.replies.map((reply) => <div className={styles.reply} key={reply.id}><strong>{reply.authorRole === "student" ? "الطالب" : "فريق مراس"}{reply.internal ? " · ملاحظة داخلية" : ""}</strong><p>{reply.body}</p><small>{safeDate(reply.createdAt)}</small></div>)}</details>}</article>)}</div> : <Empty>لا توجد تذاكر دعم.</Empty>}
+        </section>}
 
-        <section className={`${styles.panel} ${styles.half}`} id="notifications">
+        {can(["notifications.manage", "data.all"]) && <section className={`${styles.panel} ${styles.half}`} id="notifications">
           <PanelHead icon={Bell} title="الإشعارات" copy="حالة القراءة والإرسال الفوري وموضع العرض" count={data.pagination?.notifications?.total ?? data.notifications.length} />{pager("notifications")}
           {data.notifications.length ? <div className={styles.list}>{data.notifications.map((notice) => <article className={`${styles.listItem} ${!notice.readAt ? styles.notificationUnread : ""}`} key={notice.id}><span><strong>{notice.title}</strong><small>{safeDate(notice.createdAt)} · {label(notice.presentation)}</small></span><span className={styles.badge} data-tone={notice.readAt ? "success" : "warning"}>{notice.readAt ? "مقروء" : "غير مقروء"}</span><p>{notice.body}</p><p>{notice.pushEnabled ? `إشعار فوري: ${label(notice.pushStatus)} · ${notice.pushAttempts.toLocaleString("ar-SA")} محاولة` : "إشعار داخل المنصة فقط"}{notice.actionLabel ? ` · الإجراء: ${notice.actionLabel}` : ""}</p></article>)}</div> : <Empty>لا توجد إشعارات مخصصة لهذا الطالب.</Empty>}
-        </section>
+        </section>}
 
-        <section className={styles.panel} id="sessions">
+        {can(["students.devices.view"]) && <section className={styles.panel} id="sessions">
           <PanelHead icon={Laptop} title="الجلسات والأجهزة" copy="تسجيل الجهاز دائم؛ أما الجلسة فتنتهي بالخروج أو انتهاء الصلاحية" count={data.pagination?.sessions?.total ?? data.sessions.length} />{pager("sessions")}
           <AdminRegisteredDevices email={data.student.email} onChanged={load} />
           {data.sessions.length ? <div className={styles.list}>{data.sessions.map((session) => {
             const state = sessionState(session);
             const Icon = session.platform === "mobile" ? Smartphone : Laptop;
-            return <article className={styles.listItem} key={session.id}><i className={styles.sessionIcon}><Icon size={16} /></i><span><strong>{session.deviceLabel}</strong><small>{label(session.platform)} · آخر نشاط {safeDate(session.lastSeenAt)}</small></span><span className={styles.badge} data-tone={tone(state)}>{label(state)}</span><p>{session.ipAddress ? <>عنوان الشبكة: <bdi className={styles.ltr}>{session.ipAddress}</bdi> · </> : null}تنتهي الجلسة: {safeDate(session.expiresAt)}{session.revokedAt ? ` · أُلغيت ${safeDate(session.revokedAt)}` : ""}</p>{state === "active" && <div className={styles.cardActions}><button type="button" disabled={Boolean(busy)} onClick={() => void act(`session-${session.id}`, { action: "revokeUserSession", sessionId: session.id }, `تم تسجيل خروج ${session.deviceLabel}`)}>تسجيل خروج الجهاز</button></div>}</article>;
+            return <article className={styles.listItem} key={session.id}><i className={styles.sessionIcon}><Icon size={16} /></i><span><strong>{session.deviceLabel}</strong><small>{label(session.platform)} · آخر نشاط {safeDate(session.lastSeenAt)}</small></span><span className={styles.badge} data-tone={tone(state)}>{label(state)}</span><p>{session.ipAddress ? <>عنوان الشبكة: <bdi className={styles.ltr}>{session.ipAddress}</bdi> · </> : null}تنتهي الجلسة: {safeDate(session.expiresAt)}{session.revokedAt ? ` · أُلغيت ${safeDate(session.revokedAt)}` : ""}</p>{state === "active" && can(["students.devices.manage"]) && <div className={styles.cardActions}><button type="button" disabled={Boolean(busy)} onClick={() => void act(`session-${session.id}`, { action: "revokeUserSession", sessionId: session.id }, `تم تسجيل خروج ${session.deviceLabel}`)}>تسجيل خروج الجهاز</button></div>}</article>;
           })}</div> : <Empty>لا توجد جلسات مسجلة.</Empty>}
           {data.pushDevices?.length ? <div className={styles.list}><p>أجهزة الإشعارات الفورية ({data.pushDevices.filter((row) => row.status === "active").length.toLocaleString("ar-SA")} نشط):</p>{data.pushDevices.map((device) => <article className={styles.listItem} key={`push-${device.id}`}><i className={styles.sessionIcon}><Smartphone size={16} /></i><span><strong>{device.deviceLabel || device.platform}</strong><small>{label(device.platform)} · آخر ظهور {safeDate(device.lastSeenAt)}</small></span><span className={styles.badge} data-tone={tone(device.status)}>{label(device.status)}</span></article>)}</div> : null}
-        </section>
+        </section>}
       </div>
-      {pager("accessEvents", "سجل الوصول")}{pager("pushDevices", "أجهزة التنبيهات")}
+      {can(["subscriptions.manage"])&&pager("accessEvents", "سجل الوصول")}{can(["students.devices.view"])&&pager("pushDevices", "أجهزة التنبيهات")}
     </div>
   </main>;
 }
 
 function StudentActionForm({ dialog, data, busy, close, submit }: { dialog: StudentAction; data: Student360Response; busy: boolean; close: () => void; submit: (payload: Record<string, unknown>) => Promise<void> }) {
+  const {can}=useAdminAccess();
   const titles = { profile: "تعديل بيانات الطالب", grant: "منح وصول إلى مادة", status: data.student.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب", access: "تعديل الاشتراك", notification: "إشعار مخصص للطالب" };
   const [grantType, setGrantType] = useState("complimentary");
   async function save(event: React.FormEvent<HTMLFormElement>) {
@@ -667,7 +668,7 @@ function StudentActionForm({ dialog, data, busy, close, submit }: { dialog: Stud
   }
   return <section id="student-action-form" className={styles.panel} aria-label={titles[dialog.kind]}><h2>{titles[dialog.kind]}</h2><form onSubmit={save}><div className={styles.formGrid}>
     {dialog.kind === "profile" && <><label>الاسم الكامل<input name="fullName" defaultValue={data.student.fullName} required minLength={3} maxLength={120} /></label><label>الجامعة<SearchableSelect name="universitySlug" defaultValue={data.student.universitySlug || ""}><option value="">غير محددة</option>{data.catalog.institutions.map((row) => <option key={row.slug} value={row.slug}>{row.name}</option>)}</SearchableSelect></label><label>التخصص<input name="specialty" defaultValue={data.student.specialty || ""} maxLength={140} /></label><label>المستوى الدراسي<input name="academicLevel" defaultValue={data.student.academicLevel || ""} maxLength={80} /></label></>}
-    {dialog.kind === "grant" && <><label>المادة<SearchableSelect name="courseSlug" required><option value="">اختر المادة</option>{data.catalog.courses.map((row) => <option key={row.slug} value={row.slug}>{row.title} — {row.university} — {row.specialty}</option>)}</SearchableSelect></label><label>نوع الوصول<select name="grantType" value={grantType} onChange={(event) => setGrantType(event.target.value)}><option value="complimentary">منحة مجانية</option><option value="manual_payment">دفعة يدوية مدفوعة مع فاتورة</option></select></label>{grantType === "manual_payment" && <label>المبلغ بالريال<input name="price" type="number" min={0.01} max={1000000} step={0.01} required /></label>}<label>تاريخ الانتهاء (اختياري)<input type="date" name="expiresAt" /><small>عند تركه فارغًا تُستخدم مدة المادة. الوصول الدائم يبقى دائمًا.</small></label></>}
+    {dialog.kind === "grant" && <><label>المادة<SearchableSelect name="courseSlug" required><option value="">اختر المادة</option>{data.catalog.courses.map((row) => <option key={row.slug} value={row.slug}>{row.title} — {row.university} — {row.specialty}</option>)}</SearchableSelect></label><label>نوع الوصول<select name="grantType" value={grantType} onChange={(event) => setGrantType(event.target.value)}><option value="complimentary">منحة مجانية</option>{can(["finance.manage"])&&<option value="manual_payment">دفعة يدوية مدفوعة مع فاتورة</option>}</select></label>{grantType === "manual_payment" && <label>المبلغ بالريال<input name="price" type="number" min={0.01} max={1000000} step={0.01} required /></label>}<label>تاريخ الانتهاء (اختياري)<input type="date" name="expiresAt" /><small>عند تركه فارغًا تُستخدم مدة المادة. الوصول الدائم يبقى دائمًا.</small></label></>}
     {dialog.kind === "access" && <><p>{data.catalog.courses.find((row) => row.slug === dialog.subscription?.courseSlug)?.title || dialog.subscription?.courseSlug} · {label(dialog.operation)}</p>{dialog.operation === "extend" && <label>أيام التمديد<input name="days" type="number" min={1} max={3650} defaultValue={30} required /></label>}</>}
     {dialog.kind === "notification" ? <><label>عنوان الإشعار<input name="title" required minLength={3} maxLength={160} /></label><label>نص الإشعار<textarea name="body" required minLength={3} maxLength={2000} /></label><label>رابط الإجراء<input name="actionUrl" placeholder="/dashboard" /></label><label>نص زر الإجراء<input name="actionLabel" maxLength={60} /></label><label><input name="pushEnabled" type="checkbox" defaultChecked />إرسال إشعار فوري للأجهزة المسجلة</label></> : <label>سبب التغيير<textarea name="reason" required minLength={3} maxLength={500} /></label>}
     </div><div className={styles.cardActions}><button type="submit" disabled={busy}>{busy ? "جارٍ الحفظ…" : "حفظ الإجراء"}</button><button type="button" disabled={busy} onClick={close}>إلغاء</button></div></form></section>;
