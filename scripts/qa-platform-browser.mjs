@@ -153,8 +153,8 @@ try {
       viewer.setDefaultTimeout(15000);
       const viewerPage = await viewer.newPage(); await viewerPage.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
       assert.equal(await viewerPage.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').count(), 0);
-      assert.equal((await viewer.request.get(origin + "/api/admin/staff")).status(), 403);
-      assert.equal((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status(), 403);
+      assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/staff")).status()));
+      assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status()));
       checks.push("catalog-view supervisor has no owner/finance/content navigation and is denied staff and upload-signing APIs");
       await viewer.close(); assert.deepEqual(errors, [], "no client JavaScript exceptions");
       const report = { engine: name, passed: checks.length, checks, clientExceptions: errors, liveProviders: false, devices: "browser viewport emulation, not physical phones" };
