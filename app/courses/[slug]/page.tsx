@@ -39,8 +39,8 @@ export default async function CoursePage({ params, searchParams }: Props) {
   const query = await searchParams;
   const [courses, user, bundles] = await Promise.all([getCoursesCatalog(), currentUser(), listActiveCourseBundles().catch(() => [])]);
   const [ownership, canReview] = user ? await Promise.all([
-    getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.email, course.slug)).limit(1).then((rows) => Boolean(rows[0])).catch(() => false),
-    getDb().select({ id: lessonProgress.id }).from(lessonProgress).where(and(eq(lessonProgress.userEmail, user.email), eq(lessonProgress.courseSlug, course.slug))).limit(1).then((rows) => Boolean(rows[0])).catch(() => false),
+    getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.id, course.slug)).limit(1).then((rows) => Boolean(rows[0])).catch(() => false),
+    getDb().select({ id: lessonProgress.id }).from(lessonProgress).where(and(eq(lessonProgress.userId, user.id), eq(lessonProgress.courseSlug, course.slug))).limit(1).then((rows) => Boolean(rows[0])).catch(() => false),
   ]) : [false, false];
   const owned = ownership;
   const bundleOffers: BundleOffer[] = bundles.filter((bundle) => bundle.courseSlugs.includes(course.slug)).map((bundle) => ({ slug: bundle.slug, title: bundle.title, description: bundle.description, discountType: bundle.discountType, discountValue: bundle.discountValue, courses: bundle.courses.map((item) => ({ slug: item.slug, title: item.title, price: item.price, university: item.university })), savings: bundle.discount, bundlePrice: bundle.total, regularPrice: bundle.subtotal }));
