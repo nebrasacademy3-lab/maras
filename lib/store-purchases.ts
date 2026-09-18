@@ -64,7 +64,7 @@ export async function applyVerifiedStorePurchase(client:PoolClient,user:StoreUse
       const existing=(await client.query("SELECT id FROM store_course_grants WHERE transaction_id=$1 AND course_slug=$2",[id,slug])).rows[0];
       if(existing) await client.query("UPDATE store_course_grants SET status=$2 WHERE id=$1",[existing.id,active?"active":"refunded"]);
       else if(active) {
-        const prior=await client.query<{expires_at:string|null}>("SELECT expires_at FROM store_course_grants WHERE user_email=$1 AND course_slug=$2 AND status='active' AND expires_at>$3 UNION ALL SELECT expires_at FROM course_access WHERE user_id=$1 AND course_slug=$2 AND source<>'revenuecat' AND revoked_at IS NULL AND expires_at>$3",[user.email,slug,snapshot.purchased_at]);
+        const prior=await client.query<{expires_at:string|null}>("SELECT expires_at FROM store_course_grants WHERE user_id=$1 AND course_slug=$2 AND status='active' AND expires_at>$3 UNION ALL SELECT expires_at FROM course_access WHERE user_id=$1 AND course_slug=$2 AND source<>'revenuecat' AND revoked_at IS NULL AND expires_at>$3",[user.id,slug,snapshot.purchased_at]);
         const period=nextStorePeriod(snapshot.purchased_at,snapshot.duration_days,prior.rows.map(r=>r.expires_at));
         await client.query("INSERT INTO store_course_grants(transaction_id,user_id,user_email,course_slug,starts_at,expires_at,status) VALUES($1,$2,$3,$4,$5,$6,'active')",[id,user.id,user.email,slug,period.startsAt,period.expiresAt]);
       }
