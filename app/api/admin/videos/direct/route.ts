@@ -344,7 +344,7 @@ export async function POST(request: Request) {
     const durationSeconds =
       suppliedDuration ||
       await probeStoredVideoDuration(
-        objectKey: normalizedObjectKey,
+        normalizedObjectKey,
         sizeBytes,
         contentType,
         "s3",
