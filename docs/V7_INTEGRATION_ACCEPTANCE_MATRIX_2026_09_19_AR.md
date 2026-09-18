@@ -12,40 +12,40 @@
 
 | المجال | المتطلب القابل للتحقق | الحالة الحالية | التنفيذ/القرار | دليل الاختبار أو سبب الحالة |
 |---|---|---|---|---|
-| نطاقات المشرفين | المشرف بلا نطاق لا يرى جميع البيانات ضمنيًا | يحتاج اختبار | نُقلت سياسات `supervisor-data-scope` و`supervisor-scope` | `scripts/qa-supervisor-data-scope.ts`, `tests/supervisor-data-scope.test.mjs` |
-| نطاقات المشرفين | `data.all` منحة مستقلة ولا تمنح الأفعال وحدها | يحتاج اختبار | نُقلت عقود الصلاحيات للويب والموبايل | `tests/supervisor-scope-contract.test.mjs` |
-| نطاقات المشرفين | ترشيح SQL قبل pagination/count للطلاب والطلبات والدعم | يحتاج اختبار | نُقلت سياسات ومسارات PR #3 حرفيًا | تكامل النطاقات يزرع سجلات خارج النطاق ويقارن الأعداد |
-| نطاقات المشرفين | الطلب المختلط لا يظهر لصاحب نطاق جزئي | يحتاج اختبار | نُقلت سياسة السجل المختلط | `qa-supervisor-data-scope.ts` |
-| نطاقات المشرفين | تعديل السجل يفحص المعرّف الحالي والوجهة الجديدة | يحتاج اختبار | نُقلت حماية course/student/resource mutations | محاولات التعديل خارج النطاق ضمن تكامل النطاقات |
-| نطاقات المشرفين | المواد المشتركة على الجامعة لا تُكشف لنطاق تخصص واحد | يحتاج اختبار | نُقلت قواعد `supervisor-data-scope` | تكامل PostgreSQL للنطاقات |
-| نطاقات المشرفين | إسناد الطلب المتزامن لا يستبدل المسؤول بصمت | يحتاج اختبار | قفل معاملة عند الإسناد | اختبار concurrency في `qa-supervisor-data-scope.ts` |
-| نطاقات المشرفين | تغيير نطاق المشرف يحتاج MFA ويبطل جلساته المتأثرة | يحتاج اختبار | نُقل منطق الإدارة والتدقيق | تكامل النطاقات + Browser QA |
-| نطاقات المشرفين | المراكز العامة غير القابلة للتقسيم تتطلب `data.all` | يحتاج اختبار | نُقلت سياسات console/finance/AI/operations | اختبارات العقود والتنقل |
-| واجهة الإدارة | تنقل موحد بثماني مجموعات دون sidebar قديم | يحتاج اختبار | `AdminShell` يحل محل `AdminCenterNav` | Browser QA المدمج يفحص desktop/mobile والبحث |
-| واجهة الإدارة | المداخل غير المسموحة مخفية في الويب والتطبيق | يحتاج اختبار | عقود navigation مشتركة | `qa-admin-navigation-security.ts`, mobile tests |
-| خصوصية الدعم | الملاحظة الداخلية لا تظهر في إشعار الطالب | يحتاج اختبار | نُقلت معالجة console والدعم | تكامل النطاقات واختبارات الخدمات |
-| الملفات | ملفات الطلبات والدعم تُرفض قبل قراءة التخزين خارج النطاق | يحتاج اختبار | نُقلت مسارات download/support | `tests/direct-upload-authorization.test.mjs` + تكامل النطاقات |
-| الملفات | توقيع الرفع المباشر محكوم بالنطاق | يحتاج اختبار | نُقلت مسارات direct upload/resources/covers | اختبارات التفويض |
-| ownership | إضافة `orders.user_id` ثابت ومنع إعادة الإسناد/الحذف الصلب | يحتاج اختبار | migration 0036 + schema | `qa-order-ownership-migration.mjs` |
-| ownership | backfill محافظ ولا يخمن الملكية عند الغموض | يحتاج اختبار | `order_ownership_reviews` للحالات غير المثبتة | migration acceptance |
-| ownership | checkout يعيد التحقق من الجلسة داخل القفل قبل إنشاء الطلب | يحتاج اختبار | نُقل route checkout | `qa-order-ownership.ts` |
-| ownership | قراءة الطلبات والفواتير تعتمد userId لا البريد التاريخي | يحتاج اختبار | نُقلت ownership helpers/routes | `tests/order-ownership-behavior.test.mjs` |
-| ownership | الدفع المتأخر والاسترداد لا يعيدان تفعيل ملكية خاطئة | يحتاج اختبار | locking وتحقق الحالة | `qa-order-ownership.ts` |
-| ownership | الكوبون والإحالة يتبعان المعرّف الثابت | يحتاج اختبار | نُقلت coupons/referrals | تكامل ownership |
-| ownership | UI المالية يمنع التفعيل عندما الملكية غير مثبتة ويُبقي الاسترداد | يحتاج اختبار | `finance-center` + Browser QA المدمج | screenshot وفحص dialog |
-| الإشعارات | `target_user_id` يمنع سقوط الرسالة الخاصة إلى بث عام | يحتاج اختبار | migration 0036 + visibility helper | `tests/order-ownership-behavior.test.mjs` |
-| الإشعارات | المرسل المجدول يستخدم المستلم المحفوظ ولا يعيد حل البريد | يحتاج اختبار | notifications/push ported | تكامل ownership |
-| الهوية | تغيير البريد transactional ويمنع سباق الإلغاء/الإرسال | يحتاج اختبار | migration 0035 + `email-change.ts` | `qa-email-change.mjs` |
-| الهوية | تغيير البريد يبطل الجلسات/reset/MFA/OAuth challenges ويحافظ على device trust | يحتاج اختبار | نُقلت آلية الإبطال | تكامل البريد |
-| الهوية | بيانات الشراء التاريخية لا يعاد كتابتها عند تغيير البريد | يحتاج اختبار | invoice snapshot/ownership | اختبارات invoice/email |
+| نطاقات المشرفين | المشرف بلا نطاق لا يرى جميع البيانات ضمنيًا | منجز | نُقلت سياسات `supervisor-data-scope` و`supervisor-scope` | `scripts/qa-supervisor-data-scope.ts`, `tests/supervisor-data-scope.test.mjs` |
+| نطاقات المشرفين | `data.all` منحة مستقلة ولا تمنح الأفعال وحدها | منجز | نُقلت عقود الصلاحيات للويب والموبايل | `tests/supervisor-scope-contract.test.mjs` |
+| نطاقات المشرفين | ترشيح SQL قبل pagination/count للطلاب والطلبات والدعم | منجز | نُقلت سياسات ومسارات PR #3 حرفيًا | تكامل النطاقات يزرع سجلات خارج النطاق ويقارن الأعداد |
+| نطاقات المشرفين | الطلب المختلط لا يظهر لصاحب نطاق جزئي | منجز | نُقلت سياسة السجل المختلط | `qa-supervisor-data-scope.ts` |
+| نطاقات المشرفين | تعديل السجل يفحص المعرّف الحالي والوجهة الجديدة | منجز | نُقلت حماية course/student/resource mutations | محاولات التعديل خارج النطاق ضمن تكامل النطاقات |
+| نطاقات المشرفين | المواد المشتركة على الجامعة لا تُكشف لنطاق تخصص واحد | منجز | نُقلت قواعد `supervisor-data-scope` | تكامل PostgreSQL للنطاقات |
+| نطاقات المشرفين | إسناد الطلب المتزامن لا يستبدل المسؤول بصمت | منجز | قفل معاملة عند الإسناد | اختبار concurrency في `qa-supervisor-data-scope.ts` |
+| نطاقات المشرفين | تغيير نطاق المشرف يحتاج MFA ويبطل جلساته المتأثرة | منجز | نُقل منطق الإدارة والتدقيق | تكامل النطاقات + Browser QA |
+| نطاقات المشرفين | المراكز العامة غير القابلة للتقسيم تتطلب `data.all` | منجز | نُقلت سياسات console/finance/AI/operations | اختبارات العقود والتنقل |
+| واجهة الإدارة | تنقل موحد بثماني مجموعات دون sidebar قديم | منجز | `AdminShell` يحل محل `AdminCenterNav` | Browser QA المدمج يفحص desktop/mobile والبحث |
+| واجهة الإدارة | المداخل غير المسموحة مخفية في الويب والتطبيق | منجز | عقود navigation مشتركة | `qa-admin-navigation-security.ts`, mobile tests |
+| خصوصية الدعم | الملاحظة الداخلية لا تظهر في إشعار الطالب | منجز | نُقلت معالجة console والدعم | تكامل النطاقات واختبارات الخدمات |
+| الملفات | ملفات الطلبات والدعم تُرفض قبل قراءة التخزين خارج النطاق | منجز | نُقلت مسارات download/support | `tests/direct-upload-authorization.test.mjs` + تكامل النطاقات |
+| الملفات | توقيع الرفع المباشر محكوم بالنطاق | منجز | نُقلت مسارات direct upload/resources/covers | اختبارات التفويض |
+| ownership | إضافة `orders.user_id` ثابت ومنع إعادة الإسناد/الحذف الصلب | منجز | migration 0036 + schema | `qa-order-ownership-migration.mjs` |
+| ownership | backfill محافظ ولا يخمن الملكية عند الغموض | منجز | `order_ownership_reviews` للحالات غير المثبتة | migration acceptance |
+| ownership | checkout يعيد التحقق من الجلسة داخل القفل قبل إنشاء الطلب | منجز | نُقل route checkout | `qa-order-ownership.ts` |
+| ownership | قراءة الطلبات والفواتير تعتمد userId لا البريد التاريخي | منجز | نُقلت ownership helpers/routes | `tests/order-ownership-behavior.test.mjs` |
+| ownership | الدفع المتأخر والاسترداد لا يعيدان تفعيل ملكية خاطئة | منجز | locking وتحقق الحالة | `qa-order-ownership.ts` |
+| ownership | الكوبون والإحالة يتبعان المعرّف الثابت | منجز | نُقلت coupons/referrals | تكامل ownership |
+| ownership | UI المالية يمنع التفعيل عندما الملكية غير مثبتة ويُبقي الاسترداد | منجز | `finance-center` + Browser QA المدمج | screenshot وفحص dialog |
+| الإشعارات | `target_user_id` يمنع سقوط الرسالة الخاصة إلى بث عام | منجز | migration 0036 + visibility helper | `tests/order-ownership-behavior.test.mjs` |
+| الإشعارات | المرسل المجدول يستخدم المستلم المحفوظ ولا يعيد حل البريد | منجز | notifications/push ported | تكامل ownership |
+| الهوية | تغيير البريد transactional ويمنع سباق الإلغاء/الإرسال | منجز | migration 0035 + `email-change.ts` | `qa-email-change.mjs` |
+| الهوية | تغيير البريد يبطل الجلسات/reset/MFA/OAuth challenges ويحافظ على device trust | منجز | نُقلت آلية الإبطال | تكامل البريد |
+| الهوية | بيانات الشراء التاريخية لا يعاد كتابتها عند تغيير البريد | منجز | invoice snapshot/ownership | اختبارات invoice/email |
 | الهوية | تغيير البريد يبقى مغلقًا افتراضيًا لحين اكتمال بقية الملكيات | منجز | `EMAIL_CHANGE_ENABLED=false` في إعدادات v7 | قرار أمان موثق في تقارير v7 |
-| الأجهزة | سياسة عودة الجهاز واعتماد التسجيل متطابقة ويب/موبايل | يحتاج اختبار | migration 0033 + device policy مشتركة | `qa-device-return.ts`, mobile device tests |
-| الفيديو | رمز الفيديو يرفض الصيغة والحقول غير الصالحة | يحتاج اختبار | `video-token.ts` ported | video lifecycle tests |
-| الفيديو | HEAD يغلق stream غير المستخدم | يحتاج اختبار | video routes ported | `tests/video-stream-lifecycle.test.mjs` |
-| الفيديو | إعدادات السرعة/الجودة قابلة للوصول | يحتاج اختبار | player CSS/TSX ported | accessibility test |
-| الفيديو | معالجة MP4 اصطناعي إلى HLS وتشغيله مع range/access revocation | يحتاج اختبار | `qa-protected-video.ts` مدمج في CI | Chromium synthetic playback، لا يدّعي أجهزة فعلية |
-| Gemini | منع انكماش pool المجاني وإحياء مفتاح موقوف برد متأخر | يحتاج اختبار | `gemini.ts` وpool tests ported | `tests/gemini-pool-safety.test.mjs` |
-| Gemini | ميزانية الاحتياط المدفوع وحجزها قبل الإرسال | يحتاج اختبار | migration 0034 + `ai-paid-budget.ts` | AI fallback/provider tests |
+| الأجهزة | سياسة عودة الجهاز واعتماد التسجيل متطابقة ويب/موبايل | منجز | migration 0033 + device policy مشتركة | `qa-device-return.ts`, mobile device tests |
+| الفيديو | رمز الفيديو يرفض الصيغة والحقول غير الصالحة | منجز | `video-token.ts` ported | video lifecycle tests |
+| الفيديو | HEAD يغلق stream غير المستخدم | منجز | video routes ported | `tests/video-stream-lifecycle.test.mjs` |
+| الفيديو | إعدادات السرعة/الجودة قابلة للوصول | منجز | player CSS/TSX ported | accessibility test |
+| الفيديو | معالجة MP4 اصطناعي إلى HLS وتشغيله مع range/access revocation | منجز | `qa-protected-video.ts` مدمج في CI | Chromium synthetic playback، لا يدّعي أجهزة فعلية |
+| Gemini | منع انكماش pool المجاني وإحياء مفتاح موقوف برد متأخر | منجز | `gemini.ts` وpool tests ported | `tests/gemini-pool-safety.test.mjs` |
+| Gemini | ميزانية الاحتياط المدفوع وحجزها قبل الإرسال | منجز | migration 0034 + `ai-paid-budget.ts` | AI fallback/provider tests |
 | Gemini | سجل مشاريع وفوترة وحصص ذرية مشتركة بين كل الخوادم | ناقص | PR #3 نفسه يصرح بعدم اكتماله | يحتاج مرحلة لاحقة؛ لا يُفعّل paid fallback اعتمادًا على هذه الدفعة |
 | الملفات الكبيرة | resumable upload + عزل المعالجة + ST/LF + تعافي المستند الكبير | ناقص | ليست مكتملة في PR #3 | موثق كـgate مفتوحة في V7_AUDIT |
 | التكافؤ العلمي | PDF/النطق/الدروس والتكافؤ الكامل ويب/تطبيق | ناقص | ليست مثبتة بهذه الدفعة | تحتاج قبول ST/LF مستقل |
@@ -54,8 +54,21 @@
 | السعة والأمان | ألف مستخدم متزامن + اختبار اختراق مستقل | ناقص | لا يوجد دليل في PR #3 | يحتاج مرحلة مستقلة |
 | الإنتاج | backup/restore/migration/rollback موثق ومجرب | ناقص | لم يكن ضمن PR #3 | يلزم قبل اعتماد ترحيلات v7 للإنتاج |
 | ملكية البيانات | تحويل جميع السجلات القديمة إلى userId | ناقص | orders/notifications منجزة فقط؛ بقية access/progress/support/notes/favorites/cart/waitlist ما زالت بريدية في بعض المسارات | موثق في V7_ORDER_OWNERSHIP |
-| SEO/هوية | كتلة الهوية القديمة داخل `llms.txt` | لم يعد مطلوبًا | استُبدلت بدليل #6 العام المحدود الذي يمنع private paths؛ هوية مراس بقيت في structured data و/about | قرار دمج أمني، لا فقد للهوية العامة |
+| SEO/هوية | هوية مراس داخل `llms.txt` دون توسيع سطح التسريب | منجز | أُعيدت حقائق الهوية عبر `renderPublicDiscovery` المحدود والمنظف من #6، لا عبر قالب v7 القديم | `tests/seo-discovery.test.mjs` + اختبارات الهوية العامة |
 | إدارة قديمة | `AdminCenterNav` القديم | لم يعد مطلوبًا | أزيل لصالح `AdminShell` الموحد | Browser QA يفحص غياب sidebar القديم |
+
+## نتيجة التحقق النهائية
+
+على الالتزام `cb5f559d2432d99352fe643c8739655e95d6fb26` نجحت البوابات التالية على فرع التكامل:
+
+- Quality gates: **SUCCESS** — run `35401139762`. يشمل lint/build/contracts، PostgreSQL المعزول، تقارير scopes/devices/email/ownership، معالجة وتشغيل protected video، وChromium/Firefox/WebKit.
+- Dependency security: **SUCCESS** — run `35401139769`.
+- Production public checks: **SUCCESS** — run `35401139763`.
+- Mobile release validation: **SUCCESS** — run `35401139767` لـAndroid وiOS prebuild/export.
+- Mobile typecheck/lint/tests داخل Quality: **SUCCESS**.
+- توصية Expo المتغيرة لآخر patch تظهر كتحذير فقط؛ `npm ci` من lockfile، typecheck، native prebuild وrelease export تبقى بوابات مانعة.
+
+كل بند موسوم **منجز** في الجدول أعلاه مرتبط بتنفيذ واختبار مرّ في هذه الدورة. البنود الموسومة **ناقص** لم تُرفع حالتها ولم تُعتبر منجزة.
 
 ## تعريف نجاح تكامل PR #3
 
