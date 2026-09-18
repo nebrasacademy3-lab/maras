@@ -2,9 +2,10 @@ import { createHash, createHmac } from "node:crypto";
 import { constants, createReadStream, createWriteStream } from "node:fs";
 import { access, mkdir, mkdtemp, readdir, rename, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join, normalize, relative } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
+import { normalizeStorageBucket, normalizeStorageKey, normalizeStoragePrefix, storageEndpointUrl, storageTransferTimeoutMs, storageUploadLimitBytes } from "@/lib/storage-policy";
 
 export type StorageProvider = "local" | "s3";
 
@@ -19,18 +20,21 @@ type ObjectRange = { offset: number; length: number };
 type S3Config = { endpoint: URL; bucket: string; region: string; accessKeyId: string; secretAccessKey: string; forcePathStyle: boolean };
 
 function storageRoot() {
-  return process.env.UPLOAD_DIR?.trim() || join(process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim() || join(process.cwd(), ".data"), "uploads");
+  return resolve(process.env.UPLOAD_DIR?.trim() || join(process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim() || join(process.cwd(), ".data"), "uploads"));
 }
 
 function s3Config(): S3Config | null {
-  const endpointValue = process.env.S3_ENDPOINT?.trim();
-  const bucket = process.env.S3_BUCKET?.trim();
-  const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim();
-  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim();
-  if (!endpointValue || !bucket || !accessKeyId || !secretAccessKey) return null;
-  let endpoint: URL;
-  try { endpoint = new URL(endpointValue); } catch { return null; }
-  if (endpoint.protocol !== "https:" && endpoint.protocol !== "http:") return null;
+  const endpointValue = process.env.S3_ENDPOINT?.trim() || "";
+  const bucketValue = process.env.S3_BUCKET?.trim() || "";
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim() || "";
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim() || "";
+  const supplied = [endpointValue, bucketValue, accessKeyId, secretAccessKey].filter(Boolean).length;
+  if (supplied === 0) return null;
+  if (supplied !== 4) throw new Error("S3 storage configuration is incomplete");
+  const endpoint = storageEndpointUrl(endpointValue, {
+    allowLoopbackHttp: process.env.NODE_ENV !== "production" && process.env.S3_ALLOW_INSECURE_LOOPBACK === "true",
+  });
+  const bucket = normalizeStorageBucket(bucketValue);
   return { endpoint, bucket, region: process.env.S3_REGION?.trim() || "auto", accessKeyId, secretAccessKey, forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false" };
 }
 
@@ -39,18 +43,12 @@ export function activeStorageProvider(): StorageProvider {
 }
 
 function safePath(key: string) {
-  const cleaned = key.replace(/^[/\\]+/, "");
-  const absolute = normalize(join(storageRoot(), cleaned));
-  const root = normalize(storageRoot());
+  const normalizedKey = normalizeStorageKey(key);
+  const root = storageRoot();
+  const absolute = resolve(root, ...normalizedKey.split("/"));
   const inside = relative(root, absolute);
-  if (!inside || inside.startsWith("..") || inside.includes(`..${process.platform === "win32" ? "\\" : "/"}`)) throw new Error("Invalid storage key");
+  if (!inside || inside.startsWith("..") || inside.startsWith("/") || inside.startsWith("\\")) throw new Error("Invalid storage key");
   return absolute;
-}
-
-function normalizedObjectKey(key: string) {
-  const normalized = key.replace(/\\/g, "/").replace(/^\/+/, "");
-  if (!normalized || normalized.split("/").some((part) => !part || part === "." || part === "..")) throw new Error("Invalid storage key");
-  return normalized;
 }
 
 function toNodeReadable(stream: ReadableStream<Uint8Array>) {
@@ -105,28 +103,71 @@ function signedS3Headers(config: S3Config, method: string, url: URL, payloadHash
   return { ...headers, authorization: `AWS4-HMAC-SHA256 Credential=${config.accessKeyId}/${scope}, SignedHeaders=${headerNames.join(";")}, Signature=${signature}` };
 }
 
+async function responseSnippet(response: Response, maximum = 8192) {
+  if (!response.body) return "";
+  const reader = response.body.getReader();
+  const parts: Uint8Array[] = [];
+  let bytes = 0;
+  try {
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      bytes += part.value.byteLength;
+      if (bytes > maximum) { await reader.cancel(); break; }
+      parts.push(part.value);
+    }
+  } finally { reader.releaseLock(); }
+  return new TextDecoder().decode(Buffer.concat(parts.map(part => Buffer.from(part)))).replace(/\s+/g, " ").slice(0, maximum);
+}
+
 async function s3Request(method: string, url: URL, payloadHash: string, init: RequestInit = {}, signedExtra: Record<string, string> = {}) {
   const config = s3Config();
   if (!config) throw new Error("S3 storage is not configured");
+  if (url.protocol !== config.endpoint.protocol || (url.hostname !== config.endpoint.hostname && url.hostname !== `${config.bucket}.${config.endpoint.hostname}`)) throw new Error("Unexpected S3 request destination");
   const headers = new Headers(init.headers);
   for (const [name, value] of Object.entries(signedS3Headers(config, method, url, payloadHash, signedExtra))) headers.set(name, value);
-  const response = await fetch(url, { ...init, method, headers, signal: init.signal || AbortSignal.timeout(120_000) });
+  const response = await fetch(url, {
+    ...init,
+    method,
+    headers,
+    redirect: "error",
+    credentials: "omit",
+    cache: "no-store",
+    signal: init.signal || AbortSignal.timeout(storageTransferTimeoutMs(process.env.STORAGE_TRANSFER_TIMEOUT_MS)),
+  });
   if (!response.ok && response.status !== 404) {
-    const detail = (await response.text().catch(() => "")).replace(/\s+/g, " ").slice(0, 500);
+    const detail = await responseSnippet(response);
     throw new Error(`S3 ${method} failed (${response.status})${detail ? `: ${detail}` : ""}`);
   }
   return response;
+}
+
+function storageMeter(maxBytes: number, digest?: ReturnType<typeof createHash>) {
+  let size = 0;
+  return {
+    meter: new Transform({
+      transform(chunk: Buffer, _encoding, callback) {
+        size += chunk.byteLength;
+        if (size > maxBytes) return callback(new Error("Storage object exceeds the configured byte limit"));
+        digest?.update(chunk);
+        callback(null, chunk);
+      },
+    }),
+    size: () => size,
+  };
 }
 
 async function spoolStream(body: ReadableStream<Uint8Array>) {
   const directory = await mkdtemp(join(tmpdir(), "meras-storage-"));
   const filename = join(directory, "payload");
   const digest = createHash("sha256");
-  let size = 0;
-  const meter = new Transform({ transform(chunk: Buffer, _encoding, callback) { size += chunk.byteLength; digest.update(chunk); callback(null, chunk); } });
+  const maximum = storageUploadLimitBytes(process.env.STORAGE_MAX_UPLOAD_BYTES);
+  const { meter, size } = storageMeter(maximum, digest);
   try {
-    await pipeline(toNodeReadable(body), meter, createWriteStream(filename, { flags: "wx", mode: 0o600 }));
-    return { directory, filename, size, hash: digest.digest("hex") };
+    await pipeline(toNodeReadable(body), meter, createWriteStream(filename, { flags: "wx", mode: 0o600 }), {
+      signal: AbortSignal.timeout(storageTransferTimeoutMs(process.env.STORAGE_TRANSFER_TIMEOUT_MS)),
+    });
+    return { directory, filename, size: size(), hash: digest.digest("hex") };
   } catch (error) {
     await rm(directory, { recursive: true, force: true }).catch(() => undefined);
     throw error;
@@ -134,13 +175,17 @@ async function spoolStream(body: ReadableStream<Uint8Array>) {
 }
 
 async function putLocalObject(key: string, body: ReadableStream<Uint8Array>, contentType?: string) {
-  const destination = safePath(key);
+  const normalizedKey = normalizeStorageKey(key);
+  const destination = safePath(normalizedKey);
   const temporary = `${destination}.${crypto.randomUUID()}.part`;
+  const { meter } = storageMeter(storageUploadLimitBytes(process.env.STORAGE_MAX_UPLOAD_BYTES));
   await mkdir(dirname(destination), { recursive: true });
   try {
-    await pipeline(toNodeReadable(body), createWriteStream(temporary, { flags: "wx", mode: 0o600 }));
+    await pipeline(toNodeReadable(body), meter, createWriteStream(temporary, { flags: "wx", mode: 0o600 }), {
+      signal: AbortSignal.timeout(storageTransferTimeoutMs(process.env.STORAGE_TRANSFER_TIMEOUT_MS)),
+    });
     await rename(temporary, destination);
-    return { key, contentType, provider: "local" as const };
+    return { key: normalizedKey, contentType, provider: "local" as const };
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => undefined);
     throw error;
@@ -156,8 +201,8 @@ export async function putObject(key: string, body: ReadableStream<Uint8Array>, c
   try {
     const stream = createReadStream(/* turbopackIgnore: true */ staged.filename);
     const init = { body: stream as unknown as BodyInit, duplex: "half", headers: { "content-length": String(staged.size), "content-type": contentType || "application/octet-stream" }, signal: AbortSignal.timeout(30 * 60_000) } as RequestInit & { duplex: "half" };
-    await s3Request("PUT", s3ObjectUrl(config, key), staged.hash, init);
-    return { key, contentType, provider: "s3" as const };
+    await s3Request("PUT", s3ObjectUrl(config, normalizedKey), staged.hash, init);
+    return { key: normalizedKey, contentType, provider: "s3" as const };
   } finally {
     await rm(staged.directory, { recursive: true, force: true }).catch(() => undefined);
   }
@@ -183,10 +228,10 @@ export async function getObject(key: string, range?: ObjectRange, provider: Stor
   if (!config) return null;
   const headers: Record<string, string> = {};
   if (range) headers.range = `bytes=${range.offset}-${range.offset + range.length - 1}`;
-  const response = await s3Request("GET", s3ObjectUrl(config, key), sha256(""), { headers, signal }, headers);
+  const response = await s3Request("GET", s3ObjectUrl(config, normalizedKey), sha256(""), { headers, signal }, headers);
   if (response.status === 404 || !response.body) return null;
   const contentLength = Number(response.headers.get("content-length"));
-  return { body: response.body, size: Number.isSafeInteger(contentLength) && contentLength >= 0 ? contentLength : range?.length || 0, etag: response.headers.get("etag") || `"${sha256(key).slice(0, 24)}"`, contentType: response.headers.get("content-type") || undefined };
+  return { body: response.body, size: Number.isSafeInteger(contentLength) && contentLength >= 0 ? contentLength : range?.length || 0, etag: response.headers.get("etag") || `"${sha256(normalizedKey).slice(0, 24)}"`, contentType: response.headers.get("content-type") || undefined };
 }
 
 export async function deleteObject(key: string, provider: StorageProvider = activeStorageProvider()) {
@@ -196,7 +241,7 @@ export async function deleteObject(key: string, provider: StorageProvider = acti
     return;
   }
   const config = s3Config();
-  if (config) await s3Request("DELETE", s3ObjectUrl(config, key), sha256(""));
+  if (config) await s3Request("DELETE", s3ObjectUrl(config, normalizedKey), sha256(""));
 }
 
 function decodeXml(value: string) {
@@ -206,16 +251,21 @@ function decodeXml(value: string) {
 async function listS3Keys(prefix: string) {
   const config = s3Config();
   if (!config) return [];
+  const normalizedPrefix = normalizeStoragePrefix(prefix);
   const keys: string[] = [];
   let continuation = "";
+  let pages = 0;
   do {
+    if (++pages > 100) throw new Error("S3 prefix listing exceeded the safety page limit");
     const url = s3BucketUrl(config);
     url.searchParams.set("list-type", "2");
-    url.searchParams.set("prefix", prefix);
+    url.searchParams.set("max-keys", "1000");
+    url.searchParams.set("prefix", normalizedPrefix + "/");
     if (continuation) url.searchParams.set("continuation-token", continuation);
     const response = await s3Request("GET", url, sha256(""));
-    const xml = await response.text();
-    keys.push(...[...xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)].map((match) => decodeXml(match[1])));
+    const xml = await responseSnippet(response, 2 * 1024 * 1024);
+    const pageKeys = [...xml.matchAll(/<Key>([\s\S]*?)<\/Key>/g)].map((match) => decodeXml(match[1]));
+    for (const key of pageKeys) keys.push(normalizeStorageKey(key));
     continuation = decodeXml(/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/.exec(xml)?.[1] || "");
   } while (continuation);
   return keys;

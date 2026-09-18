@@ -4,35 +4,38 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { normalizeStorageBucket, normalizeStorageKey, signedUploadTtlSeconds, storageEndpointUrl } from "@/lib/storage-policy";
 
 type StorageConfig = {
   client: S3Client;
   bucket: string;
+  endpoint: URL;
+  forcePathStyle: boolean;
 };
 
 function getStorageConfig(): StorageConfig {
-  const endpoint = process.env.S3_ENDPOINT?.trim();
-  const bucket = process.env.S3_BUCKET?.trim();
-  const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim();
-  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim();
-
-  if (!endpoint || !bucket || !accessKeyId || !secretAccessKey) {
-    throw new Error("S3 storage is not configured");
-  }
-
+  const endpointValue = process.env.S3_ENDPOINT?.trim() || "";
+  const bucketValue = process.env.S3_BUCKET?.trim() || "";
+  const accessKeyId = process.env.S3_ACCESS_KEY_ID?.trim() || "";
+  const secretAccessKey = process.env.S3_SECRET_ACCESS_KEY?.trim() || "";
+  if (![endpointValue, bucketValue, accessKeyId, secretAccessKey].every(Boolean)) throw new Error("S3 storage is not configured");
+  const endpoint = storageEndpointUrl(endpointValue, {
+    allowLoopbackHttp: process.env.NODE_ENV !== "production" && process.env.S3_ALLOW_INSECURE_LOOPBACK === "true",
+  });
+  const bucket = normalizeStorageBucket(bucketValue);
+  const forcePathStyle = process.env.S3_FORCE_PATH_STYLE !== "false";
   return {
     bucket,
+    endpoint,
+    forcePathStyle,
     client: new S3Client({
-      endpoint,
+      endpoint: endpoint.toString(),
       region: process.env.S3_REGION?.trim() || "auto",
-      forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false",
+      forcePathStyle,
       maxAttempts: 3,
       requestChecksumCalculation: "WHEN_REQUIRED",
       responseChecksumValidation: "WHEN_REQUIRED",
-      credentials: {
-        accessKeyId,
-        secretAccessKey,
-      },
+      credentials: { accessKeyId, secretAccessKey },
     }),
   };
 }
@@ -60,7 +63,10 @@ export async function createDirectUploadUrl(
   contentType: string,
   expiresIn = 900,
 ) {
-  const { client, bucket } = getStorageConfig();
+  const { client, bucket, endpoint, forcePathStyle } = getStorageConfig();
+  const normalizedKey = normalizeStorageKey(key);
+  const normalizedType = contentType.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9!#  const { client, bucket } = getStorageConfig();
 
   const command = new PutObjectCommand({
     Bucket: bucket,
@@ -71,18 +77,37 @@ export async function createDirectUploadUrl(
   return getSignedUrl(client, command, {
     expiresIn: Math.min(Math.max(expiresIn, 60), 900),
     signableHeaders: new Set(["content-type"]),
+  });^_.+-]{0,63}\/[a-z0-9][a-z0-9!#  const { client, bucket } = getStorageConfig();
+
+  const command = new PutObjectCommand({
+    Bucket: bucket,
+    Key: key,
+    ContentType: contentType,
   });
+
+  return getSignedUrl(client, command, {
+    expiresIn: Math.min(Math.max(expiresIn, 60), 900),
+    signableHeaders: new Set(["content-type"]),
+  });^_.+-]{0,127}$/.test(normalizedType)) throw new Error("Invalid upload content type");
+  const ttl = signedUploadTtlSeconds(expiresIn);
+  const command = new PutObjectCommand({ Bucket: bucket, Key: normalizedKey, ContentType: normalizedType });
+  const signed = await getSignedUrl(client, command, { expiresIn: ttl, signableHeaders: new Set(["content-type"]) });
+  const url = new URL(signed);
+  const expectedHost = forcePathStyle ? endpoint.hostname : `${bucket}.${endpoint.hostname}`;
+  if (url.protocol !== endpoint.protocol || url.hostname !== expectedHost || url.port !== endpoint.port) throw new Error("Unexpected signed upload destination");
+  const signedTtl = Number(url.searchParams.get("X-Amz-Expires"));
+  if (!Number.isFinite(signedTtl) || signedTtl < 60 || signedTtl > ttl) throw new Error("Invalid signed upload lifetime");
+  return signed;
 }
 
 export async function headDirectUpload(key: string) {
   const { client, bucket } = getStorageConfig();
+  const normalizedKey = normalizeStorageKey(key);
 
   try {
     const object = await client.send(
-      new HeadObjectCommand({
-        Bucket: bucket,
-        Key: key,
-      }),
+      new HeadObjectCommand({ Bucket: bucket, Key: normalizedKey }),
+      { abortSignal: AbortSignal.timeout(10_000) },
     );
 
     const size = Number(object.ContentLength ?? 0);
