@@ -10,7 +10,7 @@ const origin = "http://127.0.0.1:3100";
 if (fixture.origin !== origin || new URL(database.url).hostname !== "127.0.0.1" || new URL(database.url).pathname !== "/maras_qa" || process.env.DATABASE_URL !== database.url) throw new Error("Dedicated loopback QA fixtures required");
 const pool = new pg.Pool({ connectionString: database.url });
 try {
-  const state = await pool.query("SELECT u.role, u.status, u.is_platform_owner AS owner, s.revoked_at IS NULL AS unrevoked, s.expires_at > now() AS unexpired, s.mfa_verified_at IS NOT NULL AS verified, EXISTS (SELECT 1 FROM admin_mfa_factors f WHERE f.user_id=u.id AND f.verified_at IS NOT NULL AND f.disabled_at IS NULL) AS requires_mfa FROM auth_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND u.id=$2", [createHash("sha256").update(fixture.supervisor.token).digest("hex"), fixture.supervisor.id]);
+  const state = await pool.query("SELECT u.role, u.status, u.is_platform_owner AS owner, s.revoked_at IS NULL AS unrevoked, s.expires_at::timestamptz > now() AS unexpired, s.mfa_verified_at IS NOT NULL AS verified, EXISTS (SELECT 1 FROM admin_mfa_factors f WHERE f.user_id=u.id AND f.verified_at IS NOT NULL AND f.disabled_at IS NULL) AS requires_mfa FROM auth_sessions s JOIN users u ON u.id=s.user_id WHERE s.token_hash=$1 AND u.id=$2", [createHash("sha256").update(fixture.supervisor.token).digest("hex"), fixture.supervisor.id]);
   console.log(JSON.stringify({ event: "synthetic.supervisor.session-state", rows: state.rows }));
   assert.equal(state.rowCount, 1, "supervisor fixture owns one session");
   const row = state.rows[0];
