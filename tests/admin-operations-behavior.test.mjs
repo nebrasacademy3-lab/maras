@@ -3,15 +3,18 @@ import test from "node:test";
 import { createHash } from "node:crypto";
 import { isolated, sql, eq, ne, and, or, isNull, tables, database } from "./helpers/business-fixtures.mjs";
 const policy = await isolated("../lib/staff-policy.ts");
+const scope = await isolated("../lib/supervisor-data-scope.ts", { ...policy, sql, hasPermission: async user => user?.role === "admin" });
+const scopePolicy = await isolated("../lib/supervisor-console-policy.ts", scope);
 const decisions = await isolated("../lib/admin-operations.ts");
+const ownership = await isolated("../lib/order-ownership.ts", { ...tables, eq, sql });
 const api = await isolated("../lib/api.ts");
 const now = "2026-09-12T12:00:00.000Z";
 const normalizeAccessDurationDays = value => Number(value) || 90;
 const accessExpiryIso = (days, date) => new Date(date.getTime() + days * 86_400_000).toISOString();
-const fulfillment = await isolated("../lib/order-fulfillment.ts", { ...tables, eq, ne, and, sql, normalizeAccessDurationDays, accessExpiryIso, qualifyReferralForPaidOrderTx: async () => {} });
+const fulfillment = await isolated("../lib/order-fulfillment.ts", { ...tables, ...ownership, eq, ne, and, sql, normalizeAccessDurationDays, accessExpiryIso, qualifyReferralForPaidOrderTx: async () => {} });
 class MfaError extends Error { constructor() { super("Step up required"); this.code = "MFA_STEP_UP_REQUIRED"; this.status = 403; } }
 async function consoleRoute(db, overrides = {}) {
-  return isolated("../app/api/admin/console/route.ts", { ...tables, ...api, ...decisions, ...policy, sql, eq, ne, and, isNull, createHash, permissionsForUser: async () => new Set(Object.values(policy.ADMIN_PERMISSIONS)), hasPermission: async () => true,
+  return isolated("../app/api/admin/console/route.ts", { ...tables, ...ownership, ...api, ...decisions, ...policy, ...scopePolicy, sql, eq, ne, and, isNull, createHash, permissionsForUser: async () => new Set(Object.values(policy.ADMIN_PERMISSIONS)), hasPermission: async () => true,
     getDb: () => db, getSessionUser: async () => ({ id: 99, email: "operator@example.test", role: "admin", isPlatformOwner: true }), roleAllowed: (user, roles) => roles.includes(user?.role), isAdminRequest: () => false, sameOriginRequest: () => true, checkRateLimit: async () => true, clientIp: () => "127.0.0.1", readBoundedJsonObject: request => request.json(), requireAdminStepUp: async () => {}, AdminMfaError: MfaError, effectiveAccessRows: async rows => rows, getCourseCatalog: async slug => ({ slug, title: "Physics", accessDurationDays: 30 }), validEmail: email => email.includes("@"), normalizeAccessDurationDays, accessExpiryIso,
     fulfillPaidOrderTx: (tx, ...args) => fulfillment.fulfillPaidOrderTx({ ...tx, execute: async () => {} }, ...args), ...overrides,
   });
@@ -61,14 +64,14 @@ test("manual paid grants fulfill once and conflicting retry payload is rejected"
 });
 
 test("repeated paid fulfillment cannot extend a duplicate purchase twice or shorten admin extension", async () => {
-  const order = { id: 1, orderNumber: "order-new", customerEmail: "student@example.test", status: "pending", total: 100, subtotal: 100, discount: 0, currency: "SAR", createdAt: now };
-  const db = database({ orders: [{ ...order }], courseAccess: [{ id: 1, userEmail: order.customerEmail, courseSlug: "physics", orderNumber: "order-old", startsAt: now, expiresAt: "2026-10-01T12:00:00.000Z", revokedAt: null, suspendedAt: null }] });
+  const order = { id: 1, orderNumber: "order-new", userId: 9, customerEmail: "student@example.test", status: "pending", total: 100, subtotal: 100, discount: 0, currency: "SAR", createdAt: now };
+  const db = database({ users: [{ id: 9, email: order.customerEmail, status: "active" }], orders: [{ ...order }], courseAccess: [{ id: 1, userEmail: order.customerEmail, courseSlug: "physics", orderNumber: "order-old", startsAt: now, expiresAt: "2026-10-01T12:00:00.000Z", revokedAt: null, suspendedAt: null }] });
   const args = [[{ courseSlug: "physics", accessDurationDays: 30 }], { chargeId: null, actorEmail: "operator@example.test", now, extendDuplicates: true }];
   await db.transaction(tx => fulfillment.fulfillPaidOrderTx(tx, order, ...args));
   const expiry = db.rows.courseAccess[0].expiresAt;
   await db.transaction(tx => fulfillment.fulfillPaidOrderTx(tx, db.rows.orders[0], ...args));
   assert.equal(db.rows.courseAccess[0].expiresAt, expiry);
-  const owned = database({ orders: [{ ...order, status: "paid", paidAt: now }], courseAccess: [{ id: 1, userEmail: order.customerEmail, courseSlug: "physics", orderNumber: order.orderNumber, startsAt: now, expiresAt: "2029-01-01T00:00:00.000Z", revokedAt: null, suspendedAt: null }] });
+  const owned = database({ users: [{ id: 9, email: order.customerEmail, status: "active" }], orders: [{ ...order, status: "paid", paidAt: now }], courseAccess: [{ id: 1, userEmail: order.customerEmail, courseSlug: "physics", orderNumber: order.orderNumber, startsAt: now, expiresAt: "2029-01-01T00:00:00.000Z", revokedAt: null, suspendedAt: null }] });
   await owned.transaction(tx => fulfillment.fulfillPaidOrderTx(tx, owned.rows.orders[0], ...args));
   assert.equal(owned.rows.courseAccess[0].expiresAt, "2029-01-01T00:00:00.000Z");
 });
@@ -78,7 +81,7 @@ test("staff changes revoke the changed employee sessions and audit password rese
   for (const scenario of [{ role: "supervisor", password: "" }, { role: "supervisor", password: "Strong#Password1" }]) {
     const employee = { id: 1, email: "staff@example.test", phone: "+966500000001", role: "supervisor", status: "active", passwordHash: "old-hash" };
     const db = database({ users: [employee, { id: 99, email: "operator@example.test", role: "admin", status: "active" }], authSessions: [{ id: 1, userId: 1, revokedAt: null }, { id: 2, userId: 99, revokedAt: null }], pushDevices: [{ id: 1, userId: 1, status: "active" }, { id: 2, userId: 99, status: "active" }] });
-    const route = await isolated("../app/api/admin/staff/route.ts", { ...tables, ...api, ...decisions, ...policy, sql, eq, ne, and, or, isNull,
+    const route = await isolated("../app/api/admin/staff/route.ts", { ...tables, ...ownership, ...api, ...decisions, ...policy, ...scopePolicy, sql, eq, ne, and, or, isNull,
       getDb: () => db, getSessionUser: async () => ({ id: 99, email: "operator@example.test", role: "admin", isPlatformOwner: true }), roleAllowed: (user, roles) => roles.includes(user?.role), isAdminRequest: () => false, sameOriginRequest: () => true, checkRateLimit: async () => true, clientIp: () => "127.0.0.1", readBoundedJsonObject: request => request.json(), requireAdminStepUp: async () => {}, AdminMfaError: MfaError,
       getInstitutionCatalog: async () => ({ slug: "university" }), getProgramsCatalog: async () => ({ programs: [{ name: "Physics" }] }), validEmail: () => true, validSaudiPhone: () => true, validPassword: () => true, hashPassword: async () => "fresh-password-hash",
     });

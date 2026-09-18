@@ -34,7 +34,7 @@ test("read capability never signs uploads or deletes files; delete requires both
 async function adminHarness(statuses, verified = true) {
   const calls = [], events = []; let challenges = 0;
   const client = await pureSource("lib/admin-client.ts", { window: { location: { origin: "https://maras-qa.example" } },
-    fetch: async (input, init) => { calls.push({ input, init }); return new Response(JSON.stringify({ code: "MFA_STEP_UP_REQUIRED" }), { status: statuses.shift() || 200, headers: { "content-type": "application/json" } }); },
+    fetch: async (input, init) => { if(input === "/api/admin/me") return Response.json({user:{id:17}}); calls.push({ input, init }); return new Response(JSON.stringify({ code: "MFA_STEP_UP_REQUIRED" }), { status: statuses.shift() || 200, headers: { "content-type": "application/json" } }); },
     notify: (...event) => events.push(event), requestAdminVerification: async () => { challenges++; return verified; },
   });
   return { ...client, calls, events, challenges: () => challenges };
