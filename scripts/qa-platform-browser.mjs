@@ -17,8 +17,9 @@ if (names.some(name => !engines[name])) throw new Error("Unknown browser engine"
 const reports = [];
 const cookie = token => ({ name: "meras_session", value: token, domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" });
 async function assertFits(page, label) {
-  // The live sync stream is intentionally long-lived; networkidle is not a readiness signal.
-  await page.locator("h1").first().waitFor({ state: "visible" });
+  // Public h1 semantics are asserted separately. Admin sections may use h2.
+  // A live sync stream is intentionally long-lived; networkidle is not readiness.
+  await page.getByRole("heading").first().waitFor({ state: "visible", timeout: 15000 });
   await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
   const measure = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
   assert.ok(measure.scroll <= measure.width + 2, `${label}: horizontal overflow ${measure.scroll}/${measure.width}`);
@@ -31,6 +32,7 @@ try {
     const checks = [], errors = [];
     try {
       const context = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
+      context.setDefaultTimeout(15000);
       const page = await context.newPage(); page.on("pageerror", error => errors.push(error.message));
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
@@ -68,6 +70,7 @@ try {
       await context.close();
       const enrollmentFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8")).enrollment[name];
       const enrolling = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
+      enrolling.setDefaultTimeout(15000);
       await enrolling.addCookies([cookie(enrollmentFixture.token)]);
       const security = await enrolling.newPage(); security.on("pageerror", error => errors.push(error.message));
       await security.goto(origin + "/admin/security", { waitUntil: "domcontentloaded" });
@@ -91,13 +94,13 @@ try {
       await security.screenshot({ path: `${dir}/security-enrolled-phone.png`, fullPage: true, animations: "disabled" });
       await enrolling.close();
       checks.push("admin enrollment UI reauthenticates with a password, enables TOTP and displays recovery codes once before clearing sensitive fields");
-      // The fixture owner never has a production factor: refuse to alter pre-existing factor data.
       const existing = await db.select({ id: schema.adminMfaFactors.id }).from(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.userId, owner.id));
       assert.equal(existing.length, 0, "browser QA must not touch a pre-existing owner factor");
       const secret = "JBSWY3DPEHPK3PXP", now = new Date().toISOString();
       const [factor] = await db.insert(schema.adminMfaFactors).values({ userId: owner.id, type: "totp", label: "Synthetic browser QA", secretEncrypted: mfa.encryptAdminMfaSecret(secret), counter: Math.floor(Date.now() / 30_000) - 1, verifiedAt: now }).returning({ id: schema.adminMfaFactors.id }); factorId = factor.id;
       await db.update(schema.authSessions).set({ mfaVerifiedAt: now }).where(eq(schema.authSessions.tokenHash, createHash("sha256").update(owner.token).digest("hex")));
       const admin = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } }); await admin.addCookies([cookie(owner.token)]);
+      admin.setDefaultTimeout(15000);
       const editor = await admin.newPage(); editor.on("pageerror", error => errors.push(error.message));
       await editor.goto(origin + "/admin/staff", { waitUntil: "domcontentloaded" });
       await editor.getByRole("button", { name: "إضافة مشرف", exact: true }).click();
@@ -106,17 +109,33 @@ try {
       await editor.getByLabel("البريد الإلكتروني", { exact: true }).fill(uniqueEmail);
       await editor.getByLabel("كلمة المرور الأولية", { exact: true }).fill(randomBytes(20).toString("base64url") + "aA1!");
       await editor.getByRole("checkbox", { name: /عرض المواد والجهات والتخصصات/ }).check();
+      const staffRequests = [];
+      const observeStaffResponse = response => {
+        if (response.url() === origin + "/api/admin/staff" && response.request().method() === "POST") staffRequests.push(response.status());
+      };
+      editor.on("response", observeStaffResponse);
       await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).click();
       const dialog = editor.getByRole("dialog", { name: "تأكيد هويتك" }); await dialog.waitFor();
       await editor.screenshot({ path: `${dir}/staff-mfa-preserved-form.png`, fullPage: true, animations: "disabled" });
       await dialog.getByRole("button", { name: "إلغاء والعودة" }).click();
+      await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).waitFor({ state: "visible" });
       assert.equal(await editor.getByLabel("البريد الإلكتروني", { exact: true }).inputValue(), uniqueEmail);
+      assert.deepEqual(staffRequests, [428], "cancelled verification must not replay the mutation");
       assert.equal((await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, uniqueEmail))).length, 0);
       await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).click(); await dialog.waitFor();
       await dialog.getByLabel("رمز تطبيق المصادقة").fill(mfa.totpCodeForCounter(secret, Math.floor(Date.now() / 30_000)));
-      await dialog.getByRole("button", { name: "تحقق ومتابعة", exact: true }).click();
-      await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).waitFor({ state: "hidden" });
-      await editor.waitForFunction(async (email) => { const response = await fetch(`/api/admin/staff?q=${encodeURIComponent(email)}`); if (!response.ok) return false; const payload = await response.json(); return payload.staff?.some((member) => member.email === email); }, uniqueEmail);
+      // Register both listeners before verification; do not poll the rate-limited API.
+      // The save button changes its accessible name while busy, so it is not a completion signal.
+      const [proofResponse, savedResponse] = await Promise.all([
+        editor.waitForResponse(response => response.url() === origin + "/api/admin/security/mfa" && response.request().method() === "POST"),
+        editor.waitForResponse(response => response.url() === origin + "/api/admin/staff" && response.request().method() === "POST"),
+        dialog.getByRole("button", { name: "تحقق ومتابعة", exact: true }).click(),
+      ]);
+      assert.equal(proofResponse.status(), 200, "MFA proof must succeed");
+      assert.equal(savedResponse.status(), 200, "verified staff retry must succeed");
+      await editor.getByLabel("البريد الإلكتروني", { exact: true }).waitFor({ state: "detached" });
+      assert.deepEqual(staffRequests, [428, 428, 200], "one retry only after a successful proof");
+      editor.off("response", observeStaffResponse);
       assert.equal((await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, uniqueEmail))).length, 1);
       checks.push("real staff mutation pauses for MFA, cancellation preserves fields and writes nothing; verified retry creates exactly one supervisor");
       await editor.setViewportSize({ width: 390, height: 844 }); await assertFits(editor, "admin/staff/phone");
@@ -131,6 +150,7 @@ try {
       await admin.close();
       const viewerFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8"));
       const viewer = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await viewer.addCookies([cookie(viewerFixture.supervisor.token)]);
+      viewer.setDefaultTimeout(15000);
       const viewerPage = await viewer.newPage(); await viewerPage.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
       assert.equal(await viewerPage.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').count(), 0);
       assert.equal((await viewer.request.get(origin + "/api/admin/staff")).status(), 403);
