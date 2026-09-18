@@ -1,3 +1,4 @@
+import { lockOrderOwnerTx } from "@/lib/order-ownership";
 import { and, eq, ne, sql } from "drizzle-orm";
 import type { getDb } from "@/db";
 import { analyticsEvents, cartItems, courseAccess, courseAccessEvents, courseWaitlist, invoices, notificationsDb, orders } from "@/db/schema";
@@ -24,23 +25,29 @@ export type FulfillmentOptions = {
 // invoice, clear the cart/waitlist and notify the student identically.
 export async function fulfillPaidOrderTx(tx: Tx, current: OrderRow, purchaseItems: FulfillmentItem[], options: FulfillmentOptions) {
   const { chargeId, actorEmail, now } = options;
+  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${current.orderNumber}))`);
+  // Re-read under the order lock: a caller's earlier snapshot can predate a refund.
+  const [fresh] = await tx.select().from(orders).where(eq(orders.id, current.id)).limit(1).for("update");
+  if (!fresh || fresh.orderNumber !== current.orderNumber) throw new Error("ORDER_NOT_FOUND");
+  current = fresh;
   if (["refunded", "partially_refunded"].includes(current.status)) return { newlyPaid: false, notice: null };
-  const changed = await tx.update(orders).set({ status: "paid", tapChargeId: chargeId ?? current.tapChargeId, updatedAt: now, paidAt: current.paidAt || now }).where(and(eq(orders.id, current.id), ne(orders.status, "paid"), ne(orders.status, "refunded"))).returning({ id: orders.id });
+  const owner = await lockOrderOwnerTx(tx, current);
+  const changed = await tx.update(orders).set({ status: "paid", tapChargeId: chargeId ?? current.tapChargeId, updatedAt: now, paidAt: current.paidAt || now }).where(and(eq(orders.id, current.id), ne(orders.status, "paid"), ne(orders.status, "refunded"), ne(orders.status, "partially_refunded"))).returning({ id: orders.id });
   const newlyPaid = changed.length > 0;
   const startsAt = current.paidAt || now;
 
   // Stable ordering prevents deadlocks between multi-course purchases.
   for (const item of [...purchaseItems].sort((a, b) => a.courseSlug.localeCompare(b.courseSlug))) {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${current.customerEmail}:${item.courseSlug}`}))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${owner.email}:${item.courseSlug}`}))`);
     const durationDays = normalizeAccessDurationDays(item.accessDurationDays);
     const expiresAt = item.expiresAt === undefined ? accessExpiryIso(durationDays, new Date(startsAt)) : item.expiresAt;
-    const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, current.customerEmail), eq(courseAccess.courseSlug, item.courseSlug))).limit(1);
+    const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, owner.email), eq(courseAccess.courseSlug, item.courseSlug))).limit(1);
     let accessId = existing?.id;
     const activeElsewhere = Boolean(existing && existing.source !== "revenuecat" && !existing.revokedAt && existing.orderNumber !== current.orderNumber && (!existing.expiresAt || Date.parse(existing.expiresAt) > Date.parse(now)));
     const administrativelyStopped = Boolean(existing?.suspendedAt) || (existing?.orderNumber === current.orderNumber && Boolean(existing.revokedAt));
     const canRepair = !administrativelyStopped && (!existing || existing.source === "revenuecat" || existing.orderNumber === current.orderNumber || Boolean(existing.revokedAt) || Boolean(existing.expiresAt && Date.parse(existing.expiresAt) <= Date.parse(now)));
     if (!existing) {
-      const [created] = await tx.insert(courseAccess).values({ userEmail: current.customerEmail, courseSlug: item.courseSlug, source: options.accessSource || "tap", orderNumber: current.orderNumber, startsAt, expiresAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now }).returning({ id: courseAccess.id });
+      const [created] = await tx.insert(courseAccess).values({ userEmail: owner.email, courseSlug: item.courseSlug, source: options.accessSource || "tap", orderNumber: current.orderNumber, startsAt, expiresAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now }).returning({ id: courseAccess.id });
       accessId = created?.id;
     } else if (canRepair) {
       // Reconciliation may repair access but must preserve a later administrative extension.
@@ -52,9 +59,9 @@ export async function fulfillPaidOrderTx(tx: Tx, current: OrderRow, purchaseItem
       const base = existing!.expiresAt && Date.parse(existing!.expiresAt) > Date.parse(startsAt) ? new Date(existing!.expiresAt) : new Date(startsAt);
       const extendedExpiry = existing!.expiresAt ? accessExpiryIso(durationDays, base) : null;
       await tx.update(courseAccess).set({ expiresAt: extendedExpiry, updatedAt: now }).where(eq(courseAccess.id, existing!.id));
-      await tx.insert(courseAccessEvents).values({ eventKey: `order:${current.orderNumber}:extend:${item.courseSlug}`, accessId, userEmail: current.customerEmail, courseSlug: item.courseSlug, action: "purchase_extended", actorEmail, orderNumber: current.orderNumber, beforeJson: JSON.stringify({ expiresAt: existing!.expiresAt, orderNumber: existing!.orderNumber }), afterJson: JSON.stringify({ expiresAt: extendedExpiry, durationDays }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
+      await tx.insert(courseAccessEvents).values({ eventKey: `order:${current.orderNumber}:extend:${item.courseSlug}`, accessId, userEmail: owner.email, courseSlug: item.courseSlug, action: "purchase_extended", actorEmail, orderNumber: current.orderNumber, beforeJson: JSON.stringify({ expiresAt: existing!.expiresAt, orderNumber: existing!.orderNumber }), afterJson: JSON.stringify({ expiresAt: extendedExpiry, durationDays }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
     }
-    if (canRepair) await tx.insert(courseAccessEvents).values({ eventKey: `order:${current.orderNumber}:grant:${item.courseSlug}`, accessId, userEmail: current.customerEmail, courseSlug: item.courseSlug, action: newlyPaid ? "purchase_granted" : "purchase_reconciled", actorEmail, orderNumber: current.orderNumber, afterJson: JSON.stringify({ startsAt, expiresAt, durationDays }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
+    if (canRepair) await tx.insert(courseAccessEvents).values({ eventKey: `order:${current.orderNumber}:grant:${item.courseSlug}`, accessId, userEmail: owner.email, courseSlug: item.courseSlug, action: newlyPaid ? "purchase_granted" : "purchase_reconciled", actorEmail, orderNumber: current.orderNumber, afterJson: JSON.stringify({ startsAt, expiresAt, durationDays }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
   }
 
   const invoiceTax = Math.round((current.total * 15 / 115) * 100) / 100;
@@ -75,13 +82,13 @@ export async function fulfillPaidOrderTx(tx: Tx, current: OrderRow, purchaseItem
     issuedAt: startsAt,
   }).onConflictDoNothing({ target: invoices.orderNumber });
   for (const item of purchaseItems) {
-    await tx.delete(cartItems).where(and(eq(cartItems.userEmail, current.customerEmail), eq(cartItems.courseSlug, item.courseSlug)));
-    await tx.update(courseWaitlist).set({ status: "converted", convertedAt: now, updatedAt: now }).where(and(eq(courseWaitlist.userEmail, current.customerEmail), eq(courseWaitlist.courseSlug, item.courseSlug)));
+    await tx.delete(cartItems).where(and(eq(cartItems.userEmail, owner.email), eq(cartItems.courseSlug, item.courseSlug)));
+    await tx.update(courseWaitlist).set({ status: "converted", convertedAt: now, updatedAt: now }).where(and(eq(courseWaitlist.userEmail, owner.email), eq(courseWaitlist.courseSlug, item.courseSlug)));
   }
-  if (newlyPaid) await tx.insert(analyticsEvents).values({ event: "payment_paid", userEmail: current.customerEmail, courseSlug: purchaseItems[0]?.courseSlug || current.courseSlug, metadataJson: JSON.stringify({ orderNumber: current.orderNumber, method: current.paymentMethod, value: current.total, currency: current.currency }), createdAt: now });
-  if (newlyPaid) await qualifyReferralForPaidOrderTx(tx, current.customerEmail, now);
+  if (newlyPaid) await tx.insert(analyticsEvents).values({ event: "payment_paid", userEmail: owner.email, courseSlug: purchaseItems[0]?.courseSlug || current.courseSlug, metadataJson: JSON.stringify({ orderNumber: current.orderNumber, method: current.paymentMethod, value: current.total, currency: current.currency }), createdAt: now });
+  if (newlyPaid) await qualifyReferralForPaidOrderTx(tx, owner.id, now);
   const title = "تم تفعيل اشتراكك";
   const body = purchaseItems.length > 1 ? `تم تفعيل ${purchaseItems.length} مواد ضمن الطلب ${current.orderNumber}.` : "أصبحت المادة متاحة الآن في مساحة التعلم الخاصة بك.";
-  const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=courses", actionLabel: "ابدأ التعلم", template: "success", dedupeKey: `order:${current.orderNumber}:paid`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+  const [notice] = await tx.insert(notificationsDb).values({ targetUserId: owner.id, userEmail: null, audience: "student", title, body, actionUrl: "/dashboard?view=courses", actionLabel: "ابدأ التعلم", template: "success", dedupeKey: `order:${current.orderNumber}:paid`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
   return { newlyPaid, notice: notice ? { id: notice.id, title, body, route: "/dashboard?view=courses" } as FulfillmentNotice : null };
 }

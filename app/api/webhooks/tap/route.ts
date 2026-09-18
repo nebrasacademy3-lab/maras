@@ -1,7 +1,8 @@
+import { lockOrderOwnerTx, OrderOwnershipError } from "@/lib/order-ownership";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiEntitlements, aiSubscriptionOrders, couponUses, courseAccess, courseAccessEvents, notificationsDb, orderItems, orders, paymentEvents, refundRequests } from "@/db/schema";
+import { aiEntitlements, aiSubscriptionOrders, auditLogs, couponUses, courseAccess, courseAccessEvents, notificationsDb, orderItems, orders, paymentEvents, refundRequests } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 import { sendPushNotification } from "@/lib/push";
@@ -157,7 +158,7 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
     if (newlyRefunded) {
       await createAndSendNotification({
         values: {
-          userEmail: aiOrder.customerEmail,
+          targetUserId: aiOrder.userId, userEmail: null,
           audience: "student",
           title: refundedStatus === "refunded" ? "اكتمل استرداد اشتراك أدوات مراس" : "تم تسجيل استرداد جزئي لاشتراك أدوات مراس",
           body: "تم إيقاف مدة الاشتراك المرتبطة بهذه الدفعة. يمكنك مراجعة حالة الطلب من صفحة أدوات مراس.",
@@ -166,7 +167,7 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
           template: "ai_entitlement",
           dedupeKey: `ai-order:${aiOrder.orderNumber}:refund:${refundId}`,
         },
-        target: { userEmail: aiOrder.customerEmail },
+        target: { userId: aiOrder.userId },
         data: { route: "/study-tools/subscribe" },
       });
     }
@@ -236,15 +237,15 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
   const now = new Date().toISOString();
   let notify: { id: number; title: string; body: string; route: string } | null = null;
   if (applied.fullyRefunded && applied.newlyFullyRefunded) {
-    await db.transaction((tx) => reconcileReferralQualificationAfterRefundTx(tx, applied.customerEmail, now));
+    await db.transaction((tx) => reconcileReferralQualificationAfterRefundTx(tx, applied.userId, now));
     const title = "اكتمل استرداد طلبك";
     const body = `اكتمل استرداد الطلب ${order.orderNumber} وتم إيقاف الوصول المرتبط به.`;
-    const [notice] = await db.insert(notificationsDb).values({ userEmail: applied.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${order.orderNumber}:refunded`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+    const [notice] = applied.userId ? await db.insert(notificationsDb).values({ targetUserId: applied.userId, userEmail: null, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${order.orderNumber}:refunded`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id }) : [];
     if (notice) notify = { id: notice.id, title, body, route: "/dashboard?view=orders" };
   } else if (!applied.fullyRefunded) {
     const title = "تم تسجيل استرداد جزئي";
     const body = `تم استرداد ${(applied.refundedAmountMinor / 100).toFixed(2)} ${applied.currency} من الطلب ${order.orderNumber}.`;
-    const [notice] = await db.insert(notificationsDb).values({ userEmail: applied.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${order.orderNumber}:partial-refund:${refundId}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+    const [notice] = applied.userId ? await db.insert(notificationsDb).values({ targetUserId: applied.userId, userEmail: null, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${order.orderNumber}:partial-refund:${refundId}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id }) : [];
     if (notice) notify = { id: notice.id, title, body, route: "/dashboard?view=orders" };
   }
 
@@ -252,7 +253,7 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
 
   const queuedNotice = notify as { id: number; title: string; body: string; route: string } | null;
   if (queuedNotice) {
-    const delivery = await sendPushNotification({ userEmail: order.customerEmail }, queuedNotice.title, queuedNotice.body, { route: queuedNotice.route, notificationId: queuedNotice.id });
+    const delivery = await sendPushNotification({ userId: order.userId }, queuedNotice.title, queuedNotice.body, { route: queuedNotice.route, notificationId: queuedNotice.id });
     const pushStatus = delivery.accepted > 0 ? "accepted" : delivery.attempted === 0 ? "no_devices" : "failed";
     await db.update(notificationsDb).set({ pushStatus, pushAttempts: sql`${notificationsDb.pushAttempts} + 1`, pushLastError: delivery.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: delivery.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, queuedNotice.id));
   }
@@ -326,7 +327,7 @@ async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string,
     }
     if (current.status !== "paid" && current.status !== "refunded") await tx.update(aiSubscriptionOrders).set({ status: nextStatus, tapChargeId: chargeId, updatedAt: now }).where(eq(aiSubscriptionOrders.id, current.id));
   });
-  if (newlyPaid) await createAndSendNotification({ values: { userEmail: order.customerEmail, audience: "student", title: "تم تفعيل اشتراك أدوات مراس", body: "أصبح اشتراك أدوات مراس بلس متاحًا في حسابك لمدة شهر.", actionUrl: "/study-tools", actionLabel: "ابدأ الآن", template: "ai_entitlement", dedupeKey: `ai-order:${order.orderNumber}:paid` }, target: { userEmail: order.customerEmail }, data: { route: "/study-tools" } });
+  if (newlyPaid) await createAndSendNotification({ values: { targetUserId: order.userId, userEmail: null, audience: "student", title: "تم تفعيل اشتراك أدوات مراس", body: "أصبح اشتراك أدوات مراس بلس متاحًا في حسابك لمدة شهر.", actionUrl: "/study-tools", actionLabel: "ابدأ الآن", template: "ai_entitlement", dedupeKey: `ai-order:${order.orderNumber}:paid` }, target: { userId: order.userId }, data: { route: "/study-tools" } });
   return Response.json({ ok: true, received: true, matched: true, kind: "ai_subscription", status: effectiveStatus, entitlementExpiresAt });
 }
 
@@ -426,12 +427,23 @@ export async function POST(request: Request) {
       return;
     }
     if (nextStatus === "paid" && current.status !== "refunded") {
+      let owner;
+      try { owner = await lockOrderOwnerTx(tx, current); }
+      catch (error) {
+        if (!(error instanceof OrderOwnershipError)) throw error;
+        effectiveStatus = "payment_review";
+        const changed = await tx.update(orders).set({ status: "payment_review", tapChargeId: chargeId, paidAt: current.paidAt || now, updatedAt: now })
+          .where(and(eq(orders.id, current.id), ne(orders.status, "payment_review"))).returning({ id: orders.id });
+        if (changed.length) await tx.insert(auditLogs).values({ actorEmail: "tap-webhook", action: "ownership-review", entityType: "order", entityId: current.orderNumber,
+          afterJson: JSON.stringify({ code: error.code, granted: false }), createdAt: now });
+        return;
+      }
       const purchaseItems = itemRows.length ? itemRows : [{ courseSlug: current.courseSlug, accessDurationDays: 90 }];
       if (current.couponCode) {
         const redeemed = await redeemCouponReservationTx(tx, {
           orderNumber: current.orderNumber,
           couponCode: current.couponCode,
-          customerEmail: current.customerEmail,
+          userId: owner.id,
           now,
         });
         if (!redeemed.ok) {
@@ -440,7 +452,7 @@ export async function POST(request: Request) {
           if (newlyUnderReview) {
             const title = "استلمنا دفعتك ونراجع الكوبون";
             const body = `تم استلام دفعة الطلب ${current.orderNumber}، ونراجع أهلية الكوبون قبل تفعيل المحتوى لحماية حسابك.`;
-            const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:coupon-review`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+            const [notice] = current.userId ? await tx.insert(notificationsDb).values({ targetUserId: current.userId, userEmail: null, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:coupon-review`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id }) : [];
             if (notice) notify = { id: notice.id, title, body, route: "/dashboard?view=orders" };
           }
           effectiveStatus = "payment_review";
@@ -448,11 +460,11 @@ export async function POST(request: Request) {
         }
       }
       for (const item of [...purchaseItems].sort((left, right) => left.courseSlug.localeCompare(right.courseSlug))) {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`access:${current.customerEmail}:${item.courseSlug}`}))`);
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${owner.email}:${item.courseSlug}`}))`);
       }
       let duplicateEntitlement: { courseSlug: string; orderNumber: string | null } | null = null;
       for (const item of purchaseItems) {
-        const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, current.customerEmail), eq(courseAccess.courseSlug, item.courseSlug))).limit(1);
+        const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, owner.email), eq(courseAccess.courseSlug, item.courseSlug))).limit(1);
         const active = existing && !existing.revokedAt && (!existing.expiresAt || Date.parse(existing.expiresAt) > Date.now());
         if (active && existing.orderNumber !== current.orderNumber) {
           duplicateEntitlement = { courseSlug: item.courseSlug, orderNumber: existing.orderNumber };
@@ -463,10 +475,10 @@ export async function POST(request: Request) {
         const newlyUnderReview = current.status !== "payment_review";
         await tx.update(orders).set({ status: "payment_review", tapChargeId: chargeId, paidAt: current.paidAt || now, updatedAt: now }).where(eq(orders.id, current.id));
         if (newlyUnderReview) {
-          await qualifyReferralForPaidOrderTx(tx, current.customerEmail, now);
+          await qualifyReferralForPaidOrderTx(tx, current.userId, now);
           const title = "استلمنا دفعتك ونتحقق من الاشتراك";
           const body = `لديك وصول قائم إلى ${duplicateEntitlement.courseSlug}. أوقفنا التفعيل المكرر للطلب ${current.orderNumber} وسيُراجع تلقائيًا قبل أي تفعيل مكرر.`;
-          const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:payment-review`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+          const [notice] = current.userId ? await tx.insert(notificationsDb).values({ targetUserId: current.userId, userEmail: null, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:payment-review`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id }) : [];
           if (notice) notify = { id: notice.id, title, body, route: "/dashboard?view=orders" };
         }
         effectiveStatus = "payment_review";
@@ -487,7 +499,7 @@ export async function POST(request: Request) {
       await tx.update(orders).set({ status: "partially_refunded", tapChargeId: chargeId, updatedAt: now }).where(eq(orders.id, current.id));
       const title = "تم تسجيل استرداد جزئي";
       const body = `تم تحديث الطلب ${current.orderNumber} باسترداد جزئي. يمكنك متابعة التفاصيل من سجل الطلبات.`;
-      const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:partial-refund:${eventVersion}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+      const [notice] = current.userId ? await tx.insert(notificationsDb).values({ targetUserId: current.userId, userEmail: null, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:partial-refund:${eventVersion}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id }) : [];
       if (notice) notify = { id: notice.id, title, body, route: "/dashboard?view=orders" };
       effectiveStatus = "partially_refunded";
       return;
@@ -501,8 +513,8 @@ export async function POST(request: Request) {
       }
       const newlyRefunded = current.status !== "refunded";
       await tx.update(orders).set({ status: "refunded", tapChargeId: chargeId, updatedAt: now }).where(eq(orders.id, current.id));
-      await reconcileReferralQualificationAfterRefundTx(tx, current.customerEmail, now);
-      const affected = await tx.select().from(courseAccess).where(and(eq(courseAccess.orderNumber, current.orderNumber), eq(courseAccess.userEmail, current.customerEmail)));
+      await reconcileReferralQualificationAfterRefundTx(tx, current.userId, now);
+      const affected = await tx.select().from(courseAccess).where(eq(courseAccess.orderNumber, current.orderNumber));
       for (const access of affected) {
         await tx.update(courseAccess).set({ revokedAt: now, revocationReason: "payment_refunded", suspendedAt: null, suspensionReason: null, updatedAt: now }).where(eq(courseAccess.id, access.id));
         await tx.insert(courseAccessEvents).values({ eventKey: `order:${current.orderNumber}:refund:${access.courseSlug}`, accessId: access.id, userEmail: access.userEmail, courseSlug: access.courseSlug, action: "refund_revoked", actorEmail: "tap-webhook", reason: "payment_refunded", orderNumber: current.orderNumber, beforeJson: JSON.stringify(access), afterJson: JSON.stringify({ revokedAt: now }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
@@ -510,7 +522,7 @@ export async function POST(request: Request) {
       if (newlyRefunded) {
         const title = "تم تحديث حالة الاسترداد";
         const body = `اكتمل استرداد الطلب ${current.orderNumber} وتم إيقاف الوصول المرتبط به.`;
-        const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.customerEmail, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:refunded`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+        const [notice] = current.userId ? await tx.insert(notificationsDb).values({ targetUserId: current.userId, userEmail: null, audience: "student", title, body, actionUrl: "/dashboard?view=orders", actionLabel: "عرض الطلب", template: "general", dedupeKey: `order:${current.orderNumber}:refunded`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id }) : [];
         if (notice) notify = { id: notice.id, title, body, route: "/dashboard?view=orders" };
       }
       effectiveStatus = "refunded";
@@ -528,7 +540,7 @@ export async function POST(request: Request) {
 
   const queuedNotice = notify as { id: number; title: string; body: string; route: string } | null;
   if (queuedNotice) {
-    const delivery = await sendPushNotification({ userEmail: order.customerEmail }, queuedNotice.title, queuedNotice.body, { route: queuedNotice.route, notificationId: queuedNotice.id });
+    const delivery = await sendPushNotification({ userId: order.userId }, queuedNotice.title, queuedNotice.body, { route: queuedNotice.route, notificationId: queuedNotice.id });
     const pushStatus = delivery.accepted > 0 ? "accepted" : delivery.attempted === 0 ? "no_devices" : "failed";
     await db.update(notificationsDb).set({ pushStatus, pushAttempts: sql`${notificationsDb.pushAttempts} + 1`, pushLastError: delivery.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: delivery.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, queuedNotice.id));
   }

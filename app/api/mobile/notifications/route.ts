@@ -1,3 +1,4 @@
+import { notificationRecipientWhere } from "@/lib/notification-visibility";
 import { and, count, desc, eq, gt, isNull, lte, or } from "drizzle-orm";
 import { getDb } from "@/db";
 import { notificationReads, notificationsDb } from "@/db/schema";
@@ -5,15 +6,15 @@ import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { jsonError } from "@/lib/api";
 import { mobileNoStoreHeaders } from "@/lib/mobile-api";
 
-function visibleFor(userEmail: string, role: string, now = new Date().toISOString()) {
-  return and(or(eq(notificationsDb.userEmail, userEmail), and(isNull(notificationsDb.userEmail), or(eq(notificationsDb.audience, role), eq(notificationsDb.audience, "public")))), or(eq(notificationsDb.presentation, "inbox"), eq(notificationsDb.presentation, "all")), or(isNull(notificationsDb.startsAt), lte(notificationsDb.startsAt, now)), or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now)));
+function visibleFor(user: { id: number; email: string; role: string }, now = new Date().toISOString()) {
+  return and(notificationRecipientWhere(user), or(eq(notificationsDb.presentation, "inbox"), eq(notificationsDb.presentation, "all")), or(isNull(notificationsDb.startsAt), lte(notificationsDb.startsAt, now)), or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now)));
 }
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
   const db = getDb();
-  const visibility = visibleFor(user.email, user.role);
+  const visibility = visibleFor(user);
   const readJoin = and(eq(notificationReads.notificationId, notificationsDb.id), eq(notificationReads.userId, user.id));
   const [selected, [unreadRow]] = await Promise.all([
     db.select({ notification: notificationsDb, readAt: notificationReads.readAt })
@@ -40,7 +41,7 @@ export async function PATCH(request: Request) {
   const requestedId = payload.all === true ? null : Math.floor(Number(payload.id));
   if (payload.all !== true && !requestedId) return jsonError("الإشعار غير صالح");
   const visibleRows = await db.select({ id: notificationsDb.id }).from(notificationsDb)
-    .where(requestedId ? and(eq(notificationsDb.id, requestedId), visibleFor(user.email, user.role)) : visibleFor(user.email, user.role))
+    .where(requestedId ? and(eq(notificationsDb.id, requestedId), visibleFor(user)) : visibleFor(user))
     .orderBy(desc(notificationsDb.id));
   if (!visibleRows.length) return payload.all === true ? Response.json({ ok: true, readAt: now, unreadCount: 0, markedIds: [] }, { headers: mobileNoStoreHeaders }) : jsonError("الإشعار غير موجود", 404);
   await db.transaction(async (tx) => {
@@ -51,6 +52,6 @@ export async function PATCH(request: Request) {
   });
   const [remaining] = await db.select({ value: count() }).from(notificationsDb)
     .leftJoin(notificationReads, and(eq(notificationReads.notificationId, notificationsDb.id), eq(notificationReads.userId, user.id)))
-    .where(and(visibleFor(user.email, user.role), isNull(notificationReads.readAt)));
+    .where(and(visibleFor(user), isNull(notificationReads.readAt)));
   return Response.json({ ok: true, readAt: now, unreadCount: Number(remaining?.value || 0), markedIds: visibleRows.map((row) => row.id) }, { headers: mobileNoStoreHeaders });
 }

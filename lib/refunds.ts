@@ -131,7 +131,7 @@ export async function applyConfirmedRefundToOrder(input: { orderNumber: string; 
     if (changed) await tx.update(orders).set({ status, updatedAt: now }).where(eq(orders.id, current.id));
 
     if (fullyRefunded) {
-      const affected = await tx.select().from(courseAccess).where(sql`${courseAccess.orderNumber} = ${current.orderNumber} AND lower(${courseAccess.userEmail}) = lower(${current.customerEmail})`);
+      const affected = await tx.select().from(courseAccess).where(eq(courseAccess.orderNumber, current.orderNumber));
       for (const access of affected) {
         if (!access.revokedAt) await tx.update(courseAccess).set({ revokedAt: now, revocationReason: "payment_refunded", suspendedAt: null, suspensionReason: null, updatedAt: now }).where(eq(courseAccess.id, access.id));
         await tx.insert(courseAccessEvents).values({
@@ -159,6 +159,7 @@ export async function applyConfirmedRefundToOrder(input: { orderNumber: string; 
       newlyFullyRefunded,
       refundedAmountMinor,
       customerEmail: current.customerEmail,
+      userId: current.userId,
       currency: current.currency,
     };
   });

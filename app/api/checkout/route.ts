@@ -1,7 +1,7 @@
 import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { analyticsEvents, courseAccess, courseBundleItems, courseBundles, orderItems, orders } from "@/db/schema";
-import { checkRateLimit, clientIp, getSessionUser, sameOriginRequest } from "@/lib/auth";
+import { analyticsEvents, authSessions, users, courseAccess, courseBundleItems, courseBundles, orderItems, orders } from "@/db/schema";
+import { checkRateLimit, clientIp, getSessionUser, hashOpaqueToken, requestSessionToken, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError, requestOrigin } from "@/lib/api";
 import { getCoursesCatalog } from "@/lib/catalog-store";
 import { allocateBundleDiscountMinor, getActiveCourseBundleQuote } from "@/lib/course-bundles";
@@ -66,7 +66,7 @@ export async function GET(request: Request) {
   if (!/^[A-Za-z0-9._:-]{3,100}$/.test(orderNumber)) return jsonError("رقم الطلب غير صالح");
   if (!await checkRateLimit("checkout-status", `user:${user.id}`, 60, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
   const db = getDb();
-  const [order] = await db.select().from(orders).where(and(eq(orders.orderNumber, orderNumber), eq(orders.customerEmail, user.email))).limit(1);
+  const [order] = await db.select().from(orders).where(and(eq(orders.orderNumber, orderNumber), eq(orders.userId, user.id))).limit(1);
   if (!order) return jsonError("الطلب غير موجود", 404);
   const items = await db.select({ courseSlug: orderItems.courseSlug }).from(orderItems).where(eq(orderItems.orderNumber, order.orderNumber));
   const courseSlugs = items.length ? items.map((item) => item.courseSlug) : [order.courseSlug];
@@ -126,7 +126,7 @@ export async function POST(request: Request) {
     if (!existing) return null;
     const existingItems = await db.select({ courseSlug: orderItems.courseSlug }).from(orderItems).where(eq(orderItems.orderNumber, existing.orderNumber));
     const existingSlugs = (existingItems.length ? existingItems.map((item) => item.courseSlug) : [existing.courseSlug]).sort();
-    const sameRequest = existing.customerEmail === user.email
+    const sameRequest = existing.userId === user.id
       && existing.paymentMethod === paymentMethod
       && existing.couponCode === (requestedCoupon || null)
       && existing.bundleSlug === (requestedBundleSlug || null)
@@ -186,6 +186,16 @@ export async function POST(request: Request) {
     const requestedCartJson = JSON.stringify(requestedSorted);
     const cartLockKey = `checkout:${user.id}:${requestedCartJson}`;
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${cartLockKey}))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(${user.id})`);
+    const token = requestSessionToken(request);
+    const tokenHash = token ? await hashOpaqueToken(token) : "";
+    const [fresh] = await tx.select().from(users).where(eq(users.id, user.id)).limit(1).for("update");
+    const [session] = await tx.select({ id: authSessions.id }).from(authSessions).where(and(
+      eq(authSessions.userId, user.id), eq(authSessions.tokenHash, tokenHash), isNull(authSessions.revokedAt),
+      gt(authSessions.expiresAt, new Date().toISOString()),
+    )).limit(1).for("update");
+    if (!tokenHash || !session || !fresh || fresh.status !== "active") return { kind: "session_expired" as const };
+    if (fresh.email !== customerEmail || fresh.phone !== customerPhone || fresh.fullName !== customerName || !fresh.emailVerifiedAt) return { kind: "identity_changed" as const };
     if (bundleQuote) {
       const [lockedBundle] = await tx.select({ id: courseBundles.id, discountType: courseBundles.discountType, discountValue: courseBundles.discountValue }).from(courseBundles).where(and(
         eq(courseBundles.slug, bundleQuote.slug),
@@ -199,7 +209,7 @@ export async function POST(request: Request) {
       if (lockedSlugs.length !== requestedSorted.length || lockedSlugs.some((slug, index) => slug !== requestedSorted[index])) return { kind: "bundle_changed" as const };
     }
     const recentOrders = await tx.select().from(orders).where(and(
-      eq(orders.customerEmail, customerEmail),
+      eq(orders.userId, user.id),
       inArray(orders.status, OPEN_CHECKOUT_STATUSES),
       sql`${orders.createdAt}::timestamptz >= NOW() - INTERVAL '30 minutes'`,
       sql`COALESCE((SELECT jsonb_agg(oi.course_slug ORDER BY oi.course_slug) FROM order_items AS oi WHERE oi.order_number = ${orders.orderNumber}), jsonb_build_array(${orders.courseSlug})) = ${requestedCartJson}::jsonb`,
@@ -219,12 +229,14 @@ export async function POST(request: Request) {
       const reservation = await reserveCouponForCheckoutTx(tx, { quote: couponQuote, userId: user.id, orderNumber, eligibleCourseSlugs: requestedSorted, now, reservationMinutes: CHECKOUT_EXPIRY_MINUTES });
       if (!reservation.ok) return { kind: "coupon_unavailable" as const, reason: reservation.reason };
     }
-    const inserted = await tx.insert(orders).values({ orderNumber, customerEmail, customerName, customerPhone: customerPhone || undefined, courseSlug: selected[0].slug, subtotal, discount, couponCode: couponQuote?.code || null, bundleSlug: bundleQuote?.slug || null, total, subtotalMinor, discountMinor, taxAmountMinor: 0, totalMinor, currency: "SAR", status: "pending", paymentMethod, checkoutKey, createdAt: now, updatedAt: now }).onConflictDoNothing({ target: orders.checkoutKey }).returning({ orderNumber: orders.orderNumber });
+    const inserted = await tx.insert(orders).values({ userId: user.id, orderNumber, customerEmail, customerName, customerPhone: customerPhone || undefined, courseSlug: selected[0].slug, subtotal, discount, couponCode: couponQuote?.code || null, bundleSlug: bundleQuote?.slug || null, total, subtotalMinor, discountMinor, taxAmountMinor: 0, totalMinor, currency: "SAR", status: "pending", paymentMethod, checkoutKey, createdAt: now, updatedAt: now }).onConflictDoNothing({ target: orders.checkoutKey }).returning({ orderNumber: orders.orderNumber });
     if (!inserted.length) return { kind: "checkout_key_conflict" as const };
     await tx.insert(orderItems).values(orderItemValues);
     await tx.insert(analyticsEvents).values({ event: "checkout_start", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: now });
     return { kind: "created" as const };
   });
+  if (creation.kind === "session_expired") return jsonError("انتهت الجلسة. سجّل الدخول مجددًا قبل الدفع.", 401);
+  if (creation.kind === "identity_changed") return jsonError("تغيّرت بيانات الحساب أثناء الطلب. حدّث الصفحة قبل الدفع.", 409);
   if (creation.kind === "bundle_changed") return jsonError("تغيرت الباقة أثناء بدء الدفع. حدّث السلة ثم أعد اختيار العرض.", 409);
   if (creation.kind === "coupon_unavailable") return jsonError("تغيرت حالة الكوبون أو تم حجزه في محاولة دفع أخرى. حدّث السلة ثم حاول مجددًا.", 409);
   if (creation.kind === "existing") return existingCheckoutResponse(creation.existing, creation.existingSlugs);
