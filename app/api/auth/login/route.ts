@@ -43,7 +43,7 @@ export async function POST(request: Request) {
   }
   let session;
   try { session = await createSession(user.id, request, payload.remember !== false); }
-  catch (error) { if (error instanceof DeviceLimitError) return jsonError(`حسابك مرتبط بالجهازين المعتمدين. استخدم أحدهما أو تواصل مع الدعم لاستبدال جهاز. تسجيل الخروج لا يحرر الجهاز.`, 409, "DEVICE_LIMIT_REACHED"); throw error; }
+  catch (error) { if (error instanceof DeviceLimitError) return jsonError(error.userMessage, error.status, error.code); throw error; }
   const account = sessionUserFromRow(user);
   if (!account.emailVerified) await ensureVerificationEmail(user.id, request);
   const headers = new Headers({ "set-cookie": session.cookie, "cache-control": "no-store" });
