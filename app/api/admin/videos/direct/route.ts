@@ -25,6 +25,7 @@ import {
   headDirectUpload,
 } from "@/lib/railway-direct-upload";
 import { probeStoredVideoDuration } from "@/lib/video-metadata";
+import { normalizeStorageKey } from "@/lib/storage-policy";
 import {
   enqueueVideoProcessing,
   videoProcessingSummary,
@@ -260,16 +261,11 @@ export async function POST(request: Request) {
   const sizeBytes = Number(payload.sizeBytes);
   const suppliedDuration = safeDuration(payload.durationSeconds);
 
-  const expectedPrefix =
-    `private/video-source/${courseSlug}/${lessonId}/`;
-
-  if (
-    !courseSlug ||
-    !lessonId ||
-    !objectKey ||
-    !objectKey.startsWith(expectedPrefix) ||
-    objectKey.includes("..")
-  ) {
+  const expectedPrefix = `private/video-source/${courseSlug}/${lessonId}/`;
+  let normalizedObjectKey = "";
+  try { normalizedObjectKey = normalizeStorageKey(objectKey); } catch { return jsonError("بيانات الفيديو غير صالحة", 400); }
+  const objectName = normalizedObjectKey.startsWith(expectedPrefix) ? normalizedObjectKey.slice(expectedPrefix.length) : "";
+  if (!courseSlug || !lessonId || normalizedObjectKey !== objectKey || !objectName || objectName.includes("/")) {
     return jsonError("بيانات الفيديو غير صالحة", 400);
   }
 
@@ -311,7 +307,7 @@ export async function POST(request: Request) {
     return jsonError("أنشئ سجل الدرس قبل رفع الفيديو", 409);
   }
 
-  const stored = await headDirectUpload(objectKey);
+  const stored = await headDirectUpload(normalizedObjectKey);
 
   if (!stored) {
     return jsonError("لم يكتمل رفع الفيديو إلى التخزين", 409);
@@ -320,9 +316,13 @@ export async function POST(request: Request) {
   if (stored.size !== sizeBytes) {
     return jsonError("لم يكتمل رفع الفيديو بالكامل", 409);
   }
+  const storedType = stored.contentType?.split(";")[0].trim().toLowerCase();
+  if (storedType && storedType !== contentType) {
+    return jsonError("نوع الملف المخزن لا يطابق النوع الموقّع", 422);
+  }
 
   const headerObject = await getObject(
-    objectKey,
+    normalizedObjectKey,
     { offset: 0, length: 64 },
     "s3",
   );
@@ -344,7 +344,7 @@ export async function POST(request: Request) {
     const durationSeconds =
       suppliedDuration ||
       await probeStoredVideoDuration(
-        objectKey,
+        objectKey: normalizedObjectKey,
         sizeBytes,
         contentType,
         "s3",
@@ -374,7 +374,7 @@ export async function POST(request: Request) {
           eq(videoAssets.lessonId, lessonId),
         ));
 
-      const sameUpload = previous.find(item => item.objectKey === objectKey && item.storageProvider === "s3");
+      const sameUpload = previous.find(item => item.objectKey === normalizedObjectKey && item.storageProvider === "s3");
       if (sameUpload) return { asset: sameUpload, replacedAssets: [], reused: true };
 
       const [created] = await tx
@@ -382,7 +382,7 @@ export async function POST(request: Request) {
         .values({
           courseSlug,
           lessonId,
-          objectKey,
+          objectKey: normalizedObjectKey,
           storageProvider: "s3",
           contentType,
           sizeBytes,
