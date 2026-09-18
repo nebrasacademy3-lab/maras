@@ -13,7 +13,7 @@ export async function activeStudyResource(resourceId: number, user: { id: number
   if (!resource) throw new AiPlatformError("AI_SOURCE_UNAVAILABLE", "ملف الدرس غير متاح حاليًا.", 404);
   const policyError = contentViewModeError(await getContentViewMode(), client);
   if (policyError) throw new AiPlatformError("AI_SOURCE_POLICY", policyError, 403);
-  const [access] = await getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.email, resource.courseSlug)).limit(1);
+  const [access] = await getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.id, resource.courseSlug)).limit(1);
   if (!access) throw new AiPlatformError("AI_SOURCE_ACCESS", "يلزم اشتراك نشط في المادة لاستخدام ملف هذا الدرس.", 403);
   return resource;
 }
