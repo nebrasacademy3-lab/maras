@@ -176,22 +176,6 @@ export async function requestEmailChange(userId: number, requestedEmail: unknown
   return { ok: true, active: true, currentEmail: issued.currentEmail, newEmail: issued.newEmail, currentVerified: false, newVerified: false, expiresInSeconds: Math.max(0, Math.ceil((Date.parse(issued.expiresAt) - Date.now()) / 1000)) };
 }
 
-// Legacy operational bridge only; historical financial and actor snapshots are immutable.
-// This is not a substitute for the release-gated stable user-ID ownership migration.
-async function migrateEmailReferences(tx: Transaction, oldEmail: string, newEmail: string) {
-  await tx.execute(sql`UPDATE "support_tickets" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "course_access" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "course_access_events" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "lesson_progress" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "analytics_events" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "favorites" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "cart_items" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "lesson_notes" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "course_reviews" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "course_waitlist" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-  await tx.execute(sql`UPDATE "store_course_grants" SET "user_email" = ${newEmail} WHERE lower("user_email") = lower(${oldEmail})`);
-}
-
 export async function verifyEmailChange(userId: number, target: EmailChangeTarget, supplied: unknown, request: Request) {
   requireEmailChangeEnabled();
   if (target !== "current" && target !== "new") throw new EmailChangeError("جهة الرمز غير صالحة.", "EMAIL_CHANGE_TARGET_INVALID", 400);
@@ -245,7 +229,6 @@ export async function verifyEmailChange(userId: number, target: EmailChangeTarge
       await tx.update(emailChangeRequests).set({ usedAt: now }).where(eq(emailChangeRequests.id, challenge.id));
       return { kind: "taken" as const };
     }
-    await migrateEmailReferences(tx, challenge.currentEmail, challenge.newEmail);
     await tx.update(users).set({ email: challenge.newEmail, emailVerifiedAt: now, updatedAt: now }).where(eq(users.id, userId));
     await tx.update(emailVerificationCodes).set({ usedAt: now }).where(and(eq(emailVerificationCodes.userId, userId), isNull(emailVerificationCodes.usedAt)));
     await tx.update(passwordResetTokens).set({ usedAt: now }).where(and(eq(passwordResetTokens.userId, userId), isNull(passwordResetTokens.usedAt)));
