@@ -180,11 +180,11 @@ export async function buildAssistantContext(user: SessionUser | null, settings: 
     const now = new Date().toISOString();
     const [orderRows, accessRows, requestRows, ticketRows, noticeRows, progressRows] = await Promise.all([
       db.select().from(orders).where(eq(orders.userId, user.id)).orderBy(desc(orders.createdAt)).limit(12),
-      db.select().from(courseAccess).where(activeUserAccessWhere(user.email, now)).limit(30),
+      db.select().from(courseAccess).where(activeUserAccessWhere(user.id, now)).limit(30),
       db.select().from(courseRequests).where(eq(courseRequests.userId, user.id)).orderBy(desc(courseRequests.createdAt)).limit(12),
-      db.select().from(supportTickets).where(eq(supportTickets.userEmail, user.email)).orderBy(desc(supportTickets.createdAt)).limit(12),
+      db.select().from(supportTickets).where(eq(supportTickets.userId, user.id)).orderBy(desc(supportTickets.createdAt)).limit(12),
       db.select().from(notificationsDb).where(notificationRecipientWhere(user)).orderBy(desc(notificationsDb.createdAt)).limit(12),
-      db.select().from(lessonProgress).where(eq(lessonProgress.userEmail, user.email)).orderBy(desc(lessonProgress.updatedAt)).limit(50),
+      db.select().from(lessonProgress).where(eq(lessonProgress.userId, user.id)).orderBy(desc(lessonProgress.updatedAt)).limit(50),
     ]);
     const replyRows = ticketRows.length ? await db.select().from(supportReplies).where(and(eq(supportReplies.internal, false), inArray(supportReplies.ticketId, ticketRows.map((ticket) => ticket.id)))).orderBy(desc(supportReplies.createdAt)).limit(100) : [];
     const title = (slug: string) => catalog.courses.find((course) => course.slug === slug)?.title || slug;
