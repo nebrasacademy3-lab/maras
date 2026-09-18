@@ -20,7 +20,7 @@ type ObjectRange = { offset: number; length: number };
 type S3Config = { endpoint: URL; bucket: string; region: string; accessKeyId: string; secretAccessKey: string; forcePathStyle: boolean };
 
 function storageRoot() {
-  return resolve(process.env.UPLOAD_DIR?.trim() || join(process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim() || join(process.cwd(), ".data"), "uploads"));
+  return resolve(/* turbopackIgnore: true */ process.env.UPLOAD_DIR?.trim() || join(process.env.RAILWAY_VOLUME_MOUNT_PATH?.trim() || join(process.cwd(), ".data"), "uploads"));
 }
 
 function s3Config(): S3Config | null {
@@ -272,7 +272,7 @@ async function listS3Keys(prefix: string) {
 }
 
 export async function deletePrefix(prefix: string, provider: StorageProvider = activeStorageProvider()) {
-  const normalized = `${normalizedObjectKey(prefix).replace(/\/+$/, "")}/`;
+  const normalized = normalizeStoragePrefix(prefix);
   if (provider === "local") { await rm(safePath(normalized), { recursive: true, force: true }); return; }
   const keys = await listS3Keys(normalized);
   for (let index = 0; index < keys.length; index += 10) await Promise.all(keys.slice(index, index + 10).map((key) => deleteObject(key, "s3")));
