@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -34,6 +34,30 @@ export const emailVerificationCodes = pgTable("email_verification_codes", {
   sentAt: text("sent_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [index("email_verification_user_purpose_created_idx").on(table.userId, table.purpose, table.createdAt)]);
+
+export const emailChangeRequests = pgTable("email_change_requests", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  currentEmail: text("current_email").notNull(),
+  newEmail: text("new_email").notNull(),
+  challengeNonce: text("challenge_nonce").notNull(),
+  currentCodeHash: text("current_code_hash").notNull(),
+  newCodeHash: text("new_code_hash").notNull(),
+  currentAttempts: integer("current_attempts").notNull().default(0),
+  newAttempts: integer("new_attempts").notNull().default(0),
+  currentSentAt: text("current_sent_at"),
+  newSentAt: text("new_sent_at"),
+  currentVerifiedAt: text("current_verified_at"),
+  newVerifiedAt: text("new_verified_at"),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [
+  index("email_change_user_created_idx").on(table.userId, table.createdAt),
+  index("email_change_user_used_idx").on(table.userId, table.usedAt),
+  check("email_change_current_attempts_check", sql`${table.currentAttempts} BETWEEN 0 AND 5`),
+  check("email_change_new_attempts_check", sql`${table.newAttempts} BETWEEN 0 AND 5`),
+]);
 
 export const oauthIdentities = pgTable("oauth_identities", {
   id: serial("id").primaryKey(),
@@ -133,6 +157,8 @@ export const supportTickets = pgTable("support_tickets", {
 }, (table) => [uniqueIndex("support_ticket_number_unique").on(table.ticketNumber), index("support_status_idx").on(table.status), index("support_user_idx").on(table.userEmail)]);
 
 export const orders = pgTable("orders", {
+  // Stable owner; customer fields are the immutable-at-checkout payer snapshot.
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   id: serial("id").primaryKey(),
   orderNumber: text("order_number").notNull(),
   customerEmail: text("customer_email").notNull(),
@@ -160,7 +186,15 @@ export const orders = pgTable("orders", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   paidAt: text("paid_at"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("orders_number_unique").on(table.orderNumber), uniqueIndex("orders_checkout_key_unique").on(table.checkoutKey), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
+}, (table) => [index("orders_owner_created_idx").on(table.userId, table.createdAt), uniqueIndex("orders_number_unique").on(table.orderNumber), uniqueIndex("orders_checkout_key_unique").on(table.checkoutKey), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
+
+export const orderOwnershipReviews = pgTable("order_ownership_reviews", {
+  orderId: integer("order_id").primaryKey().references(() => orders.id, { onDelete: "cascade" }),
+  reason: text("reason").notNull(),
+  candidateCount: integer("candidate_count").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  resolvedAt: text("resolved_at"),
+});
 
 export const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
@@ -499,7 +533,10 @@ export const authDevices = pgTable("auth_devices", {
   revokedAt: text("revoked_at"),
   revokedBy: text("revoked_by"),
   revocationReason: text("revocation_reason"),
-}, (table) => [uniqueIndex("auth_devices_user_device_unique").on(table.userId, table.deviceId), index("auth_devices_user_active_idx").on(table.userId, table.revokedAt)]);
+  returnPolicy: text("return_policy").notNull().default("blocked"),
+  blockedUntil: text("blocked_until"),
+  policyVersion: integer("policy_version").notNull().default(0),
+}, (table) => [uniqueIndex("auth_devices_user_device_unique").on(table.userId, table.deviceId), index("auth_devices_user_active_idx").on(table.userId, table.revokedAt), check("auth_devices_return_policy_check", sql`${table.returnPolicy} IN ('blocked', 'allowed', 'approval')`), check("auth_devices_policy_version_check", sql`${table.policyVersion} >= 0`), check("auth_devices_block_expiry_policy_check", sql`${table.blockedUntil} IS NULL OR ${table.returnPolicy} = 'allowed'`)]);
 
 export const authRateLimits = pgTable("auth_rate_limits", {
   key: text("key").primaryKey(),
@@ -583,6 +620,8 @@ export const courseReviews = pgTable("course_reviews", {
 }, (table) => [uniqueIndex("course_reviews_user_course_unique").on(table.userEmail, table.courseSlug), index("course_reviews_status_idx").on(table.status), index("course_reviews_course_status_idx").on(table.courseSlug, table.status)]);
 
 export const notificationsDb = pgTable("notifications", {
+  // A bound target never falls back to a historical email or a broadcast audience.
+  targetUserId: integer("target_user_id").references(() => users.id, { onDelete: "cascade" }),
   id: serial("id").primaryKey(),
   userEmail: text("user_email"),
   audience: text("audience").notNull().default("user"),
@@ -604,7 +643,7 @@ export const notificationsDb = pgTable("notifications", {
   dismissible: boolean("dismissible").notNull().default(true),
   readAt: text("read_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("notifications_dedupe_key_unique").on(table.dedupeKey), index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience), index("notifications_push_dispatch_idx").on(table.pushEnabled, table.pushStatus, table.pushClaimedAt, table.startsAt)]);
+}, (table) => [index("notifications_target_user_idx").on(table.targetUserId, table.createdAt), uniqueIndex("notifications_dedupe_key_unique").on(table.dedupeKey), index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience), index("notifications_push_dispatch_idx").on(table.pushEnabled, table.pushStatus, table.pushClaimedAt, table.startsAt)]);
 
 export const notificationReads = pgTable("notification_reads", {
   notificationId: integer("notification_id").notNull().references(() => notificationsDb.id, { onDelete: "cascade" }),
@@ -1127,6 +1166,7 @@ export const aiUsageEvents = pgTable("ai_usage_events", {
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   service: text("service").notNull(),
   keyId: integer("key_id").references(() => aiApiKeys.id, { onDelete: "set null" }),
+  providerTier: text("provider_tier").notNull().default("free"),
   conversationId: integer("conversation_id").references(() => aiConversations.id, { onDelete: "set null" }),
   fileId: integer("file_id").references(() => aiFiles.id, { onDelete: "set null" }),
   model: text("model"),

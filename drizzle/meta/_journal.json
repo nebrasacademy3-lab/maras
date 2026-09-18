@@ -232,6 +232,34 @@
       "when": 1789485863352,
       "tag": "0032_platform_identity_security",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789516550314,
+      "tag": "0033_device_return_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789600000000,
+      "tag": "0034_ai_paid_budget",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789609290719,
+      "tag": "0035_email_change_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789650000000,
+      "tag": "0036_order_owner_and_notification_target",
+      "breakpoints": true
     }
   ]
 }
