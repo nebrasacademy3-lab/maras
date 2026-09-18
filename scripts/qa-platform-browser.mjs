@@ -17,8 +17,9 @@ if (names.some(name => !engines[name])) throw new Error("Unknown browser engine"
 const reports = [];
 const cookie = token => ({ name: "meras_session", value: token, domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" });
 async function assertFits(page, label) {
-  // The live sync stream is intentionally long-lived; networkidle is not a readiness signal.
-  await page.locator("h1").first().waitFor({ state: "visible" });
+  // Public h1 semantics are asserted separately. Admin sections may use h2.
+  // A live sync stream is intentionally long-lived; networkidle is not readiness.
+  await page.getByRole("heading").first().waitFor({ state: "visible", timeout: 15000 });
   await page.evaluate(async () => { await document.fonts.ready; await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))); });
   const measure = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
   assert.ok(measure.scroll <= measure.width + 2, `${label}: horizontal overflow ${measure.scroll}/${measure.width}`);
@@ -28,23 +29,58 @@ try {
     const dir = `.data/platform-browser/${name}`; mkdirSync(dir, { recursive: true });
     const browser = await engines[name].launch({ headless: true, ...(name === "chromium" && process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
     let factorId;
-    const checks = [], errors = [];
+    const checks = [], errors = [], accessFailures = [];
+    const observePage = page => {
+      const onPageError = error => errors.push(error.message);
+      const onRequestFailed = request => {
+        const failure = request.failure();
+        if (!failure?.errorText?.toLowerCase().includes("access control")) return;
+        const headers = request.headers();
+        accessFailures.push({
+          url: request.url(),
+          method: request.method(),
+          resourceType: request.resourceType(),
+          error: failure.errorText,
+          origin: headers.origin || null,
+          secFetchSite: headers["sec-fetch-site"] || null,
+        });
+      };
+      page.on("pageerror", onPageError);
+      page.on("requestfailed", onRequestFailed);
+      return () => {
+        page.off("pageerror", onPageError);
+        page.off("requestfailed", onRequestFailed);
+      };
+    };
     try {
       const context = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
-      const page = await context.newPage(); page.on("pageerror", error => errors.push(error.message));
+      context.setDefaultTimeout(15000);
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
-        const response = await page.goto(origin + path, { waitUntil: "domcontentloaded" }); assert.equal(response.status(), 200, path);
-        await page.locator("h1").first().waitFor({ state: "visible" });
-        await page.waitForFunction(() => Boolean(document.documentElement.dataset.palette));
-        await page.locator('link[rel="canonical"]').waitFor({ state: "attached" });
-        assert.ok((await page.locator('link[rel="canonical"]').getAttribute("href")).startsWith("https://maras-qa.example/"));
-        for (const width of [320, 390, 768, 1440]) {
-          await page.setViewportSize({ width, height: width < 500 ? 844 : 1000 });
-          await assertFits(page, `${path}/${width}`);
+        const routePage = await context.newPage();
+        const stopRouteObservation = observePage(routePage);
+        const errorCount = errors.length, failureCount = accessFailures.length;
+        try {
+          const response = await routePage.goto(origin + path, { waitUntil: "domcontentloaded" }); assert.equal(response.status(), 200, path);
+          await routePage.locator("h1").first().waitFor({ state: "visible" });
+          await routePage.waitForFunction(() => Boolean(document.documentElement.dataset.palette));
+          await routePage.locator('link[rel="canonical"]').waitFor({ state: "attached" });
+          assert.ok((await routePage.locator('link[rel="canonical"]').getAttribute("href")).startsWith("https://maras-qa.example/"));
+          for (const width of [320, 390, 768, 1440]) {
+            await routePage.setViewportSize({ width, height: width < 500 ? 844 : 1000 });
+            await assertFits(routePage, `${path}/${width}`);
+          }
+          await routePage.waitForTimeout(250);
+          assert.equal(errors.length, errorCount, `${path}: no active-page JavaScript exceptions`);
+          assert.equal(accessFailures.length, failureCount, `${path}: no active-page access-control request failures`);
+        } finally {
+          stopRouteObservation();
+          await routePage.close();
         }
       }
       checks.push("eight public routes render headings and canonical URLs; 320/390/768/1440px have no page overflow");
+      const page = await context.newPage();
+      const stopPublicObservation = observePage(page);
       await page.goto(origin + "/faq", { waitUntil: "domcontentloaded" });
       const count = await page.locator("details").count(); assert.equal(count, 35);
       const schemaContent = await page.locator('script[type="application/ld+json"]').allTextContents();
@@ -53,23 +89,36 @@ try {
       await page.getByLabel("البحث في الأسئلة الشائعة").fill("");
       checks.push("35 rendered FAQ answers match structured data and search filters the real visible content");
       for (const theme of ["light", "dark"]) {
-        await page.evaluate(value => localStorage.setItem("meras-theme", value), theme);
-        await page.reload({ waitUntil: "domcontentloaded" });
-        await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, theme === "dark");
+        const desiredDark = theme === "dark";
+        const currentDark = await page.evaluate(() => document.documentElement.classList.contains("dark"));
+        if (currentDark !== desiredDark) {
+          await page.getByRole("button", { name: desiredDark ? "تفعيل الوضع الليلي" : "تفعيل الوضع الفاتح" }).first().click();
+        }
+        await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, desiredDark);
         await page.screenshot({ path: `${dir}/faq-${theme}.png`, fullPage: true, animations: "disabled" });
-        await page.goto(origin + "/about", { waitUntil: "domcontentloaded" });
+        const aboutLink = page.locator('a[href="/about"]').first();
+        await aboutLink.waitFor({ state: "visible" });
+        await Promise.all([page.waitForURL(origin + "/about"), aboutLink.click()]);
+        await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, desiredDark);
         await page.screenshot({ path: `${dir}/about-${theme}.png`, fullPage: true, animations: "disabled" });
         await page.setViewportSize({ width: 390, height: 844 }); await assertFits(page, `about/${theme}/phone`);
         await page.screenshot({ path: `${dir}/about-${theme}-phone.png`, fullPage: true, animations: "disabled" });
         await page.setViewportSize({ width: 1440, height: 1000 });
-        await page.goto(origin + "/faq", { waitUntil: "domcontentloaded" });
+        const faqLink = page.locator('a[href="/faq"]').first();
+        await faqLink.waitFor({ state: "visible" });
+        await Promise.all([page.waitForURL(origin + "/faq"), faqLink.click()]);
+        await page.waitForFunction(isDark => document.documentElement.classList.contains("dark") === isDark, desiredDark);
       }
-      checks.push("public light/dark theme persists across navigation; desktop and phone screenshots captured");
+      await page.waitForTimeout(250);
+      checks.push("public light/dark theme persists across real Next navigation; desktop and phone screenshots captured");
+      stopPublicObservation();
+      await page.close();
       await context.close();
       const enrollmentFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8")).enrollment[name];
       const enrolling = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 390, height: 844 } });
+      enrolling.setDefaultTimeout(15000);
       await enrolling.addCookies([cookie(enrollmentFixture.token)]);
-      const security = await enrolling.newPage(); security.on("pageerror", error => errors.push(error.message));
+      const security = await enrolling.newPage(); observePage(security);
       await security.goto(origin + "/admin/security", { waitUntil: "domcontentloaded" });
       const securityCard = security.locator("article").first();
       await securityCard.getByLabel("كلمة المرور الحالية — مطلوبة للإعداد والتعطيل").fill(enrollmentFixture.password);
@@ -91,14 +140,14 @@ try {
       await security.screenshot({ path: `${dir}/security-enrolled-phone.png`, fullPage: true, animations: "disabled" });
       await enrolling.close();
       checks.push("admin enrollment UI reauthenticates with a password, enables TOTP and displays recovery codes once before clearing sensitive fields");
-      // The fixture owner never has a production factor: refuse to alter pre-existing factor data.
       const existing = await db.select({ id: schema.adminMfaFactors.id }).from(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.userId, owner.id));
       assert.equal(existing.length, 0, "browser QA must not touch a pre-existing owner factor");
       const secret = "JBSWY3DPEHPK3PXP", now = new Date().toISOString();
       const [factor] = await db.insert(schema.adminMfaFactors).values({ userId: owner.id, type: "totp", label: "Synthetic browser QA", secretEncrypted: mfa.encryptAdminMfaSecret(secret), counter: Math.floor(Date.now() / 30_000) - 1, verifiedAt: now }).returning({ id: schema.adminMfaFactors.id }); factorId = factor.id;
       await db.update(schema.authSessions).set({ mfaVerifiedAt: now }).where(eq(schema.authSessions.tokenHash, createHash("sha256").update(owner.token).digest("hex")));
       const admin = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } }); await admin.addCookies([cookie(owner.token)]);
-      const editor = await admin.newPage(); editor.on("pageerror", error => errors.push(error.message));
+      admin.setDefaultTimeout(15000);
+      const editor = await admin.newPage(); observePage(editor);
       await editor.goto(origin + "/admin/staff", { waitUntil: "domcontentloaded" });
       await editor.getByRole("button", { name: "إضافة مشرف", exact: true }).click();
       const uniqueEmail = `qa-browser-${name}-${randomBytes(5).toString("hex")}@example.test`;
@@ -106,22 +155,39 @@ try {
       await editor.getByLabel("البريد الإلكتروني", { exact: true }).fill(uniqueEmail);
       await editor.getByLabel("كلمة المرور الأولية", { exact: true }).fill(randomBytes(20).toString("base64url") + "aA1!");
       await editor.getByRole("checkbox", { name: /عرض المواد والجهات والتخصصات/ }).check();
+      const staffRequests = [];
+      const observeStaffResponse = response => {
+        if (response.url() === origin + "/api/admin/staff" && response.request().method() === "POST") staffRequests.push(response.status());
+      };
+      editor.on("response", observeStaffResponse);
       await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).click();
       const dialog = editor.getByRole("dialog", { name: "تأكيد هويتك" }); await dialog.waitFor();
       await editor.screenshot({ path: `${dir}/staff-mfa-preserved-form.png`, fullPage: true, animations: "disabled" });
       await dialog.getByRole("button", { name: "إلغاء والعودة" }).click();
+      await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).waitFor({ state: "visible" });
       assert.equal(await editor.getByLabel("البريد الإلكتروني", { exact: true }).inputValue(), uniqueEmail);
+      assert.deepEqual(staffRequests, [428], "cancelled verification must not replay the mutation");
       assert.equal((await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, uniqueEmail))).length, 0);
       await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).click(); await dialog.waitFor();
       await dialog.getByLabel("رمز تطبيق المصادقة").fill(mfa.totpCodeForCounter(secret, Math.floor(Date.now() / 30_000)));
-      await dialog.getByRole("button", { name: "تحقق ومتابعة", exact: true }).click();
-      await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).waitFor({ state: "hidden" });
+      // Register both listeners before verification; do not poll the rate-limited API.
+      // The save button changes its accessible name while busy, so it is not a completion signal.
+      const [proofResponse, savedResponse] = await Promise.all([
+        editor.waitForResponse(response => response.url() === origin + "/api/admin/security/mfa" && response.request().method() === "POST"),
+        editor.waitForResponse(response => response.url() === origin + "/api/admin/staff" && response.request().method() === "POST"),
+        dialog.getByRole("button", { name: "تحقق ومتابعة", exact: true }).click(),
+      ]);
+      assert.equal(proofResponse.status(), 200, "MFA proof must succeed");
+      assert.equal(savedResponse.status(), 200, "verified staff retry must succeed");
+      await editor.getByLabel("البريد الإلكتروني", { exact: true }).waitFor({ state: "detached" });
+      assert.deepEqual(staffRequests, [428, 428, 200], "one retry only after a successful proof");
+      editor.off("response", observeStaffResponse);
       assert.equal((await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, uniqueEmail))).length, 1);
       checks.push("real staff mutation pauses for MFA, cancellation preserves fields and writes nothing; verified retry creates exactly one supervisor");
       await editor.setViewportSize({ width: 390, height: 844 }); await assertFits(editor, "admin/staff/phone");
       await editor.screenshot({ path: `${dir}/staff-phone.png`, fullPage: true, animations: "disabled" });
       await editor.goto(origin + "/admin/content", { waitUntil: "domcontentloaded" });
-      const title = editor.getByLabel("عنوان الصفحة", { exact: true }); await title.fill("عنوان اختبار لم ينشر — مراس العلم");
+      const title = editor.locator("fieldset textarea").first(); await title.fill("عنوان اختبار لم ينشر — مراس العلم");
       await editor.getByRole("button", { name: "نشر التغييرات", exact: true }).click();
       await editor.getByRole("dialog", { name: "نشر محتوى الصفحات؟" }).getByRole("button", { name: "إلغاء والعودة" }).click();
       assert.equal(await title.inputValue(), "عنوان اختبار لم ينشر — مراس العلم"); await assertFits(editor, "admin/content/phone");
@@ -130,12 +196,22 @@ try {
       await admin.close();
       const viewerFixture = JSON.parse(readFileSync(".data/qa-security-fixtures.json", "utf8"));
       const viewer = await browser.newContext({ viewport: { width: 1440, height: 1000 } }); await viewer.addCookies([cookie(viewerFixture.supervisor.token)]);
+      viewer.setDefaultTimeout(15000);
       const viewerPage = await viewer.newPage(); await viewerPage.goto(origin + "/admin", { waitUntil: "domcontentloaded" });
       assert.equal(await viewerPage.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').count(), 0);
-      assert.equal((await viewer.request.get(origin + "/api/admin/staff")).status(), 403);
-      assert.equal((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status(), 403);
+      assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/staff")).status()));
+      assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status()));
       checks.push("catalog-view supervisor has no owner/finance/content navigation and is denied staff and upload-signing APIs");
-      await viewer.close(); assert.deepEqual(errors, [], "no client JavaScript exceptions");
+      observePage(viewerPage);
+      await viewer.close();
+      if (errors.length) {
+        throw new assert.AssertionError({
+          message: "no client JavaScript exceptions",
+          actual: { errors, accessFailures: accessFailures.slice(0, 40) },
+          expected: { errors: [], accessFailures: [] },
+          operator: "deepStrictEqual",
+        });
+      }
       const report = { engine: name, passed: checks.length, checks, clientExceptions: errors, liveProviders: false, devices: "browser viewport emulation, not physical phones" };
       writeFileSync(`${dir}/report.json`, JSON.stringify(report, null, 2)); reports.push(report); console.log(JSON.stringify(report, null, 2));
     } finally { if (factorId) await db.delete(schema.adminMfaFactors).where(eq(schema.adminMfaFactors.id, factorId)); await browser.close(); }

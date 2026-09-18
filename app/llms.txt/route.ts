@@ -1,20 +1,26 @@
 import { getInformationContent } from "@/lib/information-content";
-import { SEO_STATIC_PAGES } from "@/lib/seo-pages";
-import { seoUrl, searchIndexingEnabled } from "@/lib/seo";
+import { getCoursesCatalog, getInstitutionsCatalog } from "@/lib/catalog-store";
+import { getPublicBundleCatalog, getPublicSpecialtyCatalog } from "@/lib/seo-catalog";
+import { buildSeoPages } from "@/lib/seo-pages";
+import { renderPublicDiscovery } from "@/lib/seo-discovery";
+import { searchIndexingEnabled } from "@/lib/seo";
 
 export const dynamic = "force-dynamic";
-/** Optional plain-text directory. It is not an indexing protocol or ranking guarantee. */
+const headers = { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store", "x-content-type-options": "nosniff" };
+/** Optional public directory. No special ranking or recommendation is promised. */
 export async function GET() {
-  const { content } = await getInformationContent();
-  const clean = (value: string) => value.replace(/[\[\]\r\n]/g, " ").trim();
-  const body = [
-    "# مراس العلم", "", `> ${clean(content.about.intro)}`, "",
-    "مراس منصة مساندة للمذاكرة، وليست جهة مانحة للدرجات أو الشهادات الجامعية.",
-    "المحتوى والأسعار ومدة الوصول تخضع لما هو منشور في صفحة كل مادة وقت الاطلاع.",
-    "بيانات الحسابات والإدارة والملفات الخاصة والمحتوى المدفوع ليست جزءًا من هذا الدليل.", "",
-    "## الصفحات العامة", ...SEO_STATIC_PAGES.map(page => `- [${clean(page.title)}](${seoUrl(page.path)}): ${clean(page.description)}`), "",
-    `- [خريطة الصفحات العامة المنشورة](${seoUrl("/sitemap.xml")})`, "",
-    "## استخدام أدوات المذاكرة", "مخرجات الذكاء الاصطناعي مساعدة تعليمية قد تخطئ؛ راجع المصدر الأصلي. تختلف الحصص حسب الخدمة والاشتراك.", "",
-  ].join("\n");
-  return new Response(body, { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "public, max-age=60", "x-content-type-options": "nosniff", ...(!searchIndexingEnabled() ? { "x-robots-tag": "noindex, nofollow" } : {}) } });
+  if (!searchIndexingEnabled()) {
+    return new Response("Public discovery is disabled.\n", { status: 404, headers: { ...headers, "x-robots-tag": "noindex, nofollow" } });
+  }
+  try {
+    const [{ content }, courses, institutions, specialties, bundles] = await Promise.all([
+      getInformationContent(), getCoursesCatalog(), getInstitutionsCatalog(), getPublicSpecialtyCatalog(), getPublicBundleCatalog(),
+    ]);
+    const pages = buildSeoPages(courses, institutions, specialties, bundles);
+    return new Response(renderPublicDiscovery(content.about.intro, pages), { headers });
+  } catch {
+    // Do not cache a partial directory, expose provider/database details, or invent catalog entries.
+    console.error("[seo] Public discovery directory is temporarily unavailable");
+    return new Response("Public discovery is temporarily unavailable.\n", { status: 503, headers: { ...headers, "retry-after": "60", "x-robots-tag": "noindex, nofollow" } });
+  }
 }

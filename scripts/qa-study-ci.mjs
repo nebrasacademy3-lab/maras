@@ -9,7 +9,7 @@ const url = process.env.QA_DATABASE_URL;
 if (!url || new URL(url).hostname !== "127.0.0.1" || new URL(url).pathname !== "/maras_qa") throw new Error("QA_DATABASE_URL must be dedicated loopback maras_qa");
 if (process.env.DATABASE_URL || process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEYS || process.env.S3_BUCKET || process.env.BUCKET) throw new Error("Do not supply production credentials");
 mkdirSync(".data", { recursive: true }); writeFileSync(".data/qa-database.json", JSON.stringify({ url }));
-const env = { ...process.env, DATABASE_URL: url, DATABASE_SSL: "false", APP_URL: "http://127.0.0.1:3100", NEXT_PUBLIC_SITE_URL: "https://maras-qa.example", UPLOAD_DIR: `${process.cwd()}/.data/uploads`, SESSION_COOKIE_SECURE: "false", ADMIN_MFA_ENCRYPTION_KEY: randomBytes(32).toString("hex"), SESSION_SECRET: "synthetic-local-ci-session-only-do-not-reuse", VIDEO_SIGNING_SECRET: "synthetic-local-ci-video-only-do-not-reuse", AUTO_SEED_CATALOG: "false", RUN_DB_MIGRATIONS: "false", AI_WORKER_ENABLED: "false", VIDEO_WORKER_ENABLED: "false", FILE_SCAN_SCHEDULER_ENABLED: "false", LIFECYCLE_SCHEDULER_ENABLED: "false", GEMINI_API_KEY: "", GEMINI_API_KEYS: "", OPENAI_API_KEY: "", RESEND_API_KEY: "", TAP_SECRET_KEY: "" };
+const env = { ...process.env, MARAS_LOOPBACK_QA: "true", DATABASE_URL: url, DATABASE_SSL: "false", APP_URL: "http://127.0.0.1:3100", NEXT_PUBLIC_SITE_URL: "https://maras-qa.example", UPLOAD_DIR: `${process.cwd()}/.data/uploads`, SESSION_COOKIE_SECURE: "false", ADMIN_MFA_ENCRYPTION_KEY: randomBytes(32).toString("hex"), SESSION_SECRET: "synthetic-local-ci-session-only-do-not-reuse", VIDEO_SIGNING_SECRET: "synthetic-local-ci-video-only-do-not-reuse", AUTO_SEED_CATALOG: "false", RUN_DB_MIGRATIONS: "false", AI_WORKER_ENABLED: "false", VIDEO_WORKER_ENABLED: "false", FILE_SCAN_SCHEDULER_ENABLED: "false", LIFECYCLE_SCHEDULER_ENABLED: "false", GEMINI_API_KEY: "", GEMINI_API_KEYS: "", OPENAI_API_KEY: "", RESEND_API_KEY: "", TAP_SECRET_KEY: "" };
 const run = (args, settings = env) => new Promise((resolve, reject) => { const child = spawn(process.execPath, args, { env: settings, stdio: "inherit" }); child.on("error", reject); child.on("exit", code => code === 0 ? resolve() : reject(new Error(`Command ${args[0]} exited ${code}`))); });
 const pool = new pg.Pool({ connectionString: url });
 try { await migrate(drizzle(pool), { migrationsFolder: "./drizzle" }); } finally { await pool.end(); }
@@ -22,6 +22,17 @@ try {
   let ready = false;
   for (let i = 0; i < 60; i++) { try { await fetch("http://127.0.0.1:3100/login", { signal: AbortSignal.timeout(2000) }); ready = true; break; } catch { await new Promise(r => setTimeout(r, 1000)); } }
   if (!ready) throw new Error("Synthetic web server did not start");
+  const qaResponse = await fetch("http://127.0.0.1:3100/", { signal: AbortSignal.timeout(5000) });
+  const qaHeaders = qaResponse.headers;
+  await qaResponse.body?.cancel();
+  if (qaHeaders.get("cross-origin-resource-policy") !== "cross-origin"
+      || qaHeaders.get("cross-origin-opener-policy") !== "unsafe-none"
+      || qaHeaders.get("origin-agent-cluster") !== "?0"
+      || qaHeaders.get("access-control-allow-origin") !== "http://127.0.0.1:3100"
+      || !/connect-src[^;]*http:\/\/127\.0\.0\.1:3100/.test(qaHeaders.get("content-security-policy") || "")) {
+    throw new Error("Loopback browser security profile was not baked into the QA build");
+  }
   await run(["scripts/qa-study-browser.mjs"]);
+  await run(["scripts/qa-supervisor-browser.mjs"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-browser.mjs"]);
 } finally { server.kill("SIGTERM"); worker.kill("SIGTERM"); }

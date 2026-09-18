@@ -5,10 +5,12 @@ export const dynamic = "force-dynamic";
 
 export default function robots(): MetadataRoute.Robots {
   if (!searchIndexingEnabled()) return { rules: { userAgent: "*", disallow: "/" } };
-  // The wildcard already covers Googlebot, Bingbot, OAI-SearchBot and
-  // PerplexityBot. Preserve the existing training-crawler policy; a new bot-
-  // specific group must never accidentally drop the API exclusions below.
-  // Private HTML uses noindex plus server authorization. Crawling must be allowed
-  // to read noindex; robots.txt is never an access-control mechanism.
-  return { rules: { userAgent: "*", allow: ["/", "/api/covers/", "/api/logos/"], disallow: ["/api/", "/r/"] }, sitemap: seoUrl("/sitemap.xml") };
+  // The wildcard applies to search and answer-engine crawlers too. Keep one
+  // rule so private/API exclusions cannot be accidentally weakened by a more
+  // specific bot group.
+  return {
+    rules: { userAgent: "*", allow: ["/", "/api/covers/", "/api/logos/"], disallow: ["/api/", "/r/"] },
+    sitemap: seoUrl("/sitemap.xml"),
+    host: seoUrl("/"),
+  };
 }

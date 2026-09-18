@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const developmentScriptSource = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
+const loopbackQa = process.env.MARAS_LOOPBACK_QA === "true" && process.env.CI === "true" && process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_PROJECT_ID && !process.env.RAILWAY_ENVIRONMENT_ID;
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -13,7 +14,7 @@ const contentSecurityPolicy = [
   "img-src 'self' data: blob: https:",
   "font-src 'self' data:",
   "media-src 'self' blob:",
-  "connect-src 'self' https://api.tap.company https://*.tap.company https://*.t3.storageapi.dev",
+  `connect-src 'self'${loopbackQa ? " http://127.0.0.1:3100" : ""} https://api.tap.company https://*.tap.company https://*.t3.storageapi.dev`,
   "frame-src 'self' https://*.tap.company",
   "worker-src 'self' blob:",
   "manifest-src 'self'",
@@ -57,8 +58,14 @@ const nextConfig: NextConfig = {
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), fullscreen=(self), display-capture=(), picture-in-picture=()" },
           { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
-          { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+          { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
+          { key: "Origin-Agent-Cluster", value: loopbackQa ? "?0" : "?1" },
+          { key: "Cross-Origin-Opener-Policy", value: loopbackQa ? "unsafe-none" : "same-origin" },
+          { key: "Cross-Origin-Resource-Policy", value: process.env.NODE_ENV === "production" && !loopbackQa ? "same-origin" : "cross-origin" },
+          ...(loopbackQa ? [
+            { key: "Access-Control-Allow-Origin", value: "http://127.0.0.1:3100" },
+            { key: "Access-Control-Allow-Credentials", value: "true" },
+          ] : []),
           { key: "Content-Security-Policy", value: contentSecurityPolicy },
         ],
       },
