@@ -8,9 +8,9 @@ const require = createRequire(import.meta.url);
 const ts = require("typescript");
 const { pathToRegexp } = require("next/dist/compiled/path-to-regexp");
 const source = readFileSync(new URL("../next.config.ts", import.meta.url), "utf8");
-async function configuration(environment = "production") {
+async function configuration(environment = "production", extraEnv = {}) {
   const exports = {};
-  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports, process: { env: { NODE_ENV: environment } } });
+  vm.runInNewContext(ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports, process: { env: { NODE_ENV: environment, ...extraEnv } } });
   const rules = await exports.default.headers();
   const evaluate = (path) => {
     const headers = new Map();
@@ -77,6 +77,25 @@ test("only public email artwork and the explicit email logo permit cross-origin 
     assert.equal(headers.get("cross-origin-resource-policy"), "same-origin", path);
     assert.equal(headers.has("access-control-allow-origin"), false, path);
   }
+});
+
+
+test("production isolation headers stay strict and never expose loopback CORS", async () => {
+  const headers = (await configuration("production"))("/");
+  assert.equal(headers.get("origin-agent-cluster"), "?1");
+  assert.equal(headers.get("cross-origin-opener-policy"), "same-origin");
+  assert.equal(headers.get("cross-origin-resource-policy"), "same-origin");
+  assert.equal(headers.has("access-control-allow-origin"), false);
+  assert.equal(headers.has("access-control-allow-credentials"), false);
+});
+
+test("isolated loopback QA gets an explicit browser-compatibility profile only when opted in", async () => {
+  const headers = (await configuration("production", { MARAS_LOOPBACK_QA: "true" }))("/");
+  assert.equal(headers.get("origin-agent-cluster"), "?0");
+  assert.equal(headers.get("cross-origin-opener-policy"), "unsafe-none");
+  assert.equal(headers.get("cross-origin-resource-policy"), "cross-origin");
+  assert.equal(headers.get("access-control-allow-origin"), "http://127.0.0.1:3100");
+  assert.equal(headers.get("access-control-allow-credentials"), "true");
 });
 
 test("public caching has one unambiguous rule and no rule repeats a header key", async () => {

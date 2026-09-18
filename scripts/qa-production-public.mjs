@@ -71,6 +71,10 @@ try {
     assert.ok(/object-src 'none'/.test(result.headers.get("content-security-policy") || ""), "CSP object restriction");
     assert.ok(result.headers.get("x-content-type-options") === "nosniff", "MIME sniffing restriction");
     assert.ok(/max-age=/.test(result.headers.get("strict-transport-security") || ""), "HSTS present");
+    assert.equal(result.headers.get("origin-agent-cluster"), "?1", "production origin isolation");
+    assert.equal(result.headers.get("cross-origin-opener-policy"), "same-origin", "production opener isolation");
+    assert.equal(result.headers.get("cross-origin-resource-policy"), "same-origin", "production resource isolation");
+    assert.equal(result.headers.has("access-control-allow-origin"), false, "production does not expose loopback CORS");
   });
   await wait(500);
   record("/robots.txt", await read("/robots.txt"), result => {
