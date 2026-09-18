@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const developmentScriptSource = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
+const loopbackQa = process.env.MARAS_LOOPBACK_QA === "true";
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
@@ -60,7 +61,7 @@ const nextConfig: NextConfig = {
           { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
           { key: "Origin-Agent-Cluster", value: "?1" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-          { key: "Cross-Origin-Resource-Policy", value: process.env.NODE_ENV === "production" ? "same-origin" : "cross-origin" },
+          { key: "Cross-Origin-Resource-Policy", value: process.env.NODE_ENV === "production" && !loopbackQa ? "same-origin" : "cross-origin" },
           { key: "Content-Security-Policy", value: contentSecurityPolicy },
         ],
       },
