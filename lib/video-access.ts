@@ -30,7 +30,7 @@ export async function authorizeVideoRequest(request: Request, lessonId: string, 
     const user = await getSessionUser(request);
     if (!user) return { ok: false, response: jsonError("سجّل الدخول لمتابعة هذا الفيديو", 401) };
     if (user.email !== grant.email) return { ok: false, response: jsonError("جلسة المشاهدة لا تخص هذا الحساب", 403) };
-    const [access] = await db.select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(grant.email, courseSlug)).limit(1);
+    const [access] = await db.select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.id, courseSlug)).limit(1);
     if (!access) return { ok: false, response: jsonError("انتهت صلاحية الوصول إلى هذه المادة", 403) };
   }
 
