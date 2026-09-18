@@ -60,7 +60,7 @@ const nextConfig: NextConfig = {
           { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
           { key: "Origin-Agent-Cluster", value: "?1" },
           { key: "Cross-Origin-Opener-Policy", value: "same-origin" },
-          { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
+          { key: "Cross-Origin-Resource-Policy", value: process.env.NODE_ENV === "production" ? "same-origin" : "cross-origin" },
           { key: "Content-Security-Policy", value: contentSecurityPolicy },
         ],
       },
