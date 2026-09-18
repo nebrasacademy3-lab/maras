@@ -9,7 +9,7 @@ import { getCourseCatalog, getCoursesCatalog } from "@/lib/catalog-store";
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
-  const rows = await getDb().select().from(favorites).where(eq(favorites.userEmail, user.email));
+  const rows = await getDb().select().from(favorites).where(eq(favorites.userId, user.id));
   const available = new Set((await getCoursesCatalog()).map((course) => course.slug));
   return Response.json({ ok: true, courseSlugs: rows.map((row) => row.courseSlug).filter((slug) => available.has(slug)) }, { headers: { "cache-control": "no-store" } });
 }
@@ -24,8 +24,8 @@ export async function POST(request: Request) {
   const courseSlug = cleanText(payload.courseSlug, 120);
   if (!courseSlug || !await getCourseCatalog(courseSlug)) return jsonError("المادة غير موجودة", 404);
   const db = getDb();
-  if (payload.active === false) await db.delete(favorites).where(and(eq(favorites.userEmail, user.email), eq(favorites.courseSlug, courseSlug)));
-  else await db.insert(favorites).values({ userEmail: user.email, courseSlug }).onConflictDoNothing();
-  const rows = await db.select({ courseSlug: favorites.courseSlug }).from(favorites).where(eq(favorites.userEmail, user.email));
+  if (payload.active === false) await db.delete(favorites).where(and(eq(favorites.userId, user.id), eq(favorites.courseSlug, courseSlug)));
+  else await db.insert(favorites).values({ userId: user.id, userEmail: user.email, courseSlug }).onConflictDoNothing({ target: [favorites.userId, favorites.courseSlug] });
+  const rows = await db.select({ courseSlug: favorites.courseSlug }).from(favorites).where(eq(favorites.userId, user.id));
   return Response.json({ ok: true, courseSlugs: rows.map((row) => row.courseSlug) }, { headers: { "cache-control": "no-store" } });
 }
