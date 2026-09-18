@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const developmentScriptSource = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
-const loopbackQa = process.env.MARAS_LOOPBACK_QA === "true";
+const loopbackQa = process.env.MARAS_LOOPBACK_QA === "true" && process.env.CI === "true" && process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_PROJECT_ID && !process.env.RAILWAY_ENVIRONMENT_ID;
 const contentSecurityPolicy = [
   "default-src 'self'",
   "base-uri 'self'",
