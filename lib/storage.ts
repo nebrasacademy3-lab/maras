@@ -70,7 +70,7 @@ function sha256(value: string) {
 function s3ObjectUrl(config: S3Config, key: string) {
   const url = new URL(config.endpoint.toString());
   const endpointPath = url.pathname.replace(/\/$/, "");
-  const encodedKey = normalizedObjectKey(key).split("/").map(encodeRfc3986).join("/");
+  const encodedKey = normalizeStorageKey(key).split("/").map(encodeRfc3986).join("/");
   if (config.forcePathStyle) url.pathname = `${endpointPath}/${encodeRfc3986(config.bucket)}/${encodedKey}`;
   else { url.hostname = `${config.bucket}.${url.hostname}`; url.pathname = `${endpointPath}/${encodedKey}`; }
   return url;
@@ -193,8 +193,8 @@ async function putLocalObject(key: string, body: ReadableStream<Uint8Array>, con
 }
 
 export async function putObject(key: string, body: ReadableStream<Uint8Array>, contentType?: string, provider: StorageProvider = activeStorageProvider()) {
-  normalizedObjectKey(key);
-  if (provider === "local") return putLocalObject(key, body, contentType);
+  const normalizedKey = normalizeStorageKey(key);
+  if (provider === "local") return putLocalObject(normalizedKey, body, contentType);
   const config = s3Config();
   if (!config) throw new Error("The requested S3 provider is not configured");
   const staged = await spoolStream(body);
@@ -222,8 +222,8 @@ async function getLocalObject(key: string, range?: ObjectRange): Promise<StoredO
 }
 
 export async function getObject(key: string, range?: ObjectRange, provider: StorageProvider = activeStorageProvider(), signal?: AbortSignal): Promise<StoredObject | null> {
-  normalizedObjectKey(key);
-  if (provider === "local") return getLocalObject(key, range);
+  const normalizedKey = normalizeStorageKey(key);
+  if (provider === "local") return getLocalObject(normalizedKey, range);
   const config = s3Config();
   if (!config) return null;
   const headers: Record<string, string> = {};
@@ -235,9 +235,9 @@ export async function getObject(key: string, range?: ObjectRange, provider: Stor
 }
 
 export async function deleteObject(key: string, provider: StorageProvider = activeStorageProvider()) {
-  normalizedObjectKey(key);
+  const normalizedKey = normalizeStorageKey(key);
   if (provider === "local") {
-    try { await rm(safePath(key), { force: true }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    try { await rm(safePath(normalizedKey), { force: true }); } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     return;
   }
   const config = s3Config();
