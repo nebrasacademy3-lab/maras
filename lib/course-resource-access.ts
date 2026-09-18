@@ -23,7 +23,7 @@ export async function authorizeCourseResourceRequest(request: Request, courseSlu
   } catch {
     return { ok: false, response: jsonError("تعذر التحقق من سياسة مشاهدة المحتوى حاليًا. حاول لاحقًا.", 503) };
   }
-  const [access] = await getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.email, courseSlug)).limit(1);
+  const [access] = await getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.id, courseSlug)).limit(1);
   if (!access) return { ok: false, response: jsonError("لا توجد صلاحية نشطة لهذه المادة", 403) };
   return { ok: true, user, client };
 }
