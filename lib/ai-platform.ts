@@ -108,7 +108,7 @@ export async function getAiEntitlement(user: { id: number; email: string }): Pro
       lte(userRewards.issuedAt, now),
       or(isNull(userRewards.expiresAt), gt(userRewards.expiresAt, now)),
     )).limit(20).catch(() => []),
-    getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeUserAccessWhere(user.email, now)).limit(1).catch(() => []),
+    getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeUserAccessWhere(user.id, now)).limit(1).catch(() => []),
   ]);
   if (entitlementRows.length) {
     const chosen = entitlementRows.sort((left, right) => {
