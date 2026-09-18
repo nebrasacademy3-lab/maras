@@ -141,7 +141,7 @@ try {
       await editor.setViewportSize({ width: 390, height: 844 }); await assertFits(editor, "admin/staff/phone");
       await editor.screenshot({ path: `${dir}/staff-phone.png`, fullPage: true, animations: "disabled" });
       await editor.goto(origin + "/admin/content", { waitUntil: "domcontentloaded" });
-      const title = editor.getByRole("textbox", { name: "عنوان الصفحة", exact: true }); await title.fill("عنوان اختبار لم ينشر — مراس العلم");
+      const title = editor.locator("fieldset textarea").first(); await title.fill("عنوان اختبار لم ينشر — مراس العلم");
       await editor.getByRole("button", { name: "نشر التغييرات", exact: true }).click();
       await editor.getByRole("dialog", { name: "نشر محتوى الصفحات؟" }).getByRole("button", { name: "إلغاء والعودة" }).click();
       assert.equal(await title.inputValue(), "عنوان اختبار لم ينشر — مراس العلم"); await assertFits(editor, "admin/content/phone");
