@@ -137,6 +137,7 @@ export async function applyConfirmedRefundToOrder(input: { orderNumber: string; 
         await tx.insert(courseAccessEvents).values({
           eventKey: `order:${current.orderNumber}:refund:${access.courseSlug}`,
           accessId: access.id,
+          userId: access.userId,
           userEmail: access.userEmail,
           courseSlug: access.courseSlug,
           action: "refund_revoked",
