@@ -116,7 +116,8 @@ try {
       await dialog.getByLabel("رمز تطبيق المصادقة").fill(mfa.totpCodeForCounter(secret, Math.floor(Date.now() / 30_000)));
       await dialog.getByRole("button", { name: "تحقق ومتابعة", exact: true }).click();
       await editor.getByRole("button", { name: "حفظ المشرف", exact: true }).waitFor({ state: "hidden" });
-      await editor.waitForFunction(async (email) => { const response = await fetch(`/api/admin/staff?q=${encodeURIComponent(email)}`); if (!response.ok) return false; const payload = await response.json(); return payload.staff?.some((member) => member.email === email); }, uniqueEmail);\n      assert.equal((await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, uniqueEmail))).length, 1);
+      await editor.waitForFunction(async (email) => { const response = await fetch(`/api/admin/staff?q=${encodeURIComponent(email)}`); if (!response.ok) return false; const payload = await response.json(); return payload.staff?.some((member) => member.email === email); }, uniqueEmail);
+      assert.equal((await db.select({ id: schema.users.id }).from(schema.users).where(eq(schema.users.email, uniqueEmail))).length, 1);
       checks.push("real staff mutation pauses for MFA, cancellation preserves fields and writes nothing; verified retry creates exactly one supervisor");
       await editor.setViewportSize({ width: 390, height: 844 }); await assertFits(editor, "admin/staff/phone");
       await editor.screenshot({ path: `${dir}/staff-phone.png`, fullPage: true, animations: "disabled" });
