@@ -1,0 +1,89 @@
+name: Reviewed durable storage tree
+on:
+  push:
+    branches: [audit/source-8b7e3ee]
+    paths: [.github/workflows/cleanup-resumable-review-tree.yml]
+permissions:
+  contents: write
+jobs:
+  reviewed-tree:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 1d08c5ca28cb54e87998ab643cc46d15263d4661
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: review
+          persist-credentials: false
+      - name: Verify literal patches and create an unattached tree only
+        env:
+          GH_OBJECT_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, subprocess, urllib.request
+          repo = 'nebrasacademy3-lab/maras'
+          base = '1d08c5ca28cb54e87998ab643cc46d15263d4661'
+          base_tree = '8d99baf268f151d74e328664caf5de7cee0c7183'
+          expected_tree = '3eec0d0c93edf94299caa69b68a53d7c4478005b'
+          assert os.environ['GITHUB_REPOSITORY'] == repo
+          def git(*args):
+              return subprocess.check_output(['git', '-C', 'source', *args], text=True).strip()
+          assert git('rev-parse', 'HEAD') == base
+          assert git('rev-parse', 'HEAD^{tree}') == base_tree
+          patches = []
+          for number in range(1, 10):
+              text = pathlib.Path(f'review/audit/cleanup-resumable/{number:02d}.patch').read_text()
+              # Correct only a transcription-space before Git file headers.
+              # No source line is transformed; the complete resulting tree is pinned below.
+              text = text.replace('\n diff --git ', '\ndiff --git ')
+              patches.append(text)
+          patch = pathlib.Path(os.environ['RUNNER_TEMP']) / 'literal-storage.patch'
+          patch.write_text(''.join(patches))
+          subprocess.run(['git', '-C', 'source', 'apply', '--index', '--unidiff-zero', '--check', str(patch)], check=True)
+          subprocess.run(['git', '-C', 'source', 'apply', '--index', '--unidiff-zero', str(patch)], check=True)
+          actual = git('write-tree')
+          assert actual == expected_tree, f'Tree mismatch: {actual}'
+          paths = git('diff', '--cached', '--name-only', 'HEAD').splitlines()
+          assert len(paths) == 38, f'Unexpected file count: {len(paths)}'
+          entries = []
+          def post(kind, data):
+              assert kind in ('blobs', 'trees')  # No ref, commit, workflow, secret or deployment mutation.
+              request = urllib.request.Request(f'https://api.github.com/repos/{repo}/git/{kind}',
+                  data=json.dumps(data).encode(), method='POST', headers={
+                      'Authorization': 'Bearer ' + os.environ['GH_OBJECT_TOKEN'],
+                      'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json',
+                      'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=60) as response:
+                  return json.load(response)
+          for path in paths:
+              relative = pathlib.PurePosixPath(path)
+              assert not relative.is_absolute() and '..' not in relative.parts and '.git' not in relative.parts
+              mode, sha, stage = git('ls-files', '-s', '--', path).split('\t')[0].split()
+              assert mode == '100644' and stage == '0'
+              data = (pathlib.Path('source') / path).read_bytes()
+              assert hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() == sha
+              result = post('blobs', {'content': data.decode('utf-8'), 'encoding': 'utf-8'})
+              assert result['sha'] == sha, path
+              entries.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': sha})
+          tree = post('trees', {'base_tree': base_tree, 'tree': entries})
+          assert tree['sha'] == expected_tree
+          out = pathlib.Path(os.environ['RUNNER_TEMP']) / 'storage-tree-evidence'
+          out.mkdir()
+          (out / 'reviewed-tree.json').write_text(json.dumps({'repository': repo, 'base': base,
+              'base_tree': base_tree, 'tree': tree['sha'], 'files': entries, 'verified': True,
+              'branch_modified': False, 'tests_run_here': False}, indent=2))
+          print('REVIEWED_UNATTACHED_TREE', tree['sha'], 'FILES', len(entries))
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewed-cleanup-resumable-tree
+          path: ${{ runner.temp }}/storage-tree-evidence/
+          retention-days: 1
+          if-no-files-found: error
