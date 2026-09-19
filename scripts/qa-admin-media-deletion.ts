@@ -59,7 +59,7 @@ async function assertRemoved(asset: Awaited<ReturnType<typeof media>>) {
   for (const key of [asset.source, ...asset.output.keys]) assert.equal(await exists(key), false, key);
 }
 try {
-  await db.insert(s.catalogCourses).values(courses.map(slug => ({ slug, institutionSlug: "qa-university", title: "Synthetic media deletion", status: "draft" })));
+  await db.insert(s.catalogCourses).values(courses.map(slug => ({ slug, institutionSlug: "qa-university", specialtySlug: "qa-science", title: "Synthetic media deletion", status: "draft" })));
   const units = await db.insert(s.courseUnitsDb).values([
     { courseSlug: courses[0], title: "Empty unit" }, { courseSlug: courses[0], title: "Selected unit" },
     { courseSlug: courses[0], title: "Sibling unit" }, { courseSlug: courses[1], title: "Other course" },
