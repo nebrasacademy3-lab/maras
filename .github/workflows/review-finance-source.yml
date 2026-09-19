@@ -1,0 +1,55 @@
+name: Reviewed finance readiness source
+on:
+  push:
+    branches: [audit/finance-readiness-20260919]
+permissions:
+  contents: write
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: transport
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: c5783c0f0e0990115e0a8e25b761bd43f2f6b216
+          persist-credentials: false
+          path: source
+      - name: Verify reviewed patch and final tree
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, lzma, pathlib
+          patch = lzma.decompress(base64.b64decode(pathlib.Path('transport/.audit-finance.patch.xz.b64').read_text().strip(), validate=True))
+          assert len(patch) == 14339
+          assert hashlib.sha256(patch).hexdigest() == '1903866554593de4951fc433b9656688f90018f0973c8aa1afadc1d19a5c2430'
+          pathlib.Path('reviewed.patch').write_bytes(patch)
+          PY
+          cd source
+          test "$(git rev-parse HEAD^{tree})" = 1b8ee4b504105f5c3443a6b6f3a33158966bf592
+          git apply --check --index ../reviewed.patch
+          git apply --index ../reviewed.patch
+          test "$(git write-tree)" = 44334ec7ba35119db22ed3bd2a22bb00c3ce9a97
+      - name: Store exact Git objects without updating refs
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import {execFileSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
+          const repo=process.env.GITHUB_REPOSITORY;
+          if(repo!=='nebrasacademy3-lab/maras')throw new Error('Wrong repository');
+          const git=(...args)=>execFileSync('git',args);
+          const paths=git('diff','--cached','--name-only','-z').toString().split('\0').filter(Boolean).sort();
+          if(JSON.stringify(paths)!==JSON.stringify(['components/finance-center.tsx','scripts/qa-platform-browser.mjs','tests/finance-hydration.test.mjs']))throw new Error('Wrong reviewed file set');
+          const post=async(kind,body)=>{const r=await fetch(`https://api.github.com/repos/${repo}/git/${kind}`,{method:'POST',headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error(`Git ${kind}: ${r.status}`);return r.json();};
+          const tree=[];
+          for(const path of paths){const bytes=git('show',`:${path}`);const sha=createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');const obj=await post('blobs',{encoding:'base64',content:bytes.toString('base64')});if(obj.sha!==sha)throw new Error('Blob mismatch');tree.push({path,mode:'100644',type:'blob',sha});}
+          const result=await post('trees',{base_tree:'1b8ee4b504105f5c3443a6b6f3a33158966bf592',tree});
+          if(result.sha!=='44334ec7ba35119db22ed3bd2a22bb00c3ce9a97')throw new Error('Tree mismatch');
+          console.log(JSON.stringify({tree:result.sha,updatedRefs:0}));
+          JS
