@@ -1,17 +1,22 @@
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { resolve } from "node:path";
+import { isAbsolute, normalize, resolve } from "node:path";
 
 /** Fixed argv, never a shell command, even when configuration contains metacharacters. */
 export function runtimeServices(env = process.env) {
-  const enabled = (name) => {
-    const value = (env[name] || "true").trim().toLowerCase();
+  const enabled = (name, fallback = "true") => {
+    const value = (env[name] || fallback).trim().toLowerCase();
     if (value !== "true" && value !== "false") throw new Error(`Invalid ${name}; use true or false`);
     return value === "true";
   };
   const port = (env.PORT || "3000").trim();
   if (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new Error("Invalid PORT");
   const services = [];
+  if (enabled("GEMINI_PROJECT_REFRESH_ENABLED", "false")) {
+    const tokenFile = env.GEMINI_CONTROL_PLANE_TOKEN_FILE || "";
+    if (!isAbsolute(tokenFile) || normalize(tokenFile) !== tokenFile || tokenFile.includes("\0") || tokenFile.length > 4096) throw new Error("Invalid Gemini renewal token source");
+    services.push({ name: "gemini-project-refresh-worker", command: process.execPath, args: ["--import", "./scripts/ai-worker-runtime.mjs", "--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/gemini-project-refresh-worker.ts"] });
+  }
   if (enabled("STORAGE_CLEANUP_WORKER_ENABLED")) services.push({ name: "storage-cleanup-worker", command: process.execPath, args: ["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/storage-cleanup-worker.ts"] });
   if (enabled("VIDEO_WORKER_ENABLED")) {
     if ((env.VIDEO_WORKER_ONCE || "").trim().toLowerCase() === "true") throw new Error("VIDEO_WORKER_ONCE is not allowed in the supervised service");

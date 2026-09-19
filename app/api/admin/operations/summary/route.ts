@@ -1,4 +1,5 @@
 import { and, count, eq, inArray, isNull, lte, sql } from "drizzle-orm";
+import { geminiRefreshSummary } from "@/lib/gemini-refresh-state";
 import { storageCleanupSummary } from "@/lib/storage-cleanup";
 import { getDb } from "@/db";
 import { courseAccess, courseBundles, courseRequestFiles, courseWaitlist, notificationsDb, orders, paymentSettlementLines, refundRequests, supportReplyFiles } from "@/db/schema";
@@ -13,7 +14,7 @@ export async function GET(request: Request) {
   const twoHoursAgo = new Date(now.getTime() - 2 * 3_600_000).toISOString();
   const inFourteenDays = new Date(now.getTime() + 14 * 86_400_000).toISOString();
   const openOrders = ["pending", "initiated", "in_progress", "authorized", "verification_pending", "payment_review"];
-  const [waitlist, bundles, requestScans, supportScans, pendingOrders, expiringAccess, pendingPush, pendingRefunds, unmatchedSettlements, cleanup] = await Promise.all([
+  const [waitlist, bundles, requestScans, supportScans, pendingOrders, expiringAccess, pendingPush, pendingRefunds, unmatchedSettlements, cleanup, geminiVerification] = await Promise.all([
     db.select({ status: courseWaitlist.status, total: count() }).from(courseWaitlist).groupBy(courseWaitlist.status),
     db.select({ status: courseBundles.status, total: count() }).from(courseBundles).groupBy(courseBundles.status),
     db.select({ total: count() }).from(courseRequestFiles).where(eq(courseRequestFiles.scanStatus, "pending")),
@@ -24,9 +25,11 @@ export async function GET(request: Request) {
     db.select({ total: count() }).from(refundRequests).where(inArray(refundRequests.status, ["pending", "first_approved", "approved_pending_provider", "provider_pending"])),
     db.select({ total: count() }).from(paymentSettlementLines).where(eq(paymentSettlementLines.status, "unmatched")),
     storageCleanupSummary(db),
+    geminiRefreshSummary(),
   ]);
   return Response.json({
     ok: true,
+    geminiVerification,
     waitlist: Object.fromEntries(waitlist.map((row) => [row.status, Number(row.total)])),
     bundles: Object.fromEntries(bundles.map((row) => [row.status, Number(row.total)])),
     queues: {

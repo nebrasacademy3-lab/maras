@@ -41,7 +41,8 @@ test("operations center exposes funnel, cohorts, SLA and automation queues", asy
   assert.match(analytics, /retention30Rate/);
   assert.match(operations, /filesPendingScan/);
   assert.match(operations, /refundPending/);
-  assert.match(center, /الأتمتة والطوابير/);
+  assert.match(await read("lib/operations-contract.ts"), /الأتمتة والطوابير/);
+  assert.match(center, /OPERATIONS_PANELS/);
   assert.match(center, /تشغيل المهام الآمنة/);
 });
 

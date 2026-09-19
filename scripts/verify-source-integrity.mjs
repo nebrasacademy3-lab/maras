@@ -13,7 +13,7 @@ const report = files.map(path => {
 });
 console.log("REVIEWED_SOURCE_INTEGRITY", JSON.stringify({ head, tree, event: process.env.GITHUB_EVENT_NAME || "local", workflowSha: process.env.GITHUB_SHA || null, files: report }));
 for (const file of report) assert.equal(file.matchesCommit, true, `Tracked source changed during build/test: ${file.path}`);
-for (const name of ["admin-navigation.ts", "staff-policy.ts", "staff-contracts.ts", "information-contract.ts", "device-access-policy.ts"]) assert.equal(readFileSync(`lib/${name}`, "utf8"), readFileSync(`mobile/src/lib/${name}`, "utf8"), `Native/server contract mismatch: ${name}`);
+for (const name of ["admin-navigation.ts", "staff-policy.ts", "staff-contracts.ts", "information-contract.ts", "device-access-policy.ts", "operations-contract.ts"]) assert.equal(readFileSync(`lib/${name}`, "utf8"), readFileSync(`mobile/src/lib/${name}`, "utf8"), `Native/server contract mismatch: ${name}`);
 const testSource = readFileSync("tests/auth-device-enrollment-behavior.test.mjs", "utf8");
 console.log("DEVICE_TEST_DECLARATIONS", JSON.stringify(testSource.split("\n").filter(line => /^test\(/.test(line))));
 console.log("DEVICE_POLICY_TEST_BINDINGS", JSON.stringify(testSource.split("\n").filter(line => /devicePolicy|const devices =/.test(line))));

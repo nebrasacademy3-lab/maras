@@ -3,6 +3,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiKeyFingerprint, geminiEnvironmentKeys, validGeminiApiKey } from "@/lib/ai-keys";
+import { assertGeminiRefreshFence } from "@/lib/gemini-refresh-state";
+import type { GeminiRefreshFence } from "@/lib/gemini-refresh-state";
 import { GEMINI_PROOF_TTL_SECONDS, parseGeminiProjectPlan } from "@/lib/gemini-project-policy";
 
 async function controlJson(url: string, token: string, signal: AbortSignal): Promise<Record<string, unknown>> {
@@ -20,12 +22,14 @@ async function controlJson(url: string, token: string, signal: AbortSignal): Pro
 }
 
 /** Read-only Google calls. The returned object contains no API key or bearer token. */
-export async function verifyGoogleProject(value: unknown, accessToken: string) {
+export async function verifyGoogleProject(value: unknown, accessToken: string, externalSignal?: AbortSignal) {
   const plan = parseGeminiProjectPlan(value);
   if (!accessToken || accessToken.length > 8192 || /\s/.test(accessToken)) throw new Error("AI_PROJECT_VERIFICATION_FAILED");
   const observedAt = new Date();
-  const signal = AbortSignal.timeout(12_000);
+  const timeout = AbortSignal.timeout(12_000);
+  const signal = externalSignal ? AbortSignal.any([timeout, externalSignal]) : timeout;
   try {
+    signal.throwIfAborted();
     const project = await controlJson(`https://cloudresourcemanager.googleapis.com/v3/projects/${plan.projectNumber}`, accessToken, signal);
     if (project.name !== `projects/${plan.projectNumber}` || project.projectId !== plan.projectId || project.state !== "ACTIVE") throw new Error("identity");
     for (const key of plan.keys) {
@@ -45,16 +49,21 @@ export async function verifyGoogleProject(value: unknown, accessToken: string) {
   } catch { throw new Error("AI_PROJECT_VERIFICATION_FAILED"); }
 }
 
-/** CLI-only control operation. No HTTP action accepts a user-supplied proof. */
-export async function refreshGeminiProject(value: unknown, accessToken: string) {
+/** Operator CLI or fenced renewal worker only. No HTTP action accepts a user-supplied proof. */
+export async function refreshGeminiProject(value: unknown, accessToken: string, options: { signal?: AbortSignal; fence?: GeminiRefreshFence } = {}) {
   const plan = parseGeminiProjectPlan(value);
   const started = new Date();
+  const planDigest = createHash("sha256").update(JSON.stringify(plan)).digest("hex");
+  const fence = options.fence ? { projectNumber: options.fence.projectNumber, leaseId: options.fence.leaseId, planRevision: options.fence.planRevision } : undefined;
+  if (fence && fence.projectNumber !== plan.projectNumber) throw new Error("AI_PROJECT_VERIFICATION_FAILED");
   try {
-    const proof = await verifyGoogleProject(plan, accessToken);
+    const proof = await verifyGoogleProject(plan, accessToken, options.signal);
     const environment = new Set(geminiEnvironmentKeys().map(aiKeyFingerprint));
     const revision = randomUUID();
     await getDb().transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`gemini-project:${plan.projectNumber}`}, 0))`);
+      options.signal?.throwIfAborted();
+      if (fence) await assertGeminiRefreshFence(tx, fence);
       const current = await tx.execute(sql`SELECT project_id, verified_at FROM gemini_projects WHERE project_number = ${plan.projectNumber}`);
       if (current.rows[0] && (current.rows[0].project_id !== plan.projectId || new Date(current.rows[0].verified_at as string).getTime() > proof.observedAt.getTime())) throw new Error("AI_PROJECT_VERIFICATION_SUPERSEDED");
       const clock = await tx.execute(sql`SELECT clock_timestamp() AS now`);
@@ -65,10 +74,12 @@ export async function refreshGeminiProject(value: unknown, accessToken: string) 
         const binding = await tx.execute(sql`SELECT project_number FROM gemini_project_keys WHERE fingerprint = ${key.fingerprint}`);
         if (binding.rows[0] && binding.rows[0].project_number !== plan.projectNumber) throw new Error("AI_PROJECT_KEY_CONFLICT");
       }
+      options.signal?.throwIfAborted();
+      if (fence) await assertGeminiRefreshFence(tx, fence);
       const until = new Date(proof.observedAt.getTime() + GEMINI_PROOF_TTL_SECONDS * 1000);
-      await tx.execute(sql`INSERT INTO gemini_projects(project_number, project_id, billing_state, evidence_digest, revision, verified_at, valid_until)
-        VALUES (${plan.projectNumber}, ${plan.projectId}, ${proof.billingState}, ${proof.evidenceDigest}, ${revision}, ${proof.observedAt.toISOString()}, ${until.toISOString()})
-        ON CONFLICT(project_number) DO UPDATE SET billing_state = EXCLUDED.billing_state, evidence_digest = EXCLUDED.evidence_digest, revision = EXCLUDED.revision, verified_at = EXCLUDED.verified_at, valid_until = EXCLUDED.valid_until`);
+      await tx.execute(sql`INSERT INTO gemini_projects(project_number, project_id, billing_state, evidence_digest, revision, verified_at, valid_until, plan_digest)
+        VALUES (${plan.projectNumber}, ${plan.projectId}, ${proof.billingState}, ${proof.evidenceDigest}, ${revision}, ${proof.observedAt.toISOString()}, ${until.toISOString()}, ${planDigest})
+        ON CONFLICT(project_number) DO UPDATE SET billing_state = EXCLUDED.billing_state, evidence_digest = EXCLUDED.evidence_digest, revision = EXCLUDED.revision, verified_at = EXCLUDED.verified_at, valid_until = EXCLUDED.valid_until, plan_digest = EXCLUDED.plan_digest`);
       await tx.execute(sql`DELETE FROM gemini_project_keys WHERE project_number = ${plan.projectNumber}`);
       for (const key of plan.keys) await tx.execute(sql`INSERT INTO gemini_project_keys(fingerprint, project_number, resource_name) VALUES (${key.fingerprint}, ${plan.projectNumber}, ${key.resource})`);
       // Never erase shared usage or a provider backoff during a proof refresh.
@@ -77,10 +88,14 @@ export async function refreshGeminiProject(value: unknown, accessToken: string) 
         VALUES (${plan.projectNumber}, ${m.model}, ${m.rpm}, ${m.tpm}, ${m.rpd}, ${m.concurrent}, ${m.inputTokens}, ${m.outputTokens})
         ON CONFLICT(project_number, model) DO UPDATE SET rpm = EXCLUDED.rpm, tpm = EXCLUDED.tpm, rpd = EXCLUDED.rpd, concurrent = EXCLUDED.concurrent, input_tokens = EXCLUDED.input_tokens, output_tokens = EXCLUDED.output_tokens, enabled = true`);
     });
-    return { projectNumber: plan.projectNumber, projectId: plan.projectId, billingState: proof.billingState, keyCount: plan.keys.length, modelCount: plan.models.length, validUntil: new Date(proof.observedAt.getTime() + GEMINI_PROOF_TTL_SECONDS * 1000).toISOString() };
+    return { revision, projectNumber: plan.projectNumber, projectId: plan.projectId, billingState: proof.billingState, keyCount: plan.keys.length, modelCount: plan.models.length, validUntil: new Date(proof.observedAt.getTime() + GEMINI_PROOF_TTL_SECONDS * 1000).toISOString() };
   } catch {
     // A failed refresh revokes older evidence, but cannot revoke a newer refresh.
-    await getDb().execute(sql`UPDATE gemini_projects SET valid_until = LEAST(valid_until, clock_timestamp()) WHERE project_number = ${plan.projectNumber} AND verified_at <= ${started.toISOString()}::timestamptz`).catch(() => undefined);
+    await getDb().transaction(async tx => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`gemini-project:${plan.projectNumber}`}, 0))`);
+      if (fence) await assertGeminiRefreshFence(tx, fence);
+      await tx.execute(sql`UPDATE gemini_projects SET valid_until = LEAST(valid_until, clock_timestamp()) WHERE project_number = ${plan.projectNumber} AND verified_at <= ${started.toISOString()}::timestamptz`);
+    }).catch(() => undefined);
     throw new Error("AI_PROJECT_VERIFICATION_FAILED");
   }
 }

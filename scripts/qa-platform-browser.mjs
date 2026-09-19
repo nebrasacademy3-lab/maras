@@ -202,6 +202,23 @@ try {
       await assertFits(editor, "admin/owner/phone");
       checks.push("owner navigation has eight unified groups, no legacy sidebar, and a searchable keyboard-accessible mobile drawer");
       await editor.setViewportSize({ width: 1440, height: 1000 });
+      stage("gemini-operational-verification");
+      const operational = await admin.request.get(origin + "/api/admin/operations/summary");
+      assert.equal(operational.status(), 200);
+      assert.match(operational.headers()["cache-control"], /no-store/);
+      const verification = (await operational.json()).geminiVerification;
+      assert.deepEqual(Object.keys(verification).sort(), ["projects", "verified", "expired", "expiring", "scheduled", "checking", "failed", "overdue"].sort());
+      assert.ok(Object.values(verification).every(value=>Number.isSafeInteger(value)&&value>=0));
+      await editor.goto(origin + "/admin/operations", { waitUntil: "domcontentloaded" });
+      await editor.getByRole("heading", {name:"إثبات مشاريع Gemini",exact:true}).waitFor();
+      for (const theme of ["light","dark"]) {
+        const dark=theme==="dark";
+        if ((await editor.evaluate(()=>document.documentElement.classList.contains("dark")))!==dark) await editor.getByRole("button",{name:dark?"تفعيل الوضع الليلي":"تفعيل الوضع الفاتح"}).first().click();
+        await editor.waitForFunction(value=>document.documentElement.classList.contains("dark")===value,dark);
+        for (const width of [320,390,768,1440]) { await editor.setViewportSize({width,height:width<500?844:1000}); await assertFits(editor,`gemini-operations/${theme}/${width}`); }
+        await editor.screenshot({path:`${dir}/gemini-operations-${theme}.png`,fullPage:true,animations:"disabled"});
+      }
+      checks.push("Gemini verification API returns only eight aggregate counters; real operations UI renders at four widths in both themes");
       await editor.goto(origin + "/admin/staff", { waitUntil: "domcontentloaded" });
       await editor.getByRole("button", { name: "إضافة مشرف", exact: true }).click();
       const uniqueEmail = `qa-browser-${name}-${randomBytes(5).toString("hex")}@example.test`;
@@ -281,6 +298,9 @@ try {
       assert.equal(await viewerPage.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').count(), 0);
       assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/staff")).status()));
       assert.ok([401, 403].includes((await viewer.request.get(origin + "/api/admin/videos/direct?fileName=x.mp4&size=10")).status()));
+      const forbiddenOperations = await viewer.request.get(origin + "/api/admin/operations/summary");
+      assert.equal(forbiddenOperations.status(), 403);
+      assert.equal("geminiVerification" in await forbiddenOperations.json(), false);
       checks.push("catalog-view supervisor has no owner/finance/content navigation and is denied staff and upload-signing APIs");
       await viewer.close();
       if (errors.length) {

@@ -135,6 +135,7 @@ jobs:
             .data/qa-admin-stable-ownership-report.json
             .data/qa-admin-media-deletion-report.json
             .data/qa-gemini-projects-report.json
+            .data/qa-gemini-refresh-report.json
             .data/qa-storage-cleanup-report.json
             .data/qa-resumable-video-report.json
             .data/qa-resumable-browser-report.json
