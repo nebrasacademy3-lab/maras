@@ -39,7 +39,8 @@ test("timestamped notes remain account scoped and seekable on web and native", a
     read("mobile/app/lesson/[courseSlug]/[lessonId].tsx"),
   ]);
   assert.match(migration, /timestamp_seconds/);
-  assert.match(notesApi, /eq\(lessonNotes\.userEmail, user\.email\)/);
+  assert.match(notesApi, /eq\(lessonNotes\.userId, user\.id\)/);
+  assert.doesNotMatch(notesApi, /eq\(lessonNotes\.userEmail,\s*user\.email\)/);
   assert.match(notesApi, /timestampSeconds: noteTime/);
   assert.match(notesApi, /MAX_NOTES_PER_LESSON = 500/);
   assert.match(notesApi, /\.limit\(MAX_NOTES_PER_LESSON\)/);

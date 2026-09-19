@@ -29,7 +29,7 @@ function configuredAny(...names: string[]) {
 }
 
 const databaseReadiness = createReadinessProbe(signal => checkDatabaseReadiness(getPool(), signal));
-const storageReadiness = createReadinessProbe(() => checkStorageReadiness());
+const storageReadiness = createReadinessProbe(signal => checkStorageReadiness(signal));
 
 export async function GET(request: Request) {
   return observeRequest(request, "health.readiness", async (requestId) => {

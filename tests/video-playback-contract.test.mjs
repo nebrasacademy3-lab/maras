@@ -14,7 +14,8 @@ test("web player preserves the entire video frame instead of cropping it", async
 test("signed video URLs remain playable by native/browser media range requests", async () => {
   const [route, access] = await Promise.all([read("app/api/video/[lessonId]/route.ts"), read("lib/video-access.ts")]);
   assert.match(route, /authorizeVideoRequest\(request, lessonId, courseSlug/);
-  assert.match(access, /activeCourseAccessWhere\(grant\.email, courseSlug\)/);
+  assert.match(access, /activeCourseAccessWhere\(user\.id, courseSlug\)/);
+  assert.doesNotMatch(access, /activeCourseAccessWhere\(grant\.email/);
   assert.match(access, /if \(!user\)/);
   assert.match(access, /if \(user\.email !== grant\.email\)/);
   assert.match(route, /Accept-Ranges/);
