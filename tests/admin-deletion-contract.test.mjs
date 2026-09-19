@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const helper = await readFile(join(here, "../lib/admin-deletion.ts"), "utf8");
+const queue = await readFile(join(here, "../lib/storage-cleanup.ts"), "utf8");
 const route = await readFile(join(here, "../app/api/admin/console/route.ts"), "utf8");
 
 test("admin deletion uses a fixed entity whitelist", () => {
@@ -41,8 +42,9 @@ test("financial and audit records are protected from deletion", () => {
 test("account safety and storage cleanup contracts are present", () => {
   assert.match(helper, /لا يمكنك حذف حسابك الإداري الحالي/);
   assert.match(helper, /لا يمكن حذف آخر مدير نشط/);
-  assert.match(helper, /deleteObject\(item\.key, item\.provider\)/);
-  assert.match(helper, /deletePrefix\(item\.key, item\.provider\)/);
+  assert.match(queue, /deleteObject\(job\.key, job\.provider, signal\)/);
+  assert.match(helper, /enqueueStorageCleanupTx\(tx, cleanup\)/);
+  assert.match(queue, /deletePrefix\(job\.key, job\.provider, signal\)/);
   assert.match(helper, /cleanupTargets/, "cleanup failures retain provider and operation for review");
   assert.match(helper, /cleanup_warning/);
   assert.match(helper, /supportReplyFiles/);

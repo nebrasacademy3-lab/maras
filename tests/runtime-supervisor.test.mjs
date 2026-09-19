@@ -62,17 +62,17 @@ async function fixture(t, specs, shutdownMs = 1000) {
 
 test("runtime service configuration enables required workers and uses fixed argv", () => {
   const services = runtimeServices({});
-  assert.deepEqual(services.map(service => service.name), ["video-worker", "ai-worker", "web"]);
+  assert.deepEqual(services.map(service => service.name), ["storage-cleanup-worker", "video-worker", "ai-worker", "web"]);
   assert.ok(services.every(service => service.command === process.execPath));
   assert.ok(services.find(service => service.name === "ai-worker").args.includes("./scripts/ai-worker-runtime.mjs"));
-  assert.equal(runtimeServices({ VIDEO_WORKER_ENABLED: "false", AI_WORKER_ENABLED: " FALSE ", PORT: "8080" }).length, 1);
+  assert.equal(runtimeServices({ VIDEO_WORKER_ENABLED: "false", AI_WORKER_ENABLED: " FALSE ", STORAGE_CLEANUP_WORKER_ENABLED: "false", PORT: "8080" }).length, 1);
   assert.deepEqual(runtimeServices({ PORT: "8080" }).at(-1).args.slice(-2), ["--port", "8080"]);
   assert.equal(shutdownTimeout({}), 25000);
   assert.equal(shutdownTimeout({ RUNTIME_SHUTDOWN_TIMEOUT_MS: "1000" }), 1000);
 });
 
 test("invalid runtime flags, one-shot workers and shell-like port values fail closed", () => {
-  for (const env of [{ PORT: "3000; echo secret" }, { PORT: "0" }, { PORT: "65536" }, { VIDEO_WORKER_ENABLED: "yes" }, { AI_WORKER_ENABLED: "unexpected" }, { VIDEO_WORKER_ONCE: "true" }]) assert.throws(() => runtimeServices(env));
+  for (const env of [{ PORT: "3000; echo secret" }, { PORT: "0" }, { PORT: "65536" }, { VIDEO_WORKER_ENABLED: "yes" }, { AI_WORKER_ENABLED: "unexpected" }, { STORAGE_CLEANUP_WORKER_ENABLED: "yes" }, { VIDEO_WORKER_ONCE: "true" }]) assert.throws(() => runtimeServices(env));
   for (const value of ["NaN", "Infinity", "0", "60001", "1.1", "-1"]) assert.throws(() => shutdownTimeout({ RUNTIME_SHUTDOWN_TIMEOUT_MS: value }));
 });
 
@@ -102,9 +102,9 @@ test("spawn failure fails safely without logging command paths or raw errors", {
 });
 
 test("SIGTERM gracefully stops every enabled service without an error exit", { timeout: 10000 }, async t => {
-  const f = await fixture(t, [{ name: "video-worker" }, { name: "ai-worker" }, { name: "web" }]); await f.ready();
+  const f = await fixture(t, [{ name: "storage-cleanup-worker" }, { name: "video-worker" }, { name: "ai-worker" }, { name: "web" }]); await f.ready();
   f.driver.kill("SIGTERM"); assert.deepEqual(await f.done, { code: 0, signal: null }); await f.stopped();
-  for (const name of ["video-worker", "ai-worker", "web"]) assert.equal(await exists(join(f.directory, name + ".stopped")), true);
+  for (const name of ["storage-cleanup-worker", "video-worker", "ai-worker", "web"]) assert.equal(await exists(join(f.directory, name + ".stopped")), true);
   assert.equal(f.events.some(event => event.event === "runtime.shutdown.forced"), false);
 });
 

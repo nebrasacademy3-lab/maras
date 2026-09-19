@@ -1,12 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
+import { cleanupFixture } from "./helpers/storage-cleanup-fixture.mjs";
 import { nativeSource } from "./helpers/native-source.mjs";
 import { ownershipDatabase, sql, eq, and, inArray } from "./helpers/ownership-database.mjs";
 
 const source = await readFile(new URL("../lib/admin-deletion.ts", import.meta.url), "utf8");
 const names = source.match(/import\s*\{[^}]*\}\s*from\s*["']@\/db\/schema["']/g)
   .flatMap(declaration => declaration.split("{")[1].split("}")[0].split(",").map(name => name.trim()).filter(Boolean));
+names.push("storageCleanupJobs");
 const policy = await nativeSource("lib/storage-policy.ts");
 const attempt = "a55b3b39-2045-46e5-b52b-0f69187f9d32";
 function asset(id, lessonId = "lesson-a", overrides = {}) {
@@ -37,7 +39,7 @@ async function fixture(data = initial(), { failCleanup = false, rollback = false
     const transaction = h.db.transaction;
     h.db.transaction = callback => transaction(async tx => { await callback(tx); throw new Error("Synthetic rollback"); });
   }
-  const deletion = await nativeSource("lib/admin-deletion.ts", { ...h.tables, sql, eq, and, inArray, ...policy,
+  const deletion = await nativeSource("lib/admin-deletion.ts", { ...h.tables, sql, eq, and, inArray, ...policy, ...cleanupFixture(h, remove),
     deleteObject: (key, provider) => remove("object", key, provider), deletePrefix: (key, provider) => remove("prefix", key, provider) });
   return { ...h, ...deletion, cleanup, peak: () => peak };
 }

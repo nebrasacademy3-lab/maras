@@ -12,6 +12,7 @@ export function runtimeServices(env = process.env) {
   const port = (env.PORT || "3000").trim();
   if (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535) throw new Error("Invalid PORT");
   const services = [];
+  if (enabled("STORAGE_CLEANUP_WORKER_ENABLED")) services.push({ name: "storage-cleanup-worker", command: process.execPath, args: ["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/storage-cleanup-worker.ts"] });
   if (enabled("VIDEO_WORKER_ENABLED")) {
     if ((env.VIDEO_WORKER_ONCE || "").trim().toLowerCase() === "true") throw new Error("VIDEO_WORKER_ONCE is not allowed in the supervised service");
     services.push({ name: "video-worker", command: process.execPath, args: ["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/video-worker.ts"] });

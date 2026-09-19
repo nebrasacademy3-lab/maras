@@ -38,7 +38,7 @@ export function requiredRoutePermissions(path: string, method = "GET"): string[]
   const global = ["data.all"];
   if (["/api/admin/me", "/api/admin/console", "/api/admin/security/mfa"].includes(path)) return [];
   if (path === "/api/admin/logos") return ["catalog.manage", "data.all"];
-  if (path === "/api/admin/videos/direct") return ["catalog.manage"];
+  if (path === "/api/admin/videos/direct" || path === "/api/admin/videos/resumable") return ["catalog.manage"];
   if (path === "/api/admin/staff") return ["staff.manage"];
   if (/^\/api\/admin\/(finance|refunds|settlements|purchases)(\/|$)/.test(path)) return [read ? "finance.view" : "finance.manage", ...global];
   if (/^\/api\/admin\/students\/[^/]+\/devices$/.test(path)) return [read ? "students.devices.view" : "students.devices.manage"];

@@ -190,6 +190,11 @@ export async function GET(request: Request) {
     return jsonError("التخزين المباشر غير مفعّل", 503);
   }
 
+  // Compatible-looking S3 endpoints are not assumed to enforce conditional PUT.
+  // Use the application resumable route until provider-specific acceptance is recorded.
+  if (process.env.S3_DIRECT_UPLOAD_CONDITIONAL_WRITES_VERIFIED !== "true") {
+    return jsonError("الرفع المباشر معطل حتى اعتماد قيوده؛ استخدم الرفع القابل للاستئناف من لوحة الإدارة", 503);
+  }
   const course = await getCourseCatalog(courseSlug, true);
 
   if (!course?.units.some((unit) =>
@@ -218,11 +223,12 @@ export async function GET(request: Request) {
     `${crypto.randomUUID()}.${extensionFor(contentType)}`;
 
   try {
-    const uploadUrl = await createDirectUploadUrl(objectKey, contentType);
+    const uploadUrl = await createDirectUploadUrl(objectKey, contentType, sizeBytes);
 
     return Response.json({
       ok: true,
       uploadUrl,
+      uploadHeaders: { "content-type": contentType, "if-none-match": "*" },
       objectKey,
       courseSlug,
       lessonId,

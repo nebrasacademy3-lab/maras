@@ -15,6 +15,8 @@ const pool = new pg.Pool({ connectionString: url });
 try { await migrate(drizzle(pool), { migrationsFolder: "./drizzle" }); } finally { await pool.end(); }
 await run(["scripts/qa-order-ownership-migration.mjs"]);
 await run(["scripts/qa-stable-user-ownership-migration.mjs"]);
+await run(["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/qa-storage-cleanup.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-resumable-video.ts"]);
 await run(["scripts/qa-seed.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-tools.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-security.ts"]);
@@ -43,6 +45,7 @@ try {
     throw new Error("Loopback browser security profile was not baked into the QA build");
   }
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-protected-video.ts"]);
+  await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-resumable-browser.mjs"]);
   await run(["scripts/qa-study-browser.mjs"]);
   await run(["scripts/qa-supervisor-browser.mjs"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-browser.mjs"]);

@@ -7,7 +7,8 @@ import {
   passwordResetTokens, paymentEvents, pushDevices, supportReplyFiles, supportReplies,
   supportTickets, supervisorAssignments, userRoles, users, videoAssets,
 } from "@/db/schema";
-import { deleteObject, deletePrefix, type StorageProvider } from "@/lib/storage";
+import type { StorageProvider } from "@/lib/storage";
+import { enqueueStorageCleanupTx, processStorageCleanupBatch } from "@/lib/storage-cleanup";
 import { normalizeStorageKey, normalizeStoragePrefix } from "@/lib/storage-policy";
 
 export const ADMIN_DELETION_TYPES = [
@@ -28,7 +29,7 @@ type CleanupKey = { key: string; source: string; provider?: StorageProvider; rec
 type VideoCleanupAsset = Pick<typeof videoAssets.$inferSelect,
   "id" | "objectKey" | "storageProvider" | "derivativesPrefix" | "hlsMasterObjectKey" | "thumbnailObjectKey">;
 
-function collectVideoCleanup(asset: VideoCleanupAsset, cleanup: CleanupKey[]) {
+export function collectVideoCleanup(asset: VideoCleanupAsset, cleanup: CleanupKey[]) {
   // A row's provider is immutable cleanup context; a new default must not move
   // deletion to a different bucket or to a same-named local file.
   if (asset.storageProvider !== "local" && asset.storageProvider !== "s3") {
@@ -67,6 +68,7 @@ type DeletionResult = {
   deleted: true;
   deletedRows: number;
   cleanupFailures: string[];
+  cleanupPending: number;
 };
 
 type DeletionInput = {
@@ -165,6 +167,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
   if (input.confirmation !== "حذف") throw new DeletionPolicyError("اكتب كلمة «حذف» حرفيًا لتأكيد العملية المدمرة.");
   // All destructive branches below follow children-first deletion order.
   const cleanup: CleanupKey[] = [];
+  let cleanupJobIds: string[] = [];
   let deletedRows = 0;
   let before: unknown = null;
   const now = nowIso();
@@ -363,28 +366,29 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       await tx.delete(supervisorAssignments).where(eq(supervisorAssignments.id, id));
       deletedRows = 1;
     }
+    cleanupJobIds = await enqueueStorageCleanupTx(tx, cleanup);
     await tx.insert(auditLogs).values({ actorEmail: input.actor, action: "delete", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson(before), afterJson: null, ipAddress: input.ipAddress, createdAt: now });
   });
 
-  const uniqueCleanup = [...new Map(cleanup.map((item) => [
-    `${item.provider ?? "active"}:${item.recursive ? "prefix" : "object"}:${item.key}`, item,
-  ])).values()];
   const cleanupFailures: string[] = [];
   const cleanupTargets: CleanupKey[] = [];
-  // Large course deletions must not fan out an unbounded number of transfers.
-  for (let index = 0; index < uniqueCleanup.length; index += 10) {
-    await Promise.all(uniqueCleanup.slice(index, index + 10).map(async (item) => {
-      try {
-        if (item.recursive) await deletePrefix(item.key, item.provider);
-        else await deleteObject(item.key, item.provider);
-      } catch {
-        cleanupFailures.push(`${item.source}:${item.key}`);
-        cleanupTargets.push(item);
-      }
-    }));
+  let completed = 0;
+  // Do not hold an HTTP request open indefinitely. The durable worker recovers
+  // jobs not drained here, including process death immediately after COMMIT.
+  const signal = AbortSignal.timeout(20_000);
+  for (let offset = 0; offset < cleanupJobIds.length && !signal.aborted; offset += 10) {
+    try {
+      const batch = await processStorageCleanupBatch(db, { limit: 10, jobIds: cleanupJobIds.slice(offset, offset + 10), signal });
+      completed += batch.completed;
+      for (const job of batch.failed) { cleanupFailures.push(`${job.source}:${job.key}`); cleanupTargets.push(job); }
+    } catch {
+      // Parent deletion has committed: do not return an ambiguous failed delete
+      // or discard queued work when the database/transport temporarily fails.
+      break;
+    }
   }
   if (cleanupFailures.length) {
-    await db.insert(auditLogs).values({ actorEmail: input.actor, action: "cleanup_warning", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson({ failedObjects: cleanupFailures, cleanupTargets }), afterJson: null, ipAddress: input.ipAddress, createdAt: nowIso() });
+    try { await db.insert(auditLogs).values({ actorEmail: input.actor, action: "cleanup_warning", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson({ failedObjects: cleanupFailures, cleanupTargets }), afterJson: null, ipAddress: input.ipAddress, createdAt: nowIso() }); } catch { /* Durable job retains the failure when audit transport is unavailable. */ }
   }
-  return { entityType: input.entityType, entityId: input.entityId, deleted: true, deletedRows, cleanupFailures };
+  return { entityType: input.entityType, entityId: input.entityId, deleted: true, deletedRows, cleanupFailures, cleanupPending: cleanupJobIds.length - completed };
 }

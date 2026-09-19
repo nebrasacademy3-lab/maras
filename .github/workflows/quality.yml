@@ -134,6 +134,10 @@ jobs:
             .data/qa-stable-user-ownership-migration-report.json
             .data/qa-admin-stable-ownership-report.json
             .data/qa-admin-media-deletion-report.json
+            .data/qa-storage-cleanup-report.json
+            .data/qa-resumable-video-report.json
+            .data/qa-resumable-browser-report.json
+            .data/resumable-browser/
             .data/protected-video/report.json
             .data/protected-video/real-playback.png
           include-hidden-files: true

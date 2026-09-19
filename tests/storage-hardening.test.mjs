@@ -52,5 +52,7 @@ test("presigned direct uploads validate key, destination, lifetime and HEAD dead
   assert.match(source, /Unexpected signed upload destination/);
   assert.match(source, /Invalid signed upload lifetime/);
   assert.match(source, /AbortSignal\.timeout\(10_000\)/);
-  assert.match(source, /signableHeaders:\s*new Set\(\["content-type"\]\)/);
+  assert.match(source, /signableHeaders:\s*new Set\(\["content-type", "content-length", "if-none-match"\]\)/);
+  assert.match(source, /ContentLength: sizeBytes/);
+  assert.match(source, /IfNoneMatch: "\*"/);
 });

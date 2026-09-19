@@ -71,8 +71,10 @@ function validContentType(value: string) {
 export async function createDirectUploadUrl(
   key: string,
   contentType: string,
+  sizeBytes: number,
   expiresIn = 900,
 ) {
+  if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > 200 * 1024 * 1024) throw new Error("Invalid signed upload size");
   const { client, bucket, endpoint, forcePathStyle } = getStorageConfig();
   const normalizedKey = normalizeStorageKey(key);
   const normalizedType = contentType.trim().toLowerCase();
@@ -83,10 +85,12 @@ export async function createDirectUploadUrl(
     Bucket: bucket,
     Key: normalizedKey,
     ContentType: normalizedType,
+    ContentLength: sizeBytes,
+    IfNoneMatch: "*",
   });
   const signed = await getSignedUrl(client, command, {
     expiresIn: ttl,
-    signableHeaders: new Set(["content-type"]),
+    signableHeaders: new Set(["content-type", "content-length", "if-none-match"]),
   });
   const url = new URL(signed);
   const expectedHost = forcePathStyle
@@ -99,6 +103,8 @@ export async function createDirectUploadUrl(
   ) {
     throw new Error("Unexpected signed upload destination");
   }
+  const signedHeaders = new Set((url.searchParams.get("X-Amz-SignedHeaders") || "").split(";"));
+  if (!["content-type", "content-length", "if-none-match"].every(header => signedHeaders.has(header))) throw new Error("Required upload constraints were not signed");
   const signedTtl = Number(url.searchParams.get("X-Amz-Expires"));
   if (!Number.isFinite(signedTtl) || signedTtl < 60 || signedTtl > ttl) {
     throw new Error("Invalid signed upload lifetime");

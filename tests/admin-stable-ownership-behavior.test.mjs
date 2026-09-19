@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
+import { cleanupFixture } from "./helpers/storage-cleanup-fixture.mjs";
 import { nativeSource } from "./helpers/native-source.mjs";
 import { ownershipDatabase, sql, eq, and, or, gt, isNull, inArray } from "./helpers/ownership-database.mjs";
 
@@ -12,6 +13,7 @@ for (const path of paths) {
   const declarations = text.match(/import\s*\{[^}]*\}\s*from\s*["']@\/db\/schema["']/g) || [];
   for (const declaration of declarations) for (const name of declaration.split("{")[1].split("}")[0].split(",")) if (name.trim()) names.add(name.trim());
 }
+names.add("storageCleanupJobs");
 const primitives = { sql, eq, and, or, gt, isNull, inArray };
 const owner = { id: 11, email: "reused@example.test", status: "active", role: "student", fullName: "Current owner" };
 const prior = { id: 22, email: "changed@example.test", status: "active", role: "student", fullName: "Historical owner" };
@@ -22,7 +24,7 @@ function request(body) { return new Request("https://maras-qa.example/api/admin/
 async function fixture(initial = {}, settings = {}) {
   const h = ownershipDatabase([...names], { users: [owner, prior, administrator], ...initial });
   const removed = [], pushes = [], notices = [];
-  const deletion = await nativeSource("lib/admin-deletion.ts", { ...h.tables, ...primitives, deleteObject: async key => { assert.equal(h.inTransaction(), false); assert.equal(h.committed(), true); removed.push(key); } });
+  const deletion = await nativeSource("lib/admin-deletion.ts", { ...h.tables, ...primitives, ...cleanupFixture(h, async (_kind, key) => { removed.push(key); }), deleteObject: async key => { assert.equal(h.inTransaction(), false); assert.equal(h.committed(), true); removed.push(key); } });
   const ownership = await nativeSource("lib/order-ownership.ts", { ...h.tables, ...primitives });
   class AdminMfaError extends Error { status = 403; code = "ADMIN_MFA_REQUIRED"; }
   const route = await nativeSource("app/api/admin/console/route.ts", {

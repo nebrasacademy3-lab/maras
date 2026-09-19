@@ -28,6 +28,16 @@ function s3Config(): S3Config | null {
   return { endpoint, bucket: normalizeStorageBucket(bucketValue), region: process.env.S3_REGION?.trim() || "auto", accessKeyId, secretAccessKey, forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false" };
 }
 export function activeStorageProvider(): StorageProvider { return s3Config() ? "s3" : "local"; }
+/** Non-secret identity of the configured destination; queued deletion must never
+ * silently follow a changed bucket, endpoint, path style or local root. */
+export function storageLocationFingerprint(provider: StorageProvider): string {
+  if (provider === "local") return sha256(JSON.stringify(["local", storageRoot()]));
+  if (provider !== "s3") throw new Error("Unknown storage provider");
+  const config = s3Config();
+  if (!config) throw new Error("The requested S3 provider is not configured");
+  return sha256(JSON.stringify(["s3", s3BucketUrl(config).toString()]));
+}
+
 
 function insideRoot(root: string, path: string) {
   const rel = relative(root, path);
@@ -224,7 +234,8 @@ export async function getObject(key: string, range?: ObjectRange, provider: Stor
   }
   return { body: response.body, size: contentLength ?? 0, etag: response.headers.get("etag") || `"${sha256(normalizedKey).slice(0, 24)}"`, contentType: response.headers.get("content-type") || undefined };
 }
-export async function deleteObject(key: string, provider: StorageProvider = activeStorageProvider()) {
+export async function deleteObject(key: string, provider: StorageProvider = activeStorageProvider(), signal?: AbortSignal) {
+  signal?.throwIfAborted();
   const normalizedKey = normalizeStorageKey(key);
   if (provider === "local") {
     try { await rm(await safeLocalPath(normalizedKey), { force: true }); }
@@ -233,16 +244,16 @@ export async function deleteObject(key: string, provider: StorageProvider = acti
   }
   const config = s3Config();
   if (!config) throw new Error("The requested S3 provider is not configured");
-  const response = await s3Request("DELETE", s3ObjectUrl(config, normalizedKey), sha256(""));
+  const response = await s3Request("DELETE", s3ObjectUrl(config, normalizedKey), sha256(""), { signal });
   await response.body?.cancel().catch(() => undefined);
 }
 function decodeXml(value: string) { return value.replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&amp;/g, "&"); }
-async function listS3Keys(prefix: string) {
+async function listS3Keys(prefix: string, callerSignal?: AbortSignal) {
   const config = s3Config();
   if (!config) throw new Error("The requested S3 provider is not configured");
   const normalizedPrefix = normalizeStoragePrefix(prefix) + "/";
   const keys = new Set<string>(), seenTokens = new Set<string>();
-  const signal = AbortSignal.timeout(120_000);
+  const signal = callerSignal ? AbortSignal.any([callerSignal, AbortSignal.timeout(120_000)]) : AbortSignal.timeout(120_000);
   let continuation = "", pages = 0;
   do {
     signal.throwIfAborted();
@@ -265,7 +276,8 @@ async function listS3Keys(prefix: string) {
   } while (continuation);
   return [...keys];
 }
-export async function deletePrefix(prefix: string, provider: StorageProvider = activeStorageProvider()) {
+export async function deletePrefix(prefix: string, provider: StorageProvider = activeStorageProvider(), signal?: AbortSignal) {
+  signal?.throwIfAborted();
   const normalized = normalizeStoragePrefix(prefix);
   if (provider === "local") {
     try { await rm(await safeLocalPath(normalized), { recursive: true, force: true }); }
@@ -273,8 +285,8 @@ export async function deletePrefix(prefix: string, provider: StorageProvider = a
     return;
   }
   // Validate every listing page before issuing even the first deletion.
-  const keys = await listS3Keys(normalized);
-  for (let index = 0; index < keys.length; index += 10) await Promise.all(keys.slice(index, index + 10).map(key => deleteObject(key, "s3")));
+  const keys = await listS3Keys(normalized, signal);
+  for (let index = 0; index < keys.length; index += 10) await Promise.all(keys.slice(index, index + 10).map(key => deleteObject(key, "s3", signal)));
 }
 export async function materializeObject(key: string, destination: string, provider: StorageProvider = activeStorageProvider()) {
   const object = await getObject(key, undefined, provider);

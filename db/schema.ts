@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -1345,3 +1345,60 @@ export const accountMfaRecoveryCodes = pgTable("account_mfa_recovery_codes", {
   usedAt: text("used_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, table => [uniqueIndex("account_mfa_recovery_unique").on(table.userId, table.codeHash)]);
+
+// Independent outbox rows survive deletion of their parent media records.
+export const storageCleanupJobs = pgTable("storage_cleanup_jobs", {
+  id: text("id").primaryKey(),
+  objectKey: text("object_key").notNull(),
+  provider: text("provider").notNull(),
+  operation: text("operation").notNull(),
+  locationFingerprint: text("location_fingerprint").notNull(),
+  source: text("source").notNull(),
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  availableAt: timestamp("available_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  leaseToken: text("lease_token"),
+  errorCode: text("error_code"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, t => [
+  index("storage_cleanup_pending_idx").on(t.availableAt, t.createdAt, t.id).where(sql`${t.status} = 'pending'`),
+  index("storage_cleanup_lease_idx").on(t.leaseUntil).where(sql`${t.status} = 'processing'`),
+  check("storage_cleanup_jobs_provider_check", sql`${t.provider} IN ('local', 's3')`),
+  check("storage_cleanup_jobs_operation_check", sql`${t.operation} IN ('object', 'prefix')`),
+  check("storage_cleanup_jobs_location_fingerprint_check", sql`${t.locationFingerprint} ~ '^[a-f0-9]{64}$'`),
+  check("storage_cleanup_jobs_status_check", sql`${t.status} IN ('pending', 'processing', 'completed', 'blocked')`),
+  check("storage_cleanup_jobs_attempts_check", sql`${t.attempts} BETWEEN 0 AND 12`),
+  check("storage_cleanup_lease_check", sql`(${t.status} = 'processing' AND ${t.leaseToken} IS NOT NULL AND ${t.leaseUntil} IS NOT NULL) OR (${t.status} <> 'processing' AND ${t.leaseToken} IS NULL AND ${t.leaseUntil} IS NULL)`),
+  check("storage_cleanup_complete_check", sql`(${t.status} = 'completed') = (${t.completedAt} IS NOT NULL)`),
+]);
+
+export const resumableVideoUploads = pgTable("resumable_video_uploads", {
+  id: text("id").primaryKey(),
+  requestKey: text("request_key").notNull(),
+  ownerId: integer("owner_id").notNull(),
+  courseSlug: text("course_slug").notNull(),
+  lessonId: text("lesson_id").notNull(),
+  objectKey: text("object_key").notNull(),
+  provider: text("provider").notNull(),
+  locationFingerprint: text("location_fingerprint").notNull(),
+  contentType: text("content_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  hashesJson: text("hashes_json").notNull(),
+  receivedJson: text("received_json").notNull().default("[]"),
+  status: text("status").notNull().default("open"),
+  assetId: integer("asset_id"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull().default(sql`clock_timestamp() + interval '24 hours'`),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, t => [
+  uniqueIndex("resumable_owner_request_unique").on(t.ownerId, t.requestKey),
+  index("resumable_expiry_idx").on(t.status, t.expiresAt),
+  check("resumable_video_uploads_owner_id_check", sql`${t.ownerId} > 0`),
+  check("resumable_video_uploads_provider_check", sql`${t.provider} IN ('local', 's3')`),
+  check("resumable_video_uploads_location_fingerprint_check", sql`${t.locationFingerprint} ~ '^[a-f0-9]{64}$'`),
+  check("resumable_video_uploads_size_bytes_check", sql`${t.sizeBytes} BETWEEN 1 AND 209715200`),
+  check("resumable_video_uploads_status_check", sql`${t.status} IN ('open', 'completed', 'expired', 'blocked')`),
+]);

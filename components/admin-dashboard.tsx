@@ -8,7 +8,8 @@ import { CONSOLE_VIEWS } from "@/lib/staff-policy";
 import { StaffManager } from "@/components/staff-manager";
 import { confirmAction, promptAction } from "@/lib/interaction-events";
 import { adminFetch } from "@/lib/admin-client";
-import { finalizeVideoUpload, readBrowserVideoDuration } from "@/lib/video-upload-finalize";
+import { readBrowserVideoDuration } from "@/lib/video-upload-finalize";
+import { uploadResumableVideo } from "@/lib/resumable-video-client";
 import { SearchableSelect } from "@/components/searchable-select";
 /* eslint-disable @next/next/no-img-element -- administrator-provided institution logos use mixed official sources */
 
@@ -24,7 +25,7 @@ import { AppearanceSettings, ThemeToggle } from "@/components/theme-provider";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { automaticIdentifier } from "@/lib/public-identifiers";
-import { uploadProgressLabel, uploadWithProgress, type UploadProgress } from "@/lib/upload-client";
+import { uploadProgressLabel, type UploadProgress } from "@/lib/upload-client";
 import { SupportChatThread } from "@/components/support-chat";
 
 type Institution = { slug:string; name:string; nameEn:string; region:string; type:string; logo?:string; domain?:string; specialties:number; courses:number; featured?:boolean; status?:string; directorySourceUrl?:string; aliases?:string[]; verificationStatus?:string };
@@ -232,63 +233,10 @@ function VideoUpload({
     });
 
     try {
-      setMessage("جارٍ تجهيز الرفع المباشر...");
-
-      const params = new URLSearchParams({
-        courseSlug,
-        lessonId,
-        contentType,
-        sizeBytes: String(file.size),
-      });
-
-      const presignResponse = await adminFetch(
-        `/api/admin/videos/direct?${params.toString()}`,
-        {
-          credentials: "same-origin",
-          signal: controller.signal,
-        },
-      );
-
-      const presign = await presignResponse.json() as {
-        error?: string;
-        uploadUrl?: string;
-        objectKey?: string;
-      };
-
-      if (!presignResponse.ok || !presign.uploadUrl || !presign.objectKey) {
-        throw new Error(presign.error || "تعذر تجهيز الرفع المباشر");
-      }
-
-      setMessage("جارٍ رفع الفيديو مباشرة إلى التخزين...");
-
-      await uploadWithProgress({
-        url: presign.uploadUrl,
-        method: "PUT",
-        body: file,
-        withCredentials: false,
-        headers: {
-          "content-type": contentType,
-        },
-        timeoutMs: 30 * 60_000,
-        signal: controller.signal,
-        onProgress: setProgress,
-      });
-
-      setMessage("جارٍ ربط الفيديو بالدرس...");
-
-      const suppliedDuration = await readBrowserVideoDuration(file, controller.signal);
-      const result = await finalizeVideoUpload({
-        courseSlug, lessonId, objectKey: presign.objectKey,
-        contentType, sizeBytes: file.size, durationSeconds: suppliedDuration,
-      }, controller.signal);
-
-      const duration = result.asset?.durationSeconds || 0;
-
-      setMessage(
-        duration
-          ? `تم رفع الفيديو مباشرة: ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`
-          : "تم رفع الفيديو وربطه بالدرس",
-      );
+      const durationSeconds = await readBrowserVideoDuration(file, controller.signal);
+      await uploadResumableVideo({ file, courseSlug, lessonId, contentType, durationSeconds,
+        signal: controller.signal, onProgress: setProgress, onPhase: setMessage });
+      setMessage("تم التحقق من الفيديو وربطه بالدرس؛ تجهيز الجودات جارٍ. عند انقطاع رفع آخر، اختر الملف نفسه لاستئنافه.");
 
       element.reset();
       await reload();
@@ -307,6 +255,7 @@ function VideoUpload({
 
   return (
     <form onSubmit={submit}>
+      <p className="live-hint">عند انقطاع الإنترنت أو إيقاف الرفع، أعد اختيار الملف نفسه والحساب والدرس نفسيهما خلال 24 ساعة لاستكمال الأجزاء الناقصة.</p>
       <label>
         الدرس
         <SearchableSelect name="lessonId" required>
@@ -321,7 +270,7 @@ function VideoUpload({
 
       <label className="live-file">
         <Upload size={18} />
-        <span>اختر ملف الفيديو حتى 200MB · رفع مباشر سريع</span>
+        <span>اختر ملف الفيديو حتى 200MB · رفع قابل للاستئناف</span>
         <input
           name="file"
           type="file"
@@ -343,7 +292,7 @@ function VideoUpload({
             onClick={() => abortRef.current?.abort()}
           >
             <X size={14} />
-            إلغاء الرفع
+            إيقاف مؤقت
           </button>
         </div>
       )}

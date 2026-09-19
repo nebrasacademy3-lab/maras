@@ -267,6 +267,20 @@
       "when": 1789779600000,
       "tag": "0037_stable_user_ownership",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789830000000,
+      "tag": "0038_storage_cleanup_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789830100000,
+      "tag": "0039_resumable_video_uploads",
+      "breakpoints": true
     }
   ]
 }
