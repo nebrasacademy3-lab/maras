@@ -7,6 +7,7 @@ import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { chromium, firefox, webkit } from "playwright";
 import { eq, inArray, sql } from "drizzle-orm";
+import { observeBrowserContext } from "./qa-browser-observations.mjs";
 const fixtures = JSON.parse(readFileSync(".data/qa-fixtures.json", "utf8"));
 const local = JSON.parse(readFileSync(".data/qa-database.json", "utf8"));
 const origin = "http://127.0.0.1:3100";
@@ -24,12 +25,16 @@ try {
   for (const name of names) {
     const course = `qa-browser-resume-${randomUUID().slice(0, 8)}`, lesson = `${course}-lesson`, uploadIds = [];
     const browser = await engines[name].launch({ headless: true, ...(name === "chromium" && process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH ? { executablePath: process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH } : {}) });
+    const observations = [];
+    const evidenceDirectory = `.data/resumable-browser/${name}`;
+    mkdirSync(evidenceDirectory, { recursive: true });
     try {
       await db.insert(s.catalogCourses).values({ slug: course, institutionSlug: "qa-university", specialtySlug: "qa-science", title: "فيديو اختبار الاستئناف", status: "published" });
       const [unit] = await db.insert(s.courseUnitsDb).values({ courseSlug: course, title: "وحدة اختبار الاستئناف" }).returning();
       await db.insert(s.lessonsDb).values({ id: lesson, courseSlug: course, unitId: unit.id, title: "درس اختبار الاستئناف" });
       const context = await browser.newContext({ locale: "ar-SA", viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
       context.setDefaultTimeout(30000);
+      await observeBrowserContext(context, observations, "resumable-upload");
       await context.addCookies([{ name: "meras_session", value: owner.token, domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" }]);
       const page = await context.newPage(), errors = [], parts = []; let interrupted = false;
       page.on("pageerror", error => errors.push(error.message));
@@ -41,8 +46,8 @@ try {
         }
         return route.continue();
       });
-      async function selectFile() {
-        await page.goto(origin + "/admin?view=content", { waitUntil: "domcontentloaded" });
+      async function selectFile(navigate = true) {
+        if (navigate) await page.goto(origin + "/admin?view=content", { waitUntil: "domcontentloaded" });
         await page.locator(`.live-content-grid select option[value="${course}"]`).first().waitFor({ state: "attached" });
         await page.locator(".live-content-grid select").first().selectOption(course, { force: true });
         const form = page.locator("form").filter({ has: page.locator('input[name="file"]') });
@@ -59,7 +64,9 @@ try {
       assert.deepEqual(JSON.parse(session.receivedJson), [0]); assert.equal(session.status, "open");
       const markers = await page.evaluate(() => Object.entries(localStorage).filter(([key]) => key.startsWith("meras.video-resume.v1:")));
       assert.equal(markers.length, 1); assert.equal(markers[0][1], session.requestKey);
-      await page.reload({ waitUntil: "domcontentloaded" }); form = await selectFile();
+      // One real reload is the scenario under test. A second immediate goto
+      // would discard the freshly mounting document and its in-flight requests.
+      await page.reload({ waitUntil: "domcontentloaded" }); form = await selectFile(false);
       await form.getByRole("button", { name: "رفع إلى المخزن الخاص", exact: true }).click();
       await form.getByText(/تم التحقق من الفيديو وربطه بالدرس/).waitFor({ timeout: 60000 });
       assert.deepEqual(parts, [0, 1, 1], "reload must never resend acknowledged part zero");
@@ -75,6 +82,7 @@ try {
       const report = { engine: name, passed: 4, checks: ["real browser upload is interrupted after first committed chunk", "reload and reselect resume only the missing chunk", "HTTP finalization stores exact MP4 bytes and one durable processing job", "resume marker cleared and responsive completion UI captured"], clientExceptions: errors, liveProviders: false, physicalDevices: false };
       reports.push(report); console.log("RESUMABLE_BROWSER", JSON.stringify(report));
     } finally {
+      writeFileSync(`${evidenceDirectory}/observations.json`, JSON.stringify(observations, null, 2));
       await browser.close();
       const assets = await db.select({ id: s.videoAssets.id }).from(s.videoAssets).where(eq(s.videoAssets.courseSlug, course));
       for (const asset of assets) await deletion.deleteAdminEntity(db, { entityType: "video", entityId: String(asset.id), actor: "qa-resume-browser@example.test", ipAddress: "127.0.0.1", confirmation: "حذف" });
