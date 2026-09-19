@@ -1,0 +1,202 @@
+diff --git a/.env.example b/.env.example
+index d1c8540373eda5eb44004e07cc748e8b1199dc50..5e2438b8d0a3f49df13bb8707ca66153f974c25e 100644
+--- a/.env.example
++++ b/.env.example
+@@ -137,0 +138,8 @@ RUNTIME_SHUTDOWN_TIMEOUT_MS=25000
++
++# Durable deletion worker. Required when hosting the default supervised runtime.
++# External worker deployments must run scripts/storage-cleanup-worker.ts instead.
++STORAGE_CLEANUP_WORKER_ENABLED=true
++
++# Keep direct presigned PUT disabled until this S3 provider passes conditional-write/CORS/size acceptance.
++# The bounded resumable server upload works independently of this gate.
++S3_DIRECT_UPLOAD_CONDITIONAL_WRITES_VERIFIED=false
+diff --git a/.github/workflows/quality.yml b/.github/workflows/quality.yml
+index d87c2a77a5f0f65a01f4d1d5e9ee9f84ca7a6b08..a31a766c8500b0944185d9dd968297d49cccd36a 100644
+--- a/.github/workflows/quality.yml
++++ b/.github/workflows/quality.yml
+@@ -136,0 +137,4 @@ jobs:
++            .data/qa-storage-cleanup-report.json
++            .data/qa-resumable-video-report.json
++            .data/qa-resumable-browser-report.json
++            .data/resumable-browser/
+diff --git a/app/api/admin/operations/summary/route.ts b/app/api/admin/operations/summary/route.ts
+index 98c52b8382151bedd5369e4731dca25291695744..6a4f825f3e7b8a1e912ba480460414d9b8428133 100644
+--- a/app/api/admin/operations/summary/route.ts
++++ b/app/api/admin/operations/summary/route.ts
+@@ -1,0 +2 @@ import { and, count, eq, inArray, isNull, lte, sql } from "drizzle-orm";
++import { storageCleanupSummary } from "@/lib/storage-cleanup";
+@@ -15 +16 @@ export async function GET(request: Request) {
+-  const [waitlist, bundles, requestScans, supportScans, pendingOrders, expiringAccess, pendingPush, pendingRefunds, unmatchedSettlements] = await Promise.all([
++  const [waitlist, bundles, requestScans, supportScans, pendingOrders, expiringAccess, pendingPush, pendingRefunds, unmatchedSettlements, cleanup] = await Promise.all([
+@@ -24,0 +26 @@ export async function GET(request: Request) {
++    storageCleanupSummary(db),
+@@ -30,0 +33,3 @@ export async function GET(request: Request) {
++      storageCleanupPending: cleanup.pending + cleanup.processing,
++      storageCleanupBlocked: cleanup.blocked,
++      storageCleanupOverdue: cleanup.overdue,
+diff --git a/app/api/admin/videos/direct/route.ts b/app/api/admin/videos/direct/route.ts
+index ecd5e5a7d557c9de37ecd04333f78840c445a5d1..7bbfb4969f68c75d80946b05cdcb517a3804ab53 100644
+--- a/app/api/admin/videos/direct/route.ts
++++ b/app/api/admin/videos/direct/route.ts
+@@ -192,0 +193,5 @@ export async function GET(request: Request) {
++  // Compatible-looking S3 endpoints are not assumed to enforce conditional PUT.
++  // Use the application resumable route until provider-specific acceptance is recorded.
++  if (process.env.S3_DIRECT_UPLOAD_CONDITIONAL_WRITES_VERIFIED !== "true") {
++    return jsonError("الرفع المباشر معطل حتى اعتماد قيوده؛ استخدم الرفع القابل للاستئناف من لوحة الإدارة", 503);
++  }
+@@ -221 +226 @@ export async function GET(request: Request) {
+-    const uploadUrl = await createDirectUploadUrl(objectKey, contentType);
++    const uploadUrl = await createDirectUploadUrl(objectKey, contentType, sizeBytes);
+@@ -225,0 +231 @@ export async function GET(request: Request) {
++      uploadHeaders: { "content-type": contentType, "if-none-match": "*" },
+diff --git a/app/api/admin/videos/resumable/route.ts b/app/api/admin/videos/resumable/route.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..6a6a838057d1f42290defcf3b3678be750e424c8
+--- /dev/null
++++ b/app/api/admin/videos/resumable/route.ts
+@@ -0,0 +1,53 @@
++import { getDb } from "@/db";
++import { checkRateLimit, getSessionUser, roleAllowed, sameOriginRequest } from "@/lib/auth";
++import { isNativeAppRequest } from "@/lib/mobile-api";
++import { supervisorCourseAllowed } from "@/lib/supervisor-data-scope";
++import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
++import { invalidateCatalogCache } from "@/lib/catalog-store";
++import { completeResumableVideo, expireResumableVideos, resumableVideoStatus, startResumableVideo, writeResumableVideoPart } from "@/lib/resumable-video-upload";
++import { ResumableUploadError } from "@/lib/resumable-upload-policy";
++
++export const runtime = "nodejs";
++export const dynamic = "force-dynamic";
++async function handle(request: Request) {
++  const headers = { "cache-control": "private, no-store", "x-content-type-options": "nosniff" };
++  try {
++    if (!sameOriginRequest(request) && !isNativeAppRequest(request)) throw new ResumableUploadError("مصدر الطلب غير صالح", 403);
++    const user = await getSessionUser(request);
++    if (!roleAllowed(user, ["admin", "supervisor"]) || !user) throw new ResumableUploadError("غير مصرح برفع الفيديو", 403);
++    if (!await checkRateLimit("resumable-video", `user:${user.id}`, 240, 60)) throw new ResumableUploadError("طلبات رفع كثيرة؛ حاول بعد قليل", 429);
++    const reauthorize = async (courseSlug: string) => {
++      const current = await getSessionUser(request);
++      if (!current || current.id !== user.id || !roleAllowed(current, ["admin", "supervisor"]) || !await supervisorCourseAllowed(current, courseSlug)) throw new ResumableUploadError("المادة خارج نطاق التفويض الحالي", 403);
++      return current.id;
++    };
++    const db = getDb(), params = new URL(request.url).searchParams, id = params.get("id") || "";
++    let result;
++    if (request.method === "GET") result = await resumableVideoStatus(db, user.id, id, reauthorize);
++    else if (request.method === "PUT") {
++      const part = params.get("part");
++      if (part === null || !/^\d{1,2}$/.test(part)) throw new ResumableUploadError("رقم الجزء غير صالح");
++      result = await writeResumableVideoPart(db, user.id, id, Number(part), request, reauthorize);
++    } else if (request.method === "DELETE") {
++      await resumableVideoStatus(db, user.id, id, reauthorize);
++      result = { cancelled: await expireResumableVideos(db, user.id, id) };
++    } else {
++      const body = await readBoundedJsonObject(request, 16 * 1024);
++      if (body.ownerId !== undefined && body.ownerId !== user.id) throw new ResumableUploadError("تغيّر الحساب؛ أعد فتح صفحة الإدارة", 403);
++      if (body.action === "start") result = await startResumableVideo(db, user.id, body, reauthorize);
++      else if (body.action === "complete" && typeof body.id === "string") {
++        result = await completeResumableVideo(db, user.id, body.id, reauthorize, request.signal, typeof body.durationSeconds === "number" ? body.durationSeconds : 0);
++        invalidateCatalogCache();
++      } else throw new ResumableUploadError("إجراء الرفع غير صالح");
++    }
++    return Response.json({ ok: true, ...result }, { headers });
++  } catch (error) {
++    const status = error instanceof ResumableUploadError ? error.status : error instanceof RequestBodyTooLargeError ? 413 : request.signal.aborted ? 408 : 503;
++    const message = error instanceof ResumableUploadError ? error.message : status === 413 ? "حجم الجزء أكبر من المسموح" : "لم تكتمل العملية؛ يمكنك استئناف الرفع دون إعادة الأجزاء المكتملة";
++    return Response.json({ ok: false, error: message }, { status, headers });
++  }
++}
++export const GET = handle;
++export const POST = handle;
++export const PUT = handle;
++export const DELETE = handle;
+diff --git a/components/admin-dashboard.tsx b/components/admin-dashboard.tsx
+index ffe8d9b0e1fef666b55b7b27b0dc77004714ff6d..4e37474f67a418e5e0cbd9853633435b8be87a21 100644
+--- a/components/admin-dashboard.tsx
++++ b/components/admin-dashboard.tsx
+@@ -11 +11,2 @@ import { adminFetch } from "@/lib/admin-client";
+-import { finalizeVideoUpload, readBrowserVideoDuration } from "@/lib/video-upload-finalize";
++import { readBrowserVideoDuration } from "@/lib/video-upload-finalize";
++import { uploadResumableVideo } from "@/lib/resumable-video-client";
+@@ -27 +28 @@ import { automaticIdentifier } from "@/lib/public-identifiers";
+-import { uploadProgressLabel, uploadWithProgress, type UploadProgress } from "@/lib/upload-client";
++import { uploadProgressLabel, type UploadProgress } from "@/lib/upload-client";
+@@ -235,57 +236,4 @@ function VideoUpload({
+-      setMessage("جارٍ تجهيز الرفع المباشر...");
+-
+-      const params = new URLSearchParams({
+-        courseSlug,
+-        lessonId,
+-        contentType,
+-        sizeBytes: String(file.size),
+-      });
+-
+-      const presignResponse = await adminFetch(
+-        `/api/admin/videos/direct?${params.toString()}`,
+-        {
+-          credentials: "same-origin",
+-          signal: controller.signal,
+-        },
+-      );
+-
+-      const presign = await presignResponse.json() as {
+-        error?: string;
+-        uploadUrl?: string;
+-        objectKey?: string;
+-      };
+-
+-      if (!presignResponse.ok || !presign.uploadUrl || !presign.objectKey) {
+-        throw new Error(presign.error || "تعذر تجهيز الرفع المباشر");
+-      }
+-
+-      setMessage("جارٍ رفع الفيديو مباشرة إلى التخزين...");
+-
+-      await uploadWithProgress({
+-        url: presign.uploadUrl,
+-        method: "PUT",
+-        body: file,
+-        withCredentials: false,
+-        headers: {
+-          "content-type": contentType,
+-        },
+-        timeoutMs: 30 * 60_000,
+-        signal: controller.signal,
+-        onProgress: setProgress,
+-      });
+-
+-      setMessage("جارٍ ربط الفيديو بالدرس...");
+-
+-      const suppliedDuration = await readBrowserVideoDuration(file, controller.signal);
+-      const result = await finalizeVideoUpload({
+-        courseSlug, lessonId, objectKey: presign.objectKey,
+-        contentType, sizeBytes: file.size, durationSeconds: suppliedDuration,
+-      }, controller.signal);
+-
+-      const duration = result.asset?.durationSeconds || 0;
+-
+-      setMessage(
+-        duration
+-          ? `تم رفع الفيديو مباشرة: ${Math.floor(duration / 60)}:${String(duration % 60).padStart(2, "0")}`
+-          : "تم رفع الفيديو وربطه بالدرس",
+-      );
++      const durationSeconds = await readBrowserVideoDuration(file, controller.signal);
++      await uploadResumableVideo({ file, courseSlug, lessonId, contentType, durationSeconds,
++        signal: controller.signal, onProgress: setProgress, onPhase: setMessage });
++      setMessage("تم التحقق من الفيديو وربطه بالدرس؛ تجهيز الجودات جارٍ. عند انقطاع رفع آخر، اختر الملف نفسه لاستئنافه.");
+@@ -309,0 +258 @@ function VideoUpload({
++      <p className="live-hint">عند انقطاع الإنترنت أو إيقاف الرفع، أعد اختيار الملف نفسه والحساب والدرس نفسيهما خلال 24 ساعة لاستكمال الأجزاء الناقصة.</p>
+@@ -324 +273 @@ function VideoUpload({
+-        <span>اختر ملف الفيديو حتى 200MB · رفع مباشر سريع</span>
++        <span>اختر ملف الفيديو حتى 200MB · رفع قابل للاستئناف</span>
+@@ -346 +295 @@ function VideoUpload({
+-            إلغاء الرفع
++            إيقاف مؤقت
+diff --git a/components/admin-operations-center.tsx b/components/admin-operations-center.tsx
+index 4a52ecdd5f4d2b803aa4fe9d7d5a2cb5e9e96479..6596b13bb127eb54cdec503f58f5aa0e47067487 100644
+--- a/components/admin-operations-center.tsx
++++ b/components/admin-operations-center.tsx
+@@ -15 +15 @@ type ComplianceData = { disclaimer:string;progress:number;items:ComplianceItem[]
+-type OperationsData = { waitlist:Record<string,number>;bundles:Record<string,number>;queues:{filesPendingScan:number;abandonedCheckout:number;expiringAccess:number;pushPending:number;refundPending:number;settlementUnmatched:number};generatedAt:string };
++type OperationsData = { waitlist:Record<string,number>;bundles:Record<string,number>;queues:{storageCleanupPending?:number;storageCleanupBlocked?:number;storageCleanupOverdue?:number;filesPendingScan:number;abandonedCheckout:number;expiringAccess:number;pushPending:number;refundPending:number;settlementUnmatched:number};generatedAt:string };
+@@ -78 +78 @@ function SupportView({data}:{data:SupportData}){const breached=data.tickets.filt
+-function OperationsView({data,run}:{data:OperationsData;run:(endpoint:string,label:string)=>Promise<void>}){return <><section className={styles.grid}><Metric title="سلال/دفعات متروكة" value={data.queues.abandonedCheckout}/><Metric title="وصول ينتهي قريبًا" value={data.queues.expiringAccess}/><Metric title="مرفقات تنتظر الفحص" value={data.queues.filesPendingScan} tone="warning"/><Metric title="Push ينتظر الإرسال" value={data.queues.pushPending}/><Metric title="استردادات قيد المراجعة" value={data.queues.refundPending}/><Metric title="تسويات غير مطابقة" value={data.queues.settlementUnmatched} tone="warning"/><Metric title="قائمة انتظار نشطة" value={data.waitlist.active||0}/><Metric title="أُبلغوا من قائمة الانتظار" value={data.waitlist.notified||0}/><Metric title="تحولوا للاشتراك" value={data.waitlist.converted||0}/><Metric title="باقات منشورة" value={data.bundles.published||0}/><Metric title="باقات مسودة" value={data.bundles.draft||0}/><Metric title="باقات مؤرشفة" value={data.bundles.archived||0}/></section><section className={styles.panel}><h2>تشغيل المهام الآمنة</h2><p>يمكن تشغيلها يدويًا هنا، وتعمل أيضًا عبر المجدول باستخدام مفتاح مستقل.</p><div className={styles.actions}><button onClick={()=>void run("/api/admin/lifecycle/dispatch","اكتملت تنبيهات دورة الحياة")}>تنبيهات السلة والتجديد والإطلاق</button><button onClick={()=>void run("/api/admin/files/scan","اكتمل فحص دفعة المرفقات")}>فحص المرفقات المعلقة</button><button onClick={()=>void run("/api/admin/notifications/dispatch","اكتمل إرسال الإشعارات المستحقة")}>إرسال Push المستحق</button></div></section></>}
++function OperationsView({data,run}:{data:OperationsData;run:(endpoint:string,label:string)=>Promise<void>}){return <><section className={styles.grid}><Metric title="ملفات تنتظر التنظيف" value={data.queues.storageCleanupPending||0}/><Metric title="تنظيف يحتاج مراجعة" value={data.queues.storageCleanupBlocked||0} tone="warning"/><Metric title="تنظيف متأخر" value={data.queues.storageCleanupOverdue||0} tone="warning"/><Metric title="سلال/دفعات متروكة" value={data.queues.abandonedCheckout}/><Metric title="وصول ينتهي قريبًا" value={data.queues.expiringAccess}/><Metric title="مرفقات تنتظر الفحص" value={data.queues.filesPendingScan} tone="warning"/><Metric title="Push ينتظر الإرسال" value={data.queues.pushPending}/><Metric title="استردادات قيد المراجعة" value={data.queues.refundPending}/><Metric title="تسويات غير مطابقة" value={data.queues.settlementUnmatched} tone="warning"/><Metric title="قائمة انتظار نشطة" value={data.waitlist.active||0}/><Metric title="أُبلغوا من قائمة الانتظار" value={data.waitlist.notified||0}/><Metric title="تحولوا للاشتراك" value={data.waitlist.converted||0}/><Metric title="باقات منشورة" value={data.bundles.published||0}/><Metric title="باقات مسودة" value={data.bundles.draft||0}/><Metric title="باقات مؤرشفة" value={data.bundles.archived||0}/></section><section className={styles.panel}><h2>تشغيل المهام الآمنة</h2><p>يمكن تشغيلها يدويًا هنا، وتعمل أيضًا عبر المجدول باستخدام مفتاح مستقل.</p><div className={styles.actions}><button onClick={()=>void run("/api/admin/lifecycle/dispatch","اكتملت تنبيهات دورة الحياة")}>تنبيهات السلة والتجديد والإطلاق</button><button onClick={()=>void run("/api/admin/files/scan","اكتمل فحص دفعة المرفقات")}>فحص المرفقات المعلقة</button><button onClick={()=>void run("/api/admin/notifications/dispatch","اكتمل إرسال الإشعارات المستحقة")}>إرسال Push المستحق</button></div></section></>}
