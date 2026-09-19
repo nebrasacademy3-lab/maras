@@ -38,7 +38,8 @@ try {
   const student = await user("student"), oldEmail = student.email;
   const other = await user("other");
   const grant = { action: "grantAccess", userEmail: student.email, courseSlug: "qa-physics", operationKey: `grant-qa-${nonce}` };
-  await response(grant, 403);
+  const mfaRequired = await response(grant, 428);
+  assert.equal(mfaRequired.code, "MFA_SETUP_REQUIRED");
   assert.equal((await db.select().from(s.courseAccess).where(eq(s.courseAccess.userId, student.id))).length, 0);
   pass("real MFA blocks an otherwise authorized grant before any access is created");
   const [factor] = await db.insert(s.adminMfaFactors).values({ userId: actor.id, secretEncrypted: mfa.encryptAdminMfaSecret("JBSWY3DPEHPK3PXP"), verifiedAt: now, label: "Synthetic ownership QA", counter: -1 }).returning();
