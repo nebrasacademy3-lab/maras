@@ -88,7 +88,7 @@ try {
   await db.insert(schema.orders).values({ orderNumber, userId: a.id, customerEmail: a.email, customerName: a.fullName, courseSlug: "qa-physics", subtotal: 100, total: 100, status: "paid" });
   await db.insert(schema.invoices).values({ invoiceNumber: "INV-" + nonce, orderNumber, customerEmail: a.email, total: 100, snapshotJson });
   await db.insert(schema.auditLogs).values({ actorEmail: a.email, action: "identity_fixture", entityType: "user", entityId: String(a.id) });
-  await db.insert(schema.courseAccess).values({ userEmail: a.email, courseSlug: "qa-physics", startsAt: now });
+  await db.insert(schema.courseAccess).values({ userId: a.id, userEmail: a.email, courseSlug: "qa-physics", startsAt: now });
   const devicesBefore = await db.select().from(schema.authDevices).where(eq(schema.authDevices.userId, a.id));
   const codes = await start(a);
   const challenge = await latest(a.id);
@@ -115,7 +115,9 @@ try {
   assert.equal(invoice.customerEmail, a.email); assert.equal(invoice.snapshotJson, snapshotJson);
   assert.equal((await db.select().from(schema.auditLogs).where(and(eq(schema.auditLogs.entityId, String(a.id)), eq(schema.auditLogs.action, "identity_fixture"))))[0].actorEmail, a.email);
   assert.equal((await db.select().from(schema.orders).where(eq(schema.orders.orderNumber, orderNumber)))[0].customerEmail, a.email);
-  assert.equal((await db.select().from(schema.courseAccess).where(eq(schema.courseAccess.userEmail, a.next))).length, 1);
+  const retainedAccess = await db.select().from(schema.courseAccess).where(eq(schema.courseAccess.userId, a.id));
+  assert.equal(retainedAccess.length, 1);
+  assert.equal(retainedAccess[0].userEmail, a.email, "email remains a historical snapshot");
   pass("invoice and actor history remain unchanged while operational access remains with the account");
 
   const cancelled = await account("cancel");
