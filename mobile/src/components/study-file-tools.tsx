@@ -8,7 +8,7 @@ import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton, Card, Field, LoadingState, SectionTitle } from "@/src/components/ui";
 import { api, apiUpload } from "@/src/lib/api";
 import { assetMimeType } from "@/src/lib/file-types";
-import { downloadProtectedFile } from "@/src/lib/downloads";
+import { downloadStudyPdf } from "@/src/lib/study-pdf-native";
 import { observeStudyJob, requestStudyAction, savedStudyJob, StudyJobError } from "@/src/lib/study-jobs";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -22,18 +22,24 @@ const pptxMime = "application/vnd.openxmlformats-officedocument.presentationml.p
 const names = { summary: "تلخيص الملف", translation: "ترجمة الملف", quiz: "اختبار من الملف" };
 
 export function StudyArtifactDownload({ id }: { id: number }) {
+  const { user } = useAuth();
+  return user ? <StudyPdfControl key={`${user.id}:${id}`} id={id} userId={user.id}/> : null;
+}
+function StudyPdfControl({ id, userId }: { id: number; userId: number }) {
   const { colors } = useTheme();
   const [busy, setBusy] = useState(false), [message, setMessage] = useState("");
+  const pending = useRef<AbortController | null>(null);
+  useEffect(() => () => { pending.current?.abort(); pending.current = null; }, []);
   async function download() {
-    if (busy) return;
-    setBusy(true); setMessage("");
+    if (pending.current) return;
+    const controller = new AbortController(); pending.current = controller; setBusy(true); setMessage("");
     try {
-      const result = await downloadProtectedFile({ path: `/api/ai/artifacts/${id}/download`, fileName: `مراس-العلم-${id}.docx`, mimeType: docxMime, saveToFiles: true });
-      setMessage(result.action === "cancelled" ? "أُلغي الحفظ." : result.action === "saved" ? "حُفظ الملف بنجاح." : "الملف جاهز للحفظ أو المشاركة.");
-    } catch (error) { setMessage(error instanceof Error ? error.message : "تعذر تنزيل الملف"); }
-    finally { setBusy(false); }
+      const result = await downloadStudyPdf({ id, userId, signal: controller.signal, onPending: () => setMessage("يجري تجهيز PDF من النص المحفوظ دون توليد جديد…") });
+      if (!controller.signal.aborted) setMessage(result.action === "cancelled" ? "أُلغي الحفظ." : result.action === "saved" ? "حُفظ ملف PDF بنجاح." : "أُغلقت نافذة المشاركة.");
+    } catch (error) { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "تعذر تنزيل PDF"); }
+    finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   }
-  return <View style={{ gap: 9 }}><AppButton title="تنزيل Word · حقوق مراس العلم" icon="download-outline" variant="soft" loading={busy} onPress={() => void download()}/>{message ? <Text selectable style={{ color: colors.textSoft, lineHeight: 22 }}>{message}</Text> : null}</View>;
+  return <View style={{ gap: 9 }}><AppButton title="تنزيل PDF · مراس العلم" icon="download-outline" variant="soft" loading={busy} onPress={() => void download()}/>{message ? <Text selectable accessibilityLiveRegion="polite" style={{ color: colors.textSoft, lineHeight: 22 }}>{message}</Text> : null}</View>;
 }
 
 export function StudyFileTools({ action, resources, scope = "workspace" }: { action: StudyAction; resources?: Resource[]; scope?: string }) {

@@ -44,6 +44,7 @@ const nextConfig: NextConfig = {
   compress: true,
   reactStrictMode: true,
   productionBrowserSourceMaps: false,
+  serverExternalPackages: ["playwright-core", "katex"],
   outputFileTracingIncludes: { "/api/**": ["./emails/resend/*.html"] },
   experimental: {
     proxyClientMaxBodySize: "220mb",

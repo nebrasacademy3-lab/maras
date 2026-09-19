@@ -1,6 +1,7 @@
 "use client";
+import { StudyArtifactDownload } from "./study-artifact-download";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpenCheck, BrainCircuit, Download, FileUp, Languages, LoaderCircle, MessageCircle, Sparkles } from "lucide-react";
+import { BookOpenCheck, BrainCircuit, FileUp, Languages, LoaderCircle, MessageCircle, Sparkles } from "lucide-react";
 import type { AiArtifactPayload, AiFilePayload, AiQuizPayload } from "@/lib/ai-contracts";
 import { observeStudyJob, requestStudyAction, studyJson, StudyRequestError } from "@/lib/ai-job-client";
 import { AiQuizRunner } from "./ai-quiz-runner";
@@ -16,7 +17,7 @@ function rememberedJob(key: string, value?: string | null) {
 const names = { summary: "تلخيص الملف", translation: "ترجمة الملف", quiz: "اختبار من الملف" };
 export function StudyToolCards({ onSelect, includeChat = false }: { onSelect: (action: StudyAction | "chat") => void; includeChat?: boolean }) {
   const cards = [
-    { key: "summary" as const, icon: BookOpenCheck, title: "ملخص منظم", text: "الأفكار الأساسية والمصطلحات في ملف Word يحمل هوية مراس." },
+    { key: "summary" as const, icon: BookOpenCheck, title: "ملخص منظم", text: "الأفكار الأساسية والمصطلحات في ملف PDF يحمل هوية مراس." },
     { key: "translation" as const, icon: Languages, title: "ترجمة أكاديمية", text: "ترجمة النص والمصطلحات، مع ملف جاهز للحفظ والمراجعة." },
     { key: "quiz" as const, icon: BrainCircuit, title: "اختبر فهمك", text: "سؤال في كل بطاقة، نتيجة فورية وشرح، وإعادة دون توليد جديد." },
     ...(includeChat ? [{ key: "chat" as const, icon: MessageCircle, title: "اسأل مراس", text: "محادثة دراسية وسجل محفوظ لأسئلتك ونتائج أدواتك." }] : []),
@@ -92,7 +93,7 @@ export function StudyFileTools({ action, resources, storageScope = "workspace", 
     {busy && phase !== "upload" && <p className={styles.hint} role="status">لا ترسل الطلب مجددًا. يمكنك العودة إلى هذه الأداة لاستكمال متابعة الطلب المحفوظ.</p>}
     {error && <div className={styles.error} role="alert"><p>{error}</p>{pendingId && <button type="button" className={styles.secondary} onClick={() => { const id = rememberedJob(storageKey); if (id) { const abort = new AbortController(); controller.current = abort; void resume(id, abort.signal); } }}>متابعة الطلب المحفوظ</button>}</div>}
     {result?.cached && <p className={styles.hint}>استخدمنا نتيجة محفوظة لنفس الملف والإعدادات دون طلب توليد جديد.</p>}
-    {result?.artifact && <article className={styles.artifact}><header className={styles.panelHeader}><h3>{result.artifact.title}</h3><a className={styles.primary} href={`/api/ai/artifacts/${result.artifact.id}/download`}><Download size={18}/> تنزيل ملف Word</a></header><details><summary>قراءة النتيجة هنا</summary><div className={styles.artifactText} dir="auto">{result.artifact.content}</div></details><p className={styles.hint}>إعداد وتنسيق: مراس العلم · حقوق محتوى المصدر لأصحابه.</p></article>}
+    {result?.artifact && <article className={styles.artifact}><header className={styles.panelHeader}><h3>{result.artifact.title}</h3><StudyArtifactDownload id={result.artifact.id}/></header><details><summary>قراءة النتيجة هنا</summary><div className={styles.artifactText} dir="auto">{result.artifact.content}</div></details><p className={styles.hint}>إعداد وتنسيق: مراس العلم · حقوق محتوى المصدر لأصحابه.</p></article>}
     {result?.quiz && <AiQuizRunner key={result.quiz.id} quiz={result.quiz} onClose={() => { setResult(null); onBack?.(); }}/>}
   </section>;
 }

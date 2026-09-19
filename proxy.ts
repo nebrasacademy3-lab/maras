@@ -23,9 +23,9 @@ function corsHeaders(origin: string) {
   return {
     "access-control-allow-origin": origin,
     "access-control-allow-credentials": "true",
-    "access-control-allow-methods": "GET,POST,PATCH,PUT,DELETE,OPTIONS",
+    "access-control-allow-methods": "GET,HEAD,POST,PATCH,PUT,DELETE,OPTIONS",
     "access-control-allow-headers": "authorization,content-type,range,x-meras-client,x-meras-course,x-meras-lesson,x-meras-duration-seconds,x-meras-device-id,x-meras-device-label,x-meras-platform,x-meras-admin-stepup,x-request-id",
-    "access-control-expose-headers": "accept-ranges,content-range,content-length,x-request-id",
+    "access-control-expose-headers": "accept-ranges,content-range,content-length,content-encoding,retry-after,x-request-id,x-maras-export-id,x-maras-export-version,x-maras-export-expires",
     "access-control-max-age": "86400",
     "cross-origin-resource-policy": "cross-origin",
     vary: "Origin",

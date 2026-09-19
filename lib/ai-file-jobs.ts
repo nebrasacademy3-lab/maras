@@ -1,4 +1,5 @@
 import "server-only";
+import { pruneStudyPdfExports } from "@/lib/study-pdf";
 import { createHash, randomUUID } from "node:crypto";
 import { and, count, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -83,6 +84,7 @@ export async function runAiFileJobOnce() {
 }
 
 export async function pruneAiWork() {
+  await pruneStudyPdfExports();
   // Small batches only: do not lock a growing history table during peak traffic.
   await getDb().execute(sql`DELETE FROM ai_file_cache WHERE key IN (SELECT key FROM ai_file_cache WHERE expires_at < ${new Date().toISOString()} LIMIT 200)`);
   await getDb().execute(sql`DELETE FROM ai_file_jobs WHERE id IN (SELECT id FROM ai_file_jobs WHERE status IN ('succeeded', 'failed') AND updated_at < ${new Date(Date.now() - 7 * 86400_000).toISOString()} LIMIT 200)`);

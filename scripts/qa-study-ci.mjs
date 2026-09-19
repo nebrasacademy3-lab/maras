@@ -2,6 +2,7 @@
 import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync, readFileSync, openSync } from "node:fs";
 import pg from "pg";
+import { chromium } from "playwright-core";
 import { randomBytes } from "node:crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
@@ -10,7 +11,7 @@ if (!url || new URL(url).hostname !== "127.0.0.1" || new URL(url).pathname !== "
 const forbidden = ["DATABASE_URL", "GEMINI_API_KEY", "GEMINI_API_KEYS", "GEMINI_FREE_API_KEY", "GEMINI_FREE_API_KEYS", "GEMINI_PAID_API_KEY", "GEMINI_PAID_API_KEYS", "GOOGLE_API_KEY", "GEMINI_CONTROL_PLANE_ACCESS_TOKEN", "GEMINI_CONTROL_PLANE_TOKEN_FILE", "GOOGLE_APPLICATION_CREDENTIALS", "S3_BUCKET", "BUCKET", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "RESEND_API_KEY", "TAP_SECRET_KEY", "OPENAI_API_KEY", "RAILWAY_PROJECT_ID", "RAILWAY_ENVIRONMENT_ID"];
 if (forbidden.some(name => process.env[name])) throw new Error("Do not supply production credentials or production environment markers");
 mkdirSync(".data", { recursive: true }); writeFileSync(".data/qa-database.json", JSON.stringify({ url }));
-const env = { ...process.env, MARAS_LOOPBACK_QA: "true", DATABASE_URL: url, DATABASE_SSL: "false", APP_URL: "http://127.0.0.1:3100", NEXT_PUBLIC_SITE_URL: "https://maras-qa.example", UPLOAD_DIR: `${process.cwd()}/.data/uploads`, SESSION_COOKIE_SECURE: "false", ADMIN_MFA_ENCRYPTION_KEY: randomBytes(32).toString("hex"), SESSION_SECRET: "synthetic-local-ci-session-only-do-not-reuse", VIDEO_SIGNING_SECRET: "synthetic-local-ci-video-only-do-not-reuse", AUTO_SEED_CATALOG: "false", RUN_DB_MIGRATIONS: "false", GEMINI_PROJECT_REFRESH_ENABLED: "false", AI_WORKER_ENABLED: "false", VIDEO_WORKER_ENABLED: "false", FILE_SCAN_SCHEDULER_ENABLED: "false", LIFECYCLE_SCHEDULER_ENABLED: "false", GEMINI_API_KEY: "", GEMINI_API_KEYS: "", OPENAI_API_KEY: "", RESEND_API_KEY: "", TAP_SECRET_KEY: "" };
+const env = { ...process.env, STUDY_PDF_CHROMIUM_PATH: chromium.executablePath(), STUDY_PDF_QA_NO_SANDBOX: "true", MARAS_LOOPBACK_QA: "true", DATABASE_URL: url, DATABASE_SSL: "false", APP_URL: "http://127.0.0.1:3100", NEXT_PUBLIC_SITE_URL: "https://maras-qa.example", UPLOAD_DIR: `${process.cwd()}/.data/uploads`, SESSION_COOKIE_SECURE: "false", ADMIN_MFA_ENCRYPTION_KEY: randomBytes(32).toString("hex"), SESSION_SECRET: "synthetic-local-ci-session-only-do-not-reuse", VIDEO_SIGNING_SECRET: "synthetic-local-ci-video-only-do-not-reuse", AUTO_SEED_CATALOG: "false", RUN_DB_MIGRATIONS: "false", GEMINI_PROJECT_REFRESH_ENABLED: "false", AI_WORKER_ENABLED: "false", VIDEO_WORKER_ENABLED: "false", FILE_SCAN_SCHEDULER_ENABLED: "false", LIFECYCLE_SCHEDULER_ENABLED: "false", GEMINI_API_KEY: "", GEMINI_API_KEYS: "", OPENAI_API_KEY: "", RESEND_API_KEY: "", TAP_SECRET_KEY: "" };
 const run = (args, settings = env) => new Promise((resolve, reject) => { const child = spawn(process.execPath, args, { env: settings, stdio: "inherit" }); child.on("error", reject); child.on("exit", code => code === 0 ? resolve() : reject(new Error(`Command ${args[0]} exited ${code}`))); });
 const pool = new pg.Pool({ connectionString: url });
 try { await migrate(drizzle(pool), { migrationsFolder: "./drizzle" }); } finally { await pool.end(); }
@@ -23,6 +24,7 @@ await run(["--import", "./scripts/ai-worker-runtime.mjs", "--require", "./script
 await run(["scripts/qa-seed.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-tools.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-output-access.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-pdf.ts"], { ...env, STUDY_PDF_CHROMIUM_PATH: chromium.executablePath() });
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-security.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-device-return.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-admin-navigation-security.ts"]);
@@ -51,6 +53,7 @@ try {
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-protected-video.ts"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-resumable-browser.mjs"]);
   await run(["scripts/qa-study-browser.mjs"]);
+  await run(["scripts/qa-study-pdf-browser.mjs"]);
   await run(["scripts/qa-supervisor-browser.mjs"]);
   await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-browser.mjs"]);
 } finally { server.kill("SIGTERM"); worker.kill("SIGTERM"); }

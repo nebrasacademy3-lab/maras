@@ -1,5 +1,6 @@
 "use client";
 
+import { StudyArtifactDownload } from "./study-artifact-download";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -202,7 +203,7 @@ function ConversationWorkspace({ studentName, initialConversationId, initialQuiz
                 <div className={styles.starters}><button onClick={()=>setText("اشرح لي مفهومًا صعبًا بطريقة مبسطة مع مثال")}>اشرح لي ببساطة</button><button onClick={()=>fileInput.current?.click()}>لخّص ملف المحاضرة</button><button onClick={()=>fileInput.current?.click()}>أنشئ اختبارًا من الشرائح</button></div>
               </div> : null}
               <div className={styles.messages}>{displayMessages.map((message) => <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.aiMessage}>{message.role === "assistant" ? <span><Sparkles size={16}/></span> : null}<div><small>{message.role === "assistant" ? "أدوات مراس" : "أنت"}</small><p>{message.content}</p></div></article>)}{busy==="chat" ? <article className={styles.aiMessage}><span><Sparkles size={16}/></span><div><small>أدوات مراس</small><p className={styles.thinking}><i/><i/><i/></p></div></article> : null}<div ref={endRef}/></div>
-              {artifacts.length ? <div className={styles.artifacts}><h3><FileText size={17}/> نتائج محفوظة</h3>{artifacts.map((artifact)=><details key={artifact.id}><summary><span>{artifact.kind === "summary" ? <BookOpenCheck size={17}/> : <Languages size={17}/>}<b>{artifact.title}</b></span><small>{new Date(artifact.createdAt).toLocaleDateString("ar-SA")}</small></summary><a className={toolStyles.primary} href={`/api/ai/artifacts/${artifact.id}/download`}>تنزيل ملف Word · مراس العلم</a><pre>{artifact.content}</pre></details>)}</div> : null}
+              {artifacts.length ? <div className={styles.artifacts}><h3><FileText size={17}/> نتائج محفوظة</h3>{artifacts.map((artifact)=><details key={artifact.id}><summary><span>{artifact.kind === "summary" ? <BookOpenCheck size={17}/> : <Languages size={17}/>}<b>{artifact.title}</b></span><small>{new Date(artifact.createdAt).toLocaleDateString("ar-SA")}</small></summary><StudyArtifactDownload id={artifact.id}/><pre>{artifact.content}</pre></details>)}</div> : null}
             </>}
           </section>
 
