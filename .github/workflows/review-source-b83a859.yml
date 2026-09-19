@@ -1,0 +1,27 @@
+name: Pinned continuation source b83a859
+on:
+  push:
+    branches: [audit/source-b83a859]
+    paths: [.github/workflows/review-source-b83a859.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: b83a859e7fba3e51e9d96177c14155c14fc348c1
+          persist-credentials: false
+      - name: Export tracked source only
+        run: |
+          mkdir -p "$RUNNER_TEMP/review"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/review/source-identity.txt"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/review/source.tar.gz" HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pinned-source-b83a859
+          path: ${{ runner.temp }}/review/
+          retention-days: 1
+          if-no-files-found: error
