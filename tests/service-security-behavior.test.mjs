@@ -34,26 +34,31 @@ test("reviewed student and staff mutations reject null, arrays and excessive JSO
   }
 });
 
-test("support attachment download enforces reply visibility and ownership before reading storage", async () => {
+test("support attachment download enforces immutable ownership and reply visibility before storage", async () => {
   for (const scenario of [
-    { role: "student", internal: true, email: "owner@example.test", status: 404 },
-    { role: "student", internal: false, email: "owner@example.test", status: 200 },
-    { role: "admin", internal: true, email: "staff@example.test", status: 200 },
-    { role: "student", internal: false, email: "other@example.test", status: 403 },
-    { role: "student", internal: false, email: "owner@example.test", replyTicket: 222, status: 404 },
-    { role: "student", internal: true, email: "owner@example.test", scan: "pending", status: 404 },
+    { id: 9, role: "student", internal: true, email: "owner@example.test", status: 404 },
+    { id: 9, role: "student", internal: false, email: "owner@example.test", status: 200 },
+    { id: 99, role: "admin", internal: true, email: "staff@example.test", status: 200 },
+    { id: 10, role: "student", internal: false, email: "owner@example.test", status: 403 },
+    { id: 9, role: "student", internal: false, email: "new-address@example.test", status: 200 },
+    { id: 9, role: "student", internal: false, email: "owner@example.test", ownerId: null, status: 403 },
+    { id: 9, role: "student", internal: false, email: "owner@example.test", replyTicket: 222, status: 404 },
+    { id: 9, role: "student", internal: true, email: "owner@example.test", scan: "pending", status: 404 },
   ]) {
     let reads = 0;
-    const tables = { supportReplyFiles: { id: "file.id" }, supportTickets: { id: "ticket.id", userEmail: "ticket.email" }, supportReplies: { id: "reply.id", ticketId: "reply.ticket", internal: "reply.internal" } };
+    const tables = { supportReplyFiles: { id: "file.id" }, supportTickets: { id: "ticket.id", userId: "ticket.owner", userEmail: "ticket.email" }, supportReplies: { id: "reply.id", ticketId: "reply.ticket", internal: "reply.internal" } };
     const file = { id: 11, ticketId: 77, replyId: 88, objectKey: "private/support/file", contentType: "image/png", originalName: "document.png", scanStatus: scenario.scan || "clean" };
-    const rows = new Map([[tables.supportReplyFiles, [file]], [tables.supportTickets, [{ userEmail: "owner@example.test" }]], [tables.supportReplies, [{ internal: scenario.internal, ticketId: scenario.replyTicket || 77 }]]]);
+    const ownerId = Object.hasOwn(scenario, "ownerId") ? scenario.ownerId : 9;
+    const rows = new Map([[tables.supportReplyFiles, [file]], [tables.supportTickets, [{ userId: ownerId, userEmail: "owner@example.test" }]], [tables.supportReplies, [{ internal: scenario.internal, ticketId: scenario.replyTicket || 77 }]]]);
     const inspected = [];
     const db = { select: () => ({ from(table) { return { where(clause) { inspected.push(clause); return { limit: async () => rows.get(table) || [] }; } }; } }) };
-    const route = await isolated("../app/api/support/files/[id]/route.ts", { ...scope, ...tables, jsonError, ADMIN_PERMISSIONS: {SUPPORT_MANAGE:"support.manage"}, hasPermission: async user => user.role === "admin", getDb: () => db, eq: (column, value) => ({ column, value }), getSessionUser: async () => ({ role: scenario.role, email: scenario.email }), getObject: async () => { reads += 1; return { body: new Uint8Array([1]) }; } });
+    const route = await isolated("../app/api/support/files/[id]/route.ts", { ...scope, ...tables, and: (...clauses) => ({ and: clauses }), jsonError, ADMIN_PERMISSIONS: {SUPPORT_MANAGE:"support.manage"}, hasPermission: async user => user.role === "admin", getDb: () => db, eq: (column, value) => ({ column, value }), getSessionUser: async () => ({ id: scenario.id, role: scenario.role, email: scenario.email }), getObject: async (_key, _range, _provider, signal) => { assert.ok(signal instanceof AbortSignal); reads += 1; return { body: new Uint8Array([1]) }; } });
     const result = await route.GET(new Request("https://test/api/support/files/11"), { params: Promise.resolve({ id: "11" }) });
     assert.equal(result.status, scenario.status, JSON.stringify(scenario));
     assert.equal(reads, scenario.status === 200 ? 1 : 0);
+    if (scenario.role === "student") assert.ok(inspected.some(item => item.and?.some(clause => clause.column === "ticket.owner" && clause.value === scenario.id)));
     if (scenario.status !== 403) assert.ok(inspected.some(item => item.column === "reply.id" && item.value === 88));
+    if (scenario.status === 200) assert.equal(result.headers.get("referrer-policy"), "no-referrer");
   }
 });
 
@@ -101,9 +106,9 @@ test("numeric request fields never invoke object coercion and reject invalid IDs
     const result = await route[method](new Request(`https://test/api/${path}`, { method, body: JSON.stringify(payload) }));
     assert.equal(result.status, 400, `${method} ${path}`);
   }
-  const ticket = { id: 77, userEmail: "admin@example.test", status: "closed" };
+  const ticket = { id: 77, userId: 9, userEmail: "old-address@example.test", status: "closed" };
   const db = { select: () => ({ from: () => ({ where: () => ({ limit: async () => [ticket] }) }) }) };
-  const support = await isolated("../app/api/support/route.ts", { ...trusted, getDb: () => db, supportTickets: { id: "id" }, eq: () => ({}) });
+  const support = await isolated("../app/api/support/route.ts", { ...trusted, getDb: () => db, supportTickets: { id: "id", userId: "owner" }, eq: () => ({}) });
   const result = await support.PATCH(new Request("https://test/api/support", { method: "PATCH", body: JSON.stringify({ ticketId: 77, action: "rate", rating: poison }) }));
   assert.equal(result.status, 400);
 });
