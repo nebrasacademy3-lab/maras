@@ -9,7 +9,7 @@ const { boundedRequestBody } = await pureSource("lib/request-body.ts");
 async function fixture() {
   const objects = new Map();
   const signals = [];
-  const module = await pureSource("lib/multipart-upload.ts", {
+  const parserApi = await pureSource("lib/multipart-upload.ts", {
     Busboy, Readable, Transform, pipeline, boundedRequestBody,
     deleteObject: async key => { objects.delete(key); },
     putObject: async (key, body, _type, _provider, options) => {
@@ -23,7 +23,7 @@ async function fixture() {
       objects.set(key, Buffer.concat(parts));
     },
   });
-  return { ...module, objects, signals };
+  return { ...parserApi, objects, signals };
 }
 const defaults = { maxFiles: 2, maxFileBytes: 128, maxTotalBytes: 256,
   objectPrefix: "synthetic-upload", allowedTypes: new Set(["text/plain"]), validSignature: () => true };
