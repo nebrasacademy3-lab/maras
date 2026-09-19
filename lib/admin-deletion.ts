@@ -7,7 +7,8 @@ import {
   passwordResetTokens, paymentEvents, pushDevices, supportReplyFiles, supportReplies,
   supportTickets, supervisorAssignments, userRoles, users, videoAssets,
 } from "@/db/schema";
-import { deleteObject } from "@/lib/storage";
+import { deleteObject, deletePrefix, type StorageProvider } from "@/lib/storage";
+import { normalizeStorageKey, normalizeStoragePrefix } from "@/lib/storage-policy";
 
 export const ADMIN_DELETION_TYPES = [
   "institution", "specialty", "course", "unit", "lesson", "video", "user", "course_request",
@@ -23,7 +24,42 @@ export class DeletionPolicyError extends Error {
   }
 }
 
-type CleanupKey = { key: string; source: string };
+type CleanupKey = { key: string; source: string; provider?: StorageProvider; recursive?: boolean };
+type VideoCleanupAsset = Pick<typeof videoAssets.$inferSelect,
+  "id" | "objectKey" | "storageProvider" | "derivativesPrefix" | "hlsMasterObjectKey" | "thumbnailObjectKey">;
+
+function collectVideoCleanup(asset: VideoCleanupAsset, cleanup: CleanupKey[]) {
+  // A row's provider is immutable cleanup context; a new default must not move
+  // deletion to a different bucket or to a same-named local file.
+  if (asset.storageProvider !== "local" && asset.storageProvider !== "s3") {
+    throw new DeletionPolicyError("مزود تخزين الفيديو غير معروف؛ راجع السجل قبل الحذف.");
+  }
+  const provider = asset.storageProvider;
+  try {
+    const source = normalizeStorageKey(asset.objectKey);
+    const ownedPath = (value: string, prefix: boolean) => {
+      const key = prefix ? normalizeStoragePrefix(value) : normalizeStorageKey(value);
+      const parts = key.split("/");
+      // Only one worker attempt belonging to this exact asset may be removed
+      // recursively. A course-wide, asset-wide, foreign or malformed prefix
+      // is never an acceptable substitute for missing derivative metadata.
+      if (parts[0] !== "private" || parts[1] !== "video-derived" || parts[2] !== String(asset.id)
+          || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parts[3] || "")
+          || (prefix ? parts.length !== 4 : parts.length < 5)) throw new Error("Unowned derivative path");
+      return key;
+    };
+    const prefix = asset.derivativesPrefix ? ownedPath(asset.derivativesPrefix, true) : null;
+    const exactKeys = [asset.hlsMasterObjectKey, asset.thumbnailObjectKey]
+      .filter((key): key is string => Boolean(key)).map(key => ownedPath(key, false));
+    cleanup.push({ key: source, source: "video", provider });
+    if (prefix) cleanup.push({ key: prefix, source: "video-derived", provider, recursive: true });
+    for (const key of exactKeys) {
+      if (!prefix || !key.startsWith(prefix + "/")) cleanup.push({ key, source: "video-derived", provider });
+    }
+  } catch {
+    throw new DeletionPolicyError("مسار ملفات الفيديو غير آمن أو لا يتبع هذا الفيديو؛ راجع بيانات التخزين قبل الحذف.");
+  }
+}
 
 type DeletionResult = {
   entityType: AdminDeletionType;
@@ -78,9 +114,13 @@ async function ensureCourseDeletable(db: ReturnType<typeof getDb>, courseSlug: s
 }
 
 async function deleteVideoRows(tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0], courseSlug: string, lessonIds: string[] | null, cleanup: CleanupKey[]) {
-  const condition = lessonIds?.length ? and(eq(videoAssets.courseSlug, courseSlug), inArray(videoAssets.lessonId, lessonIds)) : eq(videoAssets.courseSlug, courseSlug);
-  const assets = await tx.select({ id: videoAssets.id, objectKey: videoAssets.objectKey }).from(videoAssets).where(condition);
-  cleanup.push(...assets.map((asset) => ({ key: asset.objectKey, source: "video" })));
+  // null is an explicit whole-course deletion; [] means no lessons, not all.
+  if (lessonIds !== null && lessonIds.length === 0) return 0;
+  const condition = lessonIds === null ? eq(videoAssets.courseSlug, courseSlug)
+    : and(eq(videoAssets.courseSlug, courseSlug), inArray(videoAssets.lessonId, lessonIds));
+  // Wait for an in-flight worker publication before taking the cleanup snapshot.
+  const assets = await tx.select().from(videoAssets).where(condition).for("update");
+  for (const asset of assets) collectVideoCleanup(asset, cleanup);
   if (assets.length) await tx.delete(videoAssets).where(inArray(videoAssets.id, assets.map((asset) => asset.id)));
   return assets.length;
 }
@@ -92,7 +132,7 @@ async function deleteCourseRows(tx: Parameters<Parameters<ReturnType<typeof getD
   const unitIds = units.map((unit) => unit.id);
   const lessons = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(eq(lessonsDb.courseSlug, courseSlug));
   const lessonIds = lessons.map((lesson) => lesson.id);
-  await deleteVideoRows(tx, courseSlug, lessonIds.length ? lessonIds : null, cleanup);
+  await deleteVideoRows(tx, courseSlug, null, cleanup);
   if (lessonIds.length) {
     await tx.delete(lessonNotes).where(inArray(lessonNotes.lessonId, lessonIds));
     await tx.delete(lessonProgress).where(inArray(lessonProgress.lessonId, lessonIds));
@@ -196,12 +236,12 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
     } else if (input.entityType === "unit") {
       const unitId = Number(input.entityId);
       if (!Number.isSafeInteger(unitId) || unitId <= 0) throw new DeletionPolicyError("معرّف الوحدة غير صالح.");
-      const [row] = await tx.select().from(courseUnitsDb).where(eq(courseUnitsDb.id, unitId)).limit(1);
+      const [row] = await tx.select().from(courseUnitsDb).where(eq(courseUnitsDb.id, unitId)).limit(1).for("update");
       if (!row) throw new DeletionPolicyError("الوحدة غير موجودة.");
       before = { id: row.id, courseSlug: row.courseSlug, title: row.title };
-      const lessons = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(eq(lessonsDb.unitId, unitId));
+      const lessons = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.unitId, unitId), eq(lessonsDb.courseSlug, row.courseSlug)));
       const lessonIds = lessons.map((lesson) => lesson.id);
-      await deleteVideoRows(tx, row.courseSlug, lessonIds.length ? lessonIds : null, cleanup);
+      await deleteVideoRows(tx, row.courseSlug, lessonIds, cleanup);
       if (lessonIds.length) { await tx.delete(lessonNotes).where(inArray(lessonNotes.lessonId, lessonIds)); await tx.delete(lessonProgress).where(inArray(lessonProgress.lessonId, lessonIds)); await tx.delete(lessonsDb).where(inArray(lessonsDb.id, lessonIds)); }
       await tx.delete(courseUnitsDb).where(eq(courseUnitsDb.id, unitId));
       deletedRows = lessons.length + 1;
@@ -217,10 +257,10 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
     } else if (input.entityType === "video") {
       const videoId = Number(input.entityId);
       if (!Number.isSafeInteger(videoId) || videoId <= 0) throw new DeletionPolicyError("معرّف الفيديو غير صالح.");
-      const [row] = await tx.select().from(videoAssets).where(eq(videoAssets.id, videoId)).limit(1);
+      const [row] = await tx.select().from(videoAssets).where(eq(videoAssets.id, videoId)).limit(1).for("update");
       if (!row) throw new DeletionPolicyError("الفيديو غير موجود.");
       before = { id: row.id, courseSlug: row.courseSlug, lessonId: row.lessonId, objectKey: row.objectKey };
-      cleanup.push({ key: row.objectKey, source: "video" });
+      collectVideoCleanup(row, cleanup);
       await tx.delete(videoAssets).where(eq(videoAssets.id, videoId));
       await tx.update(lessonsDb).set({ videoAssetId: null, updatedAt: now }).where(eq(lessonsDb.videoAssetId, videoId));
       deletedRows = 1;
@@ -326,13 +366,25 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
     await tx.insert(auditLogs).values({ actorEmail: input.actor, action: "delete", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson(before), afterJson: null, ipAddress: input.ipAddress, createdAt: now });
   });
 
-  const uniqueCleanup = [...new Map(cleanup.map((item) => [item.key, item])).values()];
+  const uniqueCleanup = [...new Map(cleanup.map((item) => [
+    `${item.provider ?? "active"}:${item.recursive ? "prefix" : "object"}:${item.key}`, item,
+  ])).values()];
   const cleanupFailures: string[] = [];
-  await Promise.all(uniqueCleanup.map(async (item) => {
-    try { await deleteObject(item.key); } catch { cleanupFailures.push(`${item.source}:${item.key}`); }
-  }));
+  const cleanupTargets: CleanupKey[] = [];
+  // Large course deletions must not fan out an unbounded number of transfers.
+  for (let index = 0; index < uniqueCleanup.length; index += 10) {
+    await Promise.all(uniqueCleanup.slice(index, index + 10).map(async (item) => {
+      try {
+        if (item.recursive) await deletePrefix(item.key, item.provider);
+        else await deleteObject(item.key, item.provider);
+      } catch {
+        cleanupFailures.push(`${item.source}:${item.key}`);
+        cleanupTargets.push(item);
+      }
+    }));
+  }
   if (cleanupFailures.length) {
-    await db.insert(auditLogs).values({ actorEmail: input.actor, action: "cleanup_warning", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson({ failedObjects: cleanupFailures }), afterJson: null, ipAddress: input.ipAddress, createdAt: nowIso() });
+    await db.insert(auditLogs).values({ actorEmail: input.actor, action: "cleanup_warning", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson({ failedObjects: cleanupFailures, cleanupTargets }), afterJson: null, ipAddress: input.ipAddress, createdAt: nowIso() });
   }
   return { entityType: input.entityType, entityId: input.entityId, deleted: true, deletedRows, cleanupFailures };
 }
