@@ -1,0 +1,97 @@
+name: Reviewed ownership tree
+on:
+  push:
+    branches: [integration/v7-on-main-20260919]
+    paths: [.github/workflows/reviewed-ownership-tree.yml]
+permissions:
+  contents: write
+jobs:
+  tree:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Apply literal edits with fixed base, whitelist and before/after hashes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, io, json, os, pathlib, subprocess
+          base = '3ed00e37a5f29a2e972d0dafd5c124e5e8938e97'
+          expected_tree = 'c065816c0f8593bc86d8b949b526d2b199281021'
+          allowed = {'.github/workflows/integration-source-review.yml', '.github/workflows/quality.yml', 'app/api/admin/console/route.ts', 'app/api/admin/finance/route.ts', 'app/api/admin/students/[email]/route.ts', 'app/api/checkout/route.ts', 'app/api/webhooks/tap/route.ts', 'components/public-faq.tsx', 'lib/admin-deletion.ts', 'lib/order-fulfillment.ts', 'lib/store-purchases.ts', 'lib/supervisor-console-policy.ts', 'scripts/qa-admin-stable-ownership.ts', 'scripts/qa-platform-browser.mjs', 'scripts/qa-study-ci.mjs', 'tests/admin-stable-ownership-behavior.test.mjs', 'tests/helpers/ownership-database.mjs'}
+          encoded = ''.join(pathlib.Path(f'.review/ownership-manifest.{i}.b64').read_text().strip() for i in range(4))
+          assert len(encoded) == 20780
+          with gzip.GzipFile(fileobj=io.BytesIO(base64.b64decode(encoded, validate=True))) as stream:
+              raw = stream.read(128001)
+          assert len(raw) == 55620 and hashlib.sha256(raw).hexdigest() == 'b31df818356be73274d15cad37c7822200172d4b65347a67af2fa2986b5c3d29'
+          manifest = json.loads(raw)
+          assert manifest['baseCommit'] == base and manifest['resultTree'] == expected_tree
+          assert subprocess.check_output(['git','rev-parse',base+'^{tree}'], text=True).strip() == manifest['baseTree']
+          subprocess.run(['git','merge-base','--is-ancestor',base,'HEAD'], check=True)
+          assert len(manifest['files']) == len(allowed) and {e['path'] for e in manifest['files']} == allowed
+          evidence = pathlib.Path(os.environ['RUNNER_TEMP']) / 'reviewed-ownership'
+          evidence.mkdir()
+          (evidence/'ownership-manifest.json').write_bytes(raw)
+          subprocess.run(['git','read-tree','--reset','-u',base], check=True)
+          for entry in manifest['files']:
+              path = pathlib.Path(entry['path'])
+              assert not path.is_symlink()
+              old = path.read_bytes() if path.exists() else b''
+              assert (hashlib.sha256(old).hexdigest() if path.exists() else None) == entry['before'], str(path)
+              if entry['after'] is None:
+                  path.unlink()
+                  continue
+              lines = old.decode('utf-8').splitlines(keepends=True)
+              for hunk in reversed(entry['hunks']):
+                  assert 0 <= hunk['start'] <= hunk['end'] <= len(lines)
+                  lines[hunk['start']:hunk['end']] = hunk['lines']
+              content = ''.join(lines).encode('utf-8')
+              assert hashlib.sha256(content).hexdigest() == entry['after'], str(path)
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(content)
+          subprocess.run(['git','add','-A'], check=True)
+          subprocess.run(['git','diff','--cached','--check'], check=True)
+          tree = subprocess.check_output(['git','write-tree'], text=True).strip()
+          assert tree == expected_tree, tree
+          (evidence/'candidate.patch').write_bytes(subprocess.check_output(['git','diff','--cached',base,'--']))
+          print('VERIFIED_LITERAL_TREE',tree)
+          PY
+      - name: Create unattached Git objects only; no branch update or deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, hashlib, json, os, pathlib, subprocess, urllib.request
+          evidence = pathlib.Path(os.environ['RUNNER_TEMP']) / 'reviewed-ownership'
+          manifest = json.loads((evidence/'ownership-manifest.json').read_bytes())
+          def post(endpoint, payload):
+              assert endpoint in ('blobs', 'trees')
+              req = urllib.request.Request('https://api.github.com/repos/nebrasacademy3-lab/maras/git/'+endpoint, data=json.dumps(payload).encode(), method='POST', headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'], 'Accept':'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'})
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+          entries = []
+          for entry in manifest['files']:
+              path = entry['path']
+              sha = None
+              if entry['after'] is not None:
+                  content = pathlib.Path(path).read_bytes()
+                  assert hashlib.sha256(content).hexdigest() == entry['after']
+                  sha = post('blobs', {'encoding':'base64','content':base64.b64encode(content).decode()})['sha']
+                  assert sha == subprocess.check_output(['git','hash-object','--',path],text=True).strip()
+              entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+          tree = post('trees',{'base_tree':manifest['baseTree'],'tree':entries})['sha']
+          assert tree == manifest['resultTree'] == 'c065816c0f8593bc86d8b949b526d2b199281021'
+          (evidence/'candidate-tree.json').write_text(json.dumps({'baseCommit':manifest['baseCommit'],'tree':tree,'files':entries,'updatedRefs':False},indent=2))
+          print('UNATTACHED_REVIEWED_TREE',tree)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: reviewed-ownership-tree
+          path: ${{ runner.temp }}/reviewed-ownership/
+          retention-days: 3
+          if-no-files-found: error
