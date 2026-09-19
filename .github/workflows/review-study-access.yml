@@ -1,0 +1,57 @@
+name: Reviewed study source authorization
+on:
+  push:
+    branches: [audit/study-output-access-20260919]
+permissions:
+  contents: write
+jobs:
+  objects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: transport
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: c36729df2f2e9b4962bcc5be6755d624f0486925
+          persist-credentials: false
+          path: source
+      - name: Verify reviewed patch and source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, base64, lzma, hashlib
+          encoded = ''.join(pathlib.Path(f'transport/.audit-study/part-{i}.txt').read_text().strip() for i in range(1,5))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          assert len(patch) == 93819
+          assert hashlib.sha256(patch).hexdigest() == '9b3831ea42a883ab44f22407adcc05676060b508e38da75a95c3d684c256ee89'
+          pathlib.Path('reviewed.patch').write_bytes(patch)
+          PY
+          cd source
+          test "$(git rev-parse HEAD^{tree})" = 44334ec7ba35119db22ed3bd2a22bb00c3ce9a97
+          git apply --check --index ../reviewed.patch
+          git apply --index ../reviewed.patch
+          test "$(git write-tree)" = 358076c6ab9fe230faeb80e589220bfa06d7acd1
+      - name: Persist verified objects without updating branches
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import {execFileSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
+          const repo=process.env.GITHUB_REPOSITORY;
+          if(repo!=='nebrasacademy3-lab/maras')throw new Error('Wrong repository');
+          const git=(...args)=>execFileSync('git',args);
+          const paths=git('diff','--cached','--name-only','-z').toString().split('\0').filter(Boolean).sort();
+          const expected=['.github/workflows/quality.yml','app/api/ai/artifacts/[id]/download/route.ts','app/api/ai/conversations/[id]/messages/route.ts','app/api/ai/conversations/[id]/route.ts','app/api/ai/conversations/route.ts','app/api/ai/jobs/[id]/route.ts','app/api/ai/quizzes/[id]/attempts/route.ts','app/api/ai/quizzes/[id]/route.ts','db/schema.ts','docs/STUDY_OUTPUT_ACCESS_ACCEPTANCE_2026_09_19_AR.md','drizzle/0042_study_output_authorization_indexes.sql','drizzle/meta/_journal.json','lib/ai-course-source.ts','lib/ai-file-actions.ts','lib/ai-files.ts','lib/course-access.ts','lib/study-output-access.ts','lib/study-quiz-grading.ts','scripts/qa-study-ci.mjs','scripts/qa-study-output-access.ts','tests/study-file-integrity.test.mjs','tests/study-quiz-grading.test.mjs'].sort();
+          if(JSON.stringify(paths)!==JSON.stringify(expected))throw new Error('Unexpected changed files');
+          const post=async(kind,body)=>{const r=await fetch(`https://api.github.com/repos/${repo}/git/${kind}`,{method:'POST',headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error(`Git ${kind}: ${r.status}`);return r.json();};
+          const tree=[];
+          for(const path of paths){const bytes=git('show',`:${path}`);const sha=createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');const obj=await post('blobs',{encoding:'base64',content:bytes.toString('base64')});if(obj.sha!==sha)throw new Error('Blob mismatch');tree.push({path,mode:'100644',type:'blob',sha});}
+          const result=await post('trees',{base_tree:'44334ec7ba35119db22ed3bd2a22bb00c3ce9a97',tree});
+          if(result.sha!=='358076c6ab9fe230faeb80e589220bfa06d7acd1')throw new Error('Tree mismatch');
+          console.log(JSON.stringify({tree:result.sha,files:tree.length,updatedRefs:0}));
+          JS
