@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { courseAccess } from "@/db/schema";
 const DAY_MS = 24 * 60 * 60 * 1000;
 export function normalizeAccessDurationDays(value: unknown, label?: string | null) {
@@ -12,7 +12,7 @@ export function normalizeAccessDurationDays(value: unknown, label?: string | nul
 export function accessExpiryIso(durationDays: number, startsAt = new Date()) {
   return new Date(startsAt.getTime() + normalizeAccessDurationDays(durationDays) * DAY_MS).toISOString();
 }
-export function activeAccessCondition(now = new Date().toISOString()) {
+export function activeAccessCondition(now: string | SQL = new Date().toISOString()) {
   return sql`${courseAccess.suspendedAt} IS NULL AND (
     (${courseAccess.source}<>'revenuecat' AND ${courseAccess.revokedAt} IS NULL
      AND ${courseAccess.startsAt}::timestamptz<=${now}::timestamptz
@@ -25,10 +25,10 @@ export function activeAccessCondition(now = new Date().toISOString()) {
         AND (access_grant.expires_at IS NULL OR access_grant.expires_at::timestamptz>${now}::timestamptz)
     )))`;
 }
-export function activeCourseAccessWhere(userId:number,courseSlug:string,now=new Date().toISOString()) {
+export function activeCourseAccessWhere(userId:number,courseSlug:string,now: string | SQL =new Date().toISOString()) {
   return and(eq(courseAccess.userId,userId),eq(courseAccess.courseSlug,courseSlug),activeAccessCondition(now));
 }
-export function activeUserAccessWhere(userId:number,now=new Date().toISOString()) {
+export function activeUserAccessWhere(userId:number,now: string | SQL =new Date().toISOString()) {
   return and(eq(courseAccess.userId,userId),activeAccessCondition(now));
 }
 /** Display-only projection. Mutation handlers must retain the original baseline row. */

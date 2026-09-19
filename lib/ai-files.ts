@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { DOCX_MIME, PPTX_MIME } from "@/lib/study-document";
 import { getObject } from "@/lib/storage";
 import { AiPlatformError } from "@/lib/ai-platform";
@@ -61,9 +62,11 @@ export function tryAcquireAiFileAction(userId: number) {
   };
 }
 
-export async function readAiFileBytes(file: { objectKey: string; storageProvider: string; sizeBytes: number; contentType: string }, maxBytes: number) {
-  if (file.sizeBytes <= 0 || file.sizeBytes > maxBytes) throw new AiPlatformError("AI_FILE_TOO_LARGE", "حجم الملف أكبر من الحد المسموح لهذه الخدمة.", 413);
-  const provider = file.storageProvider === "s3" ? "s3" : "local";
+export async function readAiFileBytes(file: { objectKey: string; storageProvider: string; sizeBytes: number; contentType: string; scanSha256?: string | null }, maxBytes: number) {
+  if (!Number.isSafeInteger(maxBytes) || !Number.isSafeInteger(file.sizeBytes) || file.sizeBytes <= 0 || file.sizeBytes > maxBytes) throw new AiPlatformError("AI_FILE_TOO_LARGE", "حجم الملف أكبر من الحد المسموح لهذه الخدمة.", 413);
+  if (file.storageProvider !== "s3" && file.storageProvider !== "local") throw new AiPlatformError("AI_STORAGE_UNVERIFIED", "موقع تخزين الملف غير معتمد.", 423);
+  if (file.scanSha256 != null && !/^[a-f0-9]{64}$/.test(file.scanSha256)) throw new AiPlatformError("AI_FILE_INTEGRITY", "بصمة الملف غير صالحة. يلزم إعادة فحصه.", 422);
+  const provider = file.storageProvider;
   const object = await getObject(file.objectKey, undefined, provider, AbortSignal.timeout(20_000));
   if (!object) throw new AiPlatformError("AI_FILE_MISSING", "تعذر العثور على الملف المرفوع.", 404);
   const reader = object.body.getReader();
@@ -90,5 +93,6 @@ export async function readAiFileBytes(file: { objectKey: string; storageProvider
   const bytes = Buffer.concat(parts);
   if (!bytes.length || bytes.length > maxBytes) throw new AiPlatformError("AI_FILE_TOO_LARGE", "تعذر قراءة الملف ضمن الحد المسموح.", 413);
   if (!validAiFileSignature(file.contentType, new Uint8Array(bytes.subarray(0, 64)))) throw new AiPlatformError("AI_FILE_INVALID", "توقيع الملف لا يطابق نوعه.", 422);
+  if (file.scanSha256 && createHash("sha256").update(bytes).digest("hex") !== file.scanSha256) throw new AiPlatformError("AI_FILE_INTEGRITY", "تغيّرت بايتات الملف بعد الفحص الأمني. يلزم إعادة رفعه وفحصه.", 422);
   return bytes;
 }

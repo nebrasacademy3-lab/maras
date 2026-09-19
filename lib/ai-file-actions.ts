@@ -2,7 +2,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiArtifacts, aiConversations, aiFileCache, aiFileJobs, aiFiles, aiMessages, aiQuizzes } from "@/db/schema";
+import { aiArtifacts, aiConversations, aiFileCache, aiFileJobs, aiFiles, aiMessages, aiQuizzes, users } from "@/db/schema";
 import { aiDeepLinks, artifactPayload, messagePayload, quizPayload } from "@/lib/ai-api";
 import { readAiFileBytes } from "@/lib/ai-files";
 import { resolveAiSource } from "@/lib/ai-course-source";
@@ -93,12 +93,19 @@ export async function runAiFileAction(input: {
     } finally { await releaseCache().catch(() => undefined); }
   }
   if (!generation) throw new AiPlatformError("AI_RESULT_MISSING", "تعذر حفظ نتيجة المعالجة.", 503);
-  // Recheck subscription/visibility after a long provider call and before returning source-derived content.
-  if (file.sourceResourceId !== null) await resolveAiSource(file, user, input.client);
   const value = generation;
   return getDb().transaction(async tx => {
+    // Hold the owner, conversation, file, source and entitlement rows through
+    // publication. A file becoming quarantined/withdrawn while Gemini worked
+    // must not publish a new result, including a cache hit.
+    const [currentUser] = await tx.select({ id: users.id }).from(users).where(and(eq(users.id, user.id), eq(users.status, "active"))).limit(1).for("share");
+    const [currentConversation] = await tx.select({ id: aiConversations.id }).from(aiConversations).where(and(eq(aiConversations.id, conversation.id), eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"))).limit(1).for("update");
+    const [currentFile] = await tx.select().from(aiFiles).where(and(eq(aiFiles.id, file.id), eq(aiFiles.userId, user.id))).limit(1).for("share");
+    if (!currentUser || !currentConversation || !currentFile) throw new AiPlatformError("AI_SOURCE_ACCESS", "لم يعد الحساب أو مصدر النتيجة متاحًا.", 403);
+    const currentSource = await resolveAiSource(currentFile, user, input.client, tx, true);
+    if (currentSource.cacheScope !== source.cacheScope || currentSource.cacheVersion !== source.cacheVersion || currentSource.objectKey !== source.objectKey || currentSource.sizeBytes !== source.sizeBytes || currentSource.contentType !== source.contentType || currentSource.storageProvider !== source.storageProvider) throw new AiPlatformError("AI_SOURCE_CHANGED", "تغيّر إصدار المصدر أثناء المعالجة. لم تُنشر نتيجة على الإصدار الجديد.", 409);
     if (input.job) {
-      const rows = await tx.execute(sql`SELECT id FROM ai_file_jobs WHERE id = ${input.job.id} AND status = 'processing' AND lease_owner = ${input.job.owner} FOR UPDATE`);
+      const rows = await tx.execute(sql`SELECT id FROM ai_file_jobs WHERE id = ${input.job.id} AND status = 'processing' AND lease_owner = ${input.job.owner} AND lease_until::timestamptz > clock_timestamp() FOR UPDATE`);
       if (!rows.rows.length) throw new AiBusyError(5, "AI_JOB_LEASE_LOST");
     }
     const now = new Date().toISOString();

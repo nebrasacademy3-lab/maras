@@ -1,6 +1,10 @@
-import { and, eq } from "drizzle-orm";
+import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
+import { gradeStudyQuiz } from "@/lib/study-quiz-grading";
+import { studyReadAccess } from "@/lib/study-output-access";
+import { isNativeAppRequest } from "@/lib/mobile-api";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiQuizAttempts, aiQuizzes } from "@/db/schema";
+import { aiQuizzes } from "@/db/schema";
 import { jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { aiDeepLinks, aiJson, storedQuizQuestions } from "@/lib/ai-api";
@@ -13,29 +17,27 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-quiz-attempt", `user:${user.id}`, 60, 60)) return jsonError("محاولات كثيرة. انتظر قليلًا.", 429);
     const { id: rawId } = await params;
-    const id = Math.floor(Number(rawId));
-    const [quiz] = await getDb().select().from(aiQuizzes).where(and(eq(aiQuizzes.id, id), eq(aiQuizzes.userId, user.id))).limit(1);
+    const id = Number(rawId);
+    if (!Number.isSafeInteger(id) || id <= 0) return jsonError("معرّف الاختبار غير صالح", 400);
+    const access = await studyReadAccess(user.id, isNativeAppRequest(request) ? "app" : "web");
+    const [quiz] = await getDb().select().from(aiQuizzes).where(and(eq(aiQuizzes.id, id), eq(aiQuizzes.userId, user.id), access.quiz)).limit(1);
     if (!quiz) return jsonError("الاختبار غير موجود", 404);
     let payload: Record<string, unknown>;
-    try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("إجابات الاختبار غير صالحة"); }
-    if (!Array.isArray(payload.answers)) return jsonError("أرسل إجابات الاختبار");
-    const answerMap = new Map<string, number>();
-    for (const item of payload.answers.slice(0, 100)) {
-      if (!item || typeof item !== "object" || Array.isArray(item)) continue;
-      const row = item as Record<string, unknown>;
-      const questionId = typeof row.questionId === "string" ? row.questionId.slice(0, 40) : "";
-      const choiceIndex = Number(row.choiceIndex);
-      if (questionId && Number.isInteger(choiceIndex) && choiceIndex >= 0 && choiceIndex <= 3) answerMap.set(questionId, choiceIndex);
-    }
-    const questions = storedQuizQuestions(quiz);
-    if (!questions.length) return jsonError("تعذر قراءة أسئلة الاختبار", 500);
-    const results = questions.map((question) => {
-      const selectedIndex = answerMap.has(question.id) ? answerMap.get(question.id)! : null;
-      return { questionId: question.id, selectedIndex, correctIndex: question.correctIndex, isCorrect: selectedIndex === question.correctIndex, explanation: question.explanation, translatedExplanation: question.translatedExplanation, scientificTerms: question.scientificTerms };
-    });
-    const score = results.filter((result) => result.isCorrect).length;
+    try { payload = await readBoundedJsonObject(request, 16 * 1024); }
+    catch (error) { return jsonError("إجابات الاختبار غير صالحة", error instanceof RequestBodyTooLargeError ? 413 : 400); }
+    let graded: ReturnType<typeof gradeStudyQuiz>;
+    try { graded = gradeStudyQuiz(storedQuizQuestions(quiz), payload.answers); }
+    catch (error) { return jsonError(error instanceof TypeError ? "أرسل إجابات صالحة دون تكرار للأسئلة" : "تعذر قراءة أسئلة الاختبار", error instanceof TypeError ? 400 : 500); }
+    const { results, score, total } = graded;
     const now = new Date().toISOString();
-    const [attempt] = await getDb().insert(aiQuizAttempts).values({ quizId: quiz.id, userId: user.id, answersJson: JSON.stringify([...answerMap].map(([questionId, choiceIndex]) => ({ questionId, choiceIndex }))), score, total: questions.length, createdAt: now }).returning();
-    return aiJson({ ok: true, attempt: { id: attempt.id, score, total: questions.length, percent: Math.round(score / questions.length * 100), createdAt: attempt.createdAt }, results, deepLink: aiDeepLinks({ conversationId: quiz.conversationId, quizId: quiz.id }).quiz }, { status: 201 });
+    // Authorization and the immutable question snapshot are checked in the
+    // INSERT statement itself, not only before parsing/grading the request.
+    const inserted = await getDb().execute(sql`INSERT INTO ai_quiz_attempts (quiz_id, user_id, answers_json, score, total, created_at)
+      SELECT ${aiQuizzes.id}, ${user.id}, ${JSON.stringify(graded.answers)}, ${score}, ${total}, ${now}
+      FROM ${aiQuizzes} WHERE ${and(eq(aiQuizzes.id, id), eq(aiQuizzes.userId, user.id), eq(aiQuizzes.questionsJson, quiz.questionsJson), access.quiz)}
+      RETURNING id, created_at AS "createdAt"`);
+    const attempt = inserted.rows[0];
+    if (!attempt) return jsonError("لم يعد مصدر الاختبار متاحًا أو تغيّر الاختبار. حدّث الصفحة.", 409);
+    return aiJson({ ok: true, attempt: { id: Number(attempt.id), score, total, percent: Math.round(score / total * 100), createdAt: String(attempt.createdAt) }, results, deepLink: aiDeepLinks({ conversationId: quiz.conversationId, quizId: quiz.id }).quiz }, { status: 201 });
   });
 }

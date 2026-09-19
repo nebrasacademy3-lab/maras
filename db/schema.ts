@@ -1197,7 +1197,7 @@ export const aiArtifacts = pgTable("ai_artifacts", {
   metadataJson: text("metadata_json"),
   model: text("model"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("ai_artifacts_user_idx").on(table.userId, table.createdAt), index("ai_artifacts_file_idx").on(table.fileId, table.kind, table.createdAt)]);
+}, (table) => [index("ai_artifacts_user_idx").on(table.userId, table.createdAt), index("ai_artifacts_file_idx").on(table.fileId, table.kind, table.createdAt), index("ai_artifacts_conversation_owner_idx").on(table.conversationId, table.userId, table.fileId)]);
 
 export const aiQuizzes = pgTable("ai_quizzes", {
   id: serial("id").primaryKey(),
@@ -1210,7 +1210,7 @@ export const aiQuizzes = pgTable("ai_quizzes", {
   model: text("model"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("ai_quizzes_user_idx").on(table.userId, table.createdAt), index("ai_quizzes_file_idx").on(table.fileId, table.createdAt)]);
+}, (table) => [index("ai_quizzes_user_idx").on(table.userId, table.createdAt), index("ai_quizzes_file_idx").on(table.fileId, table.createdAt), index("ai_quizzes_conversation_owner_idx").on(table.conversationId, table.userId, table.fileId)]);
 
 export const aiQuizAttempts = pgTable("ai_quiz_attempts", {
   id: serial("id").primaryKey(),
@@ -1318,7 +1318,7 @@ export const aiFileJobs = pgTable("ai_file_jobs", {
   errorMessage: text("error_message"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-}, table => [uniqueIndex("ai_file_jobs_request_unique").on(table.requestId), index("ai_file_jobs_queue_idx").on(table.status, table.availableAt), index("ai_file_jobs_user_idx").on(table.userId, table.status), index("ai_file_jobs_lease_idx").on(table.status, table.leaseUntil)]);
+}, table => [uniqueIndex("ai_file_jobs_request_unique").on(table.requestId), index("ai_file_jobs_queue_idx").on(table.status, table.availableAt), index("ai_file_jobs_user_idx").on(table.userId, table.status), index("ai_file_jobs_lease_idx").on(table.status, table.leaseUntil), index("ai_file_jobs_conversation_owner_idx").on(table.conversationId, table.userId, table.fileId)]);
 
 // Direct, explicit staff grants. No wildcard or implicit "admin" bypass.
 export const staffPermissions = pgTable("staff_permissions", {

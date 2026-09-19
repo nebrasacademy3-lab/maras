@@ -1,3 +1,5 @@
+import { studyReadAccess } from "@/lib/study-output-access";
+import { isNativeAppRequest } from "@/lib/mobile-api";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiArtifacts, aiFiles } from "@/db/schema";
@@ -14,7 +16,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!await checkRateLimit("ai-artifact-download", `user:${user.id}`, 30, 60)) return jsonError("طلبات تنزيل كثيرة. حاول بعد دقيقة.", 429);
   const id = Number((await params).id);
   if (!Number.isSafeInteger(id) || id <= 0) return jsonError("معرّف غير صالح", 400);
-  const [row] = await getDb().select({ artifact: aiArtifacts, sourceName: aiFiles.originalName }).from(aiArtifacts).innerJoin(aiFiles, eq(aiArtifacts.fileId, aiFiles.id)).where(and(eq(aiArtifacts.id, id), eq(aiArtifacts.userId, user.id), eq(aiFiles.userId, user.id))).limit(1);
+  const access = await studyReadAccess(user.id, isNativeAppRequest(request) ? "app" : "web");
+  const [row] = await getDb().select({ artifact: aiArtifacts, sourceName: aiFiles.originalName }).from(aiArtifacts).innerJoin(aiFiles, eq(aiArtifacts.fileId, aiFiles.id)).where(and(eq(aiArtifacts.id, id), eq(aiArtifacts.userId, user.id), eq(aiFiles.userId, user.id), access.file)).limit(1);
   if (!row) return jsonError("الملف غير موجود", 404);
   const bytes = createStudyDocx({ ...row.artifact, sourceName: row.sourceName });
   return new Response(new Uint8Array(bytes), { headers: {
