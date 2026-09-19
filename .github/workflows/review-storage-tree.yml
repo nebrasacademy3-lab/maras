@@ -1,0 +1,106 @@
+name: Verify reviewed storage source tree
+on:
+  push:
+    branches: [audit/resume-recovery-20260919]
+    paths: [.github/workflows/review-storage-tree.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 4
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: review
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 1d08c5ca28cb54e87998ab643cc46d15263d4661
+          path: source
+          persist-credentials: false
+      - name: Verify literal changes and publish unattached Git tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync, writeFileSync, mkdirSync, existsSync, lstatSync } from 'node:fs';
+          import { resolve, dirname, posix } from 'node:path';
+          import { createHash } from 'node:crypto';
+          import { execFileSync } from 'node:child_process';
+          const expectedTree = '5ccefff97a8932f7d22f15f4784588da045d9f6d';
+          const baseline = '1d08c5ca28cb54e87998ab643cc46d15263d4661';
+          const hashes = [
+            'fe6d1b72252607c0986f9b96ff3b8e20b03324f9602aac23a23464383664bc9f',
+            '5015d3f5194552cfab796ee695c1eb4a8825f895a3fed6ec3d67141e85461ada',
+            'e41a8a82e14cb76c2e3c58d3efcf4083953913bd150d3b9d6838a9f398d2fd9e',
+            '415e8de5af371a3e88e381e35c72c24b641b0c1b9693bbb181189e8414d3d2e6',
+            'a077132ee9853c1fcc3f988821dcc22ff7e1d798e226987b84b3aed2aa05acf7',
+            '3d35fc1fc4f9a4bc073124f229317cdba9d4c46c4eeb194917fd8633c648017e',
+            '40790c0a6f04318f3b9267dd4dc0c149e50a0548dcdb634981b67b12dec5e59c',
+            '4448d9ce2a696d7418db8e19e40efea310dcd3a46b10bbe4471fa69303b97239',
+            '20bbf44cbee811080b87dc6268b3e42689a6dfd753878b0422ec5d5ee669ca02',
+            'f261da0fa2c328ff13906b354315343aec3786dc70c5f84dfea65e2c5549d2e9',
+            '29bb76352d25660cf8a3c3d48d7f501641d671734868030ba6e020ceac537c0a',
+            '563f7f89af93cc2c186b7e6536c4bbd5b315fbd97b7aac2d1ae9898fd3668592',
+            'db450ca92ef10396846fe37bcb0f6ea6a7b67fb279659cb6bbfd5230dc8e0972',
+            '6af5f726eeda16f8cabdaece24925f5276af06b5e8f35d971ac6e88882db15d6',
+            '57316e69c90560049fabd54c687beb06e15fac52ccd53e321448dceab9a52896',
+            '9af73234d9279c9c5f7a062c12a29d5ee32674e9834251bf1b76f250c8ff5cf8',
+            '725530632d8cafaa397c26ff3fe3b087ca8bd0a6ac535a58a22e25305c3c25ac'
+          ];
+          const source = resolve('source');
+          const git = (...args) => execFileSync('git', args, {cwd:source, encoding:'utf8'}).trim();
+          assert.equal(git('rev-parse','HEAD'), baseline);
+          assert.equal(git('rev-parse','HEAD^{tree}'), '8d99baf268f151d74e328664caf5de7cee0c7183');
+          const blob = bytes => createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+          const files = [], tree = [], seen = new Set();
+          for (let i=0;i<hashes.length;i++) {
+            const raw = readFileSync(`review/audit/storage-changes-${i+1}.json`);
+            assert.equal(createHash('sha256').update(raw).digest('hex'), hashes[i], `transport checksum part ${i+1}`);
+            const changes = JSON.parse(raw);
+            for (const change of changes) {
+              const path = change.path;
+              assert.equal(typeof path, 'string');
+              assert.ok(!path.startsWith('/') && !path.includes('\\') && !path.split('/').includes('..') && posix.normalize(path)===path && !seen.has(path));
+              seen.add(path);
+              const file = resolve(source,path);
+              assert.ok(file.startsWith(source+'/'));
+              let bytes = Buffer.alloc(0);
+              if (change.before===null) assert.equal(existsSync(file),false,path);
+              else { assert.ok(lstatSync(file).isFile()); bytes=readFileSync(file); assert.equal(blob(bytes),change.before,path); }
+              const originalLength=bytes.length;
+              let previousEnd=0;
+              for (const edit of change.edits) {
+                assert.ok(Number.isSafeInteger(edit.offset) && Number.isSafeInteger(edit.remove) && edit.offset>=previousEnd && edit.remove>=0 && edit.offset+edit.remove<=originalLength);
+                assert.equal(typeof edit.text,'string'); previousEnd=edit.offset+edit.remove;
+              }
+              for (const edit of [...change.edits].reverse()) bytes=Buffer.concat([bytes.subarray(0,edit.offset),Buffer.from(edit.text),bytes.subarray(edit.offset+edit.remove)]);
+              assert.equal(blob(bytes),change.after,path);
+              assert.ok(Buffer.from(bytes.toString('utf8')).equals(bytes));
+              mkdirSync(dirname(file),{recursive:true});writeFileSync(file,bytes);
+              files.push({path,before:change.before,after:change.after});
+              tree.push({path,mode:'100644',type:'blob',content:bytes.toString('utf8')});
+            }
+          }
+          assert.equal(files.length,47);
+          git('add','--',...files.map(file=>file.path));
+          git('diff','--cached','--check');
+          assert.equal(git('write-tree'),expectedTree);
+          const response=await fetch('https://api.github.com/repos/nebrasacademy3-lab/maras/git/trees', {
+            method:'POST', headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json','Content-Type':'application/json','X-GitHub-Api-Version':'2022-11-28'},
+            body:JSON.stringify({base_tree:'8d99baf268f151d74e328664caf5de7cee0c7183',tree}),signal:AbortSignal.timeout(30000)
+          });
+          assert.ok(response.ok,`Git tree creation HTTP ${response.status}`);
+          const created=await response.json();assert.equal(created.sha,expectedTree);
+          mkdirSync('evidence',{recursive:true});writeFileSync('evidence/reviewed-tree.json',JSON.stringify({baseline,tree:created.sha,files},null,2));
+          console.log(JSON.stringify({verified:true,baseline,tree:created.sha,changedFiles:files.length,refUpdated:false}));
+          NODE
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewed-storage-tree
+          path: evidence/reviewed-tree.json
+          retention-days: 1
+          if-no-files-found: error
