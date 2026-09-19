@@ -1,0 +1,35 @@
+name: Locked continuation dependencies f8413f0
+on:
+  push:
+    branches: [audit/source-f8413f0]
+    paths: [.github/workflows/review-deps-f8413f0.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: f8413f0badac273ed6f68dbff0d8a8c02184a302
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install locked development dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Package dependencies only, without credentials or source
+        run: |
+          set -eu
+          tar -czf "$RUNNER_TEMP/locked-dependencies.tar.gz" node_modules
+          sha256sum package-lock.json > "$RUNNER_TEMP/lockfile-identity.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: locked-dependencies-f8413f0
+          path: |
+            ${{ runner.temp }}/locked-dependencies.tar.gz
+            ${{ runner.temp }}/lockfile-identity.txt
+          retention-days: 1
+          if-no-files-found: error
