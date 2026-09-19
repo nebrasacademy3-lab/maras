@@ -1,0 +1,205 @@
+diff --git a/lib/admin-deletion.ts b/lib/admin-deletion.ts
+index 6905cd5534205ca0d5465ce2de834dbd2a243e5d..6fc3c20b02f9586be278f3d367fb87e9e2762df8 100644
+--- a/lib/admin-deletion.ts
++++ b/lib/admin-deletion.ts
+@@ -10 +10,2 @@ import {
+-import { deleteObject, deletePrefix, type StorageProvider } from "@/lib/storage";
++import type { StorageProvider } from "@/lib/storage";
++import { enqueueStorageCleanupTx, processStorageCleanupBatch } from "@/lib/storage-cleanup";
+@@ -31 +32 @@ type VideoCleanupAsset = Pick<typeof videoAssets.$inferSelect,
+-function collectVideoCleanup(asset: VideoCleanupAsset, cleanup: CleanupKey[]) {
++export function collectVideoCleanup(asset: VideoCleanupAsset, cleanup: CleanupKey[]) {
+@@ -69,0 +71 @@ type DeletionResult = {
++  cleanupPending: number;
+@@ -167,0 +170 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
++  let cleanupJobIds: string[] = [];
+@@ -365,0 +369 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
++    cleanupJobIds = await enqueueStorageCleanupTx(tx, cleanup);
+@@ -369,3 +372,0 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
+-  const uniqueCleanup = [...new Map(cleanup.map((item) => [
+-    `${item.provider ?? "active"}:${item.recursive ? "prefix" : "object"}:${item.key}`, item,
+-  ])).values()];
+@@ -374,11 +375,14 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
+-  // Large course deletions must not fan out an unbounded number of transfers.
+-  for (let index = 0; index < uniqueCleanup.length; index += 10) {
+-    await Promise.all(uniqueCleanup.slice(index, index + 10).map(async (item) => {
+-      try {
+-        if (item.recursive) await deletePrefix(item.key, item.provider);
+-        else await deleteObject(item.key, item.provider);
+-      } catch {
+-        cleanupFailures.push(`${item.source}:${item.key}`);
+-        cleanupTargets.push(item);
+-      }
+-    }));
++  let completed = 0;
++  // Do not hold an HTTP request open indefinitely. The durable worker recovers
++  // jobs not drained here, including process death immediately after COMMIT.
++  const signal = AbortSignal.timeout(20_000);
++  for (let offset = 0; offset < cleanupJobIds.length && !signal.aborted; offset += 10) {
++    try {
++      const batch = await processStorageCleanupBatch(db, { limit: 10, jobIds: cleanupJobIds.slice(offset, offset + 10), signal });
++      completed += batch.completed;
++      for (const job of batch.failed) { cleanupFailures.push(`${job.source}:${job.key}`); cleanupTargets.push(job); }
++    } catch {
++      // Parent deletion has committed: do not return an ambiguous failed delete
++      // or discard queued work when the database/transport temporarily fails.
++      break;
++    }
+@@ -387 +391 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
+-    await db.insert(auditLogs).values({ actorEmail: input.actor, action: "cleanup_warning", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson({ failedObjects: cleanupFailures, cleanupTargets }), afterJson: null, ipAddress: input.ipAddress, createdAt: nowIso() });
++    try { await db.insert(auditLogs).values({ actorEmail: input.actor, action: "cleanup_warning", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson({ failedObjects: cleanupFailures, cleanupTargets }), afterJson: null, ipAddress: input.ipAddress, createdAt: nowIso() }); } catch { /* Durable job retains the failure when audit transport is unavailable. */ }
+@@ -389 +393 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
+-  return { entityType: input.entityType, entityId: input.entityId, deleted: true, deletedRows, cleanupFailures };
++  return { entityType: input.entityType, entityId: input.entityId, deleted: true, deletedRows, cleanupFailures, cleanupPending: cleanupJobIds.length - completed };
+diff --git a/lib/railway-direct-upload.ts b/lib/railway-direct-upload.ts
+index c1cd2397fbfba9257a0776ca12cf5439f49e38b9..80276dc3f5b688d6342824a380c6bd9aaf602781 100644
+--- a/lib/railway-direct-upload.ts
++++ b/lib/railway-direct-upload.ts
+@@ -73,0 +74 @@ export async function createDirectUploadUrl(
++  sizeBytes: number,
+@@ -75,0 +77 @@ export async function createDirectUploadUrl(
++  if (!Number.isSafeInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > 200 * 1024 * 1024) throw new Error("Invalid signed upload size");
+@@ -85,0 +88,2 @@ export async function createDirectUploadUrl(
++    ContentLength: sizeBytes,
++    IfNoneMatch: "*",
+@@ -89 +93 @@ export async function createDirectUploadUrl(
+-    signableHeaders: new Set(["content-type"]),
++    signableHeaders: new Set(["content-type", "content-length", "if-none-match"]),
+@@ -101,0 +106,2 @@ export async function createDirectUploadUrl(
++  const signedHeaders = new Set((url.searchParams.get("X-Amz-SignedHeaders") || "").split(";"));
++  if (!["content-type", "content-length", "if-none-match"].every(header => signedHeaders.has(header))) throw new Error("Required upload constraints were not signed");
+diff --git a/lib/resumable-upload-policy.ts b/lib/resumable-upload-policy.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..d270c8474062c6c5c2768901014da11f5d0ced98
+--- /dev/null
++++ b/lib/resumable-upload-policy.ts
+@@ -0,0 +1,35 @@
++export const RESUMABLE_CHUNK_BYTES = 4 * 1024 * 1024;
++export const RESUMABLE_MAX_BYTES = 200 * 1024 * 1024;
++export const RESUMABLE_TYPES = new Set(["video/mp4", "video/webm", "video/quicktime", "video/x-matroska", "video/x-msvideo"]);
++export class ResumableUploadError extends Error {
++  constructor(message: string, readonly status = 400) { super(message); this.name = "ResumableUploadError"; }
++}
++export type UploadManifest = { courseSlug: string; lessonId: string; contentType: string; sizeBytes: number; hashes: string[]; requestKey: string };
++export function validateUploadId(value: unknown): string {
++  if (typeof value !== "string" || !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(value)) throw new ResumableUploadError("معرّف الرفع غير صالح");
++  return value.toLowerCase();
++}
++export function validateUploadManifest(value: Record<string, unknown>): UploadManifest {
++  const { courseSlug, lessonId, contentType, sizeBytes, hashes } = value;
++  if (typeof courseSlug !== "string" || typeof lessonId !== "string" || !/^[a-zA-Z0-9._-]{1,120}$/.test(courseSlug) || !/^[a-zA-Z0-9._-]{1,120}$/.test(lessonId)
++    || [courseSlug, lessonId].some(v => v === "." || v === "..")) throw new ResumableUploadError("المادة أو الدرس غير صالح");
++  if (typeof contentType !== "string" || !RESUMABLE_TYPES.has(contentType)) throw new ResumableUploadError("نوع الفيديو غير مدعوم");
++  if (typeof sizeBytes !== "number" || !Number.isSafeInteger(sizeBytes) || sizeBytes < 1 || sizeBytes > RESUMABLE_MAX_BYTES) throw new ResumableUploadError("حجم الفيديو أكبر من المسموح", 413);
++  if (!Array.isArray(hashes) || hashes.length !== Math.ceil(sizeBytes / RESUMABLE_CHUNK_BYTES) || hashes.some(hash => typeof hash !== "string" || !/^[a-f0-9]{64}$/.test(hash))) throw new ResumableUploadError("بصمات أجزاء الفيديو غير صالحة");
++  return { courseSlug, lessonId, contentType, sizeBytes, hashes, requestKey: validateUploadId(value.requestKey) };
++}
++export function uploadPartSize(size: number, index: number) {
++  if (!Number.isSafeInteger(size) || size < 1 || size > RESUMABLE_MAX_BYTES || !Number.isSafeInteger(index) || index < 0 || index >= Math.ceil(size / RESUMABLE_CHUNK_BYTES)) throw new ResumableUploadError("رقم جزء الفيديو غير صالح");
++  return Math.min(RESUMABLE_CHUNK_BYTES, size - index * RESUMABLE_CHUNK_BYTES);
++}
++export function resumablePartKey(id: string, index: number, hash: string) {
++  validateUploadId(id);
++  if (!Number.isSafeInteger(index) || index < 0 || index >= RESUMABLE_MAX_BYTES / RESUMABLE_CHUNK_BYTES || !/^[a-f0-9]{64}$/.test(hash)) throw new ResumableUploadError("بيانات الجزء غير صالحة");
++  return `private/resumable/${id}/${index}-${hash}`;
++}
++export function validResumableVideoHeader(type: string, bytes: Uint8Array) {
++  const mp4 = bytes.length >= 12 && String.fromCharCode(...bytes.slice(4, 8)) === "ftyp";
++  const webm = bytes.length >= 4 && bytes[0] === 0x1a && bytes[1] === 0x45 && bytes[2] === 0xdf && bytes[3] === 0xa3;
++  const avi = bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === "RIFF" && String.fromCharCode(...bytes.slice(8, 11)) === "AVI";
++  return ["video/mp4", "video/quicktime"].includes(type) ? mp4 : ["video/webm", "video/x-matroska"].includes(type) ? webm : type === "video/x-msvideo" && avi;
++}
+diff --git a/lib/resumable-video-client.ts b/lib/resumable-video-client.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..a6c73f675f4008312af2d1d301cee9db0200dd8a
+--- /dev/null
++++ b/lib/resumable-video-client.ts
+@@ -0,0 +1,88 @@
++"use client";
++import { adminFetch } from "@/lib/admin-client";
++import { uploadWithProgress, UploadError, type UploadProgress } from "@/lib/upload-client";
++import { RESUMABLE_CHUNK_BYTES, RESUMABLE_MAX_BYTES, RESUMABLE_TYPES, validateUploadId, uploadPartSize } from "@/lib/resumable-upload-policy";
++
++type UploadReceipt = { id: string; status: string; received: number[]; chunkBytes: number; sizeBytes: number; expiresAt: string; asset?: { id: number } };
++type Options = { file: File; courseSlug: string; lessonId: string; contentType: string; durationSeconds?: number; signal: AbortSignal;
++  onProgress?: (value: UploadProgress) => void; onPhase?: (value: string) => void };
++const endpoint = "/api/admin/videos/resumable";
++async function digest(value: ArrayBuffer) { return [...new Uint8Array(await crypto.subtle.digest("SHA-256", value))].map(byte => byte.toString(16).padStart(2, "0")).join(""); }
++function parseReceipt(value: unknown, size: number): UploadReceipt {
++  const row = value as UploadReceipt;
++  if (!row || typeof row !== "object" || row.sizeBytes !== size || row.chunkBytes !== RESUMABLE_CHUNK_BYTES || !["open", "completed"].includes(row.status)
++    || !Array.isArray(row.received) || row.received.some(index => !Number.isSafeInteger(index) || index < 0 || index >= Math.ceil(size / RESUMABLE_CHUNK_BYTES))
++    || new Set(row.received).size !== row.received.length || typeof row.expiresAt !== "string" || !Number.isFinite(Date.parse(row.expiresAt))) throw new Error("استجابة الرفع غير صالحة");
++  validateUploadId(row.id); return row;
++}
++function remembered(key: string) {
++  try { const value = localStorage.getItem(key); return value ? validateUploadId(value) : null; } catch { return null; }
++}
++function remember(key: string, value: string | null) {
++  try { if (value) localStorage.setItem(key, value); else localStorage.removeItem(key); } catch { /* Private browsing can disable persistence; this tab still uploads safely. */ }
++}
++
++/** Resumption is bound to the account, destination and SHA-256 of EVERY part,
++ * never to a filename/size guess. No file bytes, bearer tokens or signed URLs
++ * are retained in browser storage. Reselecting the identical file resumes it. */
++export async function uploadResumableVideo(options: Options): Promise<UploadReceipt> {
++  const { file, courseSlug, lessonId, contentType, signal, onProgress, onPhase } = options;
++  signal.throwIfAborted();
++  if (file.size < 1 || file.size > RESUMABLE_MAX_BYTES || !RESUMABLE_TYPES.has(contentType)) throw new Error("اختر فيديو مدعومًا لا يزيد حجمه عن 200MB");
++  const identity = await adminFetch("/api/admin/me", { credentials: "same-origin", cache: "no-store", signal });
++  const actor = await identity.json() as { user?: { id?: number } };
++  const ownerId = actor.user?.id;
++  if (!identity.ok || !Number.isSafeInteger(ownerId) || Number(ownerId) <= 0) throw new Error("انتهت جلسة الإدارة؛ سجّل الدخول ثم استأنف الرفع");
++  onPhase?.("جارٍ التحقق من بصمة الفيديو لتجهيز الاستئناف...");
++  const hashes: string[] = [];
++  for (let offset = 0; offset < file.size; offset += RESUMABLE_CHUNK_BYTES) {
++    signal.throwIfAborted(); hashes.push(await digest(await file.slice(offset, offset + RESUMABLE_CHUNK_BYTES).arrayBuffer()));
++  }
++  signal.throwIfAborted();
++  const manifest = { courseSlug, lessonId, contentType, sizeBytes: file.size, hashes };
++  const key = `meras.video-resume.v1:${ownerId}:${await digest(new TextEncoder().encode(JSON.stringify(manifest)).buffer)}`;
++  let requestKey = remembered(key) ?? crypto.randomUUID();
++  remember(key, requestKey); // Persist BEFORE admission: a lost response must not create a second session.
++  const json = async (body: Record<string, unknown>) => {
++    const response = await adminFetch(endpoint, { method: "POST", credentials: "same-origin", signal,
++      headers: { "content-type": "application/json", "x-meras-acting-user": String(ownerId) }, body: JSON.stringify({ ...body, ownerId }) });
++    const value = await response.json() as { error?: string };
++    if (!response.ok) throw new UploadError(value.error || "تعذر إكمال الرفع؛ أعد اختيار الملف نفسه للاستئناف", response.status);
++    return parseReceipt(value, file.size);
++  };
++  let session: UploadReceipt;
++  try { session = await json({ action: "start", ...manifest, requestKey }); }
++  catch (error) {
++    if (!(error instanceof UploadError) || error.status !== 410 || signal.aborted) throw error;
++    // An expired session is never reopened or overwritten. A fresh, independently
++    // bounded admission is required; old staging is removed by the durable worker.
++    requestKey = crypto.randomUUID(); remember(key, requestKey);
++    session = await json({ action: "start", ...manifest, requestKey });
++  }
++  const started = performance.now(); let sent = 0;
++  let loaded = session.received.reduce((total, index) => total + uploadPartSize(file.size, index), 0);
++  const progress = (partLoaded = 0) => {
++    const bytesPerSecond = (sent + partLoaded) / Math.max((performance.now() - started) / 1000, 0.1);
++    const current = Math.min(file.size, loaded + partLoaded);
++    onProgress?.({ loaded: current, total: file.size, percent: Math.floor(current / file.size * 100), bytesPerSecond,
++      remainingSeconds: bytesPerSecond > 0 ? Math.ceil((file.size - current) / bytesPerSecond) : null });
++  };
++  progress();
++  const done = new Set(session.received);
++  for (let index = 0; index < hashes.length && session.status === "open"; index++) {
++    if (done.has(index)) continue;
++    signal.throwIfAborted(); onPhase?.(`رفع / استئناف الجزء ${index + 1} من ${hashes.length}...`);
++    const size = uploadPartSize(file.size, index);
++    const value = await uploadWithProgress<unknown>({ url: `${endpoint}?id=${session.id}&part=${index}`, method: "PUT",
++      body: file.slice(index * RESUMABLE_CHUNK_BYTES, index * RESUMABLE_CHUNK_BYTES + size), withCredentials: true,
++      headers: { "content-type": "application/octet-stream", "x-meras-acting-user": String(ownerId) }, timeoutMs: 90_000,
++      signal, onProgress: event => progress(Math.min(event.loaded, size)) });
++    const next = parseReceipt(value, file.size);
++    if (next.id !== session.id || !next.received.includes(index)) throw new Error("لم يؤكد الخادم حفظ الجزء؛ أعد المحاولة للاستئناف");
++    session = next; loaded += size; sent += size; progress();
++  }
++  signal.throwIfAborted(); onPhase?.("جارٍ التحقق من الفيديو الكامل وربطه بالدرس...");
++  const completed = await json({ action: "complete", id: session.id, durationSeconds: options.durationSeconds || 0 });
++  if (completed.id !== session.id || completed.status !== "completed" || !Number.isSafeInteger(completed.asset?.id)) throw new Error("لم يؤكد الخادم اعتماد الفيديو؛ أعد اختيار الملف نفسه للتحقق");
++  remember(key, null); return completed;
++}
