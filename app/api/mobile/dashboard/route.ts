@@ -20,8 +20,8 @@ export async function GET(request: Request) {
     or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now)),
   );
   const [accessRows, progressRows, orderRows, invoiceRows, requestRows, noticeRows, ticketRows] = await Promise.all([
-    db.select().from(courseAccess).where(eq(courseAccess.userEmail, user.email)).then(rows => effectiveAccessRows(rows)),
-    db.select().from(lessonProgress).where(eq(lessonProgress.userEmail, user.email)),
+    db.select().from(courseAccess).where(eq(courseAccess.userId, user.id)).then(rows => effectiveAccessRows(rows)),
+    db.select().from(lessonProgress).where(eq(lessonProgress.userId, user.id)),
     db.select().from(orders).where(eq(orders.userId, user.id)).orderBy(desc(orders.createdAt)).limit(50),
     db.select({ invoice: invoices }).from(invoices)
       .innerJoin(orders, eq(orders.orderNumber, invoices.orderNumber))
@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     db.select({ notification: notificationsDb, readAt: notificationReads.readAt }).from(notificationsDb)
       .leftJoin(notificationReads, and(eq(notificationReads.notificationId, notificationsDb.id), eq(notificationReads.userId, user.id)))
       .where(visibleNotifications).orderBy(desc(notificationsDb.createdAt)).limit(50),
-    db.select().from(supportTickets).where(eq(supportTickets.userEmail, user.email)).orderBy(desc(supportTickets.createdAt)).limit(50),
+    db.select().from(supportTickets).where(eq(supportTickets.userId, user.id)).orderBy(desc(supportTickets.createdAt)).limit(50),
   ]);
   const ticketIds = ticketRows.map((ticket) => ticket.id);
   const [replyRows, courses, institutions, recommended] = await Promise.all([
