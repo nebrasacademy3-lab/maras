@@ -660,9 +660,9 @@ function StudentActionForm({ dialog, data, busy, close, submit }: { dialog: Stud
     event.preventDefault(); const form = new FormData(event.currentTarget); const fields = Object.fromEntries(form.entries());
     const base = { ...fields, operationKey: dialog.key, reason: form.get("reason") };
     const payload = dialog.kind === "profile" ? { ...base, action: "updateStudentProfile", id: data.student.id, expectedUpdatedAt: data.student.updatedAt }
-      : dialog.kind === "grant" ? { ...base, action: "grantAccess", userEmail: data.student.email, price: Number(form.get("price") || 0) }
+      : dialog.kind === "grant" ? { ...base, action: "grantAccess", userId: data.student.id, userEmail: data.student.email, price: Number(form.get("price") || 0) }
       : dialog.kind === "status" ? { ...base, action: "updateUser", id: data.student.id, role: data.student.role, status: data.student.status === "active" ? "suspended" : "active", expectedUpdatedAt: data.student.updatedAt }
-      : dialog.kind === "notification" ? { ...base, action: "createNotification", audience: "user", userEmail: data.student.email, presentation: "inbox", pushEnabled: form.get("pushEnabled") === "on" }
+      : dialog.kind === "notification" ? { ...base, action: "createNotification", audience: "user", targetUserId: data.student.id, userEmail: data.student.email, presentation: "inbox", pushEnabled: form.get("pushEnabled") === "on" }
       : { ...base, action: "updateAccess", id: dialog.subscription!.id, operation: dialog.operation, days: Number(form.get("days") || 30), expectedUpdatedAt: dialog.subscription!.updatedAt };
     await submit(payload);
   }

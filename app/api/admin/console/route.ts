@@ -627,12 +627,15 @@ export async function POST(request: Request) {
   }
 
   if (action === "grantAccess") {
+    const userId = payload.userId;
+    if (typeof userId !== "number" || !Number.isSafeInteger(userId) || userId < 1) return jsonError("حدّث ملف الطالب قبل المنح؛ معرّف الحساب الثابت مطلوب.", 400);
     const userEmail = cleanText(payload.userEmail, 180).toLowerCase();
     const courseSlug = cleanText(payload.courseSlug, 80);
     const course = await getCourseCatalog(courseSlug, true);
     if (!validEmail(userEmail) || !course) return jsonError("تحقق من الطالب والمادة");
-    const [student] = await db.select({ id: users.id, fullName: users.fullName, phone: users.phone, role: users.role }).from(users).where(eq(users.email, userEmail)).limit(1);
+    const [student] = await db.select({ id: users.id, email: users.email, fullName: users.fullName, phone: users.phone, role: users.role }).from(users).where(eq(users.id, userId)).limit(1);
     if (!student || student.role !== "student") return jsonError("الطالب غير موجود", 404);
+    if (student.email.toLowerCase() !== userEmail) return jsonError("تغيّرت بيانات الطالب؛ حدّث الملف قبل منح الوصول.", 409);
     const rawExpiry = cleanText(payload.expiresAt, 40);
     if (rawExpiry && (!Number.isFinite(Date.parse(rawExpiry)) || Date.parse(rawExpiry) <= Date.parse(now))) return jsonError("يجب أن يكون تاريخ الانتهاء في المستقبل");
     const grantType = cleanText(payload.grantType, 30) === "manual_payment" ? "manual_payment" : "complimentary";
@@ -944,6 +947,11 @@ export async function POST(request: Request) {
     const title = cleanText(payload.title, 160);
     const body = cleanText(payload.body, 1000);
     const userEmail = cleanText(payload.userEmail, 180).toLowerCase() || null;
+    const hasTargetId = Object.prototype.hasOwnProperty.call(payload, "targetUserId");
+    const requestedTargetId = payload.targetUserId;
+    if (hasTargetId && (typeof requestedTargetId !== "number" || !Number.isSafeInteger(requestedTargetId) || requestedTargetId < 1)) return jsonError("معرّف مستلم الإشعار غير صالح", 400);
+    if (audience === "segment" && (hasTargetId || userEmail)) return jsonError("لا يمكن الجمع بين شريحة ومستلم خاص", 400);
+    const privateRecipient = Boolean(userEmail || hasTargetId || audience === "user");
     const actionUrl = cleanText(payload.actionUrl, 500) || null;
     const actionLabel = cleanText(payload.actionLabel, 80) || null;
     const presentation = cleanText(payload.presentation, 20) || "inbox";
@@ -953,7 +961,7 @@ export async function POST(request: Request) {
     const expiresAt = cleanText(payload.expiresAt, 40) || null;
     const dismissible = payload.dismissible !== false;
     const actionIsValid = !actionUrl || (actionUrl.startsWith("/") && !actionUrl.startsWith("//")) || (() => { try { return new URL(actionUrl).protocol === "https:"; } catch { return false; } })();
-    if (!["student", "public", "supervisor", "admin", "user", "segment"].includes(audience) || !["inbox", "banner", "modal", "all"].includes(presentation) || !["general", "discount", "new-course", "new-service", "urgent", "success"].includes(template) || title.length < 3 || body.length < 3 || (userEmail && !validEmail(userEmail)) || (audience === "user" && !userEmail) || !actionIsValid || (startsAt && Number.isNaN(new Date(startsAt).getTime())) || (expiresAt && Number.isNaN(new Date(expiresAt).getTime()))) return jsonError("تحقق من بيانات الإشعار");
+    if (!["student", "public", "supervisor", "admin", "user", "segment"].includes(audience) || !["inbox", "banner", "modal", "all"].includes(presentation) || !["general", "discount", "new-course", "new-service", "urgent", "success"].includes(template) || title.length < 3 || body.length < 3 || (userEmail && !validEmail(userEmail)) || (audience === "user" && !userEmail && !hasTargetId) || !actionIsValid || (startsAt && Number.isNaN(new Date(startsAt).getTime())) || (expiresAt && Number.isNaN(new Date(expiresAt).getTime()))) return jsonError("تحقق من بيانات الإشعار");
     if (startsAt && expiresAt && new Date(expiresAt).getTime() <= new Date(startsAt).getTime()) return jsonError("فترة الإعلان غير صحيحة");
     if (audience === "segment") {
       const universitySlug = cleanText(payload.segmentUniversity, 120);
@@ -1009,11 +1017,25 @@ export async function POST(request: Request) {
       return Response.json({ ok: true, campaignId, recipients: recipients.length, queued: pushEnabled }, { status: 201 });
     }
     const pushScheduled = Boolean(pushEnabled && startsAt && new Date(startsAt).getTime() > Date.now());
-    const [created] = await db.insert(notificationsDb).values({ audience, title, body, userEmail, actionUrl, actionLabel, presentation, template, pushEnabled, pushStatus: !pushEnabled ? "disabled" : pushScheduled ? "pending" : "processing", pushClaimedAt: pushEnabled && !pushScheduled ? now : null, startsAt, expiresAt, dismissible, createdAt: now }).returning({ id: notificationsDb.id, targetUserId: notificationsDb.targetUserId });
+    const saved = await db.transaction(async (tx) => {
+      let targetUserId: number | null = null;
+      if (privateRecipient) {
+        const [candidate] = await tx.select({ id: users.id }).from(users).where(hasTargetId ? eq(users.id, requestedTargetId as number) : eq(users.email, userEmail!)).limit(1);
+        if (!candidate) return { error: "حساب المستلم غير موجود", status: 404 };
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${candidate.id})`);
+        const [recipient] = await tx.select({ id: users.id, email: users.email, status: users.status }).from(users).where(eq(users.id, candidate.id)).limit(1).for("update");
+        if (!recipient || recipient.status !== "active" || userEmail && recipient.email.toLowerCase() !== userEmail) return { error: "تغيّرت بيانات المستلم؛ حدّث الملف قبل الإرسال.", status: 409 };
+        targetUserId = recipient.id;
+      }
+      const [created] = await tx.insert(notificationsDb).values({ audience, title, body, targetUserId, userEmail: null, actionUrl, actionLabel, presentation, template, pushEnabled, pushStatus: !pushEnabled ? "disabled" : pushScheduled ? "pending" : "processing", pushClaimedAt: pushEnabled && !pushScheduled ? now : null, startsAt, expiresAt, dismissible, createdAt: now }).returning({ id: notificationsDb.id, targetUserId: notificationsDb.targetUserId });
+      return { created };
+    });
+    if ("error" in saved) return jsonError(saved.error!, saved.status);
+    const { created } = saved;
     const push = pushScheduled
       ? { scheduled: true, attempted: 0, accepted: 0, rejected: 0, invalidated: 0, providerErrors: [] as string[] }
       : pushEnabled
-        ? { scheduled: false, ...await sendPushNotification(userEmail ? { userId: created.targetUserId } : { audience }, title, body, { ...(actionUrl?.startsWith("https://") ? { url: actionUrl } : { route: actionUrl || "/notifications" }), notificationId: created.id }) }
+        ? { scheduled: false, ...await sendPushNotification(privateRecipient ? { userId: created.targetUserId } : { audience }, title, body, { ...(actionUrl?.startsWith("https://") ? { url: actionUrl } : { route: actionUrl || "/notifications" }), notificationId: created.id }) }
         : { scheduled: false, attempted: 0, accepted: 0, rejected: 0, invalidated: 0, providerErrors: [] as string[] };
     if (!pushScheduled && pushEnabled) await db.update(notificationsDb).set({ pushStatus: push.accepted > 0 ? "accepted" : push.attempted === 0 ? "no_devices" : "failed", pushAttempts: 1, pushLastError: push.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: push.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, created.id));
     await audit(request, authorization.actor, "create", "notification", String(created.id), null, { audience, title, userEmail, template, actionUrl, push });

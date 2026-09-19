@@ -57,7 +57,7 @@ test("manual paid grants fulfill once and conflicting retry payload is rejected"
     courseWaitlist: [{ userId: 1, userEmail: "old-address@example.test", courseSlug: "physics", status: "active" }, { userId: 2, userEmail: "student@example.test", courseSlug: "physics", status: "active" }],
   });
   const route = await consoleRoute(db);
-  const payload = { action: "grantAccess", userEmail: "student@example.test", courseSlug: "physics", grantType: "manual_payment", price: 100, operationKey: "manual_payment_fixture_001" };
+  const payload = { action: "grantAccess", userId: 1, userEmail: "student@example.test", courseSlug: "physics", grantType: "manual_payment", price: 100, operationKey: "manual_payment_fixture_001" };
   assert.equal((await route.POST(request(payload))).status, 200);
   const second = await route.POST(request(payload)); assert.equal(second.status, 200); assert.equal((await second.json()).replayed, true);
   assert.equal((await route.POST(request({ ...payload, price: 200 }))).status, 409);

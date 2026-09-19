@@ -33,11 +33,11 @@ async function response(body: unknown, status = 200) { const result = await cons
 try {
   const actor = await user("staff", undefined, "supervisor");
   const fixtureOwner = (JSON.parse(readFileSync(".data/qa-fixtures.json", "utf8")) as { users: { id: number; role: string }[] }).users.find(value => value.role === "admin")!.id;
-  for (const permission of ["data.all", "students.view", "subscriptions.manage", "support.manage", "records.delete"]) await db.insert(s.staffPermissions).values({ userId: actor.id, permission, grantedBy: fixtureOwner });
+  for (const permission of ["data.all", "students.view", "subscriptions.manage", "support.manage", "records.delete", "notifications.manage"]) await db.insert(s.staffPermissions).values({ userId: actor.id, permission, grantedBy: fixtureOwner });
   token = (await auth.createSession(actor.id, request())).token;
   const student = await user("student"), oldEmail = student.email;
   const other = await user("other");
-  const grant = { action: "grantAccess", userEmail: student.email, courseSlug: "qa-physics", operationKey: `grant-qa-${nonce}` };
+  const grant = { action: "grantAccess", userId: student.id, userEmail: student.email, courseSlug: "qa-physics", operationKey: `grant-qa-${nonce}` };
   const mfaRequired = await response(grant, 428);
   assert.equal(mfaRequired.code, "MFA_SETUP_REQUIRED");
   assert.equal((await db.select().from(s.courseAccess).where(eq(s.courseAccess.userId, student.id))).length, 0);
@@ -66,6 +66,7 @@ try {
   await db.update(s.users).set({ email: `admin-owner-${nonce}-changed@example.test` }).where(eq(s.users.id, student.id));
   const reused = await user("reuse", oldEmail);
   await response(grant, 409);
+  await response({ ...grant, operationKey: `new-stale-form-${nonce}` }, 409);
   assert.equal((await db.select().from(s.courseAccess).where(eq(s.courseAccess.userId, reused.id))).length, 0);
   const [ticket] = await db.insert(s.supportTickets).values({ userId: student.id, userEmail: oldEmail, ticketNumber: `OWN-${nonce}`, category: "general", title: "Private historical ticket", message: "Synthetic" }).returning();
   const [unbound] = await db.insert(s.courseAccess).values({ userEmail: oldEmail, courseSlug: "qa-physics", source: "legacy" }).returning();
@@ -76,6 +77,14 @@ try {
   assert.equal(JSON.stringify(details).includes("Private historical ticket"), false);
   assert.equal((await db.select().from(s.supportTickets).where(eq(s.supportTickets.id, ticket.id)))[0].userId, student.id);
   pass("email reuse cannot replay a grant or expose another owner's profile records; unresolved access is not mutated");
+  const message = { action: "createNotification", audience: "user", targetUserId: student.id, userEmail: oldEmail,
+    title: "Private account notice", body: "Synthetic account notice", pushEnabled: false };
+  await response(message, 409);
+  const delivered = await response({ ...message, userEmail: `admin-owner-${nonce}-changed@example.test` }, 201);
+  const [privateNotice] = await db.select().from(s.notificationsDb).where(eq(s.notificationsDb.id, delivered.id));
+  assert.equal(privateNotice.targetUserId, student.id); assert.equal(privateNotice.userEmail, null);
+  pass("stale profile commands cannot target a reused email; private notifications persist the explicitly selected account ID");
+
   // A separate deletable account has only relationally owned synthetic files, with conflicting snapshots.
   const deleting = await user("delete");
   const tickets = await db.insert(s.supportTickets).values([
@@ -89,7 +98,12 @@ try {
     await db.insert(s.supportReplyFiles).values({ replyId: reply.id, ticketId: t.id, objectKey: key, originalName: "fixture.txt", contentType: "text/plain", sizeBytes: 4 });
   }
   const favoriteRows = await db.insert(s.favorites).values([{ userId: deleting.id, userEmail: "earlier@example.test" }, { userId: other.id, userEmail: deleting.email }, { userId: null, userEmail: deleting.email }].map(value => ({ ...value, courseSlug: `qa-delete-${nonce}` }))).returning();
-  await response({ action: "deleteEntity", entityType: "user", entityId: String(deleting.id), confirmation: "حذف" });
+  const deleteCommand = { action: "deleteEntity", entityType: "user", entityId: String(deleting.id), confirmation: "حذف" };
+  await response(deleteCommand, 403);
+  assert.equal((await db.select().from(s.users).where(eq(s.users.id, deleting.id))).length, 1);
+  assert.equal((await db.select().from(s.favorites).where(inArray(s.favorites.id, favoriteRows.map(row => row.id)))).length, 3);
+  await db.insert(s.staffPermissions).values({ userId: actor.id, permission: "students.manage", grantedBy: fixtureOwner });
+  await response(deleteCommand);
   assert.equal((await db.select().from(s.users).where(eq(s.users.id, deleting.id))).length, 0);
   assert.deepEqual((await db.select().from(s.favorites).where(inArray(s.favorites.id, favoriteRows.map(row => row.id)))).map(row => row.id).sort((a,b) => a-b), favoriteRows.slice(1).map(row => row.id));
   assert.equal(await storage.getObject(keys[0], undefined, "local"), null);

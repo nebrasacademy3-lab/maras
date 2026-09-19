@@ -156,8 +156,8 @@ try {
   const disallowed = [
     { action: "updateUser", id: studentB.id, role: "student", status: "suspended" },
     { action: "updateStudentProfile", id: studentA.id, universitySlug: instB, specialty: specialName },
-    { action: "grantAccess", userEmail: studentA.email, courseSlug: courseB },
-    { action: "grantAccess", userEmail: studentB.email, courseSlug: courseA },
+    { action: "grantAccess", userId: studentA.id, userEmail: studentA.email, courseSlug: courseB },
+    { action: "grantAccess", userId: studentB.id, userEmail: studentB.email, courseSlug: courseA },
     { action: "updateAccess", id: accessB.id, operation: "revoke" },
     { action: "saveUnit", id: unitB.id, courseSlug: courseA },
     { action: "saveLesson", id: courseB + "-lesson", courseSlug: courseA },
@@ -174,7 +174,7 @@ try {
     const response = await consoleRoute.POST(request("/api/admin/console", staff, payload));
     assert.equal(response.status, 403, JSON.stringify({ payload, response: await response.json() }));
   }
-  for (const payload of [{ action: "saveUnit", id: unitA.id, courseSlug: courseA }, { action: "grantAccess", userEmail: studentA.email, courseSlug: courseA }, { action: "updateAccess", id: accessA.id }]) assert.equal(await mutation.supervisorConsoleMutationAllowed(allPermissionsUser, payload), true);
+  for (const payload of [{ action: "saveUnit", id: unitA.id, courseSlug: courseA }, { action: "grantAccess", userId: studentA.id, userEmail: studentA.email, courseSlug: courseA }, { action: "updateAccess", id: accessA.id }]) assert.equal(await mutation.supervisorConsoleMutationAllowed(allPermissionsUser, payload), true);
   assert.equal((await db.select().from(s.users).where(eq(s.users.id, studentB.id)))[0].status, "active");
   pass("fourteen cross-scope mutations reject source IDs and proposed destinations before state changes");
 

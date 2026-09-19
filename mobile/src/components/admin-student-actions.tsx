@@ -14,8 +14,8 @@ export function AdminStudentActions({ student, catalog, run, busy }: { student: 
   async function save() {
     if(!selected||!access.can(required[selected]||["unassigned.action"])||selected==="grant"&&grantType==="manual_payment"&&!access.can(["finance.manage"]))return;
     const payload = selected === "profile" ? { action: "updateStudentProfile", id: student.id, fullName, universitySlug, specialty, academicLevel, expectedUpdatedAt: student.updatedAt, reason }
-      : selected === "grant" ? { action: "grantAccess", userEmail: student.email, courseSlug, grantType, price: grantType === "manual_payment" ? Number(price) : 0, reason, operationKey }
-      : { action: "createNotification", audience: "user", userEmail: student.email, title, body, pushEnabled: true, presentation: "inbox" };
+      : selected === "grant" ? { action: "grantAccess", userId: student.id, userEmail: student.email, courseSlug, grantType, price: grantType === "manual_payment" ? Number(price) : 0, reason, operationKey }
+      : { action: "createNotification", audience: "user", targetUserId: student.id, userEmail: student.email, title, body, pushEnabled: true, presentation: "inbox" };
     if (await run(payload)) { setReason(""); setKey(`mobile_grant_${Date.now()}_${Math.random().toString(36).slice(2)}`); }
   }
   if(!options.length)return null;

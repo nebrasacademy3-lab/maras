@@ -42,7 +42,7 @@ async function fixture(initial = {}, settings = {}) {
   return { ...h, ...deletion, route, removed, pushes, notices };
 }
 const deletionInput = { entityType: "user", entityId: "11", actor: administrator.email, ipAddress: "127.0.0.1", confirmation: "حذف" };
-const grant = { action: "grantAccess", userEmail: owner.email, courseSlug: "qa-course", operationKey: "qa-operation-20260919" };
+const grant = { action: "grantAccess", userId: owner.id, userEmail: owner.email, courseSlug: "qa-course", operationKey: "qa-operation-20260919" };
 
 test("administrative hard deletion removes only ID-owned data and cleans only committed owned files", async () => {
   const initial = {};
@@ -152,4 +152,51 @@ for (const action of ["prepareRequest", "updateRequest"]) test(`${action} addres
   assert.equal(h.notices[0].values.targetUserId, prior.id);
   assert.equal(h.notices[0].values.userEmail, null);
   assert.deepEqual(h.notices[0].target, { userId: prior.id });
+});
+
+test("grant commands reject missing stable IDs and stale student forms even on a new operation key", async () => {
+  for (const userId of [undefined, null, true, "11", 0, -1, 1.5]) {
+    const h = await fixture();
+    assert.equal((await h.route.POST(request({ ...grant, userId }))).status, 400);
+    assert.deepEqual(h.writes, []);
+  }
+  const h = await fixture();
+  h.rows.users.find(row => row.id === owner.id).email = "now-changed@example.test";
+  h.rows.users.find(row => row.id === prior.id).email = owner.email;
+  assert.equal((await h.route.POST(request({ ...grant, operationKey: "brand-new-stale-form" }))).status, 409);
+  assert.deepEqual(h.writes, []);
+});
+
+test("student-profile notifications retain the selected ID and reject email reuse or invalid explicit targets", async () => {
+  const message = { action: "createNotification", audience: "user", targetUserId: owner.id, userEmail: owner.email, title: "Private notice", body: "Synthetic private content", pushEnabled: false };
+  const h = await fixture();
+  assert.equal((await h.route.POST(request(message))).status, 201);
+  assert.equal(h.rows.notificationsDb[0].targetUserId, owner.id);
+  assert.equal(h.rows.notificationsDb[0].userEmail, null);
+  h.rows.users.find(row => row.id === owner.id).email = "now-changed@example.test";
+  h.rows.users.find(row => row.id === prior.id).email = owner.email;
+  assert.equal((await h.route.POST(request(message))).status, 409);
+  for (const targetUserId of [null, true, "11", 0]) {
+    assert.equal((await h.route.POST(request({ ...message, targetUserId }))).status, 400);
+  }
+  assert.equal(h.rows.notificationsDb.length, 1);
+  assert.deepEqual(h.pushes, []);
+});
+
+test("an ID-only private notice dispatches to the persisted account, never a role broadcast", async () => {
+  const h = await fixture();
+  const response = await h.route.POST(request({ action: "createNotification", audience: "user", targetUserId: owner.id, title: "Private ID notice", body: "Synthetic account-specific content", pushEnabled: true }));
+  assert.equal(response.status, 201);
+  assert.equal(h.rows.notificationsDb[0].targetUserId, owner.id);
+  assert.equal(h.rows.notificationsDb[0].userEmail, null);
+  assert.deepEqual(h.pushes, [{ userId: owner.id }]);
+});
+
+test("web and native administrative profile commands transmit the displayed student's stable ID", async () => {
+  for (const [path, subject] of [["components/student-360.tsx", "data.student"], ["components/admin-dashboard.tsx", "dialog.user"], ["mobile/src/components/admin-student-actions.tsx", "student"]]) {
+    const text = await readFile(new URL("../" + path, import.meta.url), "utf8");
+    const field = subject.replaceAll(".", "\\.");
+    assert.match(text, new RegExp('action:\\s*"grantAccess"[^}]{0,150}userId:\\s*' + field + '\\.id'));
+    if (!path.includes("admin-dashboard")) assert.match(text, new RegExp('action:\\s*"createNotification"[^}]{0,150}targetUserId:\\s*' + field + '\\.id'));
+  }
 });

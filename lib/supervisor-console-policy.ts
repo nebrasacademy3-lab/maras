@@ -32,7 +32,7 @@ export async function supervisorConsoleMutationAllowed(user: SessionUser | null,
   if (action === "updateUser") return check(student(body.id, "id"));
   if (action === "updateStudentProfile") return check(sql`${student(body.id, "id")} AND
     ${scopedSubjectSql(actor, sql`${text(body.universitySlug)}`, sql`${text(body.specialty)}`)}`);
-  if (action === "grantAccess") return check(sql`${student(body.userEmail)} AND ${course(body.courseSlug)}`);
+  if (action === "grantAccess") return check(sql`${student(body.userId, "id")} AND ${course(body.courseSlug)}`);
   if (action === "updateAccess") return check(sql`EXISTS (SELECT 1 FROM course_access ca WHERE ca.id = ${id}
     AND ${scopedStudentSql(actor, sql`ca.user_id`, "id")} AND ${scopedCourseSql(actor, sql`ca.course_slug`)})`);
   if (action === "revokeUserSession") return check(sql`EXISTS (SELECT 1 FROM auth_sessions se WHERE se.id = ${number(body.sessionId ?? body.id)}
