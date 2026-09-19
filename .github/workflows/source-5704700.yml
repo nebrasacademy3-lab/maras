@@ -1,0 +1,29 @@
+name: Pinned source 5704700
+on:
+  push:
+    branches: [audit/source-5704700-20260920]
+    paths: [.github/workflows/source-5704700.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 5704700174eb9536f356c2cf2b27b35f417595ad
+          persist-credentials: false
+      - name: Export only tracked source
+        run: |
+          mkdir -p "$RUNNER_TEMP/maras-source"
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/maras-source/source.tar.gz"
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/maras-source/identity.txt"
+          cd "$RUNNER_TEMP/maras-source"
+          sha256sum source.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pinned-source-5704700
+          path: ${{ runner.temp }}/maras-source/
+          retention-days: 2
+          if-no-files-found: error
