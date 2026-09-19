@@ -10,31 +10,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: 3a648b91c680fe396d094311523ef9cc456539e6
-          persist-credentials: false
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 22
-          cache: npm
-      - name: Archive pinned source and exact dependency tree
+      - name: Collect PostgreSQL clients without application data or credentials
         shell: bash
-        env:
-          NEXT_TELEMETRY_DISABLED: '1'
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '3a648b91c680fe396d094311523ef9cc456539e6'
-          mkdir -p "$RUNNER_TEMP/source-evidence"
-          git archive --format=tar.gz -o "$RUNNER_TEMP/source-evidence/source.tar.gz" HEAD
-          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/source-evidence/source-identity.txt"
-          npm ci --no-audit --no-fund
-          tar -czf "$RUNNER_TEMP/source-evidence/dependencies.tar.gz" node_modules
-          sha256sum package-lock.json "$RUNNER_TEMP/source-evidence/dependencies.tar.gz" > "$RUNNER_TEMP/source-evidence/dependency-checksums.txt"
+          mkdir -p "$RUNNER_TEMP/recovery-clients"
+          docker run --rm -v "$RUNNER_TEMP/recovery-clients:/out" postgres:18 bash -euc '
+            mkdir -p /out/bin /out/lib
+            for tool in pg_dump pg_restore psql; do
+              binary="/usr/lib/postgresql/18/bin/$tool"
+              cp "$binary" /out/bin/
+              ldd "$binary" | awk '\''/=> \/.* \(/ { print $3 }'\'' | while read -r library; do
+                case "$library" in */libc.so.*|*/libm.so.*|*/libpthread.so.*|*/libdl.so.*|*/librt.so.*) continue ;; esac
+                cp -L "$library" /out/lib/
+              done
+            done
+            /out/bin/pg_dump --version > /out/version.txt
+          '
+          tar -czf "$RUNNER_TEMP/postgresql-clients.tar.gz" -C "$RUNNER_TEMP/recovery-clients" .
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: pinned-source-deps-3a648b9
-          path: ${{ runner.temp }}/source-evidence/
+          name: postgresql18-recovery-clients
+          path: ${{ runner.temp }}/postgresql-clients.tar.gz
           retention-days: 1
           if-no-files-found: error
           compression-level: 0
