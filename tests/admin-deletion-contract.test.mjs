@@ -41,7 +41,9 @@ test("financial and audit records are protected from deletion", () => {
 test("account safety and storage cleanup contracts are present", () => {
   assert.match(helper, /لا يمكنك حذف حسابك الإداري الحالي/);
   assert.match(helper, /لا يمكن حذف آخر مدير نشط/);
-  assert.match(helper, /deleteObject\(item\.key\)/);
+  assert.match(helper, /deleteObject\(item\.key, item\.provider\)/);
+  assert.match(helper, /deletePrefix\(item\.key, item\.provider\)/);
+  assert.match(helper, /cleanupTargets/, "cleanup failures retain provider and operation for review");
   assert.match(helper, /cleanup_warning/);
   assert.match(helper, /supportReplyFiles/);
   assert.match(helper, /courseRequestFiles/);
