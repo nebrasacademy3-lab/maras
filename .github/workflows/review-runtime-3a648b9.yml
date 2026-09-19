@@ -1,0 +1,32 @@
+name: Pinned offline test runtime
+on:
+  push:
+    branches: [audit/source-3a648b9]
+    paths: [.github/workflows/review-runtime-3a648b9.yml]
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 3a648b91c680fe396d094311523ef9cc456539e6
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Archive dependency runtime only
+        run: |
+          mkdir -p "$RUNNER_TEMP/offline"
+          tar -czf "$RUNNER_TEMP/offline/node_modules.tar.gz" node_modules
+          sha256sum package-lock.json > "$RUNNER_TEMP/offline/lock-identity.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: offline-runtime-3a648b9
+          path: ${{ runner.temp }}/offline/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
