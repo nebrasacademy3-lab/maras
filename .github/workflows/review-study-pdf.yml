@@ -1,0 +1,70 @@
+name: Reviewed PDF source objects
+on:
+  push:
+    branches: [audit/study-pdf-20260920]
+    paths: [.github/workflows/review-study-pdf.yml]
+permissions:
+  contents: write
+jobs:
+  objects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: transport
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 5704700174eb9536f356c2cf2b27b35f417595ad
+          persist-credentials: false
+          path: source
+      - name: Verify exact reviewed source and patch
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, base64, lzma, hashlib
+          encoded = ''.join(pathlib.Path(f'transport/.audit-pdf/part-{i}.txt').read_text().strip() for i in range(1,5))
+          assert len(encoded) == 50480
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          assert len(patch) == 146687
+          assert hashlib.sha256(patch).hexdigest() == '6e433579f7592d36e54d57fbbdd786cab5f7982575d6b7627e128c1478241545'
+          pathlib.Path('reviewed.patch').write_bytes(patch)
+          PY
+          cd source
+          test "$(git rev-parse HEAD^{tree})" = 38c4a2909a6993a118fa5d02e9aaf44df1821487
+          git apply --check --index ../reviewed.patch
+          git apply --index ../reviewed.patch
+          test "$(git write-tree)" = 8e0b829833b2d8544cb904f772c2ac12bf03aa49
+      - name: Persist reviewed blobs only; never change branches
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import {execFileSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
+          import {writeFileSync} from 'node:fs';
+          const repo=process.env.GITHUB_REPOSITORY;
+          if(repo!=='nebrasacademy3-lab/maras')throw new Error('Wrong repository');
+          const git=(...args)=>execFileSync('git',args,{maxBuffer:4*1024*1024});
+          const paths=git('diff','--cached','--name-only','-z').toString().split('\0').filter(Boolean).sort();
+          const expected=['.github/workflows/quality.yml','Dockerfile','app/api/ai/artifacts/[id]/download/route.ts','components/meras-ai-workspace.tsx','components/study-artifact-download.tsx','components/study-file-tools.tsx','db/study-pdf-schema.ts','docs/STUDY_PDF_ACCEPTANCE_2026_09_20_AR.md','drizzle/0043_study_pdf_exports.sql','drizzle/meta/_journal.json','lib/ai-file-jobs.ts','lib/study-pdf-document.d.mts','lib/study-pdf-document.mjs','lib/study-pdf-download.ts','lib/study-pdf-process.ts','lib/study-pdf.ts','mobile/src/components/study-file-tools.tsx','mobile/src/lib/study-pdf-download.ts','mobile/src/lib/study-pdf-native.ts','mobile/tests/study-pdf-download.test.mjs','next.config.ts','package-lock.json','package.json','proxy.ts','scripts/qa-study-ci.mjs','scripts/qa-study-pdf-browser.mjs','scripts/qa-study-pdf.ts','scripts/study-pdf-renderer.mjs','tests/study-pdf-document.test.mjs','tests/study-pdf-download.test.mjs','tests/study-pdf-process.test.mjs'].sort();
+          if(JSON.stringify(paths)!==JSON.stringify(expected))throw new Error('Unexpected changed files');
+          const tree=[];
+          for(const path of paths){
+            const bytes=git('show',`:${path}`),sha=createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');
+            const r=await fetch(`https://api.github.com/repos/${repo}/git/blobs`,{method:'POST',headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify({encoding:'base64',content:bytes.toString('base64')}),signal:AbortSignal.timeout(20000)});
+            if(!r.ok)throw new Error(`Blob ${r.status}`);
+            const obj=await r.json();if(obj.sha!==sha)throw new Error('Blob mismatch');
+            tree.push({path,mode:'100644',type:'blob',sha});
+          }
+          writeFileSync('../reviewed-objects.json',JSON.stringify({base:'5704700174eb9536f356c2cf2b27b35f417595ad',tree:'8e0b829833b2d8544cb904f772c2ac12bf03aa49',blobs:tree,updatedRefs:0},null,2));
+          console.log(JSON.stringify({verifiedFiles:tree.length,updatedRefs:0}));
+          JS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewed-pdf-objects
+          path: reviewed-objects.json
+          retention-days: 7
+          if-no-files-found: error
