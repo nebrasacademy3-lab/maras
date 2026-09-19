@@ -71,7 +71,8 @@ function uploadLimit(options: TransferOptions) {
 }
 function validRange(range?: ObjectRange) {
   return !range || Number.isSafeInteger(range.offset) && Number.isSafeInteger(range.length)
-    && range.offset >= 0 && range.length > 0 && Number.isSafeInteger(range.offset + range.length - 1);
+    // Compare before adding: an overflowing sum can round back into the safe range.
+    && range.offset >= 0 && range.length > 0 && range.length - 1 <= Number.MAX_SAFE_INTEGER - range.offset;
 }
 function encodeRfc3986(value: string) { return encodeURIComponent(value).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`); }
 function hmac(key: Buffer | string, value: string) { return createHmac("sha256", key).update(value).digest(); }
@@ -194,7 +195,7 @@ async function getLocalObject(key: string, range?: ObjectRange, signal?: AbortSi
     const details = await handle.stat();
     if (!details.isFile() || range && range.offset >= details.size) { await handle.close(); return null; }
     const start = range?.offset ?? 0;
-    const end = range ? Math.min(details.size - 1, start + range.length - 1) : details.size - 1;
+    const end = range ? Math.min(details.size - 1, start + (range.length - 1)) : details.size - 1;
     const stream = handle.createReadStream({ ...(range ? { start, end } : {}), signal });
     const etag = `"${details.size.toString(16)}-${Math.floor(details.mtimeMs).toString(16)}"`;
     return { body: Readable.toWeb(stream) as ReadableStream<Uint8Array>, size: range ? end - start + 1 : details.size, etag };
@@ -208,7 +209,7 @@ export async function getObject(key: string, range?: ObjectRange, provider: Stor
   const config = s3Config();
   if (!config) throw new Error("The requested S3 provider is not configured");
   const headers: Record<string, string> = {};
-  if (range) headers.range = `bytes=${range.offset}-${range.offset + range.length - 1}`;
+  if (range) headers.range = `bytes=${range.offset}-${range.offset + (range.length - 1)}`;
   const response = await s3Request("GET", s3ObjectUrl(config, normalizedKey), sha256(""), { headers, signal }, headers);
   if (response.status === 404 || !response.body) { await response.body?.cancel().catch(() => undefined); return null; }
   const rawLength = response.headers.get("content-length");
