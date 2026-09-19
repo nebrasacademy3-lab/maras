@@ -1,0 +1,33 @@
+name: Recover interrupted Gemini source
+on:
+  push:
+    branches: [audit/gemini-refresh-resume-20260919]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - name: Export only fixed source objects
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 5acf06330db2b6ce83f301ce7b22d50c7dd2c37b^{tree})" = "9dd95b888ef771d5788e630e14bf14616001e6c8"
+          mkdir "$RUNNER_TEMP/resume-source"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/resume-source/interrupted-source.tar.gz" 5acf06330db2b6ce83f301ce7b22d50c7dd2c37b
+          git archive --format=tar.gz --output="$RUNNER_TEMP/resume-source/base-source.tar.gz" 8fb52df36f5e5be83cadd92aa450122482f0d333
+          git cat-file commit 8fb52df36f5e5be83cadd92aa450122482f0d333 > "$RUNNER_TEMP/resume-source/base-commit.txt"
+          git cat-file commit 5acf06330db2b6ce83f301ce7b22d50c7dd2c37b > "$RUNNER_TEMP/resume-source/interrupted-commit.txt"
+          cd "$RUNNER_TEMP/resume-source"
+          sha256sum *.tar.gz *.txt > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: interrupted-refresh-source
+          path: ${{ runner.temp }}/resume-source/
+          retention-days: 1
+          if-no-files-found: error
