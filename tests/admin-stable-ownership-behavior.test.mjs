@@ -21,7 +21,7 @@ const jsonError = (error, status = 400, code) => Response.json({ ok: false, erro
 function request(body) { return new Request("https://maras-qa.example/api/admin/console", { method: "POST", body: JSON.stringify(body), headers: { "content-type": "application/json", origin: "https://maras-qa.example" } }); }
 async function fixture(initial = {}, settings = {}) {
   const h = ownershipDatabase([...names], { users: [owner, prior, administrator], ...initial });
-  const removed = [], pushes = [];
+  const removed = [], pushes = [], notices = [];
   const deletion = await nativeSource("lib/admin-deletion.ts", { ...h.tables, ...primitives, deleteObject: async key => { assert.equal(h.inTransaction(), false); assert.equal(h.committed(), true); removed.push(key); } });
   const ownership = await nativeSource("lib/order-ownership.ts", { ...h.tables, ...primitives });
   class AdminMfaError extends Error { status = 403; code = "ADMIN_MFA_REQUIRED"; }
@@ -35,10 +35,11 @@ async function fixture(initial = {}, settings = {}) {
     checkRateLimit: async () => true, supervisorConsoleMutationAllowed: async () => settings.scoped !== false,
     requireAdminStepUp: async () => { if (settings.mfa === false) throw new AdminMfaError("Step-up required"); }, clientIp: () => "127.0.0.1",
     readBoundedJsonObject: req => req.json(), getCourseCatalog: async slug => ({ slug, title: "Fixture course", accessDurationDays: 30 }),
+    getCoursesCatalog: async () => [], createAndSendNotification: async value => { notices.push(value); },
     normalizeAccessDurationDays: () => 30, accessExpiryIso: () => "2030-01-01T00:00:00.000Z", effectiveAccessRows: async rows => rows,
     sendPushNotification: async target => { pushes.push(target); return { accepted: 0, attempted: 0, providerErrors: [] }; },
   });
-  return { ...h, ...deletion, route, removed, pushes };
+  return { ...h, ...deletion, route, removed, pushes, notices };
 }
 const deletionInput = { entityType: "user", entityId: "11", actor: administrator.email, ipAddress: "127.0.0.1", confirmation: "حذف" };
 const grant = { action: "grantAccess", userEmail: owner.email, courseSlug: "qa-course", operationKey: "qa-operation-20260919" };
@@ -141,4 +142,14 @@ test("administrative revocation targets the stable owner even when that account 
   assert.equal(h.rows.notificationsDb[0].targetUserId, owner.id);
   assert.equal(h.rows.notificationsDb[0].userEmail, null);
   assert.deepEqual(h.pushes, [{ userId: owner.id }]);
+});
+
+for (const action of ["prepareRequest", "updateRequest"]) test(`${action} addresses its notification by the stored requester ID`, async () => {
+  const h = await fixture({ courseRequests: [{ id: 1, userId: prior.id, courseName: "Fixture", status: "new" }] });
+  const response = await h.route.POST(request({ action, id: 1, courseSlug: "qa-course", status: "planned" }));
+  assert.equal(response.status, 200, JSON.stringify(await response.json()));
+  assert.equal(h.notices.length, 1);
+  assert.equal(h.notices[0].values.targetUserId, prior.id);
+  assert.equal(h.notices[0].values.userEmail, null);
+  assert.deepEqual(h.notices[0].target, { userId: prior.id });
 });

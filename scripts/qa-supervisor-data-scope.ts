@@ -113,11 +113,11 @@ try {
   pass("support-only screen uses its own SQL scope, and attachment aliases reject outsiders before storage");
 
   const internalText = `Internal confidential fixture ${nonce}`;
-  const beforeNotices = await db.select().from(s.notificationsDb).where(eq(s.notificationsDb.userEmail, studentA.email));
+  const beforeNotices = await db.select().from(s.notificationsDb).where(eq(s.notificationsDb.targetUserId, studentA.id));
   assert.equal((await consoleRoute.POST(request("/api/admin/console", staff, { action: "updateTicket", id: ticketA.id, status: ticketA.status, reply: internalText, internal: true }))).status, 200);
-  assert.equal((await db.select().from(s.notificationsDb).where(eq(s.notificationsDb.userEmail, studentA.email))).length, beforeNotices.length);
+  assert.equal((await db.select().from(s.notificationsDb).where(eq(s.notificationsDb.targetUserId, studentA.id))).length, beforeNotices.length);
   assert.equal((await consoleRoute.POST(request("/api/admin/console", staff, { action: "updateTicket", id: ticketA.id, status: "closed", reply: internalText, internal: true }))).status, 200);
-  const noticesAfter = await db.select().from(s.notificationsDb).where(eq(s.notificationsDb.userEmail, studentA.email));
+  const noticesAfter = await db.select().from(s.notificationsDb).where(eq(s.notificationsDb.targetUserId, studentA.id));
   assert.equal(noticesAfter.length, beforeNotices.length + 1);
   assert.equal(JSON.stringify(noticesAfter).includes(internalText), false);
   assert.equal((await db.select().from(s.supportReplies).where(and(eq(s.supportReplies.ticketId, ticketA.id), eq(s.supportReplies.internal, true)))).length, 2);
@@ -184,6 +184,36 @@ try {
   assert.equal((await consoleRoute.POST(request("/api/admin/console", staff, sensitive))).status, 200);
   await db.update(s.users).set({ status: "active" }).where(eq(s.users.id, studentA.id));
   pass("in-scope mutations still require MFA, and a valid step-up performs the authorized change");
+
+  // Exchange only historical snapshots: identity and scope must still follow user_id.
+  await db.update(s.courseAccess).set({ userEmail: studentB.email }).where(eq(s.courseAccess.userId, studentA.id));
+  await db.update(s.courseAccess).set({ userEmail: studentA.email }).where(eq(s.courseAccess.userId, studentB.id));
+  await db.insert(s.courseWaitlist).values([
+    { userId: studentA.id, userEmail: studentB.email, courseSlug: courseA },
+    { userId: studentB.id, userEmail: studentA.email, courseSlug: courseA },
+    { userEmail: studentA.email, courseSlug: courseA },
+  ]);
+  await db.update(s.supportTickets).set({ userEmail: studentB.email, status: "open" }).where(eq(s.supportTickets.id, ticketA.id));
+  await db.update(s.supportTickets).set({ userEmail: studentA.email }).where(eq(s.supportTickets.id, ticketB.id));
+  await db.insert(s.supportTickets).values({ userEmail: studentA.email, ticketNumber: `QA-SCOPE-${nonce}-UNBOUND`, category: "general", title: "Unresolved", message: "Not attributable to the current email holder" });
+  for (const kind of ["subscriptions", "waitlist"]) {
+    const result = await data(await roster.GET(request(`/api/admin/courses/${courseA}?kind=${kind}`, staff), { params: Promise.resolve({ slug: courseA }) }));
+    assert.equal(result.pagination.total, 1, kind);
+    assert.equal(result.rows.length, 1, kind);
+    assert.equal(result.rows[0].userId, studentA.id);
+    assert.equal(result.rows[0].student.id, studentA.id);
+    assert.equal(result.rows[0].student.email, studentA.email);
+    assert.equal(result.totals.subscriptions, 1);
+    assert.equal(result.totals.waiting, 1);
+  }
+  const metricsRoute = await import("../app/api/admin/support/metrics/route");
+  const supportMetrics = await data(await metricsRoute.GET(request("/api/admin/support/metrics", staff)));
+  assert.deepEqual(supportMetrics.tickets.map((row: { id: number }) => row.id), [ticketA.id]);
+  const scopedOverview = await data(await consoleRoute.GET(request("/api/admin/console?view=overview&scope=screen", staff)));
+  assert.equal(scopedOverview.metrics.openTickets, 1);
+  assert.equal(await mutation.supervisorConsoleMutationAllowed(allPermissionsUser, { action: "updateTicket", id: ticketB.id }), false);
+  assert.equal(await mutation.supervisorConsoleMutationAllowed(allPermissionsUser, { action: "updateTicket", id: ticketA.id }), true);
+  pass("reused and unresolved email snapshots cannot alter rosters, joins, waitlists, support metrics or overview counts");
 
   await db.update(s.supervisorAssignments).set({ active: false }).where(eq(s.supervisorAssignments.id, assignment.id));
   assert.equal((await studentRoute.GET(request(`/api/admin/students/${studentA.email}`, staff), context(studentA.email))).status, 403);

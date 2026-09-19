@@ -11,7 +11,7 @@ const resolutionHours: Record<string, number> = { urgent: 8, high: 24, normal: 4
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!roleAllowed(user, ["admin", "supervisor"])) return jsonError("غير مصرح بعرض مؤشرات الدعم", 403);
-  const tickets = await getDb().select().from(supportTickets).where(scopedStudentSql(await supervisorScopeId(user), supportTickets.userEmail)).orderBy(desc(supportTickets.createdAt)).limit(2_000);
+  const tickets = await getDb().select().from(supportTickets).where(scopedStudentSql(await supervisorScopeId(user), supportTickets.userId, "id")).orderBy(desc(supportTickets.createdAt)).limit(2_000);
   const ids = tickets.map((ticket) => ticket.id);
   const replies = ids.length ? await getDb().select().from(supportReplies).where(inArray(supportReplies.ticketId, ids)).orderBy(supportReplies.createdAt).limit(10_000) : [];
   const now = Date.now();

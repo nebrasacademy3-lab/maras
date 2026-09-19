@@ -185,7 +185,7 @@ export async function GET(request: Request) {
       (SELECT coalesce(sum(total), 0)::float FROM orders WHERE status = 'paid' AND ${can("finance.view")} AND ${scopedOrderSql(scopeId, sql`orders.order_number`)}) AS revenue,
       (SELECT count(*)::int FROM orders WHERE status IN ('verification_pending', 'payment_review') AND ${can("finance.view")} AND ${scopedOrderSql(scopeId, sql`orders.order_number`)}) AS review_orders,
       (SELECT count(*)::int FROM course_requests WHERE status NOT IN ('available', 'declined') AND ${can("requests.manage")} AND ${scopedRequestSql(scopeId, sql`course_requests.id`)}) AS open_requests,
-      (SELECT count(*)::int FROM support_tickets WHERE status NOT IN ('resolved', 'closed') AND ${can("support.manage")} AND ${scopedStudentSql(scopeId, sql`support_tickets.user_email`)}) AS open_tickets,
+      (SELECT count(*)::int FROM support_tickets WHERE status NOT IN ('resolved', 'closed') AND ${can("support.manage")} AND ${scopedStudentSql(scopeId, sql`support_tickets.user_id`, "id")}) AS open_tickets,
       (SELECT count(*)::int FROM course_reviews WHERE status = 'pending' AND ${can("catalog.manage")} AND ${scopedCourseSql(scopeId, sql`course_reviews.course_slug`)}) AS pending_reviews`) : {rows:[]},
     needs("courses") && can("students.view") ? db.select({ courseSlug: courseWaitlist.courseSlug, total: count() }).from(courseWaitlist).where(and(eq(courseWaitlist.status, "active"), scopedCourseSql(scopeId, courseWaitlist.courseSlug), scopedStudentSql(scopeId, courseWaitlist.userId, "id"))).groupBy(courseWaitlist.courseSlug) : [],
     needs("services") && can("operations.manage") && can("data.all") ? db.select({ total: count() }).from(aiApiKeys).where(eq(aiApiKeys.status, "active")) : [],
@@ -817,7 +817,7 @@ export async function POST(request: Request) {
     if (course.audienceScope !== "institution" && before.specialty && course.specialty && before.specialty !== course.specialty) return jsonError("المادة لا تتبع تخصص الطلب");
     await db.update(courseRequests).set({ status: "available", preparedCourseSlug: course.slug, updatedAt: now }).where(eq(courseRequests.id, id));
     if (before.userId) {
-      const [student] = await db.select({ email: users.email }).from(users).where(eq(users.id, before.userId)).limit(1);
+      const [student] = await db.select({ id: users.id }).from(users).where(eq(users.id, before.userId)).limit(1);
       if (student) {
         const title = "تم تجهيز المادة المطلوبة";
         const body = `تم تجهيز مادة «${course.title}» وأصبحت متاحة الآن في حسابك.`;
@@ -845,7 +845,7 @@ export async function POST(request: Request) {
     if (matchedCourse && !await supervisorCourseAllowed(authorization.user, matchedCourse.slug)) return jsonError("المادة المرتبطة خارج نطاق الإشراف", 403);
     await db.update(courseRequests).set({ status, preparedCourseSlug: matchedCourse?.slug || before.preparedCourseSlug || null, updatedAt: now }).where(eq(courseRequests.id, id));
     if (before.userId) {
-      const [student] = await db.select({ email: users.email }).from(users).where(eq(users.id, before.userId)).limit(1);
+      const [student] = await db.select({ id: users.id }).from(users).where(eq(users.id, before.userId)).limit(1);
       if (student) {
         const title = matchedCourse ? "مادتك أصبحت متاحة" : "تحديث طلب المادة";
         const body = matchedCourse ? `أصبحت مادة «${matchedCourse.title}» متاحة الآن في مراس.` : `تغيرت حالة طلب «${before.courseName}» إلى «${courseRequestStatusArabic[status] || status}».`;
