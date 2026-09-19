@@ -1,0 +1,29 @@
+name: Export saved PDF patch
+on:
+  push:
+    branches: [audit/source-5704700-20260920]
+    paths: [.github/workflows/export-saved-pdf.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: f5379f4475101719ea53669185da4fe8940a36cd
+          persist-credentials: false
+      - name: Archive saved patch without executing it
+        run: |
+          set -euo pipefail
+          tar -czf saved-pdf-patch.tgz .audit-pdf
+          sha256sum saved-pdf-patch.tgz > saved-pdf-patch.sha256
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: saved-pdf-patch
+          path: |
+            saved-pdf-patch.tgz
+            saved-pdf-patch.sha256
+          retention-days: 7
+          if-no-files-found: error
