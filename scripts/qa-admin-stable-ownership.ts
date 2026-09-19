@@ -103,5 +103,37 @@ try {
   await assert.rejects(deletion.deleteAdminEntity(db, { entityType: "user", entityId: String(student.id), confirmation: "حذف", actor: actor.email, ipAddress: "127.0.0.1" }), { name: "DeletionPolicyError" });
   assert.equal((await db.select().from(s.courseAccessEvents).where(and(eq(s.courseAccessEvents.userId, student.id), eq(s.courseAccessEvents.id, events[0].id)))).length, 1);
   pass("hard deletion cannot erase stable subscription audit history");
+  const { applyConfirmedRefundToOrder } = await import("../lib/refunds");
+  async function refundOrder(label: string, userId: number | null) {
+    const [order] = await db.insert(s.orders).values({ userId, orderNumber: `OWN-${nonce}-${label}`, customerEmail: oldEmail,
+      customerName: "Synthetic refund", courseSlug: "qa-physics", subtotal: 100, total: 100, totalMinor: 10000,
+      currency: "SAR", status: "paid", tapChargeId: `chg_own_${nonce}_${label}` }).returning();
+    await db.insert(s.paymentEvents).values({ providerEventId: `refund-${nonce}-${label}`, orderNumber: order.orderNumber,
+      chargeId: order.tapChargeId, status: "REFUND_REFUNDED", payload: JSON.stringify({ id: `re_own_${nonce}_${label}`, amount: 100, status: "REFUNDED" }) });
+    return order;
+  }
+  const refundedOrder = await refundOrder("refund", student.id);
+  await db.update(s.courseAccess).set({ orderNumber: refundedOrder.orderNumber }).where(inArray(s.courseAccess.id, [access.id, foreignAccess.id, unbound.id]));
+  await db.update(s.users).set({ status: "disabled" }).where(eq(s.users.id, student.id));
+  const beforeRefund = await db.select().from(s.courseAccess).where(inArray(s.courseAccess.id, [foreignAccess.id, unbound.id]));
+  const refunds = await Promise.all(Array.from({ length: 6 }, () => applyConfirmedRefundToOrder({ orderNumber: refundedOrder.orderNumber, chargeId: refundedOrder.tapChargeId! })));
+  assert.ok(refunds.every(result => result.ok && result.status === "refunded"));
+  assert.equal(refunds.filter(result => result.ok && result.newlyFullyRefunded).length, 1);
+  assert.ok((await db.select().from(s.courseAccess).where(eq(s.courseAccess.id, access.id)))[0].revokedAt);
+  assert.deepEqual(await db.select().from(s.courseAccess).where(inArray(s.courseAccess.id, [foreignAccess.id, unbound.id])), beforeRefund);
+  const refundAudits = await db.select().from(s.courseAccessEvents).where(eq(s.courseAccessEvents.orderNumber, refundedOrder.orderNumber));
+  assert.equal(refundAudits.length, 1); assert.equal(refundAudits[0].userId, student.id);
+  pass("six real concurrent refunds revoke only their stable inactive owner and create one audit, preserving foreign and unresolved rows");
+  // A later replacement is not part of the old refunded order, even with the same owner and course.
+  const renewedOrder = await refundOrder("renewal", student.id);
+  await db.update(s.courseAccess).set({ orderNumber: renewedOrder.orderNumber, revokedAt: null, revocationReason: null }).where(eq(s.courseAccess.id, access.id));
+  const renewalBefore = (await db.select().from(s.courseAccess).where(eq(s.courseAccess.id, access.id)))[0];
+  await applyConfirmedRefundToOrder({ orderNumber: refundedOrder.orderNumber, chargeId: refundedOrder.tapChargeId! });
+  assert.deepEqual((await db.select().from(s.courseAccess).where(eq(s.courseAccess.id, access.id)))[0], renewalBefore);
+  const legacyOrder = await refundOrder("unresolved", null);
+  const allBefore = await db.select().from(s.courseAccess).where(inArray(s.courseAccess.id, [access.id, foreignAccess.id, unbound.id]));
+  assert.equal((await applyConfirmedRefundToOrder({ orderNumber: legacyOrder.orderNumber, chargeId: legacyOrder.tapChargeId! })).status, "refunded");
+  assert.deepEqual(await db.select().from(s.courseAccess).where(inArray(s.courseAccess.id, [access.id, foreignAccess.id, unbound.id])), allBefore);
+  pass("late refund replay preserves a replacement order; unresolved legacy orders refund financially without borrowing email ownership");
   writeFileSync(".data/qa-admin-stable-ownership-report.json", JSON.stringify({ passed: checks.length, checks, liveProviders: false, database: "disposable loopback PostgreSQL", storage: "local synthetic files" }, null, 2));
 } finally { globalThis.fetch = network; await closeDb(); }

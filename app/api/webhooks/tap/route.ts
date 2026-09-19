@@ -1,8 +1,9 @@
+import { revokeRefundedOrderAccessTx } from "@/lib/refunded-order-access";
 import { lockOrderOwnerTx, OrderOwnershipError } from "@/lib/order-ownership";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { and, eq, ne, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiEntitlements, aiSubscriptionOrders, auditLogs, couponUses, courseAccess, courseAccessEvents, notificationsDb, orderItems, orders, paymentEvents, refundRequests } from "@/db/schema";
+import { aiEntitlements, aiSubscriptionOrders, auditLogs, couponUses, courseAccess, notificationsDb, orderItems, orders, paymentEvents, refundRequests } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 import { sendPushNotification } from "@/lib/push";
@@ -513,12 +514,8 @@ export async function POST(request: Request) {
       }
       const newlyRefunded = current.status !== "refunded";
       await tx.update(orders).set({ status: "refunded", tapChargeId: chargeId, updatedAt: now }).where(eq(orders.id, current.id));
+      await revokeRefundedOrderAccessTx(tx, current, now);
       await reconcileReferralQualificationAfterRefundTx(tx, current.userId, now);
-      const affected = current.userId ? await tx.select().from(courseAccess).where(and(eq(courseAccess.userId, current.userId), eq(courseAccess.orderNumber, current.orderNumber))) : [];
-      for (const access of affected) {
-        await tx.update(courseAccess).set({ revokedAt: now, revocationReason: "payment_refunded", suspendedAt: null, suspensionReason: null, updatedAt: now }).where(eq(courseAccess.id, access.id));
-        await tx.insert(courseAccessEvents).values({ userId: access.userId, eventKey: `order:${current.orderNumber}:refund:${access.courseSlug}`, accessId: access.id, userEmail: access.userEmail, courseSlug: access.courseSlug, action: "refund_revoked", actorEmail: "tap-webhook", reason: "payment_refunded", orderNumber: current.orderNumber, beforeJson: JSON.stringify(access), afterJson: JSON.stringify({ revokedAt: now }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
-      }
       if (newlyRefunded) {
         const title = "تم تحديث حالة الاسترداد";
         const body = `اكتمل استرداد الطلب ${current.orderNumber} وتم إيقاف الوصول المرتبط به.`;
