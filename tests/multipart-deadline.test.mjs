@@ -27,10 +27,15 @@ async function fixture() {
 }
 const defaults = { maxFiles: 2, maxFileBytes: 128, maxTotalBytes: 256,
   objectPrefix: "synthetic-upload", allowedTypes: new Set(["text/plain"]), validSignature: () => true };
-function completedRequest(contents) {
+async function completedRequest(contents) {
   const form = new FormData();
   form.append("files", new Blob([contents], { type: "text/plain" }), "file.txt");
-  return new Request("https://maras-qa.example/upload", { method: "POST", body: form });
+  const outbound = new Request("https://maras-qa.example/upload", { method: "POST", body: form });
+  // A server receives encoded bytes, not a live in-process client FormData encoder.
+  // Finish that encoder before testing server-side rejection/cancellation. The
+  // stalled fixtures below still exercise genuinely open incoming streams.
+  const encoded = await outbound.arrayBuffer();
+  return new Request(outbound.url, { method: "POST", headers: outbound.headers, body: encoded });
 }
 function stalledRequest(signal) {
   let cancelled = false;
@@ -50,7 +55,7 @@ async function bounded(work) {
 
 test("valid multipart uploads pass a bounded byte budget and cancellation signal to storage", async () => {
   const h = await fixture();
-  const saved = await bounded(h.parseStoredMultipart(completedRequest("valid"), { ...defaults, timeoutMs: 1000 }));
+  const saved = await bounded(h.parseStoredMultipart(await completedRequest("valid"), { ...defaults, timeoutMs: 1000 }));
   assert.equal(saved.files.length, 1);
   assert.equal(saved.files[0].sizeBytes, 5);
   assert.equal(h.objects.size, 1);
@@ -82,6 +87,6 @@ test("caller cancellation reaches multipart parsing and pending storage writes",
 
 test("aggregate excess aborts before an oversized file becomes a completed object", async () => {
   const h = await fixture();
-  await assert.rejects(bounded(h.parseStoredMultipart(completedRequest("123456789"), { ...defaults, maxTotalBytes: 8, timeoutMs: 1000 })));
+  await assert.rejects(bounded(h.parseStoredMultipart(await completedRequest("123456789"), { ...defaults, maxTotalBytes: 8, timeoutMs: 1000 })));
   assert.equal(h.objects.size, 0);
 });
