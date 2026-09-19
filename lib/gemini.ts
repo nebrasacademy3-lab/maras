@@ -1,11 +1,12 @@
 import "server-only";
-import { acquireAiProviderSlot, deferAiProvider } from "@/lib/ai-work-control";
+import { geminiProjectIdentities, requireGeminiPaidPricing } from "@/lib/gemini-project-admission";
+import { acquireAiProviderSlot, deferAiProvider, AiBusyError } from "@/lib/ai-work-control";
 import { reserveAiPaidBudget } from "@/lib/ai-paid-budget";
 import { and, asc, eq, sql } from "drizzle-orm";
 import { createHash, randomUUID } from "node:crypto";
 import { getDb } from "@/db";
 import { aiApiKeys } from "@/db/schema";
-import { decryptAiApiKey, geminiEnvironmentKeys, geminiProjectTier } from "@/lib/ai-keys";
+import { decryptAiApiKey, geminiEnvironmentKeys } from "@/lib/ai-keys";
 import { AiPlatformError, type AiServiceConfig } from "@/lib/ai-platform";
 import { normalizeGeminiModel } from "@/lib/gemini-config";
 import { GeminiProviderError } from "@/lib/gemini-errors";
@@ -21,6 +22,7 @@ type KeyCandidate = {
   lastUsedAt: string | null;
   source: "database" | "environment";
   tier: "free" | "paid";
+  projectNumber: string;
   updatedAt: string | null;
 };
 
@@ -121,40 +123,43 @@ async function keyCandidates() {
     throw new AiPlatformError("AI_KEY_STORE_UNAVAILABLE", "تعذر تحميل مفاتيح الخدمة من قاعدة البيانات. حاول بعد قليل.", 503);
   }
   const groups = environmentKeyGroups();
-  // A paid classification always wins over an ambiguous duplicate free label.
-  const paidFingerprints = new Set([
-    ...groups.paid.map(rawFingerprint),
-    ...databaseRows.filter(row => geminiProjectTier(row.projectLabel) === "paid").map(row => row.fingerprint),
-  ]);
+  const identities = await geminiProjectIdentities();
+  // Environment paid labels can only RESTRICT an otherwise verified free key.
+  // Neither labels nor variable names can establish a free classification.
+  const paidFingerprints = new Set(groups.paid.map(rawFingerprint));
   const registered = new Set(databaseRows.map(row => row.fingerprint));
   const freeMembership = new Set<string>();
   const unique = new Map<string, KeyCandidate>();
   let decryptionFailures = 0;
   for (const row of databaseRows) {
     if (row.status === "disabled") continue;
-    const tier = paidFingerprints.has(row.fingerprint) ? "paid" as const : "free" as const;
+    const identity = identities.get(row.fingerprint);
+    if (!identity) { freeMembership.add("unverified:" + row.fingerprint); continue; }
+    const tier = paidFingerprints.has(row.fingerprint) ? "paid" as const : identity.tier;
     // Unknown/error/cooling resources remain in the proof set, not the ready queue.
-    if (tier === "free") freeMembership.add(row.fingerprint);
+    if (tier === "free") freeMembership.add(identity.projectNumber);
     if (row.status !== "active" || (row.cooldownUntil && Date.parse(row.cooldownUntil) > now)) continue;
     const memory = environmentCooldowns.get(row.fingerprint);
     if (memory && memory.until > now) continue;
     try {
       unique.set(row.fingerprint, {
         id: row.id, apiKey: decryptAiApiKey(row.encryptedKey), fingerprint: row.fingerprint,
-        priority: row.priority, lastUsedAt: row.lastUsedAt, source: "database", tier, updatedAt: row.updatedAt,
+        priority: row.priority, lastUsedAt: row.lastUsedAt, source: "database", tier, projectNumber: identity.projectNumber, updatedAt: row.updatedAt,
       });
     } catch { decryptionFailures += 1; }
   }
   for (const [index, apiKey] of [...groups.free, ...groups.paid].entries()) {
     const fingerprint = rawFingerprint(apiKey);
     if (registered.has(fingerprint)) continue;
-    const tier = paidFingerprints.has(fingerprint) ? "paid" as const : "free" as const;
-    if (tier === "free") freeMembership.add(fingerprint);
+    const identity = identities.get(fingerprint);
+    if (!identity) { freeMembership.add("unverified:" + fingerprint); continue; }
+    const tier = paidFingerprints.has(fingerprint) ? "paid" as const : identity.tier;
+    if (tier === "free") freeMembership.add(identity.projectNumber);
     const memory = environmentCooldowns.get(fingerprint);
     if (memory && memory.until > now) continue;
     unique.set(fingerprint, {
       id: null, apiKey, fingerprint, priority: 1_000 + index,
-      lastUsedAt: memory?.lastUsedAt || null, source: "environment", tier, updatedAt: null,
+      lastUsedAt: memory?.lastUsedAt || null, source: "environment", tier, projectNumber: identity.projectNumber, updatedAt: null,
     });
   }
   if (!unique.size && decryptionFailures) throw new AiPlatformError("AI_KEY_DECRYPTION_FAILED", "تعذر فك مفاتيح الخدمة المحفوظة. راجع إعداد تشفير المفاتيح في الخادم من إدارة أدوات مراس.", 503);
@@ -163,7 +168,8 @@ async function keyCandidates() {
     || Date.parse(left.lastUsedAt || "1970-01-01") - Date.parse(right.lastUsedAt || "1970-01-01")
     || (dispatchOrder.get(left.fingerprint) || 0) - (dispatchOrder.get(right.fingerprint) || 0)
     || left.priority - right.priority);
-  return { candidates, freeMembership };
+  const projects = new Set<string>();
+  return { candidates: candidates.filter(c => { if (projects.has(c.projectNumber)) return false; projects.add(c.projectNumber); return true; }), freeMembership };
 }
 
 export async function generateGeminiContent(input: {
@@ -187,7 +193,7 @@ export async function generateGeminiContent(input: {
   const freeCandidates = candidatePool.filter((candidate) => candidate.tier === "free");
   const paidCandidates = candidatePool.filter((candidate) => candidate.tier === "paid");
   const attemptTimeoutMs = boundedRuntimeMs(process.env.AI_GEMINI_ATTEMPT_TIMEOUT_MS, 35_000, 5_000, 60_000);
-  let lastError = new GeminiProviderError(503, "AI_PROVIDER_UNAVAILABLE");
+  let lastError: AiPlatformError = new GeminiProviderError(503, "AI_PROVIDER_UNAVAILABLE");
   const releaseProvider = await acquireAiProviderSlot();
   try {
     const attempt = async (candidate: KeyCandidate, tier: "free" | "paid", budgetSar?: number) => {
@@ -215,6 +221,7 @@ export async function generateGeminiContent(input: {
         });
         output = geminiTextResponse(payload);
       } catch (error) {
+        if (error instanceof AiBusyError) { lastError = error; return { result: null, quotaExhausted: false }; }
         if (!(error instanceof GeminiProviderError)) throw error;
         lastError = error;
         await markFailure(candidate, error);
@@ -261,8 +268,8 @@ export async function generateGeminiContent(input: {
     const assertFreshPaidEligibility = async (candidate: KeyCandidate) => {
       const fresh = await keyCandidates();
       const unchanged = fresh.freeMembership.size === pool.freeMembership.size
-        && [...pool.freeMembership].every(fingerprint => fresh.freeMembership.has(fingerprint)
-          && (environmentCooldowns.get(fingerprint)?.until || 0) > Date.now());
+        && [...pool.freeMembership].every(project => fresh.freeMembership.has(project)
+          && freeCandidates.some(key => key.projectNumber === project && (environmentCooldowns.get(key.fingerprint)?.until || 0) > Date.now()));
       if (!unchanged || fresh.candidates.some(key => key.tier === "free")
         || !fresh.candidates.some(key => key.tier === "paid" && key.fingerprint === candidate.fingerprint && key.id === candidate.id)) {
         throw new AiPlatformError("AI_FREE_POOL_CHANGED", "تغيّرت حالة موارد الخدمة. أعد المحاولة بعد قليل.", 429);
@@ -271,6 +278,7 @@ export async function generateGeminiContent(input: {
     for (const candidate of paidCandidates.slice(0, maxAttempts)) {
       if (deadline - Date.now() < 1_000) throw lastError;
       await assertFreshPaidEligibility(candidate);
+      requireGeminiPaidPricing();
       const reservation = await reserveAiPaidBudget("gemini:" + randomUUID());
       await assertFreshPaidEligibility(candidate);
       const outcome = await attempt(candidate, "paid", reservation.reservedSar);

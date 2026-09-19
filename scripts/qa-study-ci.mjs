@@ -17,6 +17,7 @@ await run(["scripts/qa-order-ownership-migration.mjs"]);
 await run(["scripts/qa-stable-user-ownership-migration.mjs"]);
 await run(["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/qa-storage-cleanup.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-resumable-video.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/qa-gemini-projects.ts"]);
 await run(["scripts/qa-seed.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-tools.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-security.ts"]);

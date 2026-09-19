@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import * as crypto from "node:crypto";
 import { nativeSource as pureSource } from "./helpers/native-source.mjs";
+class AiBusyError extends Error {}
 class AiPlatformError extends Error {
   constructor(code, message, status = 400) { super(message); Object.assign(this, { code, status }); }
 }
@@ -34,13 +35,18 @@ async function fixture(overrides = [{}, {}], options = {}) {
       for (const row of rows) if (predicate(row)) { updates.push(values); Object.assign(row, values); }
     } }) }),
   };
-  const provider = await pureSource("lib/gemini-provider.ts", { ...keys, ...config, ...errors, AiPlatformError, fetch: async (_url, init) => {
+  // Provider admission has separate behavioral/real-PostgreSQL acceptance.
+  // These existing tests isolate pool rotation/fencing and fallback orchestration.
+  const admission = { reserveGeminiProject: async () => ({}), dispatchGeminiProject: async () => {}, settleGeminiProject: async () => {} };
+  const geminiProjectIdentities = async () => new Map(raw.map((key, i) => [keys.aiKeyFingerprint(key), { projectNumber: String(options.sameProject ? 100001 : 100001 + i), tier: options.unverified === i ? "unverified" : rows[i].projectLabel?.startsWith("paid:") ? "paid" : "free" }]).filter(([, identity]) => identity.tier !== "unverified"));
+  const provider = await pureSource("lib/gemini-provider.ts", { ...keys, ...config, ...errors, ...admission, AiPlatformError, fetch: async (_url, init) => {
+    if (String(_url).endsWith(":countTokens")) return Response.json({ totalTokens: 10 });
     calls.push(init.headers["x-goog-api-key"]);
     options.onRequest?.(JSON.parse(init.body));
     return options.response ? options.response(calls.length, rows) : answer();
   } });
   const runtime = await pureSource("lib/gemini.ts", {
-    ...keys, ...config, ...errors, ...provider, ...cryptoDependencies, AiPlatformError,
+    ...keys, ...config, ...errors, ...provider, ...cryptoDependencies, AiPlatformError, AiBusyError, geminiProjectIdentities, requireGeminiPaidPricing: () => {},
     aiApiKeys: columns, eq, and, sql: () => true, asc: () => true, getDb: () => db,
     process: { env }, acquireAiProviderSlot: async () => async () => {}, deferAiProvider: async () => {},
     reserveAiPaidBudget: async id => { reservations.push(id); options.onReserve?.(rows); return { reservedSar: 1 }; },
@@ -130,4 +136,16 @@ test("invalid per-request provider deadlines fail before any external dispatch",
   const f = await fixture([{}]);
   for (const timeoutMs of [0, -1, NaN, Infinity, 1.1]) await assert.rejects(f.generateGeminiContent({ ...input, timeoutMs }), error => error.code === "AI_TIMEOUT_INVALID");
   assert.equal(f.calls.length, 0); assert.equal(f.reservations.length, 0);
+});
+
+
+test("two ready credentials from one verified project are not two free quota resources", async () => {
+  const f = await fixture([{}, {}], { sameProject: true, response: quota });
+  await assert.rejects(f.generateGeminiContent(input), error => error.code === "AI_QUOTA_EXHAUSTED");
+  assert.equal(f.calls.length, 1); assert.equal(f.reservations.length, 0);
+});
+test("an unverified resource cannot be labeled free or disappear to justify paid fallback", async () => {
+  const f = await fixture([{}, {}, { projectLabel: "paid:backup" }], { unverified: 0, response: quota });
+  await assert.rejects(f.generateGeminiContent(input), error => error.code === "AI_QUOTA_EXHAUSTED");
+  assert.equal(f.calls.length, 1); assert.equal(f.reservations.length, 0);
 });

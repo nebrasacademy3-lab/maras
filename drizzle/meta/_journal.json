@@ -281,6 +281,13 @@
       "when": 1789830100000,
       "tag": "0039_resumable_video_uploads",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789842000000,
+      "tag": "0040_gemini_project_admission",
+      "breakpoints": true
     }
   ]
 }
