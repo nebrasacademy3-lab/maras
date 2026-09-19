@@ -1,0 +1,228 @@
+diff --git a/tests/direct-upload-signing.test.mjs b/tests/direct-upload-signing.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..90dbd506ce9b476181c6688f69d4b31619b623ae
+--- /dev/null
++++ b/tests/direct-upload-signing.test.mjs
+@@ -0,0 +1,15 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { S3Client, PutObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3";
++import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
++import { nativeSource } from "./helpers/native-source.mjs";
++const policy = await nativeSource("lib/storage-policy.ts");
++const env = { S3_ENDPOINT: "https://storage.example.test", S3_BUCKET: "qa-private", S3_ACCESS_KEY_ID: "synthetic", S3_SECRET_ACCESS_KEY: "synthetic-not-a-secret", S3_REGION: "auto" };
++const signer = await nativeSource("lib/railway-direct-upload.ts", { ...policy, S3Client, PutObjectCommand, HeadObjectCommand, getSignedUrl, process: { env } });
++test("the real SDK signs exact content length, content type and write-once conditions without contacting S3", async () => {
++  const url = new URL(await signer.createDirectUploadUrl("private/video-source/course/lesson/file.mp4", "video/mp4", 1234));
++  const headers = new Set(url.searchParams.get("X-Amz-SignedHeaders").split(";"));
++  for (const header of ["content-type", "content-length", "if-none-match"]) assert.ok(headers.has(header));
++  assert.equal(url.host, "storage.example.test"); assert.equal(url.searchParams.get("X-Amz-Expires"), "900");
++  for (const size of [0, -1, 0.5, 200 * 1024 * 1024 + 1, Infinity, undefined]) await assert.rejects(signer.createDirectUploadUrl("private/key", "video/mp4", size));
++});
+diff --git a/tests/helpers/storage-cleanup-fixture.mjs b/tests/helpers/storage-cleanup-fixture.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..fa0b0ac69a5ffe057914840a58fb094828ac13dc
+--- /dev/null
++++ b/tests/helpers/storage-cleanup-fixture.mjs
+@@ -0,0 +1,25 @@
++import assert from "node:assert/strict";
++/** In-memory queue boundary for parent-deletion tests. The actual SQL leasing,
++ * durability, fencing and recovery are exercised against PostgreSQL by QA. */
++export function cleanupFixture(h, remove) {
++  return {
++    async enqueueStorageCleanupTx(tx, targets) {
++      assert.equal(h.inTransaction(), true, "cleanup must be enqueued within the parent transaction");
++      const unique = [...new Map(targets.map(t => [JSON.stringify([t.provider || "local", !!t.recursive, t.key]), t])).values()];
++      if (!unique.length) return [];
++      const rows = await tx.insert(h.tables.storageCleanupJobs).values(unique.map(t => ({ ...t, id: crypto.randomUUID(), provider: t.provider || "local", status: "pending" }))).returning();
++      return rows.map(row => row.id);
++    },
++    async processStorageCleanupBatch(_db, { jobIds, limit, signal }) {
++      assert.equal(h.inTransaction(), false); assert.equal(h.committed(), true);
++      const jobs = h.rows.storageCleanupJobs.filter(row => jobIds.includes(row.id) && row.status === "pending").slice(0, limit);
++      const result = { claimed: jobs.length, completed: 0, failed: [], lost: 0 };
++      await Promise.all(jobs.map(async row => {
++        signal?.throwIfAborted();
++        try { await remove(row.recursive ? "prefix" : "object", row.key, row.provider); row.status = "completed"; result.completed++; }
++        catch { result.failed.push(row); }
++      }));
++      return result;
++    },
++  };
++}
+diff --git a/tests/resumable-upload-policy.test.mjs b/tests/resumable-upload-policy.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..e9b4baed5460b258d410e8e67db1862691eefad5
+--- /dev/null
++++ b/tests/resumable-upload-policy.test.mjs
+@@ -0,0 +1,37 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { nativeSource } from "./helpers/native-source.mjs";
++const p = await nativeSource("lib/resumable-upload-policy.ts");
++const id = "348c3c81-7c0b-44dc-8aef-bfe534909c24", hash = "a".repeat(64);
++const base = { requestKey: id, courseSlug: "course-1", lessonId: "lesson-1", contentType: "video/mp4", sizeBytes: 10, hashes: [hash] };
++test("resumable manifest binds an exact bounded size to every part digest", () => {
++  assert.deepEqual(p.validateUploadManifest(base), base);
++  for (const change of [{ hashes: [] }, { hashes: [hash, hash] }, { hashes: ["wrong"] }, { sizeBytes: 0 }, { sizeBytes: p.RESUMABLE_MAX_BYTES + 1 }, { sizeBytes: 1.5 }, { courseSlug: "../x" }, { lessonId: ".." }, { contentType: "text/plain" }, { requestKey: "../x" }]) assert.throws(() => p.validateUploadManifest({ ...base, ...change }));
++  assert.equal(p.uploadPartSize(p.RESUMABLE_CHUNK_BYTES + 10, 0), p.RESUMABLE_CHUNK_BYTES);
++  assert.equal(p.uploadPartSize(p.RESUMABLE_CHUNK_BYTES + 10, 1), 10);
++  for (const index of [-1, 1.5, 2, Infinity]) assert.throws(() => p.uploadPartSize(10, index));
++});
++test("part paths cannot escape their random upload session or admit arbitrary hashes", () => {
++  assert.equal(p.resumablePartKey(id, 0, hash), `private/resumable/${id}/0-${hash}`);
++  for (const args of [["../elsewhere", 0, hash], [id, -1, hash], [id, 50, hash], [id, 0, "../key"]]) assert.throws(() => p.resumablePartKey(...args));
++});
++test("video assembly requires actual supported magic bytes", () => {
++  const mp4 = new Uint8Array([0, 0, 0, 24, 102, 116, 121, 112, 105, 115, 111, 109]);
++  assert.equal(p.validResumableVideoHeader("video/mp4", mp4), true);
++  assert.equal(p.validResumableVideoHeader("video/webm", mp4), false);
++  assert.equal(p.validResumableVideoHeader("video/mp4", new TextEncoder().encode("not-a-video")), false);
++});
++test("resumable route denies invalid origin, identity and rate limits before opening the database", async () => {
++  for (const scenario of [{ origin: false, role: "admin", status: 403 }, { origin: true, role: "student", status: 403 }, { origin: true, role: "admin", rate: false, status: 429 }]) {
++    const route = await nativeSource("app/api/admin/videos/resumable/route.ts", {
++      ...p, sameOriginRequest: () => scenario.origin, isNativeAppRequest: () => false,
++      getSessionUser: async () => ({ id: 8, role: scenario.role }), roleAllowed: (user, roles) => roles.includes(user.role),
++      checkRateLimit: async () => scenario.rate !== false, getDb: () => { assert.fail("database opened before rejection"); },
++      RequestBodyTooLargeError: class extends Error {},
++    });
++    for (const method of ["GET", "POST", "PUT", "DELETE"]) {
++      const response = await route[method](new Request("https://maras-qa.example/api/admin/videos/resumable", { method }));
++      assert.equal(response.status, scenario.status); assert.match(response.headers.get("cache-control"), /no-store/);
++    }
++  }
++});
+diff --git a/tests/resumable-video-client.test.mjs b/tests/resumable-video-client.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..03673e5c47f5a8de16fe06b12cabdad894524f6c
+--- /dev/null
++++ b/tests/resumable-video-client.test.mjs
+@@ -0,0 +1,68 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { randomUUID } from "node:crypto";
++import { nativeSource } from "./helpers/native-source.mjs";
++const policy = await nativeSource("lib/resumable-upload-policy.ts");
++const { UploadError } = await nativeSource("lib/upload-client.ts");
++function fixture() {
++  const memory = new Map(), sessions = new Map(), starts = [], parts = [];
++  let actor = 10, failPart = null, lostCompletion = false, denied = false, completions = 0;
++  const localStorage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, value), removeItem: key => memory.delete(key) };
++  const adminFetch = async (url, options) => {
++    if (url === "/api/admin/me") return Response.json({ user: { id: actor } });
++    const body = JSON.parse(options.body);
++    if (denied || actor !== body.ownerId) return Response.json({ error: "Denied" }, { status: 403 });
++    if (body.action === "start") {
++      starts.push(body);
++      let row = sessions.get(`${actor}:${body.requestKey}`);
++      if (!row) { row = { id: randomUUID(), status: "open", received: [], sizeBytes: body.sizeBytes, chunkBytes: policy.RESUMABLE_CHUNK_BYTES, expiresAt: new Date(Date.now() + 60000).toISOString() }; sessions.set(`${actor}:${body.requestKey}`, row); }
++      return Response.json(row);
++    }
++    const row = [...sessions.values()].find(row => row.id === body.id);
++    assert.ok(row); if (row.status !== "completed") { completions++; row.status = "completed"; row.asset = { id: 11 }; }
++    if (lostCompletion) { lostCompletion = false; throw new UploadError("Response lost", 0); }
++    return Response.json(row);
++  };
++  const uploadWithProgress = async options => {
++    const params = new URL(options.url, "https://maras-qa.example").searchParams, index = Number(params.get("part"));
++    const row = [...sessions.values()].find(row => row.id === params.get("id")); assert.ok(row);
++    assert.equal(options.headers["x-meras-acting-user"], String(actor)); assert.equal(options.withCredentials, true);
++    parts.push(index); if (index === failPart) throw new UploadError("Network interrupted", 0);
++    row.received.push(index); options.onProgress({ loaded: options.body.size }); return structuredClone(row);
++  };
++  return { memory, starts, parts, sessions, load: () => nativeSource("lib/resumable-video-client.ts", { ...policy, UploadError, adminFetch, uploadWithProgress, localStorage }),
++    fail: index => { failPart = index; }, actor: value => { actor = value; }, deny: () => { denied = true; }, loseCompletion: () => { lostCompletion = true; }, completions: () => completions };
++}
++const bytes = Buffer.alloc(policy.RESUMABLE_CHUNK_BYTES + 12, 2);
++const file = new File([bytes], "synthetic.mp4", { type: "video/mp4" });
++const options = () => ({ file, courseSlug: "course", lessonId: "lesson", contentType: "video/mp4", signal: new AbortController().signal });
++test("browser reload resumes only missing verified parts using the persisted pre-admission request ID", async () => {
++  const h = fixture(); h.fail(1);
++  await assert.rejects((await h.load()).uploadResumableVideo(options()), /Network interrupted/);
++  assert.equal(h.memory.size, 1); for (const value of h.memory.values()) policy.validateUploadId(value);
++  h.fail(null); const progress = [];
++  const result = await (await h.load()).uploadResumableVideo({ ...options(), onProgress: value => progress.push(value) });
++  assert.equal(result.status, "completed"); assert.deepEqual(h.parts, [0, 1, 1]);
++  assert.equal(h.starts[0].requestKey, h.starts[1].requestKey); assert.equal(h.completions(), 1);
++  assert.equal(progress[0].loaded, policy.RESUMABLE_CHUNK_BYTES); assert.equal(progress.at(-1).percent, 100); assert.equal(h.memory.size, 0);
++});
++test("lost final acknowledgement reuses the completed session without sending any bytes again", async () => {
++  const h = fixture(); h.loseCompletion();
++  await assert.rejects((await h.load()).uploadResumableVideo(options()), /Response lost/);
++  await (await h.load()).uploadResumableVideo(options());
++  assert.deepEqual(h.parts, [0, 1]); assert.equal(h.completions(), 1); assert.equal(h.memory.size, 0);
++});
++test("same filename and size with changed contents, or another account, cannot reuse a resume marker", async () => {
++  const h = fixture(); h.fail(0);
++  await assert.rejects((await h.load()).uploadResumableVideo(options()));
++  const different = new File([Buffer.alloc(bytes.length, 3)], file.name, { type: file.type });
++  await assert.rejects((await h.load()).uploadResumableVideo({ ...options(), file: different }));
++  h.actor(20); await assert.rejects((await h.load()).uploadResumableVideo(options()));
++  assert.equal(new Set(h.starts.map(row => row.requestKey)).size, 3); assert.equal(h.memory.size, 3);
++});
++test("revoked authorization and caller cancellation never silently start a replacement upload", async () => {
++  const h = fixture(); h.deny(); await assert.rejects((await h.load()).uploadResumableVideo(options()), { status: 403 });
++  assert.equal(h.parts.length, 0);
++  const signal = AbortSignal.abort(); await assert.rejects((await h.load()).uploadResumableVideo({ ...options(), signal }), { name: "AbortError" });
++  assert.equal(h.sessions.size, 0);
++});
+diff --git a/tests/runtime-supervisor.test.mjs b/tests/runtime-supervisor.test.mjs
+index 599c049b3d158d36fcac0830feaf565223f3a6e8..823e7ae6bc386fab99818e277dc3d81c814f5834 100644
+--- a/tests/runtime-supervisor.test.mjs
++++ b/tests/runtime-supervisor.test.mjs
+@@ -65 +65 @@ test("runtime service configuration enables required workers and uses fixed argv
+-  assert.deepEqual(services.map(service => service.name), ["video-worker", "ai-worker", "web"]);
++  assert.deepEqual(services.map(service => service.name), ["storage-cleanup-worker", "video-worker", "ai-worker", "web"]);
+@@ -68 +68 @@ test("runtime service configuration enables required workers and uses fixed argv
+-  assert.equal(runtimeServices({ VIDEO_WORKER_ENABLED: "false", AI_WORKER_ENABLED: " FALSE ", PORT: "8080" }).length, 1);
++  assert.equal(runtimeServices({ VIDEO_WORKER_ENABLED: "false", AI_WORKER_ENABLED: " FALSE ", STORAGE_CLEANUP_WORKER_ENABLED: "false", PORT: "8080" }).length, 1);
+@@ -75 +75 @@ test("invalid runtime flags, one-shot workers and shell-like port values fail cl
+-  for (const env of [{ PORT: "3000; echo secret" }, { PORT: "0" }, { PORT: "65536" }, { VIDEO_WORKER_ENABLED: "yes" }, { AI_WORKER_ENABLED: "unexpected" }, { VIDEO_WORKER_ONCE: "true" }]) assert.throws(() => runtimeServices(env));
++  for (const env of [{ PORT: "3000; echo secret" }, { PORT: "0" }, { PORT: "65536" }, { VIDEO_WORKER_ENABLED: "yes" }, { AI_WORKER_ENABLED: "unexpected" }, { STORAGE_CLEANUP_WORKER_ENABLED: "yes" }, { VIDEO_WORKER_ONCE: "true" }]) assert.throws(() => runtimeServices(env));
+@@ -105 +105 @@ test("SIGTERM gracefully stops every enabled service without an error exit", { t
+-  const f = await fixture(t, [{ name: "video-worker" }, { name: "ai-worker" }, { name: "web" }]); await f.ready();
++  const f = await fixture(t, [{ name: "storage-cleanup-worker" }, { name: "video-worker" }, { name: "ai-worker" }, { name: "web" }]); await f.ready();
+@@ -107 +107 @@ test("SIGTERM gracefully stops every enabled service without an error exit", { t
+-  for (const name of ["video-worker", "ai-worker", "web"]) assert.equal(await exists(join(f.directory, name + ".stopped")), true);
++  for (const name of ["storage-cleanup-worker", "video-worker", "ai-worker", "web"]) assert.equal(await exists(join(f.directory, name + ".stopped")), true);
+diff --git a/tests/storage-cleanup-policy.test.mjs b/tests/storage-cleanup-policy.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f6224c7ad4db5f9d7763b77183442a50bc1a91bb
+--- /dev/null
++++ b/tests/storage-cleanup-policy.test.mjs
+@@ -0,0 +1,25 @@
++import assert from "node:assert/strict";
++import test from "node:test";
++import { nativeSource } from "./helpers/native-source.mjs";
++const storage = await nativeSource("lib/storage-policy.ts");
++const policy = await nativeSource("lib/storage-cleanup-policy.ts", storage);
++const target = { key: "private/video-derived/11/a55b3b39-2045-46e5-b52b-0f69187f9d32", provider: "s3", source: "video-derived", recursive: true, locationFingerprint: "a".repeat(64) };
++test("recursive cleanup accepts only an immutable video processing attempt", () => {
++  assert.deepEqual(policy.validateCleanupTarget(target), target);
++  for (const key of ["private", "private/video-derived", "private/video-derived/11", "private/video-derived/0/a55b3b39-2045-46e5-b52b-0f69187f9d32", target.key + "/../sibling", target.key + "/nested", target.key + "%2f.."]) {
++    assert.throws(() => policy.validateCleanupTarget({ ...target, key }), key);
++  }
++});
++test("exact deletes preserve canonical keys and do not reinterpret unknown providers", () => {
++  assert.equal(policy.validateCleanupTarget({ ...target, recursive: false, key: "support/a-file" }).key, "support/a-file");
++  for (const change of [{ provider: "other" }, { locationFingerprint: "" }, { source: "../path" }, { key: "../outside" }]) {
++    assert.throws(() => policy.validateCleanupTarget({ ...target, ...change }));
++  }
++});
++test("retry delays are bounded and the operation deadline is shorter than the lease", () => {
++  const values = Array.from({ length: 12 }, (_, index) => policy.cleanupRetrySeconds(index + 1));
++  assert.equal(values[0], 5); assert.equal(values.at(-1), 3600);
++  assert.ok(values.every((value, index) => value >= (values[index - 1] || 0) && value <= 3600));
++  for (const value of [0, -1, 1.5, 13, Infinity, NaN]) assert.throws(() => policy.cleanupRetrySeconds(value));
++  assert.ok(policy.CLEANUP_BATCH_TIMEOUT_MS < policy.CLEANUP_LEASE_SECONDS * 1000);
++});
+diff --git a/tests/storage-hardening.test.mjs b/tests/storage-hardening.test.mjs
+index 145a0cb2da7a2b8fca27bbafa6961b50f1cc3524..f1ad75086308e8c01dd58a6182672ca8afcb7db3 100644
+--- a/tests/storage-hardening.test.mjs
++++ b/tests/storage-hardening.test.mjs
+@@ -55 +55,3 @@ test("presigned direct uploads validate key, destination, lifetime and HEAD dead
+-  assert.match(source, /signableHeaders:\s*new Set\(\["content-type"\]\)/);
++  assert.match(source, /signableHeaders:\s*new Set\(\["content-type", "content-length", "if-none-match"\]\)/);
++  assert.match(source, /ContentLength: sizeBytes/);
++  assert.match(source, /IfNoneMatch: "\*"/);
