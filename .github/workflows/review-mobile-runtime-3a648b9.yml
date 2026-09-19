@@ -1,0 +1,33 @@
+name: Pinned native validation runtime
+on:
+  push:
+    branches: [audit/source-3a648b9]
+    paths: [.github/workflows/review-mobile-runtime-3a648b9.yml]
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 3a648b91c680fe396d094311523ef9cc456539e6
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+        working-directory: mobile
+      - name: Archive dependency runtime only
+        run: |
+          mkdir -p "$RUNNER_TEMP/native"
+          tar -czf "$RUNNER_TEMP/native/mobile-node-modules.tar.gz" mobile/node_modules
+          sha256sum mobile/package-lock.json > "$RUNNER_TEMP/native/lock-identity.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: offline-mobile-runtime-3a648b9
+          path: ${{ runner.temp }}/native/
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
