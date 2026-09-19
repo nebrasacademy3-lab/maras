@@ -13,7 +13,12 @@ test("stable user ownership migration covers every account-scoped legacy email t
   }
   const migration = await source("drizzle/0037_stable_user_ownership.sql");
   assert.match(migration, /user_ownership_reviews/);
-  assert.match(migration, /email_change_requests/);
+  const executable = migration.replace(/--[^\n]*/g, "");
+  assert.doesNotMatch(executable, /FROM\s+"users"|email_change_requests|lower\(/i);
+  assert.match(migration, /p\.access_owner=p\.order_owner/);
+  for (const table of ["support_tickets","course_access","course_access_events","lesson_progress","favorites","cart_items","lesson_notes","course_reviews","course_waitlist","store_course_grants"]) {
+    assert.match(migration, new RegExp(`FROM "${table}" WHERE "user_id" IS NULL`), table);
+  }
   assert.match(migration, /store_transactions/);
   assert.match(migration, /course_access_owner_course_unique/);
 });
@@ -22,13 +27,14 @@ test("student HTTP ownership paths no longer authorize by mutable session email"
   const files = [
     "app/api/cart/route.ts","app/api/favorites/route.ts","app/api/waitlist/route.ts",
     "app/api/progress/route.ts","app/api/reviews/route.ts","app/api/mobile/notes/route.ts",
-    "app/api/support/route.ts",
+    "app/api/support/route.ts","app/api/mobile/favorites/route.ts",
+    "app/api/mobile/dashboard/route.ts","app/dashboard/page.tsx","app/api/mobile/account/route.ts",
   ];
-  const tables = ["cartItems","favorites","courseWaitlist","lessonProgress","courseReviews","lessonNotes","supportTickets","courseAccess"];
+  const tables = ["cartItems","favorites","courseWaitlist","lessonProgress","courseReviews","lessonNotes","supportTickets","courseAccess","storeCourseGrants"];
   for (const file of files) {
     const value = await source(file);
     for (const table of tables) {
-      assert.doesNotMatch(value, new RegExp(`eq\\(${table}\\.userEmail,\\s*(?:user|current)\\.email`), file + ":" + table);
+      assert.doesNotMatch(value, new RegExp(`eq\\(${table}\\.userEmail,\\s*(?:user|current|fresh)\\.email`), file + ":" + table);
     }
   }
 });
