@@ -22,30 +22,22 @@ UPDATE "course_access" ca SET "user_id"=o."user_id" FROM "orders" o
 WHERE ca."user_id" IS NULL AND ca."order_number"=o."order_number" AND o."user_id" IS NOT NULL;--> statement-breakpoint
 UPDATE "store_course_grants" g SET "user_id"=t."user_id" FROM "store_transactions" t
 WHERE g."user_id" IS NULL AND g."transaction_id"=t."id";--> statement-breakpoint
-UPDATE "course_access_events" e SET "user_id"=a."user_id" FROM "course_access" a
-WHERE e."user_id" IS NULL AND e."access_id"=a."id" AND a."user_id" IS NOT NULL;--> statement-breakpoint
-UPDATE "course_access_events" e SET "user_id"=o."user_id" FROM "orders" o
-WHERE e."user_id" IS NULL AND e."order_number"=o."order_number" AND o."user_id" IS NOT NULL;--> statement-breakpoint
+-- Multiple stable anchors must agree; neither source may silently override the other.
+WITH event_owners AS (
+  SELECT e."id", a."user_id" AS access_owner, o."user_id" AS order_owner
+  FROM "course_access_events" e
+  LEFT JOIN "course_access" a ON a."id"=e."access_id"
+  LEFT JOIN "orders" o ON o."order_number"=e."order_number"
+  WHERE e."user_id" IS NULL
+)
+UPDATE "course_access_events" e SET "user_id"=COALESCE(p.access_owner,p.order_owner)
+FROM event_owners p WHERE e."id"=p."id"
+AND COALESCE(p.access_owner,p.order_owner) IS NOT NULL
+AND (p.access_owner IS NULL OR p.order_owner IS NULL OR p.access_owner=p.order_owner);--> statement-breakpoint
 
--- Conservative email backfill. Any address seen in an email-change flow stays unresolved for offline review.
-UPDATE "support_tickets" r SET "user_id"=u."id" FROM "users" u WHERE r."user_id" IS NULL AND r."user_email" IS NOT NULL AND lower(r."user_email")=lower(u."email")
-AND NOT EXISTS (SELECT 1 FROM "email_change_requests" e WHERE lower(e."current_email")=lower(r."user_email") OR lower(e."new_email")=lower(r."user_email"));--> statement-breakpoint
-UPDATE "course_access" r SET "user_id"=u."id" FROM "users" u WHERE r."user_id" IS NULL AND lower(r."user_email")=lower(u."email")
-AND NOT EXISTS (SELECT 1 FROM "email_change_requests" e WHERE lower(e."current_email")=lower(r."user_email") OR lower(e."new_email")=lower(r."user_email"));--> statement-breakpoint
-UPDATE "course_access_events" r SET "user_id"=u."id" FROM "users" u WHERE r."user_id" IS NULL AND lower(r."user_email")=lower(u."email")
-AND NOT EXISTS (SELECT 1 FROM "email_change_requests" e WHERE lower(e."current_email")=lower(r."user_email") OR lower(e."new_email")=lower(r."user_email"));--> statement-breakpoint
-UPDATE "lesson_progress" r SET "user_id"=u."id" FROM "users" u WHERE r."user_id" IS NULL AND lower(r."user_email")=lower(u."email")
-AND NOT EXISTS (SELECT 1 FROM "email_change_requests" e WHERE lower(e."current_email")=lower(r."user_email") OR lower(e."new_email")=lower(r."user_email"));--> statement-breakpoint
-UPDATE "favorites" r SET "user_id"=u."id" FROM "users" u WHERE r."user_id" IS NULL AND lower(r."user_email")=lower(u."email")
-AND NOT EXISTS (SELECT 1 FROM "email_change_requests" e WHERE lower(e."current_email")=lower(r."user_email") OR lower(e."new_email")=lower(r."user_email"));--> statement-breakpoint
-UPDATE "cart_items" r SET "user_id"=u."id" FROM "users" u WHERE r."user_id" IS NULL AND lower(r."user_email")=lower(u."email")
-AND NOT EXISTS (SELECT 1 FROM "email_change_requests" e WHERE lower(e."current_email")=lower(r."user_email") OR lower(e."new_email")=lower(r."user_email"));--> statement-breakpoint
-UPDATE "lesson_notes" r SET "user_id"=u."id" FROM "users" u WHERE r."user_id" IS NULL AND lower(r."user_email")=lower(u."email")
-AND NOT EXISTS (SELECT 1 FROM "email_change_requests" e WHERE lower(e."current_email")=lower(r."user_email") OR lower(e."new_email")=lower(r."user_email"));--> statement-breakpoint
-UPDATE "course_reviews" r SET "user_id"=u."id" FROM "users" u WHERE r."user_id" IS NULL AND lower(r."user_email")=lower(u."email")
-AND NOT EXISTS (SELECT 1 FROM "email_change_requests" e WHERE lower(e."current_email")=lower(r."user_email") OR lower(e."new_email")=lower(r."user_email"));--> statement-breakpoint
-UPDATE "course_waitlist" r SET "user_id"=u."id" FROM "users" u WHERE r."user_id" IS NULL AND lower(r."user_email")=lower(u."email")
-AND NOT EXISTS (SELECT 1 FROM "email_change_requests" e WHERE lower(e."current_email")=lower(r."user_email") OR lower(e."new_email")=lower(r."user_email"));--> statement-breakpoint
+-- An email snapshot, even without a recorded email change, is not ownership proof.
+-- Keep unanchored legacy records inaccessible and queue them for audited review.
+-- Do not fill user_id from the current holder of user_email.
 
 INSERT INTO "user_ownership_reviews" ("entity_type","entity_id","email_snapshot","reason")
 SELECT 'support_ticket',"id"::text,"user_email",'email_not_safely_resolved' FROM "support_tickets" WHERE "user_id" IS NULL AND "user_email" IS NOT NULL ON CONFLICT DO NOTHING;--> statement-breakpoint
