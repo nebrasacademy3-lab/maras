@@ -131,6 +131,7 @@ jobs:
             .data/qa-email-change-results.json
             .data/qa-order-ownership-report.json
             .data/qa-order-ownership-migration-report.json
+            .data/qa-stable-user-ownership-migration-report.json
             .data/protected-video/report.json
             .data/protected-video/real-playback.png
           include-hidden-files: true
