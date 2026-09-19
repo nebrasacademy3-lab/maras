@@ -1,0 +1,190 @@
+diff --git a/db/schema.ts b/db/schema.ts
+index 0c8eda09adc2ce4dcaf231423de90ed629b384ce..612997209d89c11c693813abaf54be3157ba73a6 100644
+--- a/db/schema.ts
++++ b/db/schema.ts
+@@ -2 +2 @@ import { sql } from "drizzle-orm";
+-import { boolean, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
++import { boolean, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
+@@ -1347,0 +1348,57 @@ export const accountMfaRecoveryCodes = pgTable("account_mfa_recovery_codes", {
++
++// Independent outbox rows survive deletion of their parent media records.
++export const storageCleanupJobs = pgTable("storage_cleanup_jobs", {
++  id: text("id").primaryKey(),
++  objectKey: text("object_key").notNull(),
++  provider: text("provider").notNull(),
++  operation: text("operation").notNull(),
++  locationFingerprint: text("location_fingerprint").notNull(),
++  source: text("source").notNull(),
++  status: text("status").notNull().default("pending"),
++  attempts: integer("attempts").notNull().default(0),
++  availableAt: timestamp("available_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
++  leaseUntil: timestamp("lease_until", { withTimezone: true }),
++  leaseToken: text("lease_token"),
++  errorCode: text("error_code"),
++  completedAt: timestamp("completed_at", { withTimezone: true }),
++  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
++  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
++}, t => [
++  index("storage_cleanup_pending_idx").on(t.availableAt, t.createdAt, t.id).where(sql`${t.status} = 'pending'`),
++  index("storage_cleanup_lease_idx").on(t.leaseUntil).where(sql`${t.status} = 'processing'`),
++  check("storage_cleanup_jobs_provider_check", sql`${t.provider} IN ('local', 's3')`),
++  check("storage_cleanup_jobs_operation_check", sql`${t.operation} IN ('object', 'prefix')`),
++  check("storage_cleanup_jobs_location_fingerprint_check", sql`${t.locationFingerprint} ~ '^[a-f0-9]{64}$'`),
++  check("storage_cleanup_jobs_status_check", sql`${t.status} IN ('pending', 'processing', 'completed', 'blocked')`),
++  check("storage_cleanup_jobs_attempts_check", sql`${t.attempts} BETWEEN 0 AND 12`),
++  check("storage_cleanup_lease_check", sql`(${t.status} = 'processing' AND ${t.leaseToken} IS NOT NULL AND ${t.leaseUntil} IS NOT NULL) OR (${t.status} <> 'processing' AND ${t.leaseToken} IS NULL AND ${t.leaseUntil} IS NULL)`),
++  check("storage_cleanup_complete_check", sql`(${t.status} = 'completed') = (${t.completedAt} IS NOT NULL)`),
++]);
++
++export const resumableVideoUploads = pgTable("resumable_video_uploads", {
++  id: text("id").primaryKey(),
++  requestKey: text("request_key").notNull(),
++  ownerId: integer("owner_id").notNull(),
++  courseSlug: text("course_slug").notNull(),
++  lessonId: text("lesson_id").notNull(),
++  objectKey: text("object_key").notNull(),
++  provider: text("provider").notNull(),
++  locationFingerprint: text("location_fingerprint").notNull(),
++  contentType: text("content_type").notNull(),
++  sizeBytes: integer("size_bytes").notNull(),
++  hashesJson: text("hashes_json").notNull(),
++  receivedJson: text("received_json").notNull().default("[]"),
++  status: text("status").notNull().default("open"),
++  assetId: integer("asset_id"),
++  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull().default(sql`clock_timestamp() + interval '24 hours'`),
++  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
++  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
++}, t => [
++  uniqueIndex("resumable_owner_request_unique").on(t.ownerId, t.requestKey),
++  index("resumable_expiry_idx").on(t.status, t.expiresAt),
++  check("resumable_video_uploads_owner_id_check", sql`${t.ownerId} > 0`),
++  check("resumable_video_uploads_provider_check", sql`${t.provider} IN ('local', 's3')`),
++  check("resumable_video_uploads_location_fingerprint_check", sql`${t.locationFingerprint} ~ '^[a-f0-9]{64}$'`),
++  check("resumable_video_uploads_size_bytes_check", sql`${t.sizeBytes} BETWEEN 1 AND 209715200`),
++  check("resumable_video_uploads_status_check", sql`${t.status} IN ('open', 'completed', 'expired', 'blocked')`),
++]);
+diff --git a/docs/DURABLE_CLEANUP_RESUMABLE_ACCEPTANCE_2026_09_19_AR.md b/docs/DURABLE_CLEANUP_RESUMABLE_ACCEPTANCE_2026_09_19_AR.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..283b4af826ff0fb14e3e7f6315178c6e4cf68871
+--- /dev/null
++++ b/docs/DURABLE_CLEANUP_RESUMABLE_ACCEPTANCE_2026_09_19_AR.md
+@@ -0,0 +1,41 @@
++# قبول التنظيف الدائم ورفع الفيديو القابل للاستئناف
++
++## النطاق
++
++الأساس: `1d08c5ca28cb54e87998ab643cc46d15263d4661`، PR #7. لا تفعيل إنتاجي أو ترحيل بيانات إنتاج أو مزودين حيين أو احتياط ذكاء اصطناعي مدفوع في هذه الدفعة.
++
++## تنفيذ التنظيف الدائم
++
++الترحيل 0038 يضيف `storage_cleanup_jobs`. خدمة الحذف الإداري تحفظ المهام **داخل معاملة حذف السجلات نفسها**. فشل حفظ المهام يتراجع معه حذف السجلات. تُثبّت هوية مزود وموقع التخزين قبل إدراج المهمة؛ لا تعيد المحاولة تفسير الملف حسب الإعداد الافتراضي الجديد.
++
++العامل `storage-cleanup-worker` يعمل افتراضيًا تحت مشرف العمليات. يلتقط دفعات محدودة بواسطة `FOR UPDATE SKIP LOCKED`، بمهلة للعملية 20 ثانية وعقد تنفيذ 90 ثانية. إقرار النتيجة مربوط بالمعرّف ورمز العقد وصلاحيته لمنع عامل متأخر من إقرار محاولة أحدث. الانقطاع بعد الحذف وقبل الإقرار يعيد حذفًا متكررًا آمنًا. الانقطاع بعد آخر محاولة ينقل المهمة للمراجعة بدل بقائها معلقة.
++
++إعادة المحاولة مؤجلة تدريجيًا، بحد 12 محاولة؛ المسارات غير الآمنة أو تغيّر موقع التخزين تُحجب للمراجعة. لا توجد إزالة مجلدات عامة. الحذف المتكرر محصور بمحاولة معالجة فيديو محددة أو جلسة رفع ذات معرّف عشوائي. العمليات تعرض أعداد المهام المنتظرة والمحجوبة والمتأخرة، دون مفاتيح تخزين أو أسرار في الاستجابة العامة.
++
++نطاق ضمان صندوق المهام هنا هو `deleteAdminEntity` وتنظيف جلسات الرفع الجديدة. **ليس تحويلًا شاملًا لكل موضع حذف قديم في التطبيق أو جردًا لبقايا المعالجة التاريخية.** حقول الملفات القديمة التي لم تحفظ مزودها تستعمل المزود الحالي عند تسجيل المهمة كما كانت تفعل سابقًا، ثم يُثبّت للمحاولات؛ هذا لا يثبت موقعها التاريخي إن سبق نقل المخزن دون تحديث السجلات.
++
++## تنفيذ استئناف الرفع
++
++المسار `/api/admin/videos/resumable` وخدمة `resumable-video-upload` يستعملان جلسة دائمة في PostgreSQL (الترحيل 0039)، وأجزاء بحجم 4MiB في مخزن الملفات. الحجم الأقصى يبقى 200MiB. يلتزم كل جزء مسبقًا بـSHA-256 وطول دقيق، ويُرفض تجاوز الحجم أثناء التدفق، وتُعاد مقارنة البصمات عند التجميع. هذا **بروتوكول أجزاء على مستوى التطبيق، وليس تنفيذ Amazon S3 Multipart Upload الأصلي**؛ الأجزاء والتجميع يمران بخادم التطبيق ويستعملان النقل المحلي أو S3 الموجود.
++
++الحدود المشتركة بين الخوادم: جلستان مفتوحتان للحساب و16 جلسة إجمالًا، وتجميعان نهائيان متزامنان فقط. تُحتسب ملفات الجلسات المنتهية المنتظرة للتنظيف ضمن القبول كي لا تُتجاوز حدود التخزين بمجرد انتهاء الجلسة. الصلاحية 24 ساعة، والعامل يرحّل تنظيف الجلسات المنتهية إلى صندوق المهام دون جرد واسع للمخزن.
++
++الجلسة مرتبطة بصاحبها ونطاق المادة. تُعاد المصادقة، ولا يسمح إكمال الجلسة بتبديل أجزاء الفيديو. نشر سجل الفيديو وربطه بالدرس وإضافة مهمة تجهيز الجودات وحفظ تنظيف الملفات السابقة كلها في معاملة واحدة. فشل المعاملة يبقي الفيديو السابق ويترك الجلسة قابلة للمحاولة؛ الملفات غير المنشورة تُنظف بعد الإلغاء/الانتهاء.
++
++واجهة الويب تحفظ **معرّف العملية فقط** تحت مفتاح مرتبط بالحساب والدرس وبصمات جميع أجزاء الملف؛ لا تحفظ الملف أو التوكن أو رابطًا موقعًا. بعد انقطاع الشبكة أو إعادة تحميل الصفحة يعاد اختيار الملف نفسه لاستئناف الجزء الناقص. لا تعتمد الهوية على اسم الملف وحجمه وحدهما. تعطيل تخزين المتصفح/الوضع الخاص قد يمنع الاستئناف عبر إعادة تحميل الصفحة. هذه الدفعة لا تضيف عميل أجزاء أصليًا لتطبيق الهاتف.
++
++## روابط S3 المباشرة القديمة
++
++توقيع PUT يربط `Content-Length` و`Content-Type` و`If-None-Match: *`، ويتحقق من تضمينها فعليًا في `X-Amz-SignedHeaders`. استدعاء التوقيع يتطلب الحجم. يبقى إصدار هذه الروابط مغلقًا افتراضيًا بواسطة `S3_DIRECT_UPLOAD_CONDITIONAL_WRITES_VERIFIED=false` حتى تثبت قيود المزود وCORS على بيئة اختبار مخصصة. عميل قديم لا يرسل الترويسة المطلوبة يفشل بدل الرجوع لتوقيع أقل تقييدًا. الرفع القابل للاستئناف الجديد لا يحتاج هذا التفعيل. لا تدّعي هذه الدفعة قبول S3 حيًا؛ اختبار التوقيع يستعمل SDK الحقيقي بمفاتيح اصطناعية دون اتصال خارجي.
++
++## أدلة التنفيذ
++
++- `scripts/qa-storage-cleanup.ts`: 9 مجموعات PostgreSQL/ملفات فعلية؛ ثلاث عمليات فرعية تخرج فجأة بعد تثبيت المهمة، وبعد التقاطها، وبعد حذف الملف قبل الإقرار، إضافة إلى التراجع وتنافس العمال والتأخير وتغيّر المخزن والمحاولة الأخيرة.
++- `scripts/qa-resumable-video.ts`: 9 مجموعات PostgreSQL/ملفات فعلية؛ انقطاع عملية بعد جزء، تطابق بايتات الملف النهائي، منع فساد الأجزاء أو إعادة الكتابة، ربط الحساب، منع النشر بعد سحب التفويض، حدود القبول والتجميع، وإبقاء الملفات عند فساد سياق التخزين.
++- `tests/resumable-video-client.test.mjs`: إعادة تحميل العميل وفقد رد الاعتماد وتغيّر المحتوى/الحساب دون إعادة إرسال الأجزاء المقبولة.
++- `tests/direct-upload-signing.test.mjs`: توقيع SDK فعلي مع تحقق الترويسات وحدود الحجم، دون مزود حي.
++- `scripts/qa-resumable-browser.mjs`: برنامج قبول واجهة الإدارة على HTTP فعلي، يقطع الجزء الثاني ويعيد تحميل الصفحة ثم يتحقق من الاستئناف وSHA-256 والربط ومهمة المعالجة. مربوط بـCI للمتصفحات الثلاثة؛ وجوده لا يعني نجاحه، المرجع نتيجة التشغيل المرتبطة بالتزام الدفعة.
++
++## ما لا يُغلق بهذه الدفعة
++
++قبول المزود السحابي الحي، حصص وفوترة Gemini، استئناف مستندات أدوات الدراسة الكبيرة، ترحيل ملكيات الإنتاج القديمة، الأجهزة الفعلية والتوقيع والمتاجر، الحمل واختبار الاختراق المستقل، وجاهزية النسخ الاحتياطي/الاستعادة والرجوع للإنتاج. لا تُسوّق اختبارات محلية أو فحوص متصفح كدليل لهذه البنود.
+diff --git a/drizzle/0038_storage_cleanup_outbox.sql b/drizzle/0038_storage_cleanup_outbox.sql
+new file mode 100644
+index 0000000000000000000000000000000000000000..8b467fda35f095ea3053b6a33223404edda47d5a
+--- /dev/null
++++ b/drizzle/0038_storage_cleanup_outbox.sql
+@@ -0,0 +1,24 @@
++-- Durable outbox: independent of deleted parents; deletion + enqueue commit together.
++CREATE TABLE "storage_cleanup_jobs" (
++  "id" text PRIMARY KEY NOT NULL,
++  "object_key" text NOT NULL,
++  "provider" text NOT NULL CHECK ("provider" IN ('local', 's3')),
++  "operation" text NOT NULL CHECK ("operation" IN ('object', 'prefix')),
++  "location_fingerprint" text NOT NULL CHECK ("location_fingerprint" ~ '^[a-f0-9]{64}$'),
++  "source" text NOT NULL,
++  "status" text NOT NULL DEFAULT 'pending' CHECK ("status" IN ('pending', 'processing', 'completed', 'blocked')),
++  "attempts" integer NOT NULL DEFAULT 0 CHECK ("attempts" BETWEEN 0 AND 12),
++  "available_at" timestamptz NOT NULL DEFAULT clock_timestamp(),
++  "lease_until" timestamptz,
++  "lease_token" text,
++  "error_code" text,
++  "completed_at" timestamptz,
++  "created_at" timestamptz NOT NULL DEFAULT clock_timestamp(),
++  "updated_at" timestamptz NOT NULL DEFAULT clock_timestamp(),
++  CONSTRAINT "storage_cleanup_lease_check" CHECK (
++    ("status" = 'processing' AND "lease_token" IS NOT NULL AND "lease_until" IS NOT NULL)
++    OR ("status" <> 'processing' AND "lease_token" IS NULL AND "lease_until" IS NULL)),
++  CONSTRAINT "storage_cleanup_complete_check" CHECK (("status" = 'completed') = ("completed_at" IS NOT NULL))
++);--> statement-breakpoint
++CREATE INDEX "storage_cleanup_pending_idx" ON "storage_cleanup_jobs" ("available_at", "created_at", "id") WHERE "status" = 'pending';--> statement-breakpoint
++CREATE INDEX "storage_cleanup_lease_idx" ON "storage_cleanup_jobs" ("lease_until") WHERE "status" = 'processing';
+diff --git a/drizzle/0039_resumable_video_uploads.sql b/drizzle/0039_resumable_video_uploads.sql
+new file mode 100644
+index 0000000000000000000000000000000000000000..fbdebed2527297f66d960bef5555a733124b3542
+--- /dev/null
++++ b/drizzle/0039_resumable_video_uploads.sql
+@@ -0,0 +1,23 @@
++-- Upload ownership is immutable even when the account is later removed.
++-- No cascading FK: abandoned sessions must remain available to the cleanup worker.
++CREATE TABLE "resumable_video_uploads" (
++  "id" text PRIMARY KEY NOT NULL,
++  "request_key" text NOT NULL,
++  "owner_id" integer NOT NULL CHECK ("owner_id" > 0),
++  "course_slug" text NOT NULL,
++  "lesson_id" text NOT NULL,
++  "object_key" text NOT NULL,
++  "provider" text NOT NULL CHECK ("provider" IN ('local', 's3')),
++  "location_fingerprint" text NOT NULL CHECK ("location_fingerprint" ~ '^[a-f0-9]{64}$'),
++  "content_type" text NOT NULL,
++  "size_bytes" integer NOT NULL CHECK ("size_bytes" BETWEEN 1 AND 209715200),
++  "hashes_json" text NOT NULL,
++  "received_json" text NOT NULL DEFAULT '[]',
++  "status" text NOT NULL DEFAULT 'open' CHECK ("status" IN ('open', 'completed', 'expired', 'blocked')),
++  "asset_id" integer,
++  "expires_at" timestamptz NOT NULL DEFAULT (clock_timestamp() + interval '24 hours'),
++  "created_at" timestamptz NOT NULL DEFAULT clock_timestamp(),
++  "updated_at" timestamptz NOT NULL DEFAULT clock_timestamp()
++);--> statement-breakpoint
++CREATE UNIQUE INDEX "resumable_owner_request_unique" ON "resumable_video_uploads" ("owner_id", "request_key");--> statement-breakpoint
++CREATE INDEX "resumable_expiry_idx" ON "resumable_video_uploads" ("status", "expires_at");
+diff --git a/drizzle/meta/_journal.json b/drizzle/meta/_journal.json
+index 7dbeccd611e0b4b0ba0f474c75d6cac461ece849..3bb72d2915d4cfabf53115b45f71b0ed2ff61b7e 100644
+--- a/drizzle/meta/_journal.json
++++ b/drizzle/meta/_journal.json
+@@ -269,0 +270,14 @@
++    },
++    {
++      "idx": 38,
++      "version": "7",
++      "when": 1789830000000,
++      "tag": "0038_storage_cleanup_outbox",
++      "breakpoints": true
++    },
++    {
++      "idx": 39,
++      "version": "7",
++      "when": 1789830100000,
++      "tag": "0039_resumable_video_uploads",
++      "breakpoints": true
