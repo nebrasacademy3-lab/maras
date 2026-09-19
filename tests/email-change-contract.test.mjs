@@ -12,18 +12,17 @@ const [schema, migration, route, service, web, mobile] = await Promise.all([
   read("mobile/src/components/EmailChangePanel.tsx"),
 ]);
 
-test("email change is a two-owner proof and preserves the account identity", () => {
+test("email change proves both addresses while preserving immutable account ownership", () => {
   assert.match(schema, /emailChangeRequests = pgTable\("email_change_requests"/);
   assert.match(migration, /email_change_requests_user_fk/);
-  assert.match(service, /currentCodeHash/);
-  assert.match(service, /newCodeHash/);
-  assert.match(service, /currentVerifiedAt/);
-  assert.match(service, /newVerifiedAt/);
-  assert.match(service, /migrateEmailReferences/);
+  for (const field of ["currentCodeHash", "newCodeHash", "currentVerifiedAt", "newVerifiedAt"]) assert.ok(service.includes(field));
+  assert.doesNotMatch(service, /migrateEmailReferences|UPDATE\s+"(?:support_tickets|orders|course_access|favorites|cart_items|lesson_notes|lesson_progress)"/i);
+  assert.match(service, /update\(users\)\.set\(\{ email: challenge\.newEmail, emailVerifiedAt: now, updatedAt: now \}\)\.where\(eq\(users\.id, userId\)\)/);
   assert.match(service, /pg_advisory_xact_lock/);
+  assert.match(service, /requireCurrentSession\(tx, userId, tokenHash\)/);
   assert.match(service, /authSessions/);
-  assert.match(service, /emailVerifiedAt: now/);
   assert.match(service, /email-change-request/);
+  assert.match(service, /EMAIL_CHANGE_ENABLED === "true"/);
 });
 
 test("web and native surfaces expose request, verification and cancellation without exposing codes", () => {
