@@ -14,6 +14,7 @@ const run = (args, settings = env) => new Promise((resolve, reject) => { const c
 const pool = new pg.Pool({ connectionString: url });
 try { await migrate(drizzle(pool), { migrationsFolder: "./drizzle" }); } finally { await pool.end(); }
 await run(["scripts/qa-order-ownership-migration.mjs"]);
+await run(["scripts/qa-stable-user-ownership-migration.mjs"]);
 await run(["scripts/qa-seed.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-tools.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-security.ts"]);
