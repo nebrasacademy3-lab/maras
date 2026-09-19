@@ -12,19 +12,19 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
-          ref: 8b7e3eefb9b8e134c63a117a2e9d1bf7883430a2
+          ref: 1d08c5ca28cb54e87998ab643cc46d15263d4661
           persist-credentials: false
       - name: Archive tracked source only
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = '8b7e3eefb9b8e134c63a117a2e9d1bf7883430a2'
+          test "$(git rev-parse HEAD)" = '1d08c5ca28cb54e87998ab643cc46d15263d4661'
           mkdir -p "$RUNNER_TEMP/source-evidence"
           git archive --format=tar.gz -o "$RUNNER_TEMP/source-evidence/source.tar.gz" HEAD
           git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/source-evidence/source-identity.txt"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: pinned-source-8b7e3ee
+          name: pinned-source-1d08c5c
           path: ${{ runner.temp }}/source-evidence/
           retention-days: 1
           if-no-files-found: error
