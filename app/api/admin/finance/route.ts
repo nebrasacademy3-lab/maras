@@ -411,7 +411,7 @@ export async function POST(request: Request) {
     const items = await tx.select({ courseSlug: orderItems.courseSlug, accessDurationDays: orderItems.accessDurationDays }).from(orderItems).where(eq(orderItems.orderNumber, current.orderNumber));
     const purchaseItems = items.length ? items : [{ courseSlug: current.courseSlug, accessDurationDays: 90 }];
     for (const item of [...purchaseItems].sort((left, right) => left.courseSlug.localeCompare(right.courseSlug))) {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${owner.email}:${item.courseSlug}`}))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${owner.id}:${item.courseSlug}`}))`);
     }
     const fulfilled = await fulfillPaidOrderTx(tx, current, purchaseItems, { chargeId: current.tapChargeId, actorEmail: user.email, now, extendDuplicates: true });
     notice = fulfilled.notice;

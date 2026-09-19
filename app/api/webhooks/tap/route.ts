@@ -460,11 +460,11 @@ export async function POST(request: Request) {
         }
       }
       for (const item of [...purchaseItems].sort((left, right) => left.courseSlug.localeCompare(right.courseSlug))) {
-        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${owner.email}:${item.courseSlug}`}))`);
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${owner.id}:${item.courseSlug}`}))`);
       }
       let duplicateEntitlement: { courseSlug: string; orderNumber: string | null } | null = null;
       for (const item of purchaseItems) {
-        const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, owner.email), eq(courseAccess.courseSlug, item.courseSlug))).limit(1);
+        const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userId, owner.id), eq(courseAccess.courseSlug, item.courseSlug))).limit(1);
         const active = existing && !existing.revokedAt && (!existing.expiresAt || Date.parse(existing.expiresAt) > Date.now());
         if (active && existing.orderNumber !== current.orderNumber) {
           duplicateEntitlement = { courseSlug: item.courseSlug, orderNumber: existing.orderNumber };
@@ -514,10 +514,10 @@ export async function POST(request: Request) {
       const newlyRefunded = current.status !== "refunded";
       await tx.update(orders).set({ status: "refunded", tapChargeId: chargeId, updatedAt: now }).where(eq(orders.id, current.id));
       await reconcileReferralQualificationAfterRefundTx(tx, current.userId, now);
-      const affected = await tx.select().from(courseAccess).where(eq(courseAccess.orderNumber, current.orderNumber));
+      const affected = current.userId ? await tx.select().from(courseAccess).where(and(eq(courseAccess.userId, current.userId), eq(courseAccess.orderNumber, current.orderNumber))) : [];
       for (const access of affected) {
         await tx.update(courseAccess).set({ revokedAt: now, revocationReason: "payment_refunded", suspendedAt: null, suspensionReason: null, updatedAt: now }).where(eq(courseAccess.id, access.id));
-        await tx.insert(courseAccessEvents).values({ eventKey: `order:${current.orderNumber}:refund:${access.courseSlug}`, accessId: access.id, userEmail: access.userEmail, courseSlug: access.courseSlug, action: "refund_revoked", actorEmail: "tap-webhook", reason: "payment_refunded", orderNumber: current.orderNumber, beforeJson: JSON.stringify(access), afterJson: JSON.stringify({ revokedAt: now }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
+        await tx.insert(courseAccessEvents).values({ userId: access.userId, eventKey: `order:${current.orderNumber}:refund:${access.courseSlug}`, accessId: access.id, userEmail: access.userEmail, courseSlug: access.courseSlug, action: "refund_revoked", actorEmail: "tap-webhook", reason: "payment_refunded", orderNumber: current.orderNumber, beforeJson: JSON.stringify(access), afterJson: JSON.stringify({ revokedAt: now }), createdAt: now }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
       }
       if (newlyRefunded) {
         const title = "تم تحديث حالة الاسترداد";

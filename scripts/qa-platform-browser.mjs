@@ -58,6 +58,26 @@ try {
       const context = await browser.newContext({ locale: "ar-SA", reducedMotion: "reduce", viewport: { width: 1440, height: 1000 } });
       context.setDefaultTimeout(30000); context.setDefaultNavigationTimeout(30000);
       await observeBrowserContext(context, observations, "public");
+      const hydration = await context.newPage();
+      const stopHydrationObservation = observePage(hydration);
+      let releaseScripts;
+      const scriptGate = new Promise(resolve => { releaseScripts = resolve; });
+      await hydration.route("**/_next/**/*.js*", async route => { await scriptGate; await route.continue(); });
+      try {
+        await hydration.goto(origin + "/faq", { waitUntil: "commit" });
+        const search = hydration.getByLabel("البحث في الأسئلة الشائعة");
+        await search.waitFor({ state: "visible" });
+        assert.equal(await search.isDisabled(), true, "search cannot silently lose input before hydration");
+        assert.ok((await hydration.getByRole("button", { name: /جميع الأسئلة/ }).isDisabled()));
+        releaseScripts();
+        await search.fill("MFA");
+        await hydration.waitForFunction(() => {
+          const rows = [...document.querySelectorAll("details")];
+          return rows.length > 0 && rows.length < 35 && rows.every(row => row.textContent.toLowerCase().includes("mfa"));
+        });
+        assert.equal(await search.inputValue(), "MFA");
+        checks.push("FAQ controls reject pre-hydration interaction and preserve the first search after scripts load");
+      } finally { releaseScripts(); stopHydrationObservation(); await hydration.close(); }
       const paths = ["/about", "/why-maras", "/faq", "/how-it-works", "/privacy", "/terms", "/contact", "/refund-policy"];
       for (const path of paths) {
         const routePage = await context.newPage();
@@ -88,8 +108,17 @@ try {
       const count = await page.locator("details").count(); assert.equal(count, 35);
       const schemaContent = await page.locator('script[type="application/ld+json"]').allTextContents();
       assert.ok(schemaContent.some(value => { const row = JSON.parse(value); return row["@type"] === "FAQPage" && row.mainEntity.length === count; }));
-      await page.getByLabel("البحث في الأسئلة الشائعة").fill("MFA"); assert.ok(await page.locator("details").count() > 0 && await page.locator("details").count() < count);
+      const originalIds = await page.locator("details").evaluateAll(nodes => nodes.map(node => node.id));
+      const expectedIds = await page.locator("details").evaluateAll(nodes => nodes.filter(node => node.textContent.toLowerCase().includes("mfa")).map(node => node.id));
+      assert.ok(expectedIds.length > 0 && expectedIds.length < count);
+      await page.getByLabel("البحث في الأسئلة الشائعة").fill("MFA");
+      await page.waitForFunction(ids => JSON.stringify([...document.querySelectorAll("details")].map(node => node.id)) === JSON.stringify(ids), expectedIds);
+      assert.deepEqual(await page.locator("details").evaluateAll(nodes => nodes.map(node => node.id)), expectedIds);
+      await page.getByLabel("البحث في الأسئلة الشائعة").fill("qa-no-matching-answer-938471");
+      await page.getByRole("heading", { name: "لم نجد تطابقًا", exact: true }).waitFor({ state: "visible" });
+      assert.equal(await page.locator("details").count(), 0);
       await page.getByLabel("البحث في الأسئلة الشائعة").fill("");
+      await page.waitForFunction(ids => JSON.stringify([...document.querySelectorAll("details")].map(node => node.id)) === JSON.stringify(ids), originalIds);
       checks.push("35 rendered FAQ answers match structured data and search filters the real visible content");
       for (const theme of ["light", "dark"]) {
         const desiredDark = theme === "dark";

@@ -142,7 +142,7 @@ export async function POST(request: Request) {
   if (replay) return replay;
 
   const now = new Date().toISOString();
-  const activeAccess = await db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(and(eq(courseAccess.userEmail, user.email), inArray(courseAccess.courseSlug, uniqueSlugs), isNull(courseAccess.revokedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, now))));
+  const activeAccess = await db.select({ courseSlug: courseAccess.courseSlug }).from(courseAccess).where(and(eq(courseAccess.userId, user.id), inArray(courseAccess.courseSlug, uniqueSlugs), isNull(courseAccess.revokedAt), or(isNull(courseAccess.expiresAt), gt(courseAccess.expiresAt, now))));
   if (activeAccess.length) return jsonError(`لديك وصول مفعّل مسبقًا إلى: ${activeAccess.map((row) => row.courseSlug).join(", ")}`, 409);
 
   const bundleQuote = requestedBundleSlug ? await getActiveCourseBundleQuote(requestedBundleSlug, uniqueSlugs) : null;

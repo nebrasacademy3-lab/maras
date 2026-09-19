@@ -119,8 +119,8 @@ export async function GET(request: Request) {
   const userFilter = and(scopedStudentSql(scopeId, users.id, "id"), !owner ? and(eq(users.role, "student"), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern)) : undefined) : ["students", "staff"].includes(view) ? and(view === "students" ? eq(users.role, "student") : inArray(users.role, ["admin", "supervisor"]), needle ? or(ilike(users.fullName, pattern), ilike(users.email, pattern), ilike(users.phone, pattern), ilike(users.specialty, pattern)) : undefined) : undefined);
   const orderFilter = and(scopedOrderSql(scopeId, orders.orderNumber), view === "orders" && needle ? or(ilike(orders.orderNumber, pattern), ilike(orders.customerEmail, pattern), ilike(orders.customerName, pattern), ilike(orders.courseSlug, pattern), ilike(orders.status, pattern)) : undefined);
   const requestFilter = and(scopedRequestSql(scopeId, courseRequests.id), view === "requests" && needle ? or(sql`${courseRequests.id}::text = ${needle}`, ilike(courseRequests.name, pattern), ilike(courseRequests.courseName, pattern), ilike(courseRequests.phone, pattern), ilike(courseRequests.university, pattern), ilike(courseRequests.specialty, pattern), sql`${courseRequests.userId} IN (SELECT id FROM users WHERE email ILIKE ${pattern})`) : undefined);
-  const ticketFilter = and(scopedStudentSql(scopeId, supportTickets.userEmail), view === "support" && needle ? or(ilike(supportTickets.ticketNumber, pattern), ilike(supportTickets.userEmail, pattern), ilike(supportTickets.title, pattern), ilike(supportTickets.message, pattern)) : undefined);
-  const accessFilter = and(and(scopedCourseSql(scopeId, courseAccess.courseSlug), scopedStudentSql(scopeId, courseAccess.userEmail)), view === "subscriptions" && needle ? or(ilike(courseAccess.userEmail, pattern), ilike(courseAccess.courseSlug, pattern), ilike(courseAccess.orderNumber, pattern), sql`${courseAccess.userEmail} IN (SELECT email FROM users WHERE full_name ILIKE ${pattern} OR phone ILIKE ${pattern})`) : undefined);
+  const ticketFilter = and(scopedStudentSql(scopeId, supportTickets.userId, "id"), view === "support" && needle ? or(ilike(supportTickets.ticketNumber, pattern), ilike(supportTickets.userEmail, pattern), ilike(supportTickets.title, pattern), ilike(supportTickets.message, pattern)) : undefined);
+  const accessFilter = and(and(scopedCourseSql(scopeId, courseAccess.courseSlug), scopedStudentSql(scopeId, courseAccess.userId, "id")), view === "subscriptions" && needle ? or(ilike(courseAccess.userEmail, pattern), ilike(courseAccess.courseSlug, pattern), ilike(courseAccess.orderNumber, pattern), sql`${courseAccess.userId} IN (SELECT id FROM users WHERE full_name ILIKE ${pattern} OR phone ILIKE ${pattern})`) : undefined);
   const reviewFilter = and(scopedCourseSql(scopeId, courseReviews.courseSlug), view === "reviews" && needle ? or(ilike(courseReviews.userEmail, pattern), ilike(courseReviews.courseSlug, pattern), ilike(courseReviews.body, pattern), ilike(courseReviews.status, pattern)) : undefined);
   const auditFilter = view === "audit" && needle ? or(ilike(auditLogs.actorEmail, pattern), ilike(auditLogs.action, pattern), ilike(auditLogs.entityType, pattern), ilike(auditLogs.entityId, pattern)) : undefined;
   const take = (target: string, fallback: number) => view === target || target === "students" && view === "staff" ? page.pageSize : fallback;
@@ -168,9 +168,8 @@ export async function GET(request: Request) {
     : view === "subscriptions" ? await db.select({ total: count() }).from(courseAccess).where(accessFilter)
     : view === "reviews" ? await db.select({ total: count() }).from(courseReviews).where(reviewFilter)
     : view === "audit" ? await db.select({ total: count() }).from(auditLogs).where(auditFilter) : null;
-  const relatedUserIds = visibleRequestRows.flatMap((row) => row.userId ? [row.userId] : []);
-  const relatedUserEmails = visibleTicketRows.flatMap((row) => row.userEmail ? [row.userEmail] : []);
-  const relatedStudents = can("students.view") && (relatedUserIds.length || relatedUserEmails.length) ? await db.select({ id: users.id, email: users.email, fullName: users.fullName, phone: users.phone, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, status: users.status }).from(users).where(and(scopedStudentSql(scopeId, users.id, "id"), or(relatedUserIds.length ? inArray(users.id, relatedUserIds) : undefined, relatedUserEmails.length ? inArray(users.email, relatedUserEmails) : undefined))) : [];
+  const relatedUserIds = [...new Set([...visibleRequestRows, ...visibleTicketRows].flatMap((row) => row.userId ? [row.userId] : []))];
+  const relatedStudents = can("students.view") && relatedUserIds.length ? await db.select({ id: users.id, email: users.email, fullName: users.fullName, phone: users.phone, universitySlug: users.universitySlug, specialty: users.specialty, academicLevel: users.academicLevel, status: users.status }).from(users).where(and(scopedStudentSql(scopeId, users.id, "id"), inArray(users.id, relatedUserIds))) : [];
   const effectiveAccess = await effectiveAccessRows(accessRows);
   const registeredDeviceRows = needs("devices") && can("students.devices.view") && studentRows.length ? await db.select({ id: authDevices.id, userId: authDevices.userId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(inArray(authDevices.userId, studentRows.map(student => student.id)), isNull(authDevices.revokedAt))) : [];
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...ADMIN_SETTING_DEFAULTS } as Record<string, string>;
@@ -188,7 +187,7 @@ export async function GET(request: Request) {
       (SELECT count(*)::int FROM course_requests WHERE status NOT IN ('available', 'declined') AND ${can("requests.manage")} AND ${scopedRequestSql(scopeId, sql`course_requests.id`)}) AS open_requests,
       (SELECT count(*)::int FROM support_tickets WHERE status NOT IN ('resolved', 'closed') AND ${can("support.manage")} AND ${scopedStudentSql(scopeId, sql`support_tickets.user_email`)}) AS open_tickets,
       (SELECT count(*)::int FROM course_reviews WHERE status = 'pending' AND ${can("catalog.manage")} AND ${scopedCourseSql(scopeId, sql`course_reviews.course_slug`)}) AS pending_reviews`) : {rows:[]},
-    needs("courses") && can("students.view") ? db.select({ courseSlug: courseWaitlist.courseSlug, total: count() }).from(courseWaitlist).where(and(eq(courseWaitlist.status, "active"), scopedCourseSql(scopeId, courseWaitlist.courseSlug), scopedStudentSql(scopeId, courseWaitlist.userEmail))).groupBy(courseWaitlist.courseSlug) : [],
+    needs("courses") && can("students.view") ? db.select({ courseSlug: courseWaitlist.courseSlug, total: count() }).from(courseWaitlist).where(and(eq(courseWaitlist.status, "active"), scopedCourseSql(scopeId, courseWaitlist.courseSlug), scopedStudentSql(scopeId, courseWaitlist.userId, "id"))).groupBy(courseWaitlist.courseSlug) : [],
     needs("services") && can("operations.manage") && can("data.all") ? db.select({ total: count() }).from(aiApiKeys).where(eq(aiApiKeys.status, "active")) : [],
   ]);
   const managedInstitutionMap = new Map(managedInstitutionRows.map((row) => [row.slug, row]));
@@ -253,8 +252,8 @@ export async function GET(request: Request) {
           : [{ id: -ticket.id, ticketId: ticket.id, replyToId: null, authorEmail: ticket.userEmail, authorRole: "student", body: ticket.message || "", internal: false, createdAt: ticket.createdAt, files: [] }];
       return {
         ...ticket,
-        student: ticket.userEmail ? (() => {
-          const student = relatedStudents.find((user) => user.email.toLowerCase() === ticket.userEmail!.toLowerCase());
+        student: ticket.userId ? (() => {
+          const student = relatedStudents.find((user) => user.id === ticket.userId);
           return student ? { fullName: student.fullName, email: student.email, phone: student.phone, universitySlug: student.universitySlug, specialty: student.specialty, academicLevel: student.academicLevel, status: student.status } : null;
         })() : null,
         replies,
@@ -644,7 +643,7 @@ export async function POST(request: Request) {
     if (suppliedKey && !/^[A-Za-z0-9_-]{12,90}$/.test(suppliedKey)) return jsonError("معرّف العملية غير صالح");
     // Legacy clients may omit the key; modern clients retain it across a retry.
     const operationKey = suppliedKey || crypto.randomUUID();
-    const fingerprint = createHash("sha256").update(JSON.stringify({ userEmail, courseSlug, grantType, price, rawExpiry })).digest("hex");
+    const fingerprint = createHash("sha256").update(JSON.stringify({ userId: student.id, userEmail, courseSlug, grantType, price, rawExpiry })).digest("hex");
     const eventKey = `admin-grant:${authorization.actor}:${operationKey}`;
     const orderNumber = grantType === "manual_payment" ? `MANUAL-${createHash("sha256").update(eventKey).digest("hex").slice(0, 24).toUpperCase()}` : null;
     const days = rawExpiry ? Math.max(1, Math.ceil((Date.parse(rawExpiry) - Date.parse(now)) / 86_400_000)) : normalizeAccessDurationDays(course.accessDurationDays, course.access);
@@ -654,13 +653,13 @@ export async function POST(request: Request) {
       const [previous] = await tx.select().from(courseAccessEvents).where(eq(courseAccessEvents.eventKey, eventKey)).limit(1);
       if (previous) {
         const prior = JSON.parse(previous.afterJson || "{}") as { fingerprint?: string };
-        if (prior.fingerprint !== fingerprint) return { error: "معرّف العملية مستخدم لبيانات مختلفة", status: 409 };
+        if (previous.userId !== student.id || prior.fingerprint !== fingerprint) return { error: "معرّف العملية مستخدم لبيانات مختلفة", status: 409 };
         return { replayed: true, notice: null as FulfillmentNotice | null };
       }
       const owner = await lockOrderOwnerTx(tx, { userId: student.id });
       if (owner.email !== userEmail) return { error: "تغيرت بيانات الطالب؛ حدّث الملف قبل منح الوصول.", status: 409 };
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${userEmail}:${courseSlug}`}))`);
-      const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userEmail, userEmail), eq(courseAccess.courseSlug, courseSlug))).limit(1);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${student.id}:${courseSlug}`}))`);
+      const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userId, student.id), eq(courseAccess.courseSlug, courseSlug))).limit(1);
       if (existing?.suspendedAt) return { error: "استأنف الاشتراك المتوقف أولًا قبل منح وصول إضافي", status: 409 };
       if (existing?.storeAccessBlockedAt) await tx.update(courseAccess).set({ storeAccessBlockedAt: null }).where(eq(courseAccess.id, existing.id));
       let notice: FulfillmentNotice | null = null;
@@ -671,19 +670,19 @@ export async function POST(request: Request) {
         await tx.insert(paymentEvents).values({ provider: "admin", providerEventId: `admin-payment:${orderNumber}`, orderNumber, status: "paid", payload: asJson({ actor: authorization.actor, price, fingerprint }), receivedAt: now });
         const fulfillment = await fulfillPaidOrderTx(tx, order, [{ courseSlug, accessDurationDays: days, expiresAt: resolvedExpiry }], { actorEmail: authorization.actor, chargeId: null, now, accessSource: "admin_payment", extendDuplicates: true });
         notice = fulfillment.notice;
-        const [granted] = await tx.select({ id: courseAccess.id }).from(courseAccess).where(and(eq(courseAccess.userEmail, userEmail), eq(courseAccess.courseSlug, courseSlug))).limit(1);
+        const [granted] = await tx.select({ id: courseAccess.id }).from(courseAccess).where(and(eq(courseAccess.userId, student.id), eq(courseAccess.courseSlug, courseSlug))).limit(1);
         accessId = granted?.id;
       } else {
         const expiresAt = existing && existing.source !== "revenuecat" && !existing.revokedAt ? !existing.expiresAt ? null : Date.parse(existing.expiresAt) > Date.parse(resolvedExpiry) ? existing.expiresAt : resolvedExpiry : resolvedExpiry;
-        const values = { userEmail, courseSlug, source: existing && existing.source !== "revenuecat" && !existing.revokedAt ? existing.source : "admin_complimentary", orderNumber: existing && existing.source !== "revenuecat" && !existing.revokedAt ? existing.orderNumber : null, startsAt: existing && existing.source !== "revenuecat" && !existing.revokedAt ? existing.startsAt : now, expiresAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now };
-        const [access] = await tx.insert(courseAccess).values(values).onConflictDoUpdate({ target: [courseAccess.userEmail, courseAccess.courseSlug], set: values }).returning({ id: courseAccess.id });
+        const values = { userId: student.id, userEmail, courseSlug, source: existing && existing.source !== "revenuecat" && !existing.revokedAt ? existing.source : "admin_complimentary", orderNumber: existing && existing.source !== "revenuecat" && !existing.revokedAt ? existing.orderNumber : null, startsAt: existing && existing.source !== "revenuecat" && !existing.revokedAt ? existing.startsAt : now, expiresAt, suspendedAt: null, suspensionReason: null, revokedAt: null, revocationReason: null, updatedAt: now };
+        const [access] = await tx.insert(courseAccess).values(values).onConflictDoUpdate({ target: [courseAccess.userId, courseAccess.courseSlug], set: values }).returning({ id: courseAccess.id });
         accessId = access.id;
-        await tx.update(courseWaitlist).set({ status: "converted", convertedAt: now, updatedAt: now }).where(and(eq(courseWaitlist.userEmail, userEmail), eq(courseWaitlist.courseSlug, courseSlug)));
+        await tx.update(courseWaitlist).set({ status: "converted", convertedAt: now, updatedAt: now }).where(and(eq(courseWaitlist.userId, student.id), eq(courseWaitlist.courseSlug, courseSlug)));
         const title = "تم تفعيل المادة"; const body = `أصبحت مادة «${course.title}» متاحة في حسابك.`;
-        const [saved] = await tx.insert(notificationsDb).values({ userEmail, audience: "student", title, body, actionUrl: `/learn/${courseSlug}`, actionLabel: "فتح المادة", template: "success", dedupeKey: eventKey, pushStatus: "pending", createdAt: now }).returning({ id: notificationsDb.id });
+        const [saved] = await tx.insert(notificationsDb).values({ targetUserId: student.id, userEmail: null, audience: "student", title, body, actionUrl: `/learn/${courseSlug}`, actionLabel: "فتح المادة", template: "success", dedupeKey: eventKey, pushStatus: "pending", createdAt: now }).returning({ id: notificationsDb.id });
         notice = { id: saved.id, title, body, route: `/learn/${courseSlug}` };
       }
-      await tx.insert(courseAccessEvents).values({ eventKey, accessId, userEmail, courseSlug, action: grantType === "manual_payment" ? "manual_payment_granted" : "complimentary_granted", actorEmail: authorization.actor, reason: cleanText(payload.reason, 500) || "منحة إدارية", orderNumber, beforeJson: existing ? asJson(existing) : null, afterJson: asJson({ fingerprint, price, grantType, expiresAt: resolvedExpiry }), createdAt: now });
+      await tx.insert(courseAccessEvents).values({ userId: student.id, eventKey, accessId, userEmail, courseSlug, action: grantType === "manual_payment" ? "manual_payment_granted" : "complimentary_granted", actorEmail: authorization.actor, reason: cleanText(payload.reason, 500) || "منحة إدارية", orderNumber, beforeJson: existing ? asJson(existing) : null, afterJson: asJson({ fingerprint, price, grantType, expiresAt: resolvedExpiry }), createdAt: now });
       await tx.insert(auditLogs).values({ actorEmail: authorization.actor, action: "grant", entityType: "course_access", entityId: `${userEmail}:${courseSlug}`, afterJson: asJson({ orderNumber, grantType, price, operationKey }), ipAddress: clientIp(request), createdAt: now });
       return { replayed: false, notice };
     });
@@ -703,6 +702,7 @@ export async function POST(request: Request) {
     if (["pause", "revoke"].includes(operation) && reason.length < 3) return jsonError("اكتب سبب الإجراء ليظهر في سجل الاشتراك");
     const [before] = await db.select().from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
     if (!before) return jsonError("الاشتراك غير موجود", 404);
+    if (!Number.isSafeInteger(before.userId) || !before.userId || before.userId < 1) return jsonError("ملكية الاشتراك تحتاج مراجعة موثقة قبل التعديل", 409);
     const [decisionBefore] = await effectiveAccessRows([{ ...before, suspendedAt: null }], now);
     const [course] = await Promise.all([getCourseCatalog(before.courseSlug, true)]);
     const changes: Partial<typeof courseAccess.$inferInsert> = { updatedAt: now };
@@ -737,9 +737,13 @@ export async function POST(request: Request) {
     let committedChanges = changes;
     let replayed = false;
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${before.userEmail}:${before.courseSlug}`}))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${before.userId})`);
+      const [owner] = await tx.select({ id: users.id, status: users.status }).from(users).where(eq(users.id, before.userId!)).limit(1).for("update");
+      if (!owner || owner.status !== "active" && ["extend", "resume"].includes(operation)) { transactionError = { message: "حساب صاحب الاشتراك غير متاح للتفعيل", status: 409 }; return; }
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${before.userId}:${before.courseSlug}`}))`);
       const [current] = await tx.select().from(courseAccess).where(eq(courseAccess.id, accessId)).limit(1);
       if (!current) { transactionError = { message: "الاشتراك غير موجود", status: 404 }; return; }
+      if (current.userId !== before.userId || current.courseSlug !== before.courseSlug) { transactionError = { message: "تغيرت ملكية الاشتراك؛ حدّث الصفحة", status: 409 }; return; }
       const eventKey = `admin-access:${accessId}:${operationKey}`;
       const [previousEvent] = await tx.select({ id: courseAccessEvents.id }).from(courseAccessEvents).where(eq(courseAccessEvents.eventKey, eventKey)).limit(1);
       if (previousEvent) { replayed = true; committedBefore = current; return; }
@@ -772,14 +776,14 @@ export async function POST(request: Request) {
       if (!after) { transactionError = { message: "تعذر تحديث الاشتراك", status: 409 }; return; }
       committedBefore = current;
       committedChanges = lockedChanges;
-      await tx.insert(courseAccessEvents).values({ eventKey, accessId, userEmail: current.userEmail, courseSlug: current.courseSlug, action: operation, actorEmail: authorization.actor, reason: reason || null, orderNumber: current.orderNumber, beforeJson: JSON.stringify(current), afterJson: JSON.stringify(after), createdAt: now });
-      const [notice] = await tx.insert(notificationsDb).values({ userEmail: current.userEmail, audience: "student", title: notificationTitle, body: notificationBody, actionUrl: operation === "revoke" ? "/dashboard?view=orders" : `/learn/${current.courseSlug}`, actionLabel: operation === "revoke" ? "عرض الطلبات" : "فتح المادة", template: operation === "revoke" || operation === "pause" ? "urgent" : "success", dedupeKey: `access:${accessId}:${operationKey}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
+      await tx.insert(courseAccessEvents).values({ userId: current.userId, eventKey, accessId, userEmail: current.userEmail, courseSlug: current.courseSlug, action: operation, actorEmail: authorization.actor, reason: reason || null, orderNumber: current.orderNumber, beforeJson: JSON.stringify(current), afterJson: JSON.stringify(after), createdAt: now });
+      const [notice] = await tx.insert(notificationsDb).values({ targetUserId: current.userId, userEmail: null, audience: "student", title: notificationTitle, body: notificationBody, actionUrl: operation === "revoke" ? "/dashboard?view=orders" : `/learn/${current.courseSlug}`, actionLabel: operation === "revoke" ? "عرض الطلبات" : "فتح المادة", template: operation === "revoke" || operation === "pause" ? "urgent" : "success", dedupeKey: `access:${accessId}:${operationKey}`, pushStatus: "processing", pushClaimedAt: now, createdAt: now }).onConflictDoNothing({ target: notificationsDb.dedupeKey }).returning({ id: notificationsDb.id });
       noticeId = notice?.id;
     });
     const accessError = transactionError as { message: string; status: number } | null;
     if (accessError) return jsonError(accessError.message, accessError.status);
     if (replayed) return Response.json({ ok: true, replayed: true });
-    const push = await sendPushNotification({ userEmail: committedBefore.userEmail }, notificationTitle, notificationBody, { route: operation === "revoke" ? "/dashboard?view=orders" : `/learn/${committedBefore.courseSlug}`, notificationId: noticeId || 0 });
+    const push = await sendPushNotification({ userId: committedBefore.userId }, notificationTitle, notificationBody, { route: operation === "revoke" ? "/dashboard?view=orders" : `/learn/${committedBefore.courseSlug}`, notificationId: noticeId || 0 });
     if (noticeId) await db.update(notificationsDb).set({ pushStatus: push.accepted > 0 ? "accepted" : push.attempted === 0 ? "no_devices" : "failed", pushAttempts: 1, pushLastError: push.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: push.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, noticeId));
     await audit(request, authorization.actor, operation, "course_access", String(accessId), committedBefore, committedChanges);
     return Response.json({ ok: true, push });
@@ -818,8 +822,8 @@ export async function POST(request: Request) {
         const title = "تم تجهيز المادة المطلوبة";
         const body = `تم تجهيز مادة «${course.title}» وأصبحت متاحة الآن في حسابك.`;
         await createAndSendNotification({
-          values: { userEmail: student.email, audience: "student", title, body, actionUrl: `/learn/${course.slug}`, actionLabel: "فتح المادة", createdAt: now },
-          target: { userEmail: student.email },
+          values: { targetUserId: student.id, userEmail: null, audience: "student", title, body, actionUrl: `/learn/${course.slug}`, actionLabel: "فتح المادة", createdAt: now },
+          target: { userId: student.id },
           data: { route: `/learn/${course.slug}` },
         });
       }
@@ -847,8 +851,8 @@ export async function POST(request: Request) {
         const body = matchedCourse ? `أصبحت مادة «${matchedCourse.title}» متاحة الآن في مراس.` : `تغيرت حالة طلب «${before.courseName}» إلى «${courseRequestStatusArabic[status] || status}».`;
         const actionUrl = matchedCourse ? `/learn/${matchedCourse.slug}` : "/dashboard?view=requests";
         await createAndSendNotification({
-          values: { userEmail: student.email, audience: "student", title, body, actionUrl, actionLabel: matchedCourse ? "افتح المادة" : "عرض الطلب", createdAt: now },
-          target: { userEmail: student.email },
+          values: { targetUserId: student.id, userEmail: null, audience: "student", title, body, actionUrl, actionLabel: matchedCourse ? "افتح المادة" : "عرض الطلب", createdAt: now },
+          target: { userId: student.id },
           data: { route: matchedCourse ? `/learn/${matchedCourse.slug}` : "/requests" },
         });
       }
@@ -867,12 +871,12 @@ export async function POST(request: Request) {
     await db.update(supportTickets).set({ status, assignedTo: authorization.actor, updatedAt: now }).where(eq(supportTickets.id, id));
     if (reply) await db.insert(supportReplies).values({ ticketId: id, authorEmail: authorization.actor, authorRole: authorization.user?.role || "admin", body: reply, internal: payload.internal === true, createdAt: now });
     const visibleReply = payload.internal === true ? "" : reply;
-    if (before.userEmail && (visibleReply || before.status !== status)) {
+    if (before.userId && (visibleReply || before.status !== status)) {
       const title = visibleReply ? "رد جديد من دعم مراس" : "تحديث تذكرة الدعم";
       const body = visibleReply ? visibleReply.slice(0, 240) : `تغيرت حالة التذكرة ${before.ticketNumber} إلى «${supportStatusArabic[status] || status}».`;
       await createAndSendNotification({
-        values: { userEmail: before.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة", createdAt: now },
-        target: { userEmail: before.userEmail },
+        values: { targetUserId: before.userId, userEmail: null, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة", createdAt: now },
+        target: { userId: before.userId },
         data: { route: "/support" },
       });
     }
@@ -960,14 +964,14 @@ export async function POST(request: Request) {
       if (!universitySlug && !specialty && !segmentCourse && !accessState && !inactiveDays) return jsonError("اختر معيارًا واحدًا على الأقل للشريحة المستهدفة");
       const candidates = await db.select({ id: users.id, email: users.email, universitySlug: users.universitySlug, specialty: users.specialty, lastLoginAt: users.lastLoginAt }).from(users).where(and(eq(users.role, "student"), eq(users.status, "active"))).limit(10_000);
       const accessRows = segmentCourse || accessState ? await db.select().from(courseAccess).limit(50_000) : [];
-      const accessByEmail = new Map<string, typeof accessRows>();
-      for (const row of accessRows) accessByEmail.set(row.userEmail.toLowerCase(), [...(accessByEmail.get(row.userEmail.toLowerCase()) || []), row]);
+      const accessByUserId = new Map<number, typeof accessRows>();
+      for (const row of accessRows) if (row.userId) accessByUserId.set(row.userId, [...(accessByUserId.get(row.userId) || []), row]);
       const threshold = inactiveDays ? Date.now() - inactiveDays * 86_400_000 : 0;
       const recipients = candidates.filter((candidate) => {
         if (universitySlug && candidate.universitySlug !== universitySlug) return false;
         if (specialty && candidate.specialty !== specialty) return false;
         if (inactiveDays && candidate.lastLoginAt && Date.parse(candidate.lastLoginAt) > threshold) return false;
-        const grants = accessByEmail.get(candidate.email.toLowerCase()) || [];
+        const grants = accessByUserId.get(candidate.id) || [];
         if (segmentCourse && !grants.some((grant) => grant.courseSlug === segmentCourse)) return false;
         if (accessState) {
           const active = grants.some((grant) => !grant.revokedAt && !grant.suspendedAt && (!grant.expiresAt || Date.parse(grant.expiresAt) > Date.now()));

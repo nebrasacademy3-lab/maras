@@ -34,13 +34,13 @@ export async function supervisorConsoleMutationAllowed(user: SessionUser | null,
     ${scopedSubjectSql(actor, sql`${text(body.universitySlug)}`, sql`${text(body.specialty)}`)}`);
   if (action === "grantAccess") return check(sql`${student(body.userEmail)} AND ${course(body.courseSlug)}`);
   if (action === "updateAccess") return check(sql`EXISTS (SELECT 1 FROM course_access ca WHERE ca.id = ${id}
-    AND ${scopedStudentSql(actor, sql`ca.user_email`)} AND ${scopedCourseSql(actor, sql`ca.course_slug`)})`);
+    AND ${scopedStudentSql(actor, sql`ca.user_id`, "id")} AND ${scopedCourseSql(actor, sql`ca.course_slug`)})`);
   if (action === "revokeUserSession") return check(sql`EXISTS (SELECT 1 FROM auth_sessions se WHERE se.id = ${number(body.sessionId ?? body.id)}
     AND ${scopedStudentSql(actor, sql`se.user_id`, "id")})`);
   if (action === "prepareRequest" || action === "updateRequest") return check(sql`${request(body.id)} AND
     ${body.courseSlug ? course(body.courseSlug) : sql`true`}`);
   if (action === "updateTicket") return check(sql`EXISTS (SELECT 1 FROM support_tickets st WHERE st.id = ${id}
-    AND ${scopedStudentSql(actor, sql`st.user_email`)})`);
+    AND ${scopedStudentSql(actor, sql`st.user_id`, "id")})`);
   if (action === "updateReview") return check(sql`EXISTS (SELECT 1 FROM course_reviews rv WHERE rv.id = ${id}
     AND ${scopedCourseSql(actor, sql`rv.course_slug`)})`);
   if (action === "saveCoupon") return check(sql`${course(body.courseSlug)} AND NOT EXISTS
@@ -56,7 +56,7 @@ export async function supervisorConsoleMutationAllowed(user: SessionUser | null,
       case "lesson": return check(sql`EXISTS (SELECT 1 FROM lessons d WHERE d.id = ${slug} AND ${scopedCourseSql(actor, sql`d.course_slug`)})`);
       case "video": return check(sql`EXISTS (SELECT 1 FROM video_assets d WHERE d.id = ${key} AND ${scopedCourseSql(actor, sql`d.course_slug`)})`);
       case "review": return check(sql`EXISTS (SELECT 1 FROM course_reviews d WHERE d.id = ${key} AND ${scopedCourseSql(actor, sql`d.course_slug`)})`);
-      case "support_ticket": return check(sql`EXISTS (SELECT 1 FROM support_tickets d WHERE d.id = ${key} AND ${scopedStudentSql(actor, sql`d.user_email`)})`);
+      case "support_ticket": return check(sql`EXISTS (SELECT 1 FROM support_tickets d WHERE d.id = ${key} AND ${scopedStudentSql(actor, sql`d.user_id`, "id")})`);
       case "coupon": return check(sql`EXISTS (SELECT 1 FROM coupons d WHERE d.code = ${slug.toUpperCase()} AND ${scopedCourseSql(actor, sql`d.course_slug`)})`);
       default: return false;
     }

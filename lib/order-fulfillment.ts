@@ -38,7 +38,7 @@ export async function fulfillPaidOrderTx(tx: Tx, current: OrderRow, purchaseItem
 
   // Stable ordering prevents deadlocks between multi-course purchases.
   for (const item of [...purchaseItems].sort((a, b) => a.courseSlug.localeCompare(b.courseSlug))) {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${owner.email}:${item.courseSlug}`}))`);
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${owner.id}:${item.courseSlug}`}))`);
     const durationDays = normalizeAccessDurationDays(item.accessDurationDays);
     const expiresAt = item.expiresAt === undefined ? accessExpiryIso(durationDays, new Date(startsAt)) : item.expiresAt;
     const [existing] = await tx.select().from(courseAccess).where(and(eq(courseAccess.userId, owner.id), eq(courseAccess.courseSlug, item.courseSlug))).limit(1);

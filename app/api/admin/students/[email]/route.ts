@@ -86,14 +86,14 @@ export async function GET(request: Request, { params }: Props) {
   const notificationVisibility = and(sql`${can("notifications.manage")}`, notificationRecipientWhere(student), or(eq(notificationsDb.presentation, "inbox"), eq(notificationsDb.presentation, "all")), or(isNull(notificationsDb.startsAt), lte(notificationsDb.startsAt, now)), or(isNull(notificationsDb.expiresAt), gt(notificationsDb.expiresAt, now)));
   const readJoin = and(eq(notificationReads.notificationId, notificationsDb.id), eq(notificationReads.userId, student.id));
   const [access, progress, orderRows, tickets, requests, noticeRows, sessions, accessEvents, courseCatalog, institutionCatalog] = await Promise.all([
-    db.select().from(courseAccess).where(and(sql`${can("subscriptions.manage")}`, scopedCourseSql(scopeId, courseAccess.courseSlug), eq(courseAccess.userEmail, email))).orderBy(desc(courseAccess.updatedAt), desc(courseAccess.id)).limit(50).offset(offset("subscriptions")),
-    db.select().from(lessonProgress).where(and(scopedCourseSql(scopeId, lessonProgress.courseSlug), eq(lessonProgress.userEmail, email))).orderBy(desc(lessonProgress.updatedAt), desc(lessonProgress.id)).limit(50).offset(offset("progress")),
+    db.select().from(courseAccess).where(and(sql`${can("subscriptions.manage")}`, scopedCourseSql(scopeId, courseAccess.courseSlug), eq(courseAccess.userId, student.id))).orderBy(desc(courseAccess.updatedAt), desc(courseAccess.id)).limit(50).offset(offset("subscriptions")),
+    db.select().from(lessonProgress).where(and(scopedCourseSql(scopeId, lessonProgress.courseSlug), eq(lessonProgress.userId, student.id))).orderBy(desc(lessonProgress.updatedAt), desc(lessonProgress.id)).limit(50).offset(offset("progress")),
     db.select().from(orders).where(and(sql`${can("finance.view")}`, scopedOrderSql(scopeId, orders.orderNumber), eq(orders.userId, student.id))).orderBy(desc(orders.createdAt), desc(orders.id)).limit(50).offset(offset("orders")),
-    db.select().from(supportTickets).where(and(sql`${can("support.manage")}`, eq(supportTickets.userEmail, email))).orderBy(desc(supportTickets.createdAt), desc(supportTickets.id)).limit(50).offset(offset("support")),
+    db.select().from(supportTickets).where(and(sql`${can("support.manage")}`, eq(supportTickets.userId, student.id))).orderBy(desc(supportTickets.createdAt), desc(supportTickets.id)).limit(50).offset(offset("support")),
     db.select().from(courseRequests).where(and(sql`${can("requests.manage")}`, scopedRequestSql(scopeId, courseRequests.id), eq(courseRequests.userId, student.id))).orderBy(desc(courseRequests.createdAt), desc(courseRequests.id)).limit(50).offset(offset("requests")),
     db.select({ notice: notificationsDb, readAt: notificationReads.readAt }).from(notificationsDb).leftJoin(notificationReads, readJoin).where(notificationVisibility).orderBy(desc(notificationsDb.createdAt), desc(notificationsDb.id)).limit(50).offset(offset("notifications")),
     db.select({ id: authSessions.id, deviceLabel: authSessions.deviceLabel, platform: authSessions.platform, ipAddress: authSessions.ipAddress, lastSeenAt: authSessions.lastSeenAt, expiresAt: authSessions.expiresAt, revokedAt: authSessions.revokedAt, createdAt: authSessions.createdAt }).from(authSessions).where(and(sql`${can("students.devices.view")}`, eq(authSessions.userId, student.id))).orderBy(desc(authSessions.lastSeenAt), desc(authSessions.id)).limit(50).offset(offset("sessions")),
-    db.select().from(courseAccessEvents).where(and(sql`${can("subscriptions.manage")}`, scopedCourseSql(scopeId, courseAccessEvents.courseSlug), eq(courseAccessEvents.userEmail, email))).orderBy(desc(courseAccessEvents.createdAt), desc(courseAccessEvents.id)).limit(50).offset(offset("accessEvents")),
+    db.select().from(courseAccessEvents).where(and(sql`${can("subscriptions.manage")}`, scopedCourseSql(scopeId, courseAccessEvents.courseSlug), eq(courseAccessEvents.userId, student.id))).orderBy(desc(courseAccessEvents.createdAt), desc(courseAccessEvents.id)).limit(50).offset(offset("accessEvents")),
     getCoursesCatalog(true).then(rows => scopeId === null ? rows : rows.filter(row => supervisorScopesAllow(scopes, row))),
     getInstitutionsCatalog(true).then(rows => scopeId === null ? rows : rows.filter(row => scopes.some(scope => scope.institutionSlug === null || scope.institutionSlug === row.slug))),
   ]);
@@ -113,13 +113,13 @@ export async function GET(request: Request, { params }: Props) {
     db.select().from(aiEntitlements).where(and(sql`${can("ai.manage")}`, eq(aiEntitlements.userId, student.id))).orderBy(desc(aiEntitlements.createdAt), desc(aiEntitlements.id)).limit(50).offset(offset("ai")),
     db.select().from(aiSubscriptionOrders).where(and(sql`${can("ai.manage") && can("finance.view")}`, eq(aiSubscriptionOrders.userId, student.id))).orderBy(desc(aiSubscriptionOrders.createdAt), desc(aiSubscriptionOrders.id)).limit(50).offset(offset("aiOrders")),
     db.select({ service: aiUsageEvents.service, status: aiUsageEvents.status, total: count() }).from(aiUsageEvents).where(and(and(sql`${can("ai.manage")}`, eq(aiUsageEvents.userId, student.id)), gte(aiUsageEvents.createdAt, thirtyDaysAgo))).groupBy(aiUsageEvents.service, aiUsageEvents.status),
-    db.select().from(courseWaitlist).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, courseWaitlist.courseSlug), eq(courseWaitlist.userEmail, email))).orderBy(desc(courseWaitlist.createdAt), desc(courseWaitlist.id)).limit(50).offset(offset("waitlist")),
+    db.select().from(courseWaitlist).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, courseWaitlist.courseSlug), eq(courseWaitlist.userId, student.id))).orderBy(desc(courseWaitlist.createdAt), desc(courseWaitlist.id)).limit(50).offset(offset("waitlist")),
     db.select({ id: learningTrackInterests.id, status: learningTrackInterests.status, source: learningTrackInterests.source, lastNotifiedVersion: learningTrackInterests.lastNotifiedVersion, createdAt: learningTrackInterests.createdAt, trackTitle: learningTracks.title, trackSlug: learningTracks.slug, trackStatus: learningTracks.status }).from(learningTrackInterests).innerJoin(learningTracks, eq(learningTrackInterests.trackId, learningTracks.id)).where(and(sql`${can("roadmap.manage")}`, eq(learningTrackInterests.userId, student.id))).orderBy(desc(learningTrackInterests.createdAt), desc(learningTrackInterests.id)).limit(50).offset(offset("tracks")),
     db.select({ id: pushDevices.id, platform: pushDevices.platform, deviceLabel: pushDevices.deviceLabel, status: pushDevices.status, lastSeenAt: pushDevices.lastSeenAt, createdAt: pushDevices.createdAt }).from(pushDevices).where(and(sql`${can("students.devices.view")}`, eq(pushDevices.userId, student.id))).orderBy(desc(pushDevices.lastSeenAt), desc(pushDevices.id)).limit(50).offset(offset("pushDevices")),
     db.select({ refund: refundRequests }).from(refundRequests).innerJoin(orders, eq(refundRequests.orderNumber, orders.orderNumber)).where(and(sql`${can("finance.view")}`, scopedOrderSql(scopeId, orders.orderNumber), eq(orders.userId, student.id))).orderBy(desc(refundRequests.createdAt), desc(refundRequests.id)).limit(50).offset(offset("refunds")).then((rows) => rows.map((row) => row.refund)),
-    db.select().from(favorites).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, favorites.courseSlug), eq(favorites.userEmail, email))).orderBy(desc(favorites.createdAt), desc(favorites.id)).limit(50).offset(offset("favorites")),
-    db.select().from(cartItems).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, cartItems.courseSlug), eq(cartItems.userEmail, email))).orderBy(desc(cartItems.createdAt), desc(cartItems.id)).limit(50).offset(offset("cart")),
-    db.select({ total: count() }).from(lessonNotes).where(and(scopedLessonSql(scopeId, lessonNotes.lessonId), eq(lessonNotes.userEmail, email))).then((rows) => Number(rows[0]?.total || 0)),
+    db.select().from(favorites).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, favorites.courseSlug), eq(favorites.userId, student.id))).orderBy(desc(favorites.createdAt), desc(favorites.id)).limit(50).offset(offset("favorites")),
+    db.select().from(cartItems).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, cartItems.courseSlug), eq(cartItems.userId, student.id))).orderBy(desc(cartItems.createdAt), desc(cartItems.id)).limit(50).offset(offset("cart")),
+    db.select({ total: count() }).from(lessonNotes).where(and(scopedLessonSql(scopeId, lessonNotes.lessonId), eq(lessonNotes.userId, student.id))).then((rows) => Number(rows[0]?.total || 0)),
   ]);
   const referredUserIds = [...new Set(attributionRows.flatMap((row) => [row.referrerUserId, row.referredUserId]).filter((id) => id !== student.id))];
   const relatedUsers = referredUserIds.length ? await db.select({ id: users.id, email: users.email, fullName: users.fullName }).from(users).where(inArray(users.id, referredUserIds)) : [];
@@ -128,35 +128,35 @@ export async function GET(request: Request, { params }: Props) {
 
   const [aggregate, unreadRows, ...counterRows] = await Promise.all([
     db.execute(sql`SELECT
-      (SELECT count(*) FROM course_access WHERE user_email = ${email} AND ${can("subscriptions.manage")} AND ${scopedCourseSql(scopeId, sql`course_access.course_slug`)} AND ${activeAccessCondition(now)}) AS active_subscriptions,
-      (SELECT count(*) FROM lesson_progress WHERE user_email = ${email} AND ${scopedCourseSql(scopeId, sql`lesson_progress.course_slug`)} AND completed = true) AS completed_lessons,
-      (SELECT coalesce(sum(greatest(watched_seconds, 0)), 0) FROM lesson_progress WHERE user_email = ${email} AND ${scopedCourseSql(scopeId, sql`lesson_progress.course_slug`)}) AS watched_seconds,
+      (SELECT count(*) FROM course_access WHERE user_id = ${student.id} AND ${can("subscriptions.manage")} AND ${scopedCourseSql(scopeId, sql`course_access.course_slug`)} AND ${activeAccessCondition(now)}) AS active_subscriptions,
+      (SELECT count(*) FROM lesson_progress WHERE user_id = ${student.id} AND ${scopedCourseSql(scopeId, sql`lesson_progress.course_slug`)} AND completed = true) AS completed_lessons,
+      (SELECT coalesce(sum(greatest(watched_seconds, 0)), 0) FROM lesson_progress WHERE user_id = ${student.id} AND ${scopedCourseSql(scopeId, sql`lesson_progress.course_slug`)}) AS watched_seconds,
       (SELECT count(*) FROM orders WHERE user_id = ${student.id} AND ${can("finance.view")} AND ${scopedOrderSql(scopeId, sql`orders.order_number`)} AND status IN ('paid', 'partially_refunded')) AS paid_orders,
       (SELECT coalesce(sum(total), 0) FROM orders WHERE user_id = ${student.id} AND ${can("finance.view")} AND ${scopedOrderSql(scopeId, sql`orders.order_number`)} AND status IN ('paid', 'partially_refunded')) AS paid_value,
-      (SELECT count(*) FROM support_tickets WHERE user_email = ${email} AND ${can("support.manage")} AND status NOT IN ('closed', 'resolved')) AS open_tickets,
+      (SELECT count(*) FROM support_tickets WHERE user_id = ${student.id} AND ${can("support.manage")} AND status NOT IN ('closed', 'resolved')) AS open_tickets,
       (SELECT count(*) FROM referral_attributions WHERE referrer_user_id = ${student.id} AND ${can("referrals.manage")} AND status = 'qualified') AS qualified_referrals,
       (SELECT count(*) FROM user_rewards WHERE user_id = ${student.id} AND ${can("referrals.manage")} AND status = 'active' AND (expires_at IS NULL OR expires_at > ${now})) AS active_rewards,
       (SELECT count(*) FROM ai_entitlements WHERE user_id = ${student.id} AND ${can("ai.manage")} AND status = 'active' AND starts_at <= ${now} AND (expires_at IS NULL OR expires_at > ${now})) AS ai_active,
       (SELECT count(*) FROM push_devices WHERE user_id = ${student.id} AND ${can("students.devices.view")} AND status = 'active') AS push_devices`),
     db.select({ total: count() }).from(notificationsDb).leftJoin(notificationReads, readJoin).where(and(notificationVisibility, isNull(notificationReads.readAt))),
-    db.select({ total: count() }).from(courseAccess).where(and(sql`${can("subscriptions.manage")}`, scopedCourseSql(scopeId, courseAccess.courseSlug), eq(courseAccess.userEmail, email))),
-    db.select({ total: count() }).from(lessonProgress).where(and(scopedCourseSql(scopeId, lessonProgress.courseSlug), eq(lessonProgress.userEmail, email))),
+    db.select({ total: count() }).from(courseAccess).where(and(sql`${can("subscriptions.manage")}`, scopedCourseSql(scopeId, courseAccess.courseSlug), eq(courseAccess.userId, student.id))),
+    db.select({ total: count() }).from(lessonProgress).where(and(scopedCourseSql(scopeId, lessonProgress.courseSlug), eq(lessonProgress.userId, student.id))),
     db.select({ total: count() }).from(orders).where(and(sql`${can("finance.view")}`, scopedOrderSql(scopeId, orders.orderNumber), eq(orders.userId, student.id))),
-    db.select({ total: count() }).from(supportTickets).where(and(sql`${can("support.manage")}`, eq(supportTickets.userEmail, email))),
+    db.select({ total: count() }).from(supportTickets).where(and(sql`${can("support.manage")}`, eq(supportTickets.userId, student.id))),
     db.select({ total: count() }).from(courseRequests).where(and(sql`${can("requests.manage")}`, scopedRequestSql(scopeId, courseRequests.id), eq(courseRequests.userId, student.id))),
     db.select({ total: count() }).from(notificationsDb).where(notificationVisibility),
     db.select({ total: count() }).from(authSessions).where(and(sql`${can("students.devices.view")}`, eq(authSessions.userId, student.id))),
-    db.select({ total: count() }).from(courseAccessEvents).where(and(sql`${can("subscriptions.manage")}`, scopedCourseSql(scopeId, courseAccessEvents.courseSlug), eq(courseAccessEvents.userEmail, email))),
+    db.select({ total: count() }).from(courseAccessEvents).where(and(sql`${can("subscriptions.manage")}`, scopedCourseSql(scopeId, courseAccessEvents.courseSlug), eq(courseAccessEvents.userId, student.id))),
     db.select({ total: count() }).from(referralAttributions).where(and(sql`${can("referrals.manage")}`, or(eq(referralAttributions.referrerUserId, student.id), eq(referralAttributions.referredUserId, student.id)))),
     db.select({ total: count() }).from(userRewards).where(and(sql`${can("referrals.manage")}`, eq(userRewards.userId, student.id))),
     db.select({ total: count() }).from(couponsDb).where(and(sql`${can("referrals.manage")}`, eq(couponsDb.ownerUserId, student.id))),
     db.select({ total: count() }).from(aiEntitlements).where(and(sql`${can("ai.manage")}`, eq(aiEntitlements.userId, student.id))),
     db.select({ total: count() }).from(aiSubscriptionOrders).where(and(sql`${can("ai.manage") && can("finance.view")}`, eq(aiSubscriptionOrders.userId, student.id))),
-    db.select({ total: count() }).from(courseWaitlist).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, courseWaitlist.courseSlug), eq(courseWaitlist.userEmail, email))),
+    db.select({ total: count() }).from(courseWaitlist).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, courseWaitlist.courseSlug), eq(courseWaitlist.userId, student.id))),
     db.select({ total: count() }).from(learningTrackInterests).where(and(sql`${can("roadmap.manage")}`, eq(learningTrackInterests.userId, student.id))),
     db.select({ total: count() }).from(pushDevices).where(and(sql`${can("students.devices.view")}`, eq(pushDevices.userId, student.id))),
-    db.select({ total: count() }).from(favorites).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, favorites.courseSlug), eq(favorites.userEmail, email))),
-    db.select({ total: count() }).from(cartItems).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, cartItems.courseSlug), eq(cartItems.userEmail, email))),
+    db.select({ total: count() }).from(favorites).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, favorites.courseSlug), eq(favorites.userId, student.id))),
+    db.select({ total: count() }).from(cartItems).where(and(sql`${can("catalog.view")}`, scopedCourseSql(scopeId, cartItems.courseSlug), eq(cartItems.userId, student.id))),
   ]);
   const summary = (aggregate.rows[0] || {}) as Record<string, unknown>;
   const countKeys = ["subscriptions", "progress", "orders", "support", "requests", "notifications", "sessions", "accessEvents", "referrals", "rewards", "coupons", "ai", "aiOrders", "waitlist", "tracks", "pushDevices", "favorites", "cart"];

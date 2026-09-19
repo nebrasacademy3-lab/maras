@@ -132,6 +132,7 @@ jobs:
             .data/qa-order-ownership-report.json
             .data/qa-order-ownership-migration-report.json
             .data/qa-stable-user-ownership-migration-report.json
+            .data/qa-admin-stable-ownership-report.json
             .data/protected-video/report.json
             .data/protected-video/real-playback.png
           include-hidden-files: true

@@ -60,7 +60,7 @@ export async function applyVerifiedStorePurchase(client:PoolClient,user:StoreUse
   } else {
     const slugs=JSON.parse(snapshot.course_slugs_json) as string[];
     for(const slug of [...slugs].sort()) {
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",["course-access:"+user.email+":"+slug]);
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",["course-access:"+user.id+":"+slug]);
       const existing=(await client.query("SELECT id FROM store_course_grants WHERE transaction_id=$1 AND course_slug=$2",[id,slug])).rows[0];
       if(existing) await client.query("UPDATE store_course_grants SET status=$2 WHERE id=$1",[existing.id,active?"active":"refunded"]);
       else if(active) {
