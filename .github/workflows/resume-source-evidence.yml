@@ -1,0 +1,36 @@
+name: Isolated resume source evidence
+on:
+  push:
+    branches: [audit/resume-source-20260919]
+    paths: [.github/workflows/resume-source-evidence.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 54262249ba59c9b352d425a34a02fb54ce3a43d1
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Export only committed source and locked dependency packages
+        run: |
+          git archive --format=tar HEAD > "$RUNNER_TEMP/maras-reviewed-source.tar"
+          npm ci --ignore-scripts --no-audit --no-fund
+          tar -czf "$RUNNER_TEMP/maras-offline-dependencies.tar.gz" node_modules
+          git rev-parse HEAD > "$RUNNER_TEMP/source-sha.txt"
+          sha256sum "$RUNNER_TEMP/maras-reviewed-source.tar" "$RUNNER_TEMP/maras-offline-dependencies.tar.gz" > "$RUNNER_TEMP/archive-digests.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: resume-pinned-source-and-dependencies
+          path: |
+            ${{ runner.temp }}/maras-reviewed-source.tar
+            ${{ runner.temp }}/maras-offline-dependencies.tar.gz
+            ${{ runner.temp }}/source-sha.txt
+            ${{ runner.temp }}/archive-digests.txt
+          retention-days: 1
+          if-no-files-found: error
