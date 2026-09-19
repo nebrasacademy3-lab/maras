@@ -69,7 +69,7 @@ async function prepare() {
     return { id: user.id, email: user.email, token: session.token };
   }
   const user = await person("owner"), other = await person("other");
-  await db.insert(s.courseAccess).values({ userEmail: user.email, courseSlug: course, startsAt: now(), source: "qa" });
+  await db.insert(s.courseAccess).values({ userId: user.id, userEmail: user.email, courseSlug: course, startsAt: now(), source: "qa" });
   assert.equal((await db.select().from(s.videoProcessingJobs).where(eq(s.videoProcessingJobs.status, "queued"))).length, 0, "Do not process an unrelated job");
   assert.equal((await media.enqueueVideoProcessing(asset.id)).status, "queued");
   const processed = await media.runVideoProcessingBatch(1);
@@ -165,7 +165,7 @@ async function verify() {
     await page.screenshot({ path: resolve(output, "real-playback.png"), fullPage: true });
     await page.waitForFunction(() => document.querySelector("video")?.ended, undefined, { timeout: 20000 });
     for (let i = 0; i < 40; i++) {
-      const [progress] = await db.select().from(s.lessonProgress).where(and(eq(s.lessonProgress.userEmail, f.user.email), eq(s.lessonProgress.lessonId, f.lesson)));
+      const [progress] = await db.select().from(s.lessonProgress).where(and(eq(s.lessonProgress.userId, f.user.id), eq(s.lessonProgress.lessonId, f.lesson)));
       if (progress?.completed && progress.watchedSeconds >= 8) break;
       if (i === 39) throw new Error("Real player completion was not persisted");
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -188,7 +188,7 @@ async function verify() {
     if (setting) await db.update(s.platformSettings).set({ value: setting.value }).where(eq(s.platformSettings.key, setting.key));
     else await db.delete(s.platformSettings).where(eq(s.platformSettings.key, "content_view_mode"));
   }
-  await db.update(s.courseAccess).set({ revokedAt: now() }).where(and(eq(s.courseAccess.userEmail, f.user.email), eq(s.courseAccess.courseSlug, f.course)));
+  await db.update(s.courseAccess).set({ revokedAt: now() }).where(and(eq(s.courseAccess.userId, f.user.id), eq(s.courseAccess.courseSlug, f.course)));
   for (const path of [web.sourceUrl, web.hlsUrl, segment]) await denied(path, 403);
   await auth.revokeSession(new Request(origin, { headers: headers() }));
   await denied(web.sourceUrl, 401);
