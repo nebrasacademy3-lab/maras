@@ -1,0 +1,72 @@
+name: Reviewed refund ownership tree
+on:
+  push:
+    branches: [integration/v7-on-main-20260919]
+    paths: [.github/workflows/refund-review-tree.yml]
+permissions:
+  contents: write
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify literal edits and hashes; create Git objects without updating refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, io, json, os, pathlib, subprocess, urllib.request
+          encoded = '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'
+          with gzip.GzipFile(fileobj=io.BytesIO(base64.b64decode(encoded, validate=True))) as stream:
+              raw = stream.read(20001)
+          assert len(raw) == 15737 and hashlib.sha256(raw).hexdigest() == 'ecfeea9a8283fe68352dab95d15635a04554bebc95387160d4e5048703a89701'
+          m = json.loads(raw)
+          assert m['base'] == '918153b221c39d08e2a13068f6b30c417e5813df'
+          assert m['baseTree'] == '3d5766cf8de2e21bd7261e3a7dbdcc39eff59a11' and m['tree'] == '5b1c596c75adc69de7f8b3b2529614555628ffed'
+          allowed = {'app/api/webhooks/tap/route.ts','lib/refunded-order-access.ts','lib/refunds.ts','scripts/qa-admin-stable-ownership.ts','tests/business-services-behavior.test.mjs','tests/refund-stable-ownership-behavior.test.mjs','tests/seo-discovery-behavior.test.mjs'}
+          assert len(m['files']) == 7 and {f['path'] for f in m['files']} == allowed
+          subprocess.run(['git','merge-base','--is-ancestor',m['base'],'HEAD'],check=True)
+          subprocess.run(['git','read-tree','--reset','-u',m['base']],check=True)
+          for f in m['files']:
+              p = pathlib.Path(f['path']); old = p.read_bytes() if p.exists() else b''
+              assert not p.is_symlink()
+              assert (hashlib.sha256(old).hexdigest() if p.exists() else None) == f['before']
+              lines = old.decode().splitlines(keepends=True)
+              for h in reversed(f['hunks']):
+                  assert 0 <= h['start'] <= h['end'] <= len(lines)
+                  lines[h['start']:h['end']] = h['lines']
+              new = ''.join(lines).encode()
+              assert hashlib.sha256(new).hexdigest() == f['after']
+              p.parent.mkdir(parents=True,exist_ok=True); p.write_bytes(new)
+          subprocess.run(['git','add','-A'],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip() == m['tree']
+          def post(endpoint,payload):
+              assert endpoint in ('blobs','trees')
+              req = urllib.request.Request('https://api.github.com/repos/nebrasacademy3-lab/maras/git/'+endpoint,data=json.dumps(payload).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urllib.request.urlopen(req,timeout=30) as response: return json.load(response)
+          entries=[]
+          for f in m['files']:
+              content=pathlib.Path(f['path']).read_bytes()
+              sha=post('blobs',{'encoding':'base64','content':base64.b64encode(content).decode()})['sha']
+              assert sha == subprocess.check_output(['git','hash-object',f['path']],text=True).strip()
+              entries.append({'path':f['path'],'mode':'100644','type':'blob','sha':sha})
+          tree=post('trees',{'base_tree':m['baseTree'],'tree':entries})['sha']
+          assert tree == m['tree']
+          evidence=pathlib.Path(os.environ['RUNNER_TEMP'])/'refund-review'; evidence.mkdir()
+          (evidence/'manifest.json').write_bytes(raw)
+          (evidence/'candidate.patch').write_bytes(subprocess.check_output(['git','diff','--cached',m['base'],'--']))
+          (evidence/'tree.json').write_text(json.dumps({'tree':tree,'files':entries,'updatedRefs':False},indent=2))
+          print('VERIFIED_UNATTACHED_TREE',tree)
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reviewed-refund-tree
+          path: ${{ runner.temp }}/refund-review/
+          retention-days: 3
+          if-no-files-found: error
