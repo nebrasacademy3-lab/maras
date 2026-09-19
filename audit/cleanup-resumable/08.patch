@@ -1,0 +1,218 @@
+diff --git a/scripts/qa-storage-cleanup.ts b/scripts/qa-storage-cleanup.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..54feb922ef37082283319e433b7dae184bfb69e0
+--- /dev/null
++++ b/scripts/qa-storage-cleanup.ts
+@@ -0,0 +1,127 @@
++/** Destructive fault-injection QA is restricted to disposable loopback maras_qa. */
++import assert from "node:assert/strict";
++import { randomUUID } from "node:crypto";
++import { readFileSync, writeFileSync } from "node:fs";
++import { mkdir, rm } from "node:fs/promises";
++import { resolve } from "node:path";
++import { spawn } from "node:child_process";
++import { fileURLToPath } from "node:url";
++import { sql } from "drizzle-orm";
++
++const local = JSON.parse(readFileSync(".data/qa-database.json", "utf8")) as { url: string };
++const url = new URL(local.url);
++if (url.hostname !== "127.0.0.1" || url.pathname !== "/maras_qa" || process.env.DATABASE_URL !== local.url
++    || resolve(process.env.UPLOAD_DIR || "") !== resolve(".data/uploads")) throw new Error("Dedicated loopback QA and isolated files required");
++for (const name of ["S3_ENDPOINT", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY", "GEMINI_API_KEY", "GEMINI_API_KEYS", "RESEND_API_KEY", "TAP_SECRET_KEY", "RAILWAY_PROJECT_ID"]) {
++  if (process.env[name]) throw new Error("Live service configuration prohibited");
++}
++const [{ getDb, closeDb }, q, storage] = await Promise.all([import("../db"), import("../lib/storage-cleanup"), import("../lib/storage")]);
++const db = getDb();
++const network = globalThis.fetch;
++globalThis.fetch = async () => { throw new Error("External transport prohibited"); };
++const childStage = process.env.QA_CLEANUP_CRASH_STAGE;
++if (childStage) {
++  const key = process.env.QA_CLEANUP_KEY || "";
++  if (!/^qa-cleanup\/[a-f0-9-]+\/[a-z-]+$/.test(key)) throw new Error("Unsafe synthetic key");
++  const ids = await db.transaction(tx => q.enqueueStorageCleanupTx(tx, [{ key, provider: "local", source: "qa-cleanup" }]));
++  if (childStage !== "committed") {
++    const jobs = await q.claimStorageCleanupJobs(db, 1, ids);
++    if (childStage === "deleted") await storage.deleteObject(jobs[0].key, "local");
++  }
++  // Abrupt exit deliberately bypasses pool/lease cleanup, like a killed server.
++  process.send?.({ ids }, () => process.exit(83));
++} else {
++  const nonce = randomUUID(), root = `qa-cleanup/${nonce}`, checks: string[] = [], keys: string[] = [], ids: string[] = [];
++  const pass = (text: string) => { checks.push(text); console.info("PASS STORAGE CLEANUP", text); };
++  async function put(label: string) { const key = `${root}/${label}`; keys.push(key); await storage.putObject(key, new Blob(["synthetic-cleanup"]).stream(), "text/plain", "local"); return key; }
++  async function exists(key: string) { const row = await storage.getObject(key, undefined, "local"); if (!row) return false; await row.body.cancel(); return true; }
++  async function enqueue(key: string) { const added = await db.transaction(tx => q.enqueueStorageCleanupTx(tx, [{ key, provider: "local", source: "qa-cleanup" }])); ids.push(...added); return added; }
++  async function status(id: string) { return (await db.execute(sql`SELECT * FROM storage_cleanup_jobs WHERE id = ${id}`)).rows[0]; }
++  async function crash(stage: string, key: string) {
++    const child = spawn(process.execPath, ["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", fileURLToPath(import.meta.url)], {
++      env: { ...process.env, QA_CLEANUP_CRASH_STAGE: stage, QA_CLEANUP_KEY: key }, stdio: ["ignore", "ignore", "pipe", "ipc"],
++    });
++    let rows: string[] = [], stderr = "";
++    child.on("message", (message: { ids?: string[] }) => { rows = message.ids || []; });
++    child.stderr!.on("data", bytes => { stderr += bytes; });
++    const timer = setTimeout(() => child.kill("SIGKILL"), 15_000);
++    try {
++      const code = await new Promise((done, reject) => { child.once("error", reject); child.once("exit", done); });
++      assert.equal(code, 83, stderr.slice(-1000)); assert.equal(rows.length, 1); ids.push(...rows); return rows;
++    } finally { clearTimeout(timer); }
++  }
++  try {
++    const rollbackKey = await put("rollback");
++    await assert.rejects(db.transaction(async tx => { await q.enqueueStorageCleanupTx(tx, [{ key: rollbackKey, provider: "local", source: "qa-cleanup" }]); throw new Error("rollback sentinel"); }), /rollback sentinel/);
++    assert.equal((await db.execute(sql`SELECT id FROM storage_cleanup_jobs WHERE object_key = ${rollbackKey}`)).rows.length, 0);
++    assert.equal(await exists(rollbackKey), true);
++    pass("rollback keeps files and creates no orphan cleanup job");
++
++    for (const stage of ["committed", "claimed", "deleted"]) {
++      const key = await put(stage), jobIds = await crash(stage, key);
++      assert.equal(await exists(key), stage !== "deleted");
++      if (stage !== "committed") {
++        assert.equal((await q.claimStorageCleanupJobs(db, 1, jobIds)).length, 0, "live lease cannot be stolen");
++        await db.execute(sql`UPDATE storage_cleanup_jobs SET lease_until = clock_timestamp() - interval '1 second' WHERE id = ${jobIds[0]}`);
++      }
++      const batch = await q.processStorageCleanupBatch(db, { jobIds });
++      assert.equal(batch.completed, 1); assert.equal(batch.failed.length, 0);
++      assert.equal(await exists(key), false); assert.equal((await status(jobIds[0])).status, "completed");
++      pass(`abrupt process death after ${stage} recovers from the durable row without a live request`);
++    }
++
++    const concurrencyIds: string[] = [];
++    for (const label of ["parallel-a", "parallel-b", "parallel-c", "parallel-d", "parallel-e", "parallel-f"]) concurrencyIds.push(...await enqueue(await put(label)));
++    const [left, right] = await Promise.all([q.claimStorageCleanupJobs(db, 3, concurrencyIds), q.claimStorageCleanupJobs(db, 3, concurrencyIds)]);
++    assert.equal(left.length + right.length, 6); assert.equal(new Set([...left, ...right].map(job => job.id)).size, 6);
++    const old = left[0];
++    await db.execute(sql`UPDATE storage_cleanup_jobs SET lease_until = clock_timestamp() - interval '1 second' WHERE id = ${old.id}`);
++    const [newLease] = await q.claimStorageCleanupJobs(db, 1, [old.id]);
++    assert.equal(await q.finishStorageCleanupJob(db, old), false, "late acknowledgement must be fenced");
++    assert.equal((await status(old.id)).lease_token, newLease.leaseToken);
++    for (const job of [...left.slice(1), ...right, newLease]) { await storage.deleteObject(job.key, "local"); assert.equal(await q.finishStorageCleanupJob(db, job), true); }
++    pass("parallel consumers claim disjoint jobs; an expired worker cannot acknowledge a replacement lease");
++
++    const outageKey = `${root}/outage`; keys.push(outageKey); await mkdir(resolve(".data/uploads", outageKey), { recursive: true });
++    const outageIds = await enqueue(outageKey);
++    const failed = await q.processStorageCleanupBatch(db, { jobIds: outageIds });
++    assert.equal(failed.failed.length, 1); assert.equal((await status(outageIds[0])).status, "pending");
++    assert.equal((await status(outageIds[0])).error_code, "storage_unavailable");
++    assert.equal((await q.claimStorageCleanupJobs(db, 1, outageIds)).length, 0, "retry backoff is honored");
++    await rm(resolve(".data/uploads", outageKey), { recursive: true });
++    await db.execute(sql`UPDATE storage_cleanup_jobs SET available_at = clock_timestamp() WHERE id = ${outageIds[0]}`);
++    assert.equal((await q.processStorageCleanupBatch(db, { jobIds: outageIds })).completed, 1);
++    pass("storage failure is durable with backoff, and missing-object retries complete idempotently");
++
++    const driftKey = await put("destination-drift"), driftIds = await enqueue(driftKey);
++    const previous = process.env.UPLOAD_DIR;
++    process.env.UPLOAD_DIR = resolve(`.data/cleanup-drift-${nonce}`);
++    await storage.putObject(driftKey, new Blob(["must-survive"]).stream(), "text/plain", "local");
++    assert.equal((await q.processStorageCleanupBatch(db, { jobIds: driftIds })).failed.length, 1);
++    assert.equal((await status(driftIds[0])).status, "blocked");
++    assert.equal((await status(driftIds[0])).error_code, "storage_location_changed");
++    assert.equal(await exists(driftKey), true);
++    await rm(process.env.UPLOAD_DIR, { recursive: true, force: true }); process.env.UPLOAD_DIR = previous;
++    assert.equal(await exists(driftKey), true);
++    pass("changed storage configuration blocks deletion and preserves both same-named objects");
++
++    const lastIds = await enqueue(await put("exhausted"));
++    await db.execute(sql`UPDATE storage_cleanup_jobs SET attempts = 11 WHERE id = ${lastIds[0]}`);
++    await q.claimStorageCleanupJobs(db, 1, lastIds);
++    await db.execute(sql`UPDATE storage_cleanup_jobs SET lease_until = clock_timestamp() - interval '1 second' WHERE id = ${lastIds[0]}`);
++    assert.equal((await q.claimStorageCleanupJobs(db, 1, lastIds)).length, 0);
++    assert.equal((await status(lastIds[0])).status, "blocked");
++    assert.equal((await status(lastIds[0])).error_code, "retry_exhausted");
++    pass("a crash on the last attempt becomes visible as blocked rather than a permanent zombie");
++
++    await assert.rejects(db.transaction(tx => q.enqueueStorageCleanupTx(tx, [{ key: "private/video-derived", recursive: true, source: "video", provider: "local" }])));
++    const summary = await q.storageCleanupSummary(db);
++    assert.ok(summary.blocked >= 2); assert.equal("object_key" in summary, false);
++    pass("unsafe prefixes fail before enqueue and operational summaries expose counts only");
++    writeFileSync(".data/qa-storage-cleanup-report.json", JSON.stringify({ passed: checks.length, checks, externalTransport: false, realPostgres: true, abruptChildExits: 3 }, null, 2));
++  } finally {
++    for (const key of keys) await storage.deleteObject(key, "local").catch(() => undefined);
++    await db.execute(sql`DELETE FROM storage_cleanup_jobs WHERE object_key LIKE ${root + "/%"}`);
++    globalThis.fetch = network; await closeDb();
++  }
++}
+diff --git a/scripts/qa-study-ci.mjs b/scripts/qa-study-ci.mjs
+index 6abea85da691afc7ac0eac1fbe926febd4d541b8..a0d3e45be669ff09adf7a7248a61d7f769c1b93c 100644
+--- a/scripts/qa-study-ci.mjs
++++ b/scripts/qa-study-ci.mjs
+@@ -17,0 +18,2 @@ await run(["scripts/qa-stable-user-ownership-migration.mjs"]);
++await run(["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/qa-storage-cleanup.ts"]);
++await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-resumable-video.ts"]);
+@@ -45,0 +48 @@ try {
++  await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-resumable-browser.mjs"]);
+diff --git a/scripts/runtime-supervisor.mjs b/scripts/runtime-supervisor.mjs
+index 04ccc1d065d04e0452085d3d876c7bf9a144fd93..0e1e9b57e85bbdaa3117e059199849470bcaec4f 100644
+--- a/scripts/runtime-supervisor.mjs
++++ b/scripts/runtime-supervisor.mjs
+@@ -14,0 +15 @@ export function runtimeServices(env = process.env) {
++  if (enabled("STORAGE_CLEANUP_WORKER_ENABLED")) services.push({ name: "storage-cleanup-worker", command: process.execPath, args: ["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/storage-cleanup-worker.ts"] });
+diff --git a/scripts/storage-cleanup-worker.ts b/scripts/storage-cleanup-worker.ts
+new file mode 100644
+index 0000000000000000000000000000000000000000..f18850acf2b541954076a78e60cbc241c666a1d8
+--- /dev/null
++++ b/scripts/storage-cleanup-worker.ts
+@@ -0,0 +1,30 @@
++import { setTimeout as sleep } from "node:timers/promises";
++import { getDb, closeDb } from "../db";
++import { expireResumableVideos } from "../lib/resumable-video-upload";
++import { processStorageCleanupBatch, storageCleanupSummary } from "../lib/storage-cleanup";
++
++const stopping = new AbortController();
++for (const signal of ["SIGTERM", "SIGINT"]) process.on(signal, () => stopping.abort());
++const once = process.argv.includes("--once");
++let failures = 0;
++try {
++  const db = getDb();
++  // Missing migrations fail startup; they must not leave a silently dead worker.
++  console.info(JSON.stringify({ event: "storage.cleanup.started", ...await storageCleanupSummary(db) }));
++  do {
++    try {
++      await expireResumableVideos(db);
++      const result = await processStorageCleanupBatch(db, { limit: 5, signal: stopping.signal });
++      failures = 0;
++      if (result.claimed) console.info(JSON.stringify({ event: "storage.cleanup.batch", claimed: result.claimed, completed: result.completed, failed: result.failed.length, lost: result.lost }));
++      const summary = await storageCleanupSummary(db);
++      if (summary.blocked || summary.overdue) console.warn(JSON.stringify({ event: "storage.cleanup.attention", ...summary }));
++      if (!once && !stopping.signal.aborted) await sleep(result.claimed ? 100 : 5000, undefined, { signal: stopping.signal });
++    } catch {
++      if (stopping.signal.aborted) break;
++      console.error(JSON.stringify({ event: "storage.cleanup.database_unavailable", consecutiveFailures: ++failures }));
++      if (once || failures >= 3) throw new Error("Storage cleanup worker cannot reach its durable queue");
++      await sleep(1000, undefined, { signal: stopping.signal }).catch(() => undefined);
++    }
++  } while (!once && !stopping.signal.aborted);
++} finally { await closeDb(); }
+diff --git a/tests/admin-deletion-contract.test.mjs b/tests/admin-deletion-contract.test.mjs
+index 0f06f0151c90cad5134c5d8b96f7ca457aa27984..ab2edea1a093bdab2768e5ad1b1f93a6d8e089fc 100644
+--- a/tests/admin-deletion-contract.test.mjs
++++ b/tests/admin-deletion-contract.test.mjs
+@@ -8,0 +9 @@ const helper = await readFile(join(here, "../lib/admin-deletion.ts"), "utf8");
++const queue = await readFile(join(here, "../lib/storage-cleanup.ts"), "utf8");
+@@ -44,2 +45,3 @@ test("account safety and storage cleanup contracts are present", () => {
+-  assert.match(helper, /deleteObject\(item\.key, item\.provider\)/);
+-  assert.match(helper, /deletePrefix\(item\.key, item\.provider\)/);
++  assert.match(queue, /deleteObject\(job\.key, job\.provider, signal\)/);
++  assert.match(helper, /enqueueStorageCleanupTx\(tx, cleanup\)/);
++  assert.match(queue, /deletePrefix\(job\.key, job\.provider, signal\)/);
+diff --git a/tests/admin-media-deletion-behavior.test.mjs b/tests/admin-media-deletion-behavior.test.mjs
+index 62fe9eb75e43ca65ea031430113d2126cc0b3091..851fdc9099bc74dab114b6acca0b7a33712552d3 100644
+--- a/tests/admin-media-deletion-behavior.test.mjs
++++ b/tests/admin-media-deletion-behavior.test.mjs
+@@ -3,0 +4 @@ import { readFile } from "node:fs/promises";
++import { cleanupFixture } from "./helpers/storage-cleanup-fixture.mjs";
+@@ -9,0 +11 @@ const names = source.match(/import\s*\{[^}]*\}\s*from\s*["']@\/db\/schema["']/g)
++names.push("storageCleanupJobs");
+@@ -40 +42 @@ async function fixture(data = initial(), { failCleanup = false, rollback = false
+-  const deletion = await nativeSource("lib/admin-deletion.ts", { ...h.tables, sql, eq, and, inArray, ...policy,
++  const deletion = await nativeSource("lib/admin-deletion.ts", { ...h.tables, sql, eq, and, inArray, ...policy, ...cleanupFixture(h, remove),
+diff --git a/tests/admin-stable-ownership-behavior.test.mjs b/tests/admin-stable-ownership-behavior.test.mjs
+index 2f0a7cd338c9510a62707b4d7188e23cc7ca717d..8256454e690c4fb3647fbb5768ca5108863de598 100644
+--- a/tests/admin-stable-ownership-behavior.test.mjs
++++ b/tests/admin-stable-ownership-behavior.test.mjs
+@@ -4,0 +5 @@ import { createHash } from "node:crypto";
++import { cleanupFixture } from "./helpers/storage-cleanup-fixture.mjs";
+@@ -14,0 +16 @@ for (const path of paths) {
++names.add("storageCleanupJobs");
+@@ -25 +27 @@ async function fixture(initial = {}, settings = {}) {
+-  const deletion = await nativeSource("lib/admin-deletion.ts", { ...h.tables, ...primitives, deleteObject: async key => { assert.equal(h.inTransaction(), false); assert.equal(h.committed(), true); removed.push(key); } });
++  const deletion = await nativeSource("lib/admin-deletion.ts", { ...h.tables, ...primitives, ...cleanupFixture(h, async (_kind, key) => { removed.push(key); }), deleteObject: async key => { assert.equal(h.inTransaction(), false); assert.equal(h.committed(), true); removed.push(key); } });
