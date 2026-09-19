@@ -50,7 +50,7 @@ try {
   for (const [index, user] of [a, b].entries()) await db.update(schema.users).set({ phone: `+96650000000${index + 1}` }).where(eq(schema.users.id, user.id));
   await db.execute(sql`UPDATE lessons SET video_asset_id=(SELECT id FROM video_assets WHERE lesson_id=lessons.id LIMIT 1) WHERE course_slug IN ('qa-physics','qa-math')`);
   const [resource] = await db.insert(schema.courseResources).values({ courseSlug: "qa-physics", lessonId: "qa-physics-lesson", title: "ملف الدرس الاصطناعي", objectKey, originalName: "lecture.docx", contentType: DOCX_MIME, sizeBytes: bytes.length, studentVisible: true, status: "active", scanStatus: "clean", scannedAt: now, scanSha256: createHash("sha256").update(bytes).digest("hex") }).returning();
-  for (const user of [a, b]) await db.insert(schema.courseAccess).values({ userEmail: user.email, courseSlug: "qa-physics", startsAt: now }).onConflictDoUpdate({ target: [schema.courseAccess.userEmail, schema.courseAccess.courseSlug], set: { revokedAt: null, suspendedAt: null, expiresAt: null } });
+  for (const user of [a, b]) await db.insert(schema.courseAccess).values({ userId: user.id, userEmail: user.email, courseSlug: "qa-physics", startsAt: now }).onConflictDoUpdate({ target: [schema.courseAccess.userId, schema.courseAccess.courseSlug], set: { revokedAt: null, suspendedAt: null, expiresAt: null } });
   const refs: Array<Parameters<typeof enqueueAiFileJob>[0]> = [];
   for (const user of [a, b]) {
     const [conversation] = await db.insert(schema.aiConversations).values({ userId: user.id, title: "اختبار اصطناعي" }).returning();
@@ -77,10 +77,10 @@ try {
   assert.notEqual(pa.result.artifact.id, pb.result.artifact.id); assert.ok(pa.result.cached || pb.result.cached); successes.push("shared cache yields separate privately owned outputs");
   const usage = await db.select().from(schema.aiUsageEvents).where(sql`file_id IN (${refs[0].file.id}, ${refs[1].file.id}) AND status='succeeded'`);
   assert.equal(usage.length, 1); successes.push("cache hit consumes no additional provider call or monthly quota");
-  await db.update(schema.courseAccess).set({ revokedAt: now }).where(eq(schema.courseAccess.userEmail, b.email));
+  await db.update(schema.courseAccess).set({ revokedAt: now }).where(eq(schema.courseAccess.userId, b.id));
   await assert.rejects(resolveAiSource(refs[1].file, b, "web"), error => (error as { status: number }).status === 403);
   await assert.rejects(enqueueAiFileJob({ ...refs[1], requestId: randomUUID() }), error => (error as { status: number }).status === 403); successes.push("revoked subscriptions cannot use previously linked sources or cached content");
-  await db.update(schema.courseAccess).set({ revokedAt: null }).where(eq(schema.courseAccess.userEmail, b.email));
+  await db.update(schema.courseAccess).set({ revokedAt: null }).where(eq(schema.courseAccess.userId, b.id));
   await db.execute(sql`DELETE FROM ai_work_leases WHERE key='provider:pace'`);
   const quiz = await enqueueAiFileJob({ ...refs[0], action: "quiz", requestId: randomUUID() });
   await runAiFileJobOnce();
