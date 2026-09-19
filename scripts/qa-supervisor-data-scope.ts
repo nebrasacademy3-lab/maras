@@ -97,13 +97,13 @@ try {
   assert.equal(orderData.pagination.total, 1);
   pass("a mixed order cannot disclose other courses through its eligible primary course");
 
-  const [accessA, accessB] = await db.insert(s.courseAccess).values([{ userEmail: studentA.email, courseSlug: courseA }, { userEmail: studentB.email, courseSlug: courseB }, { userEmail: studentB.email, courseSlug: courseA }, { userEmail: studentA.email, courseSlug: courseB }]).returning();
+  const [accessA, accessB] = await db.insert(s.courseAccess).values([{ userId: studentA.id, userEmail: studentA.email, courseSlug: courseA }, { userId: studentB.id, userEmail: studentB.email, courseSlug: courseB }, { userId: studentB.id, userEmail: studentB.email, courseSlug: courseA }, { userId: studentA.id, userEmail: studentA.email, courseSlug: courseB }]).returning();
   const ownRoster = await data(await roster.GET(request(`/api/admin/courses/${courseA}`, staff), { params: Promise.resolve({ slug: courseA }) }));
   assert.equal(ownRoster.rows.length, 1); assert.equal(ownRoster.rows[0].student.id, studentA.id); assert.equal(ownRoster.totals.subscriptions, 1);
   assert.equal((await roster.GET(request(`/api/admin/courses/${courseB}`, staff), { params: Promise.resolve({ slug: courseB }) })).status, 403);
   pass("rosters require both course and student scope, including counts");
 
-  const [ticketA, ticketB] = await db.insert(s.supportTickets).values([{ userEmail: studentA.email, ticketNumber: `QA-SCOPE-${nonce}-A` }, { userEmail: studentB.email, ticketNumber: `QA-SCOPE-${nonce}-B` }].map(value => ({ ...value, category: "general", title: "استفسار اختبار", message: "سؤال اصطناعي" }))).returning();
+  const [ticketA, ticketB] = await db.insert(s.supportTickets).values([{ userId: studentA.id, userEmail: studentA.email, ticketNumber: `QA-SCOPE-${nonce}-A` }, { userId: studentB.id, userEmail: studentB.email, ticketNumber: `QA-SCOPE-${nonce}-B` }].map(value => ({ ...value, category: "general", title: "استفسار اختبار", message: "سؤال اصطناعي" }))).returning();
   const [replyB] = await db.insert(s.supportReplies).values({ ticketId: ticketB.id, authorEmail: studentB.email, body: "fixture" }).returning();
   const [attachmentB] = await db.insert(s.supportReplyFiles).values({ ticketId: ticketB.id, replyId: replyB.id, originalName: "fixture.txt", contentType: "text/plain", sizeBytes: 1, objectKey: `qa/${nonce}/outside-support.txt`, scanStatus: "clean" }).returning();
   const supportData = await data(await consoleRoute.GET(request("/api/admin/console?view=support&scope=screen", staff)));
