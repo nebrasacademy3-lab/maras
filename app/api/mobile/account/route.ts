@@ -42,7 +42,7 @@ export async function DELETE(request: Request) {
     const requestRows = await tx.select({ id: courseRequests.id }).from(courseRequests).where(eq(courseRequests.userId, fresh.id));
     const requestIds = requestRows.map((row) => row.id);
     const requestFileRows = requestIds.length ? await tx.select({ objectKey: courseRequestFiles.objectKey }).from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, requestIds)) : [];
-    const ticketRows = await tx.select({ id: supportTickets.id }).from(supportTickets).where(eq(supportTickets.userEmail, fresh.email));
+    const ticketRows = await tx.select({ id: supportTickets.id }).from(supportTickets).where(eq(supportTickets.userId, fresh.id));
     const ticketIds = ticketRows.map((row) => row.id);
     const authoredReplyRows = ticketIds.length ? await tx.select({ id: supportReplies.id }).from(supportReplies).where(inArray(supportReplies.ticketId, ticketIds)) : [];
     const replyIds = authoredReplyRows.map((row) => row.id);
@@ -63,12 +63,12 @@ export async function DELETE(request: Request) {
       await tx.delete(supportTickets).where(inArray(supportTickets.id, ticketIds));
     }
     if (replyIds.length) await tx.delete(supportReplies).where(inArray(supportReplies.id, replyIds));
-    await tx.delete(favorites).where(eq(favorites.userEmail, fresh.email));
-    await tx.delete(lessonNotes).where(eq(lessonNotes.userEmail, fresh.email));
-    await tx.delete(lessonProgress).where(eq(lessonProgress.userEmail, fresh.email));
-    await tx.delete(courseAccess).where(eq(courseAccess.userEmail, fresh.email));
-    await tx.update(storeCourseGrants).set({ userEmail: anonymizedEmail }).where(eq(storeCourseGrants.userEmail, fresh.email));
-    await tx.delete(courseReviews).where(eq(courseReviews.userEmail, fresh.email));
+    await tx.delete(favorites).where(eq(favorites.userId, fresh.id));
+    await tx.delete(lessonNotes).where(eq(lessonNotes.userId, fresh.id));
+    await tx.delete(lessonProgress).where(eq(lessonProgress.userId, fresh.id));
+    await tx.delete(courseAccess).where(eq(courseAccess.userId, fresh.id));
+    await tx.update(storeCourseGrants).set({ userEmail: anonymizedEmail }).where(eq(storeCourseGrants.userId, fresh.id));
+    await tx.delete(courseReviews).where(eq(courseReviews.userId, fresh.id));
     await tx.delete(notificationsDb).where(eq(notificationsDb.targetUserId, fresh.id));
     await tx.delete(passwordResetTokens).where(eq(passwordResetTokens.userId, fresh.id));
     await tx.delete(supervisorAssignments).where(eq(supervisorAssignments.supervisorId, fresh.id));
