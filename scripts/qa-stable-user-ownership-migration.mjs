@@ -74,11 +74,11 @@ try {
     if (expected === null) unresolved.push({ table: "course_access_events", id: event.id });
   }
   const now = "2026-01-01T00:00:00.000Z";
-  await insert("store_products", { product_key: "qa-stable", kind: "course", title: "Fixture", created_at: now, updated_at: now });
+  await insert("store_products", { product_key: "qa-stable", ios_product_id: "test.maras.stable", kind: "course", title: "Fixture", created_at: now, updated_at: now });
   await insert("store_transactions", {
     id: "qa-stable-tx", user_id: owner.id, product_key: "qa-stable", provider_purchase_id: "qa-stable-purchase",
-    transaction_id: "qa-stable-provider", store: "app_store", environment: "SANDBOX", kind: "course", title: "Fixture",
-    course_slugs_json: '["qa-anchored"]', status: "active", purchased_at: now, verified_at: now, created_at: now,
+    transaction_id: "qa-stable-provider", store: "app_store", environment: "sandbox", kind: "course", title: "Fixture",
+    course_slugs_json: '["qa-anchored"]', status: "owned", purchased_at: now, verified_at: now, created_at: now,
   });
   const grant = await insert("store_course_grants", { transaction_id: "qa-stable-tx", user_email: oldEmail, course_slug: "qa-anchored", starts_at: now, status: "active" });
   const before = await snapshot();
