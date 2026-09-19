@@ -1,0 +1,110 @@
+name: Reviewed QA finalization and PDF dependencies
+on:
+  push:
+    branches: [audit/qa-pdf-dependencies-20260920]
+permissions:
+  contents: read
+jobs:
+  source:
+    permissions:
+      contents: write
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: transport
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 9cb7ef9048f5e8b2f2f45c6cbec4e85214de3c7e
+          persist-credentials: false
+          path: source
+      - name: Verify reviewed patch and exact source
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, base64, lzma, hashlib
+          patch=lzma.decompress(base64.b64decode(pathlib.Path('transport/.audit-qa-finalization.txt').read_text(), validate=True))
+          assert len(patch)==3034
+          assert hashlib.sha256(patch).hexdigest()=='a88dcc3a06daafb806d1fd5b677d5fe334ac311c70792dc761d5780a799c6428'
+          pathlib.Path('reviewed.patch').write_bytes(patch)
+          PY
+          cd source
+          git apply --check --index ../reviewed.patch
+          git apply --index ../reviewed.patch
+          test "$(git write-tree)" = 38c4a2909a6993a118fa5d02e9aaf44df1821487
+      - name: Store reviewed objects only
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import {execFileSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
+          const repo=process.env.GITHUB_REPOSITORY;
+          if(repo!=='nebrasacademy3-lab/maras')throw new Error('Wrong repository');
+          const git=(...a)=>execFileSync('git',a);
+          const names=git('diff','--cached','--name-only','-z').toString().split('\0').filter(Boolean).sort();
+          if(JSON.stringify(names)!==JSON.stringify(['scripts/qa-recovery.mjs','tests/study-file-integrity.test.mjs']))throw new Error('Wrong source set');
+          const post=async(kind,body)=>{const r=await fetch(`https://api.github.com/repos/${repo}/git/${kind}`,{method:'POST',headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error(`Git ${kind}: ${r.status}`);return r.json();};
+          const tree=[];
+          for(const path of names){const bytes=git('show',`:${path}`);const sha=createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');const o=await post('blobs',{encoding:'base64',content:bytes.toString('base64')});if(o.sha!==sha)throw new Error('Blob mismatch');tree.push({path,mode:'100644',type:'blob',sha});}
+          const o=await post('trees',{base_tree:'358076c6ab9fe230faeb80e589220bfa06d7acd1',tree});
+          if(o.sha!=='38c4a2909a6993a118fa5d02e9aaf44df1821487')throw new Error('Tree mismatch');
+          console.log(JSON.stringify({tree:o.sha,updatedRefs:0}));
+          JS
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 9cb7ef9048f5e8b2f2f45c6cbec4e85214de3c7e
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Resolve exact reviewed rendering dependencies
+        run: |
+          set -euo pipefail
+          cp package-lock.json /tmp/base-lock.json
+          npm install --save-exact --package-lock-only --ignore-scripts --no-audit --no-fund playwright-core@1.63.0 katex@0.18.1
+          node --input-type=module <<'JS'
+          import {readFileSync} from 'node:fs';
+          const old=JSON.parse(readFileSync('/tmp/base-lock.json')).packages;
+          const next=JSON.parse(readFileSync('package-lock.json')).packages;
+          for(const [name,value] of Object.entries(old)){
+            if(!name||name==='node_modules/playwright-core')continue;
+            if(!next[name]||next[name].version!==value.version||next[name].integrity!==value.integrity)throw new Error(`Unrelated lock change: ${name}`);
+          }
+          console.log('LOCK_SCOPE_VERIFIED',Object.keys(next).filter(n=>!old[n]||next[n].version!==old[n].version));
+          JS
+          npm ci --ignore-scripts --no-audit --no-fund
+          mkdir -p reviewed-deps
+          cp package.json package-lock.json reviewed-deps/
+          tar -czf reviewed-deps/node-modules.tgz node_modules
+          sha256sum reviewed-deps/* > reviewed-deps/checksums.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: exact-pdf-rendering-dependencies
+          path: reviewed-deps/
+          retention-days: 2
+  native-dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 9cb7ef9048f5e8b2f2f45c6cbec4e85214de3c7e
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: cd mobile && npm ci --ignore-scripts --no-audit --no-fund
+      - run: mkdir -p reviewed-native && tar -czf reviewed-native/node-modules.tgz mobile/node_modules && sha256sum mobile/package-lock.json reviewed-native/node-modules.tgz > reviewed-native/checksums.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: exact-native-dependencies
+          path: reviewed-native/
+          retention-days: 2
