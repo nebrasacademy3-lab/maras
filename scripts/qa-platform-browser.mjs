@@ -273,9 +273,25 @@ try {
       const stopFinanceObservation = observePage(financePage);
       const financeErrorCount = errors.length, financeFailureCount = accessFailures.length;
       await financePage.setViewportSize({ width: 1440, height: 1000 });
-      await financePage.goto(origin + "/admin/finance", { waitUntil: "domcontentloaded" });
-      await financePage.getByLabel("بحث مباشر", { exact: true }).fill(reviewOrder);
-      await financePage.getByRole("button", { name: "تطبيق المرشحات", exact: true }).click();
+      // Streaming SSR may retain a hidden pre-hydration copy. Do not fill that
+      // inert copy or select .first(): require one live, hydrated form instead.
+      await financePage.route("**/*", async route => {
+        if (route.request().resourceType() === "script" && route.request().url().startsWith(origin + "/_next/")) await new Promise(resolve => setTimeout(resolve, 500));
+        await route.continue();
+      });
+      await financePage.goto(origin + "/admin/finance", { waitUntil: "commit" });
+      const financeFilters = financePage.getByRole("form", { name: "مرشحات المركز المالي", exact: true });
+      await financeFilters.waitFor({ state: "visible" });
+      if (await financeFilters.getAttribute("data-finance-ready") === "false") assert.equal(await financeFilters.getByRole("searchbox", { name: "بحث مباشر", exact: true }).isDisabled(), true);
+      await financePage.waitForFunction(() => document.querySelectorAll('form[data-finance-ready="true"]').length === 1);
+      assert.equal(await financeFilters.count(), 1, "only one accessible finance filter form");
+      const financeSearch = financeFilters.getByRole("searchbox", { name: "بحث مباشر", exact: true });
+      assert.equal(await financeSearch.count(), 1, "search must have one live accessible target");
+      await financeSearch.fill(reviewOrder);
+      const filteredResponse = financePage.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/finance" && new URL(response.url()).searchParams.get("search") === reviewOrder && response.request().method() === "GET");
+      await financeFilters.getByRole("button", { name: "تطبيق المرشحات", exact: true }).click();
+      assert.equal((await filteredResponse).status(), 200);
+      assert.equal(await financeSearch.inputValue(), reviewOrder, "the first query survives hydration and loading");
       await financePage.getByRole("row").filter({ hasText: reviewOrder }).click();
       const financialDetail = financePage.getByRole("dialog", { name: "تفاصيل الطلب", exact: true });
       await financialDetail.getByText("ملكية هذا الطلب غير مثبتة.", { exact: false }).waitFor();

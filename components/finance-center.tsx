@@ -6,7 +6,7 @@ import { promptAction } from "@/lib/interaction-events";
 import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
@@ -238,7 +238,13 @@ function DetailDrawer({ detail, loading, error, onClose, onApprove, onRefund, ac
   </div>;
 }
 
+const subscribeHydration = () => () => {};
+const clientHydration = () => true;
+const serverHydration = () => false;
+
 export function FinanceCenter({ adminName, initialSearch = "" }: { adminName: string; initialSearch?: string }) {
+  // Server-rendered filters must not accept input before React owns their state.
+  const hydrated = useSyncExternalStore(subscribeHydration, clientHydration, serverHydration);
   const [filters, setFilters] = useState<FilterState>(() => ({ ...EMPTY_FILTERS, search: initialSearch }));
   const [appliedFilters, setAppliedFilters] = useState<FilterState>(() => ({ ...EMPTY_FILTERS, search: initialSearch }));
   const [data, setData] = useState<FinanceData | null>(null);
@@ -351,15 +357,15 @@ export function FinanceCenter({ adminName, initialSearch = "" }: { adminName: st
       </header>
       {exportError && (isAdminStepUpMessage(exportError) ? <AdminMfaNotice /> : <div className={`${styles.alert} ${styles.error}`}><AlertTriangle size={18} /><span>{exportError}</span></div>)}
 
-      <form className={styles.filters} onSubmit={(event) => { event.preventDefault(); setAppliedFilters({ ...filters }); }}>
-        <label className={styles.field}><span>من تاريخ</span><input type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></label>
-        <label className={styles.field}><span>إلى تاريخ</span><input type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></label>
-        <label className={styles.field}><span>الجامعة</span><SearchableSelect value={filters.institution} onChange={(event) => setFilters((current) => ({ ...current, institution: event.target.value, course: "" }))}><option value="">كل الجامعات</option>{data?.options.institutions.map((item) => <option value={item.slug} key={item.slug}>{item.name}</option>)}</SearchableSelect></label>
-        <label className={styles.field}><span>المادة</span><SearchableSelect value={filters.course} onChange={(event) => setFilters((current) => ({ ...current, course: event.target.value }))}><option value="">كل المواد</option>{visibleCourses.map((item) => <option value={item.slug} key={item.slug}>{item.title}</option>)}</SearchableSelect></label>
-        <label className={styles.field}><span>طريقة الدفع</span><SearchableSelect value={filters.paymentMethod} onChange={(event) => setFilters((current) => ({ ...current, paymentMethod: event.target.value }))}><option value="">كل طرق الدفع</option>{data?.options.paymentMethods.map((item) => <option value={item.method} key={item.method}>{item.label}</option>)}</SearchableSelect></label>
-        <label className={styles.field}><span>الحالة</span><SearchableSelect value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">كل الحالات</option>{data?.options.statuses.map((item) => <option value={item.status} key={item.status}>{item.label}</option>)}</SearchableSelect></label>
-        <label className={styles.field} style={{ gridColumn: "span 2" }}><span>بحث مباشر</span><input type="search" value={filters.search} placeholder="رقم الطلب، الطالب، البريد أو عملية Tap" onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} /></label>
-        <div className={styles.filterActions}><button className={styles.softButton} type="button" onClick={() => { setFilters(EMPTY_FILTERS); setAppliedFilters(EMPTY_FILTERS); }}><RotateCcw size={16} />إعادة الضبط</button><button className={styles.primaryButton} type="submit"><Search size={16} />تطبيق المرشحات</button><button className={styles.iconButton} type="button" aria-label="تحديث البيانات" onClick={() => void load(appliedFilters)}><RefreshCw size={17} /></button></div>
+      <form className={styles.filters} aria-label="مرشحات المركز المالي" data-finance-ready={hydrated ? "true" : "false"} onSubmit={(event) => { event.preventDefault(); if (hydrated) setAppliedFilters({ ...filters }); }}>
+        <label className={styles.field}><span>من تاريخ</span><input disabled={!hydrated} type="date" value={filters.from} onChange={(event) => setFilters((current) => ({ ...current, from: event.target.value }))} /></label>
+        <label className={styles.field}><span>إلى تاريخ</span><input disabled={!hydrated} type="date" value={filters.to} onChange={(event) => setFilters((current) => ({ ...current, to: event.target.value }))} /></label>
+        <label className={styles.field}><span>الجامعة</span><SearchableSelect disabled={!hydrated} value={filters.institution} onChange={(event) => setFilters((current) => ({ ...current, institution: event.target.value, course: "" }))}><option value="">كل الجامعات</option>{data?.options.institutions.map((item) => <option value={item.slug} key={item.slug}>{item.name}</option>)}</SearchableSelect></label>
+        <label className={styles.field}><span>المادة</span><SearchableSelect disabled={!hydrated} value={filters.course} onChange={(event) => setFilters((current) => ({ ...current, course: event.target.value }))}><option value="">كل المواد</option>{visibleCourses.map((item) => <option value={item.slug} key={item.slug}>{item.title}</option>)}</SearchableSelect></label>
+        <label className={styles.field}><span>طريقة الدفع</span><SearchableSelect disabled={!hydrated} value={filters.paymentMethod} onChange={(event) => setFilters((current) => ({ ...current, paymentMethod: event.target.value }))}><option value="">كل طرق الدفع</option>{data?.options.paymentMethods.map((item) => <option value={item.method} key={item.method}>{item.label}</option>)}</SearchableSelect></label>
+        <label className={styles.field}><span>الحالة</span><SearchableSelect disabled={!hydrated} value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}><option value="">كل الحالات</option>{data?.options.statuses.map((item) => <option value={item.status} key={item.status}>{item.label}</option>)}</SearchableSelect></label>
+        <label className={styles.field} style={{ gridColumn: "span 2" }}><span>بحث مباشر</span><input disabled={!hydrated} type="search" value={filters.search} placeholder="رقم الطلب، الطالب، البريد أو عملية Tap" onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} /></label>
+        <div className={styles.filterActions}><button disabled={!hydrated} className={styles.softButton} type="button" onClick={() => { setFilters(EMPTY_FILTERS); setAppliedFilters(EMPTY_FILTERS); }}><RotateCcw size={16} />إعادة الضبط</button><button disabled={!hydrated} className={styles.primaryButton} type="submit"><Search size={16} />تطبيق المرشحات</button><button disabled={!hydrated} className={styles.iconButton} type="button" aria-label="تحديث البيانات" onClick={() => void load(appliedFilters)}><RefreshCw size={17} /></button></div>
       </form>
 
       {error && <div className={`${styles.alert} ${styles.error}`}><AlertTriangle size={18} /><span>{error}</span></div>}
