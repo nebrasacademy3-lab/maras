@@ -6,10 +6,10 @@ class AiPlatformError extends Error { constructor(code, message, status) { super
 const hash = bytes => createHash("sha256").update(bytes).digest("hex");
 async function fixture(content = "Scanned study source.", options = {}) {
   const bytes = Buffer.from(content); const requests = [];
-  const module = await pureSource("lib/ai-files.ts", { createHash, DOCX_MIME: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", PPTX_MIME: "application/vnd.openxmlformats-officedocument.presentationml.presentation", AiPlatformError,
+  const sourceModule = await pureSource("lib/ai-files.ts", { createHash, DOCX_MIME: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", PPTX_MIME: "application/vnd.openxmlformats-officedocument.presentationml.presentation", AiPlatformError,
     getObject: async (...args) => { requests.push(args); return options.object ?? { size: bytes.length, body: new Response(bytes).body }; } });
   const file = { objectKey: "private/qa/study.txt", storageProvider: "s3", sizeBytes: bytes.length, contentType: "text/plain", scanSha256: hash(bytes) };
-  return { ...module, requests, file, bytes };
+  return { ...sourceModule, requests, file, bytes };
 }
 test("study reads the pinned provider and verifies the exact scanned bytes", async () => {
   const f = await fixture(); assert.deepEqual(await f.readAiFileBytes(f.file, 4096), f.bytes);

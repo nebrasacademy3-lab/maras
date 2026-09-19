@@ -165,6 +165,17 @@ try {
 } finally {
   key.fill(0); await source.end();
   try {
-    for (const name of allNames) { assert.match(name, /^(maras_qa_recovery_|maras_restore_)[a-z0-9_]+$/); if (await isDatabase(name)) await parent.query(`DROP DATABASE "${name}" WITH (FORCE)`); }
+    for (const name of allNames) { assert.match(name, /^(maras_qa_recovery_|maras_restore_)[a-z0-9_]+$/); if (await isDatabase(name)) {
+      // pg.Pool.end resolves after requesting socket shutdown. PostgreSQL may
+      // still see that connection until it processes the queued termination.
+      // Wait for our disposable DB to become idle instead of racing it with
+      // FORCE (which can emit an unhandled pool error after a successful drill).
+      const deadline = performance.now() + 5000;
+      while (Number((await parent.query("SELECT count(*) AS count FROM pg_stat_activity WHERE datname=$1", [name])).rows[0].count) > 0) {
+        if (performance.now() >= deadline) throw new Error("RECOVERY_QA_CONNECTIONS_DID_NOT_CLOSE");
+        await new Promise(resolve => setTimeout(resolve, 25));
+      }
+      await parent.query(`DROP DATABASE "${name}"`);
+    } }
   } finally { await parent.end(); await rm(root, { recursive: true, force: true }); }
 }
