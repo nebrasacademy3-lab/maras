@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { analyticsEvents, courseAccess, lessonProgress, lessonsDb } from "@/db/schema";
@@ -10,6 +11,7 @@ import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-b
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   const courseSlug = cleanText(url.searchParams.get("course"), 120);
   if (!user) return jsonError("سجّل الدخول لحفظ التقدم", 401);
   if (!courseSlug) return jsonError("المادة مطلوبة");
@@ -20,6 +22,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول لحفظ التقدم", 401);
   if (!await checkRateLimit("lesson-progress", `user:${user.id}`, 180, 60)) return jsonError("تحديثات كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;

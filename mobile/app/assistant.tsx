@@ -7,8 +7,8 @@ import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context"
 import { BrandMark } from "@/src/components/Brand";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { absoluteUrl, api, ApiError, jsonBody } from "@/src/lib/api";
-import { parseInternalLink, resolveMobileRoute, safeExternalLink } from "@/src/lib/notification-routing";
+import { API_URL, DIRECT_COMMERCE_ENABLED, api, ApiError, jsonBody } from "@/src/lib/api";
+import { resolveAppAction } from "@/src/lib/notification-routing";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
@@ -79,16 +79,11 @@ export default function Assistant() {
   }, [history, input, isRTL, scrollToBottom, sending]);
 
   const openAction = async (href: string) => {
-    const route = resolveMobileRoute(href);
-    if (route) { router.push(route); return; }
-    const external = safeExternalLink(href);
-    const internal = parseInternalLink(href);
-    const policy = internal && ["/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility", "/how-it-works"].includes(internal.pathname)
-      ? absoluteUrl(internal.pathname + internal.search + internal.hash) : null;
-    if (external || policy) {
-      try { await Linking.openURL(external || policy!); }
-      catch { setMessages((rows) => [...rows, { id: "link-" + Date.now(), role: "assistant", text: isRTL ? "تعذر فتح الرابط. حاول مرة أخرى أو تواصل مع الدعم." : "Could not open this link. Try again or contact Support." }]); }
-    }
+    const action = resolveAppAction(href, { apiUrl: API_URL, directCommerce: DIRECT_COMMERCE_ENABLED });
+    if (!action) return;
+    if ("route" in action) { router.push(action.route); return; }
+    try { await Linking.openURL(action.external); }
+    catch { setMessages((rows) => [...rows, { id: "link-" + Date.now(), role: "assistant", text: isRTL ? "تعذر فتح الرابط. حاول مرة أخرى أو تواصل مع الدعم." : "Could not open this link. Try again or contact Support." }]); }
   };
 
   const renderMessage = ({ item }: { item: Message }) => {
@@ -98,7 +93,7 @@ export default function Assistant() {
       <View style={[styles.bubble, mine ? styles.userBubble : styles.assistantBubble, { backgroundColor: mine ? colors.primary : colors.surface, borderColor: mine ? colors.primary : colors.border }]}>
         {!mine && <View style={[styles.assistantLabel, { direction: messageRTL ? "rtl" : "ltr", flexDirection: "row" }]}><BrandMark size={27} /><Text style={{ color: colors.primary, fontSize: 10, fontWeight: "900" }}>{messageRTL ? "مراس" : "Meras"}</Text></View>}
         <Text style={[styles.messageText, { color: mine ? "#FFFFFF" : colors.text, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }]}>{item.text}</Text>
-        {!!item.actions?.length && <View style={styles.actions}>{item.actions.map((action) => <Pressable key={`${item.id}-${action.href}`} onPress={() => void openAction(action.href)} style={[styles.action, { backgroundColor: mine ? "rgba(255,255,255,.14)" : colors.surfaceAlt, direction: messageRTL ? "rtl" : "ltr", flexDirection: "row" }]}><Ionicons name={messageRTL ? "arrow-back" : "arrow-forward"} size={14} color={mine ? "#FFF" : colors.primary} /><Text numberOfLines={2} style={{ color: mine ? "#FFF" : colors.primary, fontSize: 10, fontWeight: "800", flexShrink: 1, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{action.label}</Text></Pressable>)}</View>}
+        {!!item.actions?.length && <View style={styles.actions}>{item.actions.filter(action => resolveAppAction(action.href, { apiUrl: API_URL, directCommerce: DIRECT_COMMERCE_ENABLED })).map((action) => <Pressable key={`${item.id}-${action.href}`} onPress={() => void openAction(action.href)} style={[styles.action, { backgroundColor: mine ? "rgba(255,255,255,.14)" : colors.surfaceAlt, direction: messageRTL ? "rtl" : "ltr", flexDirection: "row" }]}><Ionicons name={messageRTL ? "arrow-back" : "arrow-forward"} size={14} color={mine ? "#FFF" : colors.primary} /><Text numberOfLines={2} style={{ color: mine ? "#FFF" : colors.primary, fontSize: 10, fontWeight: "800", flexShrink: 1, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{action.label}</Text></Pressable>)}</View>}
         {!!item.suggestions?.length && <View style={[styles.suggestions, { direction: messageRTL ? "rtl" : "ltr", justifyContent: "flex-start" }]}>{item.suggestions.map((suggestion) => <Pressable key={`${item.id}-${suggestion}`} onPress={() => void send(suggestion)} style={[styles.suggestion, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}><Text style={{ color: colors.textSoft, fontSize: 9, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{suggestion}</Text></Pressable>)}</View>}
       </View>
     </View>;

@@ -1,3 +1,5 @@
+import { appleAccountTokens } from "@/db/oauth-privacy-schema";
+import { encryptAppleToken } from "@/lib/apple-account-tokens";
 import { beginLoginMfa } from "@/lib/account-mfa";
 import "server-only";
 import { and, eq, gt, isNull, lt, sql } from "drizzle-orm";
@@ -110,8 +112,15 @@ export async function resolveOAuthAccount(provider: OAuthProvider, identity: Awa
         .where(and(eq(oauthIdentities.provider, provider), eq(oauthIdentities.subject, identity.subject))).limit(1);
       if (existing) {
         if (existing.user.status !== "active") throw new OAuthError("account_unavailable");
+        await tx.execute(sql`SELECT pg_advisory_xact_lock(${existing.user.id})`);
+        const [fresh] = await tx.select().from(users).where(and(eq(users.id, existing.user.id), eq(users.status, "active"))).limit(1);
+        if (!fresh) throw new OAuthError("account_unavailable");
+        if (provider === "apple" && identity.refreshToken) {
+          const now = new Date().toISOString(), ciphertext = encryptAppleToken(identity.refreshToken, fresh.id, identity.clientId);
+          await tx.insert(appleAccountTokens).values({ userId: fresh.id, clientId: identity.clientId, ciphertext, status: "active", attempts: 0, nextRetryAt: now, updatedAt: now }).onConflictDoUpdate({ target: appleAccountTokens.userId, set: { clientId: identity.clientId, ciphertext, status: "active", attempts: 0, nextRetryAt: now, updatedAt: now } });
+        }
         // Provider+subject owns the link. Never overwrite an existing verified email.
-        return existing.user;
+        return fresh;
       }
       if (!identity.emailVerified || !validEmail(identity.email) || identity.email.length > 180) throw new OAuthError("email_required");
       const [collision] = await tx.select({ id: users.id }).from(users).where(sql`lower(${users.email}) = ${identity.email}`).limit(1);
@@ -122,6 +131,10 @@ export async function resolveOAuthAccount(provider: OAuthProvider, identity: Awa
         emailVerifiedAt: null, profileCompletedAt: null, onboardingCompletedAt: null,
       }).returning();
       await tx.insert(oauthIdentities).values({ userId: created.id, provider, subject: identity.subject });
+      if (provider === "apple" && identity.refreshToken) {
+        const now = new Date().toISOString();
+        await tx.insert(appleAccountTokens).values({ userId: created.id, clientId: identity.clientId, ciphertext: encryptAppleToken(identity.refreshToken, created.id, identity.clientId), nextRetryAt: now, updatedAt: now });
+      }
       const now = new Date().toISOString();
       await provisionReferralCodeTx(tx, created.id, now);
       await recordReferralRegistrationTx(tx, { referralCode, referredUserId: created.id, request, now });

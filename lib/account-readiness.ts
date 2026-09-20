@@ -1,8 +1,9 @@
 import type { SessionUser } from "@/lib/auth";
 
 /** A verified address remains verified; checkout never issues another email code. */
-export function accountNext(user: Pick<SessionUser, "emailVerified" | "profileCompleted" | "onboardingCompleted">, native = false) {
+export function accountNext(user: Pick<SessionUser, "emailVerified" | "profileCompleted" | "onboardingCompleted"> & { role?: SessionUser["role"] }, native = false) {
   if (!user.emailVerified) return "/verify-email";
+  if (user.role === "instructor") return "/instructor";
   if (!user.profileCompleted) return "/complete-profile";
   if (!user.onboardingCompleted) return "/onboarding";
   return native ? "/home" : "/dashboard";
@@ -25,6 +26,7 @@ export function safeAccountReturnTo(value: unknown, fallback = "/dashboard") {
 }
 
 export function purchaseRequirement(user: SessionUser) {
+  if (user.role === "instructor") return { code: "STUDENT_WORKSPACE_REQUIRED", error: "الشراء مخصص لحساب الطالب. استخدم لوحة الشارح لإدارة عملك.", next: "/instructor" } as const;
   if (!user.emailVerified) return { code: "EMAIL_VERIFICATION_REQUIRED", error: "أكّد بريدك الإلكتروني مرة واحدة لتتمكن من الشراء.", next: "/verify-email" } as const;
   // Administrative navigation can bypass academic onboarding, but purchasing cannot.
   if (!purchaseProfileComplete(user)) {

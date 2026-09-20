@@ -80,13 +80,15 @@ test("lesson-specific questions outrank a simultaneous course match", () => {
   assert.match(knowledge, /if \(matchedCourse && !preferLesson\)/);
 });
 
-test("web and Expo expose the same answer actions and suggestions", async () => {
+test("web and Expo share answer suggestions while native actions obey reader restrictions", async () => {
   assert.match(web, /message\.suggestions/);
   assert.match(web, /message\.actions/);
   assert.match(mobile, /reply\.suggestions/);
   assert.match(mobile, /reply\.actions/);
-  assert.match(mobile, /const route = resolveMobileRoute\(href\)/);
-  const { resolveMobileRoute } = await loadMobileRouting();
+  assert.match(mobile, /resolveAppAction\(href/);
+  const { resolveMobileRoute, resolveAppAction } = await loadMobileRouting();
+  assert.equal(resolveAppAction("https://pay.example/checkout",{apiUrl:"https://maras.example",directCommerce:false}),null);
+  assert.equal(resolveAppAction("/cart",{apiUrl:"https://maras.example",directCommerce:false}),null);
   const course = resolveMobileRoute("/courses/math#preview");
   assert.equal(course.pathname, "/course/[slug]");
   assert.equal(course.params.slug, "math");

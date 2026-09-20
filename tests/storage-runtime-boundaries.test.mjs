@@ -150,3 +150,13 @@ test("endpoint validation rejects normalized traversal and private IPv6 aliases"
   assert.equal(policy.storageUploadLimitBytes(""), 512 * 1024 * 1024);
   assert.equal(policy.storageTransferTimeoutMs(""), 15 * 60_000);
 });
+
+
+test("private-object deletion rejects failed S3 requests but remains idempotent on 404", async t => {
+ for (const status of [403, 500, 503]) {
+  const { storage } = await fixture(t, remote, async (_url, init) => { assert.equal(init.method, "DELETE"); return new Response("PRIVATE_PROVIDER_DETAIL", { status }); });
+  await assert.rejects(storage.deleteObject("instructors/9/documents/fixture.enc", "s3"), error => error.message === "S3 DELETE failed (" + status + ")");
+ }
+ const { storage } = await fixture(t, remote, async () => new Response(null, { status: 404 }));
+ await storage.deleteObject("instructors/9/documents/fixture.enc", "s3");
+});

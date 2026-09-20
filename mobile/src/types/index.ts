@@ -1,4 +1,4 @@
-export type UserRole = "student" | "supervisor" | "admin";
+export type UserRole = "student" | "supervisor" | "admin" | "instructor";
 
 export type SessionUser = {
   isPlatformOwner?: boolean;

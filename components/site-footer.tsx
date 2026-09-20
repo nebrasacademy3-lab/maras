@@ -16,6 +16,7 @@ export async function SiteFooter() {
   const hasLegalRecords = Boolean(
     settings.legal_name.trim()
     || settings.commercial_registration_number.trim()
+    || settings.employment_authorization_number.trim()
     || settings.ecommerce_authentication_number.trim()
     || settings.nelc_program_license_number.trim()
     || settings.vat_number.trim()
@@ -35,7 +36,7 @@ export async function SiteFooter() {
             </div>
           </section>}
         </div>
-        <div><h3>استكشف</h3><Link href="/universities">الجامعات والكليات</Link><Link href="/courses">جميع المواد</Link><Link href="/bundles">باقات المواد</Link><Link href="/tools">أدوات مراس للمذاكرة</Link><Link href="/about">عن مراس العلم</Link><Link href="/why-maras">لماذا تختار مراس؟</Link><Link href="/request-course">اطلب مادة</Link><Link href="/how-it-works">كيف تعمل مراس؟</Link></div>
+        <div><h3>استكشف</h3><Link href="/universities">الجامعات والكليات</Link><Link href="/courses">جميع المواد</Link><Link href="/bundles">باقات المواد</Link><Link href="/tools">أدوات مراس للمذاكرة</Link><Link href="/about">عن مراس العلم</Link><Link href="/join-instructors">انضم لفريق الشارحين</Link><Link href="/why-maras">لماذا تختار مراس؟</Link><Link href="/request-course">اطلب مادة</Link><Link href="/how-it-works">كيف تعمل مراس؟</Link></div>
         <div><h3>مساعدة</h3><Link href="/support">الدعم الفني</Link><Link href="/faq">الأسئلة الشائعة</Link><Link href="/refund-policy">سياسة الاسترداد</Link><Link href="/contact">تواصل معنا</Link></div>
         <div><h3>قانوني</h3><Link href="/terms">الشروط والأحكام</Link><Link href="/privacy">سياسة الخصوصية</Link><Link href="/content-policy">حقوق المحتوى</Link><Link href="/accessibility">إمكانية الوصول</Link></div>
         <div className="footer-contact"><h3>تواصل معنا</h3>{settings.support_email && <a href={`mailto:${settings.support_email}`}><Mail size={17} /> {settings.support_email}</a>}{whatsapp && <a href={whatsapp} target="_blank" rel="noreferrer"><MessageCircle size={17} /> واتساب مراس</a>}{telegram && <a href={telegram.url} target="_blank" rel="noopener noreferrer"><Send size={17} /> تيليجرام مراس</a>}<Link href="/support">فتح تذكرة دعم</Link><p>{settings.support_hours}</p></div>
@@ -43,6 +44,7 @@ export async function SiteFooter() {
       {hasLegalRecords ? <div className="container footer-legal-records" aria-label="بيانات المنشأة والتراخيص">
         {settings.legal_name.trim() ? <span><Building2 size={16}/><b>{settings.legal_name.trim()}</b></span> : null}
         {settings.commercial_registration_number.trim() ? <span>سجل تجاري <bdi dir="ltr">{settings.commercial_registration_number.trim()}</bdi>{isHttps(settings.commercial_registration_verify_url) ? <a href={settings.commercial_registration_verify_url} target="_blank" rel="noreferrer">تحقق</a> : null}</span> : null}
+        {settings.employment_authorization_number.trim() ? <span>مرجع توثيق التوظيف <bdi dir="ltr">{settings.employment_authorization_number.trim()}</bdi>{isHttps(settings.employment_authorization_verify_url) ? <a href={settings.employment_authorization_verify_url} target="_blank" rel="noreferrer">تحقق</a> : null}</span> : null}
         {settings.ecommerce_authentication_number.trim() ? <span><BadgeCheck size={16}/> متجر موثّق برقم <bdi dir="ltr">{settings.ecommerce_authentication_number.trim()}</bdi>{isHttps(settings.ecommerce_authentication_verify_url) ? <a href={settings.ecommerce_authentication_verify_url} target="_blank" rel="noreferrer">تحقق</a> : null}</span> : null}
         {settings.nelc_program_license_number.trim() ? <span>ترخيص برنامج «{settings.nelc_program_name.trim() || "تعليم إلكتروني"}» رقم <bdi dir="ltr">{settings.nelc_program_license_number.trim()}</bdi>{isHttps(settings.nelc_program_license_verify_url) ? <a href={settings.nelc_program_license_verify_url} target="_blank" rel="noreferrer">تحقق من النطاق</a> : null}</span> : null}
         {settings.vat_number.trim() ? <span>الرقم الضريبي <bdi dir="ltr">{settings.vat_number.trim()}</bdi></span> : null}

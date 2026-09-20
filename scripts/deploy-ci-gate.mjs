@@ -1,4 +1,4 @@
-/** Fail closed before a Railway web deploy. Reads public CI metadata, never app secrets/data. */
+/** Fail closed before a Railway web deploy. Reads CI metadata with an optional Actions-read token. */
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 export const CI_REPOSITORY = "nebrasacademy3-lab/maras";
@@ -34,15 +34,25 @@ export async function requireSuccessfulCi({ env = process.env, fetcher = fetch, 
   if (!/^[a-f0-9]{40}$/.test(commit) || env.RAILWAY_GIT_BRANCH !== "main") throw new Error("GitHub main-branch deployment metadata is required");
   if (env.RAILWAY_GIT_REPO_OWNER && env.RAILWAY_GIT_REPO_OWNER !== "nebrasacademy3-lab" || env.RAILWAY_GIT_REPO_NAME && env.RAILWAY_GIT_REPO_NAME !== "maras") throw new Error("Deployment repository does not match the release gate");
   if (!Number.isInteger(maxAttempts) || maxAttempts < 1 || maxAttempts > 31) throw new Error("Invalid CI verification limit");
+  // Private repositories return 404 to anonymous callers. Restrict this dedicated
+  // token to Actions:read on this repository; never use application API keys.
+  const token = (env.DEPLOY_GITHUB_TOKEN || "").trim();
+  if (token && (token.length > 1000 || /\s/.test(token))) throw new Error("DEPLOY_GITHUB_TOKEN has an invalid format; deployment blocked");
+  const headers = { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "maras-release-gate/1.0", "cache-control": "no-cache", ...(token ? { authorization: `Bearer ${token}` } : {}) };
   const endpoint = new URL(`https://api.github.com/repos/${CI_REPOSITORY}/actions/runs`);
   endpoint.searchParams.set("head_sha", commit); endpoint.searchParams.set("event", "push"); endpoint.searchParams.set("branch", "main"); endpoint.searchParams.set("per_page", "100");
   const deadline = now() + 10 * 60 * 1000;
   for (let attempt = 0; attempt < maxAttempts && now() < deadline; attempt++) {
     let response;
     try {
-      response = await fetcher(endpoint, { method: "GET", redirect: "error", credentials: "omit", signal: AbortSignal.timeout(Math.max(1, Math.min(10000, deadline - now()))), headers: { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "maras-release-gate/1.0", "cache-control": "no-cache" } });
-    } catch { throw new Error("Cannot verify CI through the public GitHub API; deployment blocked"); }
-    if (response.status !== 200) { await response.body?.cancel(); throw new Error("GitHub CI metadata is unavailable or rate-limited; deployment blocked"); }
+      response = await fetcher(endpoint, { method: "GET", redirect: "error", credentials: "omit", signal: AbortSignal.timeout(Math.max(1, Math.min(10000, deadline - now()))), headers });
+    } catch { throw new Error("Cannot verify CI through the GitHub API; deployment blocked"); }
+    if (response.status !== 200) {
+      await response.body?.cancel();
+      if (response.status === 401 || response.status === 404) throw new Error("GitHub CI access denied or repository unavailable. Configure DEPLOY_GITHUB_TOKEN with Actions:read access to this private repository; deployment blocked");
+      if (response.status === 403) throw new Error("GitHub CI access forbidden or rate-limited. Check Actions:read token permissions and GitHub API limits; deployment blocked");
+      throw new Error("GitHub CI metadata is unavailable or rate-limited; deployment blocked");
+    }
     const status = evaluateCiRuns(await boundedJson(response), commit);
     log(JSON.stringify({ event: "deployment.ci.gate", commit, checks: status.checks }));
     if (status.failed) throw new Error("A required CI workflow did not succeed; deployment blocked");

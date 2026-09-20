@@ -1,5 +1,6 @@
 import { router, type Href } from "expo-router";
 import { Linking } from "react-native";
+import { API_URL, DIRECT_COMMERCE_ENABLED } from "@/src/lib/api";
 
 const INTERNAL_ORIGIN = "https://mobile.meras.invalid";
 
@@ -50,8 +51,11 @@ export function resolveMobileRoute(value: unknown): Href | null {
     if (quizId && /^[A-Za-z0-9_-]{1,120}$/.test(quizId)) return { pathname: "/ai/quiz/[id]", params: { id: quizId } };
     return "/(tabs)/ai";
   }
+  if (path === "/privacy" || path === "/terms") return { pathname: "/legal", params: { document: path.slice(1) } } as Href;
   if (path === "/") return "/(tabs)";
   if (path === "/tracks" || path === "/learning-tracks" || path.startsWith("/tracks/") || path.startsWith("/learning-tracks/")) return "/tracks";
+  const instructorAssignment = path.match(/^\/instructor\/assignments\/(\d+)$/) || path.match(/^\/instructor-assignment\/(\d+)$/);
+  if (instructorAssignment) return { pathname: "/instructor-assignment/[id]", params: { id: instructorAssignment[1] } } as Href;
   const routes = [
     { prefix: "/r/", pathname: "/r/[code]", param: "code" },
     { prefix: "/learn/", pathname: "/learn/[slug]", param: "slug" },
@@ -65,6 +69,7 @@ export function resolveMobileRoute(value: unknown): Href | null {
     const segment = routeSegment(path.slice(route.prefix.length));
     return segment ? { pathname: route.pathname, params: { [route.param]: segment } } as Href : null;
   }
+  if (path === "/admin/instructors") return "/admin";
   if (path === "/dashboard") {
     const views: Record<string, Href> = { notifications: "/notifications", account: "/profile", requests: "/requests", orders: "/orders", courses: "/(tabs)/learning" };
     return views[query.get("view") || ""] || "/(tabs)";
@@ -74,13 +79,27 @@ export function resolveMobileRoute(value: unknown): Href | null {
     "/request-course": "/requests", "/login": "/(auth)/login", "/register": "/(auth)/register",
   };
   if (simple[path]) return (simple[path] + url.search) as Href;
-  if (["/contact", "/support", "/requests", "/notifications", "/referrals", "/cart", "/favorites", "/orders", "/profile", "/security", "/admin", "/supervisor", "/forgot-password", "/verify-email", "/complete-profile", "/onboarding", "/assistant", "/(tabs)/account", "/(tabs)/learning", "/(tabs)/courses", "/(tabs)/universities", "/(tabs)/ai"].includes(path)) return (path + url.search) as Href;
+  if (["/instructor", "/instructor-register", "/legal", "/contact", "/support", "/requests", "/notifications", "/referrals", "/cart", "/favorites", "/orders", "/profile", "/security", "/admin", "/supervisor", "/forgot-password", "/verify-email", "/complete-profile", "/onboarding", "/assistant", "/(tabs)/account", "/(tabs)/learning", "/(tabs)/courses", "/(tabs)/universities", "/(tabs)/ai"].includes(path)) return (path + url.search) as Href;
   return null;
 }
 
+export function resolveAppAction(value: unknown, options: { apiUrl: string; directCommerce: boolean }): { route: Href } | { external: string } | null {
+  const external = safeExternalLink(value);
+  let internal: unknown = value;
+  if (external) {
+    const url = new URL(external);
+    if (url.origin === new URL(options.apiUrl).origin) internal = url.pathname + url.search + url.hash;
+    else return options.directCommerce ? { external } : null;
+  }
+  const url = parseInternalLink(internal);
+  if (!options.directCommerce && url?.pathname.replace(/\/+$/, "") === "/cart") return null;
+  const route = resolveMobileRoute(internal);
+  if (route) return { route };
+  return external && options.directCommerce ? { external } : null;
+}
+
 export function openNotificationRoute(actionUrl: unknown) {
-  const external = safeExternalLink(actionUrl);
-  if (external) { void Linking.openURL(external).catch(() => undefined); return; }
-  const route = resolveMobileRoute(actionUrl);
-  if (route) router.push(route);
+  const action = resolveAppAction(actionUrl, { apiUrl: API_URL, directCommerce: DIRECT_COMMERCE_ENABLED });
+  if (action && "external" in action) void Linking.openURL(action.external).catch(() => undefined);
+  else if (action && "route" in action) router.push(action.route);
 }

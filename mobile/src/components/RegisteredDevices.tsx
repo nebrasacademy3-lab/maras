@@ -16,7 +16,7 @@ type Snapshot = { registeredDevices: Device[]; deviceLimit: number; serverTime?:
 type Command = { action: DeviceAction; deviceId: number; expectedRevision: number; reason: string; durationHours?: number };
 export function RegisteredDevices({ studentEmail }: { studentEmail?: string }) {
   const { user } = useAuth();
-  if (!user || (!studentEmail && user.role !== "student")) return null;
+  if (!user || (!studentEmail && user.role !== "student" && user.role !== "instructor")) return null;
   return <DevicePanel key={`${user.id}:${studentEmail || "self"}`} studentEmail={studentEmail} userId={user.id} />;
 }
 function DevicePanel({ studentEmail, userId }: { studentEmail?: string; userId: number }) {

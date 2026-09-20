@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { and, asc, count, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, lessonNotes, lessonsDb } from "@/db/schema";
@@ -30,6 +31,7 @@ function noteTime(value: unknown, durationSeconds = 0) {
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  const workspaceDenied = studentWorkspaceRequirementResponse(user); if (workspaceDenied) return workspaceDenied;
   const lessonId = cleanText(new URL(request.url).searchParams.get("lesson"), 120);
   if (!lessonId) return jsonError("الدرس مطلوب");
   if (!await authorizedLesson(user.id, lessonId)) return jsonError("لا توجد صلاحية نشطة لهذا الدرس", 403);
@@ -41,6 +43,7 @@ export async function POST(request: Request) {
   if (!trustedWrite(request)) return jsonError("مصدر الطلب غير صالح", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  const workspaceDenied = studentWorkspaceRequirementResponse(user); if (workspaceDenied) return workspaceDenied;
   if (!await checkRateLimit("lesson-note", `user:${user.id}`, 60, 60)) return jsonError("محاولات حفظ كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
@@ -74,6 +77,7 @@ export async function PATCH(request: Request) {
   if (!trustedWrite(request)) return jsonError("مصدر الطلب غير صالح", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  const workspaceDenied = studentWorkspaceRequirementResponse(user); if (workspaceDenied) return workspaceDenied;
   if (!await checkRateLimit("lesson-note", `user:${user.id}`, 60, 60)) return jsonError("محاولات حفظ كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }
@@ -93,6 +97,7 @@ export async function DELETE(request: Request) {
   if (!trustedWrite(request)) return jsonError("مصدر الطلب غير صالح", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  const workspaceDenied = studentWorkspaceRequirementResponse(user); if (workspaceDenied) return workspaceDenied;
   if (!await checkRateLimit("lesson-note-delete", `user:${user.id}`, 60, 60)) return jsonError("محاولات حذف كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown> = {};
   try { payload = await request.json() as Record<string, unknown>; } catch { /* Query string remains supported. */ }
@@ -108,6 +113,7 @@ export async function PUT(request: Request) {
   if (!trustedWrite(request)) return jsonError("مصدر الطلب غير صالح", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  const workspaceDenied = studentWorkspaceRequirementResponse(user); if (workspaceDenied) return workspaceDenied;
   if (!await checkRateLimit("lesson-note", `user:${user.id}`, 60, 60)) return jsonError("محاولات حفظ كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
   try { payload = await request.json() as Record<string, unknown>; } catch { return jsonError("بيانات غير صالحة"); }

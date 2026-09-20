@@ -1,3 +1,4 @@
+import {loadMobileApi} from "./mobile-routing-harness.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
@@ -91,7 +92,11 @@ test("bundle buying is visible in web/direct carts but remains gated from reader
   assert.match(webCart, /bundleSlug: selectedBundleSlug/);
   assert.match(mobileCart, /enabled: STORE_COMMERCE_ENABLED/);
   assert.match(mobileCart, /bundleSlug: selectedBundleSlug/);
-  assert.match(mobileApi, /pathname === "\/api\/checkout"/);
+  assert.match(mobileApi, /DIRECT_COMMERCE_ENABLED/);
+  const reader=await loadMobileApi();
+  await assert.rejects(()=>reader.api("/api/checkout",{method:"POST"}),error=>error.status===403);
+  assert.equal(reader.requests.length,0);
+  const direct=await loadMobileApi({mode:"direct"});await direct.api("/api/checkout",{method:"POST"});assert.equal(direct.requests.length,1);
   assert.match(course, /\/api\/waitlist/);
   assert.match(course, /أعلمني عند فتح الاشتراك/);
   assert.match(await read("proxy.ts"), /"\/api\/waitlist"/);

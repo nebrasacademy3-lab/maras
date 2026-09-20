@@ -8,7 +8,7 @@ import { seoSegment, seoUrl, validModifiedDate } from "@/lib/seo";
 export function buildPublicSitemap(courses: Course[], institutions: Institution[], specialties: PublicSpecialty[], bundles: PublicCourseBundle[] = []): MetadataRoute.Sitemap {
   const visible = new Set(institutions.map((item) => item.slug));
   const published = courses.filter((course) => visible.has(course.universitySlug));
-  const paths = ["/", "/universities", "/courses", "/bundles", "/tools", "/about", "/why-maras", "/faq", "/how-it-works", "/contact", "/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility"];
+  const paths = ["/", "/universities", "/courses", "/bundles", "/tools", "/about", "/why-maras", "/faq", "/how-it-works", "/contact", "/terms", "/privacy", "/refund-policy", "/content-policy", "/accessibility", "/join-instructors"];
   const entries: MetadataRoute.Sitemap = paths.map((path) => ({ url: seoUrl(path) }));
   for (const institution of institutions) entries.push({ url: seoUrl(`/universities/${seoSegment(institution.slug)}`) });
   for (const course of published) {

@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import "server-only";
 
 import { getDb } from "@/db";
@@ -16,6 +17,7 @@ export async function authorizeCourseResourceRequest(request: Request, courseSlu
   if (!nativeApp && !sameOriginRequest(request)) return { ok: false, response: jsonError("تعذر التحقق من مصدر الطلب", 403) };
   const user = await getSessionUser(request);
   if (!user) return { ok: false, response: jsonError("سجّل الدخول للوصول إلى ملفات المادة", 401) };
+  if (user.role === "instructor") return { ok: false, response: studentWorkspaceRequirementResponse(user)! };
   const client = nativeApp ? "app" : "web";
   try {
     const policyError = contentViewModeError(await getContentViewMode(), client);

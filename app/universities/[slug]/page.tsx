@@ -11,6 +11,7 @@ import { InstitutionPrograms } from "@/components/institution-programs";
 import { institutions } from "@/lib/data";
 import { getCoursesCatalog, getInstitutionCatalog, getProgramsCatalog } from "@/lib/catalog-store";
 import { getPublicSpecialtyCatalog } from "@/lib/seo-catalog";
+import { discoverableInstitutionSpecialties } from "@/lib/seo-eligibility";
 import { breadcrumbData, itemListData, jsonLd, seoSegment } from "@/lib/seo";
 
 type Props = { params: Promise<{ slug: string }> };
@@ -31,7 +32,7 @@ export default async function UniversityPage({ params }: Props) {
   const courses = await getCoursesCatalog();
   const institutionCourses = courses.filter((course) => course.universitySlug === institution.slug);
   const catalog = await getProgramsCatalog(institution.slug);
-  const specialties = (await getPublicSpecialtyCatalog()).filter((item) => item.institutionSlug === institution.slug);
+  const specialties = discoverableInstitutionSpecialties(await getPublicSpecialtyCatalog(), institutionCourses, institution.slug);
   const structuredData = { "@context": "https://schema.org", "@graph": [
     breadcrumbData([{ name: "الرئيسية", path: "/" }, { name: "الجامعات", path: "/universities" }, { name: institution.name, path: `/universities/${seoSegment(institution.slug)}` }]),
     itemListData(`مواد ${institution.name}`, institutionCourses.map((course) => ({ name: course.title, path: `/courses/${seoSegment(course.slug)}` }))),

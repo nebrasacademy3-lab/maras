@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { invoiceCustomerSnapshot } from "@/lib/invoice-snapshot";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -14,6 +15,7 @@ const money = (value:number,currency:string) => new Intl.NumberFormat("ar-SA",{s
 
 export async function GET(request:Request,{params}:{params:Promise<{orderNumber:string}>}) {
   const user=await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if(!user)return jsonError("سجّل الدخول لتحميل الفاتورة",401);
   const orderNumber=decodeURIComponent((await params).orderNumber).trim().slice(0,160);
   if(!orderNumber)return jsonError("رقم الطلب غير صالح",400);

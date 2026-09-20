@@ -7,6 +7,7 @@ import { dirname, join } from "node:path";
 import { createRequire } from "node:module";
 import { chromium } from "playwright-core";
 import { buildStudyPdfDocument, MAX_PDF_BYTES, StudyPdfError } from "../lib/study-pdf-document.mjs";
+import { buildInstructorContractDocument } from "../lib/instructor-contract-document.mjs";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const require = createRequire(import.meta.url);
 let child, browser, done = false;
@@ -34,7 +35,7 @@ try {
     mathCss = mathCss.replace(match[0], `src:url(data:font/woff2;base64,${data.toString("base64")}) format('woff2');`);
   }
   if (/url\((?!data:)/.test(mathCss) || mathCss.length > 2_000_000) throw new StudyPdfError("PDF_ASSET_INVALID");
-  const document = buildStudyPdfDocument(input, { logo, mathCss });
+  const document = process.argv[2] === "contract" ? buildInstructorContractDocument(input, { logo }) : buildStudyPdfDocument(input, { logo, mathCss });
   const qa = process.env.MARAS_PDF_ISOLATED_QA === "1";
   // Production never silently disables Chromium's sandbox when unavailable.
   // No detached browser session: the entire tree shares the renderer's process

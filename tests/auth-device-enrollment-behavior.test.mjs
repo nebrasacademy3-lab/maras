@@ -110,3 +110,16 @@ test("migration preserves retained first-device history across logout and invali
     assert.match(await readFile(new URL("../" + path, import.meta.url), "utf8"), /await createSession\(/, `${path} uses the shared enrollment boundary`);
   }
 });
+
+
+test("instructors have the same durable two-device limit and cannot become staff", async () => {
+  const db = studentDb(); db.rows.users[0].role = "instructor";
+  const auth = await authFor(db);
+  await auth.createSession(7, nativeRequest(identityA));
+  await auth.createSession(7, nativeRequest(identityB));
+  await assert.rejects(auth.createSession(7, nativeRequest(identityC)), devices.DeviceLimitError);
+  const account = auth.sessionUserFromRow({ ...db.rows.users[0], fullName: "Test Instructor", email: "instructor@example.test", emailVerifiedAt: "2026-09-20T00:00:00Z" });
+  assert.equal(account.role, "instructor");
+  assert.equal(auth.roleAllowed(account, ["admin", "supervisor"]), false);
+  assert.equal(db.rows.authDevices.length, 2);
+});

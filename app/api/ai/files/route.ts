@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { studyStoredUsage as storedUsage } from "@/lib/study-upload-quota";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
   return observeRequest(request, "ai.files.upload", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-file-upload", `user:${user.id}`, 12, 60 * 60)) return jsonError("تم رفع ملفات كثيرة. حاول لاحقًا.", 429);
     const { statuses } = await getAiUsageStatuses(user);

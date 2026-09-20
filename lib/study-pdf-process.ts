@@ -1,4 +1,5 @@
 import "server-only";
+import { validateInstructorContractPdf, type InstructorContractPdfInput } from "@/lib/instructor-contract-document.mjs";
 import { spawn } from "node:child_process";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -13,13 +14,22 @@ export function isolatedPdfQaAllowed(env: NodeJS.ProcessEnv = process.env) {
   try { const database = new URL(env.DATABASE_URL || ""); return database.hostname === "127.0.0.1" && database.pathname === "/maras_qa"; } catch { return false; }
 }
 export async function renderStudyPdf(input: StudyPdfInput, signal?: AbortSignal): Promise<Buffer> {
-  validatePdfInput(input); signal?.throwIfAborted();
+  validatePdfInput(input);
+  return renderPdfProcess(input, "study", signal);
+}
+/** Only server-owned, validated document shapes can reach the isolated process. */
+export async function renderInstructorContractPdf(input: InstructorContractPdfInput, signal?: AbortSignal): Promise<Buffer> {
+  validateInstructorContractPdf(input);
+  return renderPdfProcess(input, "contract", signal);
+}
+async function renderPdfProcess(input: StudyPdfInput | InstructorContractPdfInput, kind: "study" | "contract", signal?: AbortSignal): Promise<Buffer> {
+  signal?.throwIfAborted();
   const directory = await mkdtemp(join(tmpdir(), "maras-pdf-"));
   const executable = process.env.STUDY_PDF_CHROMIUM_PATH || "/usr/bin/chromium";
   if (!isAbsolute(executable) || /[\u0000-\u001f]/.test(executable)) { await rm(directory, { recursive: true, force: true }); throw new StudyPdfError("PDF_RENDER_UNAVAILABLE"); }
   try {
     return await new Promise<Buffer>((resolveResult, reject) => {
-      const child = spawn(process.execPath, ["--max-old-space-size=192", resolve("scripts/study-pdf-renderer.mjs")], { cwd: directory, env: pdfChildEnvironment(directory, isolatedPdfQaAllowed(), executable), stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
+      const child = spawn(process.execPath, ["--max-old-space-size=192", resolve("scripts/study-pdf-renderer.mjs"), kind], { cwd: directory, env: pdfChildEnvironment(directory, isolatedPdfQaAllowed(), executable), stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
       const chunks: Buffer[] = []; let length = 0, stderr = "", failure: Error | null = null, browserPid: number | null = null;
       const kill = () => {
         // Chromium inherits this renderer process group, including during launch.

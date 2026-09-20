@@ -1,3 +1,5 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
+import { tapChargeCreationResult } from "@/lib/tap-payments";
 import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { analyticsEvents, authSessions, users, courseAccess, courseBundleItems, courseBundles, orderItems, orders } from "@/db/schema";
@@ -11,7 +13,6 @@ import { fromMinorUnits, toMinorUnits } from "@/lib/finance";
 import { purchaseRequirementResponse } from "@/lib/account-readiness";
 import { readBoundedJsonObject } from "@/lib/request-body";
 
-type TapChargeResponse = { id?: string; status?: string; transaction?: { url?: string }; errors?: Array<{ description?: string }> };
 type PaymentMethod = "tap" | "tabby" | "tamara";
 type OrderRow = typeof orders.$inferSelect;
 
@@ -24,6 +25,7 @@ function checkoutIsFresh(createdAt: string) {
 }
 
 function existingCheckoutResponse(existing: OrderRow, courseSlugs: string[]) {
+  if (["verification_pending", "payment_review"].includes(existing.status)) return Response.json({ error: "محاولة الدفع بانتظار التحقق. راجع الدعم برقم الطلب إذا استمر الانتظار؛ لم ننشئ مطالبة أخرى.", pending: true, orderNumber: existing.orderNumber }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
   if (!checkoutIsFresh(existing.createdAt)) {
     return Response.json({ error: "انتهت صلاحية محاولة الدفع السابقة. يمكنك بدء محاولة جديدة الآن.", retryable: true }, { status: 409, headers: { "cache-control": "no-store" } });
   }
@@ -61,6 +63,7 @@ function createOrderNumber() {
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول لمتابعة حالة الطلب", 401);
   const orderNumber = cleanText(new URL(request.url).searchParams.get("order"), 100);
   if (!/^[A-Za-z0-9._:-]{3,100}$/.test(orderNumber)) return jsonError("رقم الطلب غير صالح");
@@ -92,6 +95,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول قبل الشراء", 401);
   const blocked = purchaseRequirementResponse(user);
   if (blocked) return blocked;
@@ -158,6 +162,7 @@ export async function POST(request: Request) {
   const subtotal = fromMinorUnits(subtotalMinor);
   const discount = fromMinorUnits(discountMinor);
   const total = fromMinorUnits(totalMinor);
+  if (!Number.isSafeInteger(totalMinor) || totalMinor < 100) return jsonError("سعر الطلب غير صالح. راجع الدعم قبل الدفع.", 409);
   if (paymentMethod === "tabby" && totalMinor < 1_000) return jsonError("الحد الأدنى للدفع عبر تابي هو 10 ر.س", 409);
   const orderNumber = createOrderNumber();
   const customerName = user.fullName;
@@ -211,7 +216,7 @@ export async function POST(request: Request) {
     const recentOrders = await tx.select().from(orders).where(and(
       eq(orders.userId, user.id),
       inArray(orders.status, OPEN_CHECKOUT_STATUSES),
-      sql`${orders.createdAt}::timestamptz >= NOW() - INTERVAL '30 minutes'`,
+      sql`(${orders.status} IN ('verification_pending', 'payment_review') OR ${orders.createdAt}::timestamptz >= NOW() - INTERVAL '30 minutes')`,
       sql`COALESCE((SELECT jsonb_agg(oi.course_slug ORDER BY oi.course_slug) FROM order_items AS oi WHERE oi.order_number = ${orders.orderNumber}), jsonb_build_array(${orders.courseSlug})) = ${requestedCartJson}::jsonb`,
     )).orderBy(
       sql`CASE WHEN ${orders.paymentMethod} = ${paymentMethod} AND ${orders.couponCode} IS NOT DISTINCT FROM ${couponQuote?.code || null} AND ${orders.bundleSlug} IS NOT DISTINCT FROM ${bundleQuote?.slug || null} THEN 0 ELSE 1 END`,
@@ -254,7 +259,8 @@ export async function POST(request: Request) {
     chargeResponse = await fetch("https://api.tap.company/v2/charges/", {
       method: "POST",
       headers: { authorization: `Bearer ${tapSecretKey}`, "content-type": "application/json" },
-      body: JSON.stringify({ amount: total, currency: "SAR", customer_initiated: true, threeDSecure: true, save_card: false, description: bundleQuote ? `باقة ${bundleQuote.title} في مراس` : `اشتراك ${selected.length} مواد في مراس`, transaction: { expiry: { period: CHECKOUT_EXPIRY_MINUTES, type: "MINUTE" } }, metadata: { order_number: orderNumber, course_slugs: uniqueSlugs.join(","), payment_method: paymentMethod, bundle_slug: bundleQuote?.slug || "" }, reference: { transaction: orderNumber, order: orderNumber }, customer: { first_name: nameParts[0] || customerName, last_name: nameParts.slice(1).join(" ") || "طالب مراس", email: customerEmail, phone: { country_code: "966", number: localPhone } }, source: { id: paymentSource(paymentMethod) }, post: { url: `${siteOrigin}/api/webhooks/tap` }, redirect: { url: `${siteOrigin}/dashboard?payment=return&order=${encodeURIComponent(orderNumber)}` } }),
+      body: JSON.stringify({ amount: total, currency: "SAR", customer_initiated: true, threeDSecure: true, save_card: false, description: bundleQuote ? `باقة ${bundleQuote.title} في مراس` : `اشتراك ${selected.length} مواد في مراس`, transaction: { expiry: { period: CHECKOUT_EXPIRY_MINUTES, type: "MINUTE" } }, metadata: { order_number: orderNumber, course_slugs: uniqueSlugs.join(","), payment_method: paymentMethod, bundle_slug: bundleQuote?.slug || "" }, reference: { transaction: orderNumber, order: orderNumber, idempotent: orderNumber }, customer: { first_name: nameParts[0] || customerName, last_name: nameParts.slice(1).join(" ") || "طالب مراس", email: customerEmail, phone: { country_code: "966", number: localPhone } }, source: { id: paymentSource(paymentMethod) }, post: { url: `${siteOrigin}/api/webhooks/tap` }, redirect: { url: `${siteOrigin}/dashboard?payment=return&order=${encodeURIComponent(orderNumber)}` } }),
+      redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
   } catch {
@@ -263,17 +269,22 @@ export async function POST(request: Request) {
     // and never invite an immediate duplicate charge.
     await db.update(orders).set({ status: "verification_pending", updatedAt: new Date().toISOString() }).where(and(eq(orders.orderNumber, orderNumber), eq(orders.status, "pending")));
     await db.insert(analyticsEvents).values({ event: "checkout_pending", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: new Date().toISOString() });
-    return Response.json({ error: "تعذر تأكيد استجابة بوابة الدفع. لم نكرر المطالبة، وسنتحقق من المحاولة الحالية تلقائيًا.", pending: true, orderNumber }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
+    return Response.json({ error: "تعذر تأكيد استجابة بوابة الدفع. لم نكرر المطالبة، ننتظر تأكيد المحاولة الحالية، ويمكنك متابعتها مع الدعم برقم الطلب.", pending: true, orderNumber }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
   }
-  let charge: TapChargeResponse;
-  try { charge = await chargeResponse.json() as TapChargeResponse; } catch { charge = {}; }
-  if (!chargeResponse.ok || !charge.id || !charge.transaction?.url) {
+  let charge: unknown;
+  try { charge = await chargeResponse.json(); } catch { charge = null; }
+  const result = tapChargeCreationResult(chargeResponse, charge);
+  if (result.kind === "pending") {
+    await db.update(orders).set({ status: "verification_pending", ...(result.chargeId ? { tapChargeId: result.chargeId } : {}), updatedAt: new Date().toISOString() }).where(and(eq(orders.orderNumber, orderNumber), eq(orders.status, "pending")));
+    return Response.json({ error: "استجابة بوابة الدفع بانتظار التحقق. لم ننشئ مطالبة أخرى؛ احتفظ برقم الطلب لمتابعته مع الدعم.", pending: true, orderNumber }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
+  }
+  if (result.kind === "failed") {
     const failed = await db.update(orders).set({ status: "failed", updatedAt: new Date().toISOString() }).where(and(eq(orders.orderNumber, orderNumber), eq(orders.status, "pending"))).returning({ orderNumber: orders.orderNumber });
     if (failed.length) await releaseCouponReservation(orderNumber);
     await db.insert(analyticsEvents).values({ event: "payment_failed", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: new Date().toISOString() });
-    return jsonError(charge.errors?.[0]?.description || "تعذر بدء عملية الدفع. حاول مرة أخرى.", 502);
+    return jsonError("تعذر بدء عملية الدفع. حاول مرة أخرى.", 502);
   }
-  await db.update(orders).set({ tapChargeId: charge.id, checkoutUrl: charge.transaction.url, status: sql`CASE WHEN ${orders.status} = 'pending' THEN 'initiated' ELSE ${orders.status} END`, updatedAt: new Date().toISOString() }).where(eq(orders.orderNumber, orderNumber));
+  await db.update(orders).set({ tapChargeId: result.chargeId, checkoutUrl: result.checkoutUrl, status: sql`CASE WHEN ${orders.status} = 'pending' THEN 'initiated' ELSE ${orders.status} END`, updatedAt: new Date().toISOString() }).where(eq(orders.orderNumber, orderNumber));
   await db.insert(analyticsEvents).values({ event: "checkout_redirect", userEmail: user.email, courseSlug: selected[0].slug, metadataJson: JSON.stringify({ orderNumber, method: paymentMethod, value: total, currency: "SAR", bundleSlug: bundleQuote?.slug || null }), createdAt: new Date().toISOString() });
-  return Response.json({ ok: true, mode: "live", paymentMethod, orderNumber, courseSlugs: uniqueSlugs, bundleSlug: bundleQuote?.slug || null, subtotal, discount, total, subtotalMinor, discountMinor, totalMinor, checkoutUrl: charge.transaction.url }, { status: 201, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+  return Response.json({ ok: true, mode: "live", paymentMethod, orderNumber, courseSlugs: uniqueSlugs, bundleSlug: bundleQuote?.slug || null, subtotal, discount, total, subtotalMinor, discountMinor, totalMinor, checkoutUrl: result.checkoutUrl }, { status: 201, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }

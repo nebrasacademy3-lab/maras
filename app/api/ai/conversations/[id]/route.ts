@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 import { studyReadAccess } from "@/lib/study-output-access";
 import { isNativeAppRequest } from "@/lib/mobile-api";
@@ -16,6 +17,7 @@ function idFrom(params: Promise<{ id: string }>) {
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return observeRequest(request, "ai.conversations.read", async () => {
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-read", `user:${user.id}`, 120, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     const id = await idFrom(params);
@@ -36,6 +38,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   return observeRequest(request, "ai.conversations.update", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-update", `user:${user.id}`, 40, 60)) return jsonError("تعديلات كثيرة. حاول بعد دقيقة.", 429);
     const id = await idFrom(params);
@@ -54,6 +57,7 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   return observeRequest(request, "ai.conversations.archive", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-archive", `user:${user.id}`, 30, 60)) return jsonError("طلبات أرشفة كثيرة. حاول بعد دقيقة.", 429);
     const id = await idFrom(params);

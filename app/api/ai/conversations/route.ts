@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { studyReadAccess } from "@/lib/study-output-access";
 import { isNativeAppRequest } from "@/lib/mobile-api";
 import { and, desc, eq, inArray } from "drizzle-orm";
@@ -13,6 +14,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   return observeRequest(request, "ai.conversations.list", async () => {
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-read", `user:${user.id}`, 120, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     const access = await studyReadAccess(user.id, isNativeAppRequest(request) ? "app" : "web");
@@ -29,6 +31,7 @@ export async function POST(request: Request) {
   return observeRequest(request, "ai.conversations.create", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-write", `user:${user.id}`, 30, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     let payload: Record<string, unknown> = {};

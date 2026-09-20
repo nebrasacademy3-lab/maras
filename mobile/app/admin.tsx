@@ -1,3 +1,4 @@
+import {AdminInstructors} from "@/src/components/admin-instructors";
 import {AdminCapability} from "@/src/components/AdminCapability";
 import {AdminNavigation} from "@/src/components/AdminNavigation";
 import {useAdminCapabilities} from "@/src/lib/admin-capabilities";
@@ -64,7 +65,7 @@ type AdminData = {
   settings: Record<string, string>;
 };
 
-type Tab = "settings" | "seo" | "files" | "partners" | "purchases" | "audit" | "pages" | "roster" | "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "finance" | "operations" | "bundles" | "tracks" | "referrals" | "ai" | "reviews" | "communication" | "security" | "appearance";
+type Tab = "instructors" | "settings" | "seo" | "files" | "partners" | "purchases" | "audit" | "pages" | "roster" | "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "finance" | "operations" | "bundles" | "tracks" | "referrals" | "ai" | "reviews" | "communication" | "security" | "appearance";
 type Mutate = (payload: Record<string, unknown>, success?: string) => Promise<boolean>;
 type DeleteEntity = (entityType: string, entityId: string | number, label: string, impact: string) => void;
 const arabicMap: Record<string, string> = { ا: "a", أ: "a", إ: "i", آ: "a", ب: "b", ت: "t", ث: "th", ج: "j", ح: "h", خ: "kh", د: "d", ذ: "dh", ر: "r", ز: "z", س: "s", ش: "sh", ص: "s", ض: "d", ط: "t", ظ: "z", ع: "a", غ: "gh", ف: "f", ق: "q", ك: "k", ل: "l", م: "m", ن: "n", ه: "h", و: "w", ي: "y", ة: "h", ى: "a", ء: "a" };
@@ -198,6 +199,7 @@ function AdminWorkspace() {
     {tab === "users" && (profileEmail ? <AdminStudentProfile email={profileEmail} onClose={() => setProfileEmail("")} onStepUpRequired={stepUpRequired} onOpenCourse={slug => { setCourseSelection(slug); setTab("roster"); }} onOpenSection={(section, search) => { setServerSearch(search); setSearchDraft(search); setTab(section); }} /> : <Users data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} onOpenProfile={setProfileEmail} />)}
     {tab === "subscriptions" && <SubscriptionAdmin data={data} colors={colors} mutate={mutate} />}
     {tab === "staff" && <StaffManager />}
+    {tab === "instructors" && <AdminInstructors />}
     {tab === "pages" && <PublicContentEditor />}
     {tab === "requests" && <Requests rows={data.requests} courses={data.courses} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "support" && <Support rows={data.tickets} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}

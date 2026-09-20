@@ -26,6 +26,8 @@ export const PUBLIC_SETTING_DEFAULTS = {
   announcement: "",
   legal_name: "",
   commercial_registration_number: "",
+  employment_authorization_number: "",
+  employment_authorization_verify_url: "",
   commercial_registration_verify_url: "",
   ecommerce_authentication_number: "",
   ecommerce_authentication_verify_url: "",
@@ -43,6 +45,8 @@ export const PUBLIC_SETTING_DEFAULTS = {
 
 export const ADMIN_SETTING_DEFAULTS = {
   max_student_devices: "2",
+  instructor_identity_legal_basis: "",
+  instructor_identity_retention_days: "",
   content_view_mode: "both",
 } as const;
 
@@ -55,7 +59,7 @@ export type PublicSettings = Record<PublicSettingKey, string>;
 
 // Public capability flags are derived server-side; never expose payment credentials.
 export function getPublicPaymentAvailability() {
-  const ready = Boolean(process.env.TAP_SECRET_KEY?.trim() && process.env.TAP_WEBHOOK_SECRET?.trim());
+  const ready = Boolean(process.env.TAP_SECRET_KEY?.trim());
   return {
     payments_ready: String(ready),
     tabby_available: String(ready && process.env.TAP_TABBY_ENABLED === "true"),
@@ -84,6 +88,10 @@ export const SETTING_META: Record<SettingKey, { label: string; category: string;
   social_threads: { label: "رابط Threads", category: "social", isPublic: true },
   announcement: { label: "تنبيه عام", category: "general", isPublic: true },
   legal_name: { label: "الاسم النظامي للمنشأة", category: "legal", isPublic: true },
+  employment_authorization_number: { label: "مرجع توثيق التوظيف لدى الوزارة", category: "legal", isPublic: true },
+  employment_authorization_verify_url: { label: "رابط التحقق من توثيق التوظيف", category: "legal", isPublic: true },
+  instructor_identity_legal_basis: { label: "مرجع السند النظامي لجمع نسخ الهوية", category: "instructor_privacy", isPublic: false },
+  instructor_identity_retention_days: { label: "مدة الاحتفاظ بنسخ الهوية بالأيام", category: "instructor_privacy", isPublic: false },
   commercial_registration_number: { label: "رقم السجل التجاري", category: "legal", isPublic: true },
   commercial_registration_verify_url: { label: "رابط التحقق من السجل التجاري", category: "legal", isPublic: true },
   ecommerce_authentication_number: { label: "رقم توثيق التجارة الإلكترونية", category: "legal", isPublic: true },

@@ -13,6 +13,7 @@ export function adminUserTransitionError(
   actorId: number | null,
   activeAdminCount: number,
 ) {
+  if (before.role === "instructor" || next.role === "instructor") return "تدار حسابات الشارحين من قسم فريق مراس";
   if (before.isPlatformOwner && (next.role !== "admin" || next.status !== "active")) return "لا يمكن تغيير دور المدير الأعلى أو تعطيله";
   if (!before.isPlatformOwner && next.role === "admin" && before.role !== "admin") return "يُضاف أعضاء الإدارة كمشرفين بصلاحيات محددة فقط";
   const removesAdmin = next.role !== "admin" || next.status !== "active";

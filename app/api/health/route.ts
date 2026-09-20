@@ -51,7 +51,7 @@ export async function GET(request: Request) {
     const ok = database === "ready" && storage === "ready" && requiredConfigurationReady;
     const degraded = ok && Object.values(optionalConfiguration).some((status) => status !== "configured");
     const capabilities = {
-      payments: configured("TAP_SECRET_KEY", "TAP_WEBHOOK_SECRET") ? "enabled" : "disabled",
+      payments: configured("TAP_SECRET_KEY") ? "enabled" : "disabled",
       email: configured("RESEND_API_KEY", "EMAIL_FROM") ? "enabled" : "disabled",
       enhancedAssistant: configuredAny("GEMINI_API_KEY", "GEMINI_API_KEYS", "GEMINI_FREE_API_KEYS", "GOOGLE_API_KEY") ? "enabled" : "disabled",
       pushDispatch: optionalConfiguration.scheduledTasks === "configured" ? "enabled" : "disabled",

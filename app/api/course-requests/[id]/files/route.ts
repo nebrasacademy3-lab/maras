@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseRequestFiles, courseRequests } from "@/db/schema";
@@ -6,6 +7,7 @@ import { getSessionUser } from "@/lib/auth";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
   const id = Number((await params).id);
   if (!Number.isSafeInteger(id) || id <= 0) return jsonError("الطلب غير صالح", 400);

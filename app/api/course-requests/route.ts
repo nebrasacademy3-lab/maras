@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { supervisorScopeId, scopedRequestSql } from "@/lib/supervisor-data-scope";
 import { getSupervisorScopes, supervisorScopesAllow } from "@/lib/supervisor-scope";
 import { sessionUserFromRow } from "@/lib/auth";
@@ -47,6 +48,7 @@ async function supervisorFor(institutionSlug: string, specialty: string) {
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول لطلب مادة", 401);
   if (!user.profileCompleted || !user.phone || !user.universitySlug || !user.specialty || !user.academicLevel) return jsonError("أكمل ملفك الدراسي ومستواك أولًا", 409);
   if (!await checkRateLimit("course-request", `user:${user.id}`, 10, 60 * 60)) return jsonError("طلبات كثيرة. حاول بعد ساعة.", 429);
@@ -128,6 +130,7 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const machineAuthorized = isAdminRequest(request);
   const user = machineAuthorized ? null : await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!machineAuthorized && !await hasPermission(user, ADMIN_PERMISSIONS.REQUESTS_MANAGE)) return jsonError("غير مصرح", 401);
   const identity = machineAuthorized ? `machine:${clientIp(request)}` : `user:${user!.id}`;
   if (!await checkRateLimit("course-request-read", identity, 30, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);

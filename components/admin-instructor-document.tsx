@@ -1,0 +1,19 @@
+"use client";
+import { useEffect, useRef, useState } from "react";
+import { Download, Eye, X } from "lucide-react";
+import { authRequest } from "@/lib/auth-request";
+import { requestAdminVerification } from "@/lib/interaction-events";
+import { ADMIN_STEP_UP_MESSAGE } from "./admin-mfa-notice";
+import { InstructorAdminError } from "./admin-instructors-shared";
+import styles from "./admin-instructors.module.css";
+export function AdminInstructorDocument({document:doc}:{document:{id:number;originalName:string;contentType:string;sizeBytes:number}}) {
+ const [preview,setPreview]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");const dialog=useRef<HTMLDialogElement>(null),url=useRef(""),read=useRef<AbortController|null>(null),downloads=useRef(new Map<string,ReturnType<typeof setTimeout>>());
+ useEffect(()=>{const pending=downloads.current;return()=>{read.current?.abort();if(url.current)URL.revokeObjectURL(url.current);for(const [link,timer] of pending){clearTimeout(timer);URL.revokeObjectURL(link);}pending.clear();};},[]);
+ useEffect(()=>{if(preview)dialog.current?.showModal();else dialog.current?.close();},[preview]);
+ function close(){if(url.current)URL.revokeObjectURL(url.current);url.current="";setPreview("");}
+ async function open(download=false){if(busy)return;setBusy(true);setError("");const controller=new AbortController();read.current=controller;try{let response=await authRequest(`/api/admin/instructors/documents/${doc.id}`,{cache:"no-store",credentials:"same-origin",signal:controller.signal});if(response.status===428){const stepUp=await response.clone().json().catch(()=>({}));if(!await requestAdminVerification(stepUp.code==="MFA_SETUP_REQUIRED"))throw new Error(ADMIN_STEP_UP_MESSAGE);response=await authRequest(`/api/admin/instructors/documents/${doc.id}`,{cache:"no-store",credentials:"same-origin",signal:controller.signal});}if(!response.ok){const result=await response.json().catch(()=>({}));throw new Error(result.error||"تعذر فتح المستند");}const type=response.headers.get("content-type")?.split(";")[0];if(!["image/png","image/jpeg","application/pdf"].includes(type||""))throw new Error("نوع المستند غير مدعوم للمعاينة");const blob=await response.blob();if(controller.signal.aborted)return;if(blob.size!==doc.sizeBytes||blob.size>10*1024*1024)throw new Error("حجم المستند غير متطابق");const objectUrl=URL.createObjectURL(blob);if(download||type==="application/pdf"){const link=window.document.createElement("a");link.href=objectUrl;link.download=`maras-document-${doc.id}.${type==="application/pdf"?"pdf":type==="image/png"?"png":"jpg"}`;link.click();const timer=setTimeout(()=>{URL.revokeObjectURL(objectUrl);downloads.current.delete(objectUrl);},30000);downloads.current.set(objectUrl,timer);}else{if(url.current)URL.revokeObjectURL(url.current);url.current=objectUrl;setPreview(objectUrl);}}catch(e){if(!controller.signal.aborted)setError(e instanceof Error?e.message:"تعذر فتح المستند");}finally{if(!controller.signal.aborted)setBusy(false);}}
+ return <><InstructorAdminError message={error}/><div className={styles.actions}>{doc.contentType.startsWith("image/")&&<button type="button" className="button button-ghost" disabled={busy} onClick={()=>void open()}><Eye size={16}/>معاينة خاصة</button>}<button type="button" className="button button-ghost" disabled={busy} onClick={()=>void open(true)}><Download size={16}/>{busy?"جارٍ الفتح…":"تنزيل المستند"}</button></div><dialog ref={dialog} className={styles.documentDialog} onCancel={close} aria-label={`معاينة ${doc.originalName}`}><header><strong>{doc.originalName}</strong><button className="button button-ghost" aria-label="إغلاق المعاينة" onClick={close}><X size={20}/></button></header>{preview&&<>
+ {/* Authenticated temporary blob cannot use the public Next image optimizer. */}
+ {/* eslint-disable-next-line @next/next/no-img-element */}
+ <img src={preview} alt={doc.originalName}/></>}</dialog></>;
+}

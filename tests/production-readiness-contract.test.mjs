@@ -1,3 +1,4 @@
+import {loadMobileApi} from "./mobile-routing-harness.mjs";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
@@ -68,10 +69,15 @@ test("store builds cannot expose or call Tap checkout while direct builds retain
     read("mobile/eas.json"),
   ]);
   assert.match(api, /STORE_COMMERCE_ENABLED/);
-  assert.match(api, /pathname === "\/api\/checkout"/);
+  for (const platform of ["ios","android"]) {
+    const reader=await loadMobileApi({platform});
+    for (const path of ["/api/checkout","/api/checkout/","/api/ai/subscription/checkout"]) await assert.rejects(()=>reader.api(path,{method:"POST"}),error=>error.status===403);
+    assert.equal(reader.requests.length,0);
+    const direct=await loadMobileApi({mode:"direct",platform});await direct.api("/api/checkout",{method:"POST"});assert.equal(direct.requests.length,1);
+  }
   for (const surface of [cart, course, header, account]) assert.match(surface, /STORE_COMMERCE_ENABLED/);
-  assert.equal(JSON.parse(eas).build.production.env.EXPO_PUBLIC_STORE_MODE, "iap");
-  assert.match(api, /!DIRECT_COMMERCE_ENABLED && url.pathname === "\/api\/checkout"/);
-  assert.match(course, /NATIVE_PURCHASES_ENABLED \? <StorePurchases/);
+  assert.equal(JSON.parse(eas).build.production.env.EXPO_PUBLIC_STORE_MODE, "reader");
+  assert.doesNotMatch(api, /NATIVE_PURCHASES_ENABLED/);
+  assert.doesNotMatch(course, /StorePurchases/);
   assert.match(eas, /"production-direct"[\s\S]*"EXPO_PUBLIC_STORE_MODE": "direct"/);
 });

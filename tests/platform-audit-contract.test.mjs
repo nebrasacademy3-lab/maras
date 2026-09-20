@@ -49,11 +49,14 @@ test("video upload requires detected container bytes and refreshes catalog state
   assert.match(videoUpload, /invalidateCatalogCache\(\)/);
 });
 
-test("self-account deletion is student-only, transactional, and cleans support objects", () => {
-  assert.match(account, /current\.role !== "student"/);
+test("self-account deletion excludes staff, requires reauthentication, and queues private storage cleanup", () => {
+  assert.match(account, /role === "student" \|\| role === "instructor"/);
+  assert.match(account, /!deletionAllowed\(current.role\) \|\| current.isPlatformOwner/);
+  assert.match(account, /consumeEmailCode\(current.id,"delete_account"/);
   assert.match(account, /supportReplyFiles/);
-  assert.match(account, /db\.transaction\(async \(tx\)/);
-  assert.match(account, /deleteObject\(objectKey\)/);
+  assert.match(account, /db\.transaction\(perform\)/);
+  assert.match(account, /enqueueStorageCleanupTx\(tx/);
+  assert.match(account, /processStorageCleanupBatch/);
   assert.doesNotMatch(account, /db\.update\(auditLogs\)/);
   assert.match(account, /financialRecordsRetained: true/);
 });

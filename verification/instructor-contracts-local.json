@@ -1,0 +1,13 @@
+{
+  "ok": true,
+  "at": "2026-09-20T20:57:23.746Z",
+  "checks": [
+    "draft visibility, stale writes, invalid employment dates and database-level offered-term changes are rejected",
+    "real authenticated signing checks ownership, password, exact terms and races; only one signature event commits and signed evidence cannot be altered or deleted",
+    "real Chromium produces a private downloadable bilingual signed PDF; other accounts and unauthenticated users cannot retrieve it",
+    "sensitive administration requires the platform owner and session-bound additional authentication",
+    "expired identity copies are removed transactionally and physical deletion is persisted for retry",
+    "suspension immediately removes contract access while the owner can record termination without changing signed evidence"
+  ],
+  "pdfBytes": 3024103
+}

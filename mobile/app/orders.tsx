@@ -1,4 +1,4 @@
-import { StorePurchases } from "@/src/components/StorePurchases";
+import { PurchaseHistory } from "@/src/components/purchase-history";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { router } from "expo-router";
@@ -42,12 +42,12 @@ export default function Orders() {
   const downloadInvoice=async(orderNumber:string,invoiceNumber:string)=>{setDownloading(invoiceNumber);setMessage("");try{const result=await downloadProtectedFile({path:`/api/invoices/${encodeURIComponent(orderNumber)}/download`,fileName:`${invoiceNumber}.html`,mimeType:"text/html",saveToFiles:true,openAfterDownload:true});setMessage(result.action==="cancelled"?"تم إلغاء اختيار مكان الحفظ.":"أصبحت نسخة الفاتورة جاهزة للعرض أو الحفظ أو الطباعة.");}catch(reason){setMessage(reason instanceof ApiError?reason.message:"تعذر تحميل الفاتورة.");}finally{setDownloading("");}};
   return <Screen>
     <AppHeader title="الطلبات والفواتير" subtitle="سجل مرتبط بحسابك" back />
-    <StorePurchases history />
+    <PurchaseHistory />
     <SectionTitle title="الطلبات" subtitle={`${orders.length} عملية`} />
     {orders.length ? orders.map((order) => <Card key={order.orderNumber} style={styles.card}>
       <View style={styles.row}><View style={[styles.status, { backgroundColor: order.status === "paid" ? `${colors.success}18` : colors.surfaceAlt }]}><Text style={{ color: order.status === "paid" ? colors.success : colors.primary, fontSize: 8, fontWeight: "900" }}>{orderLabels[order.status] || "حالة دفع غير معروفة"}</Text></View><Text style={[styles.title, { color: colors.text }]}>{order.courseTitle}</Text></View>
       <View style={styles.details}><Text style={[styles.amount, { color: colors.text }]}>{order.total.toLocaleString(locale)} ر.س</Text><Text style={[styles.meta, { color: colors.textSoft }]}>#{order.orderNumber} · {new Date(order.createdAt).toLocaleDateString(locale)}</Text></View>
-    </Card>) : <EmptyState icon="cart-outline" title="لا توجد طلبات" text="ستظهر هنا عمليات الاشتراك بعد إنشائها من موقع مراس." />}
+    </Card>) : <EmptyState icon="cart-outline" title="لا توجد طلبات" text="ستظهر هنا عمليات الاشتراك المرتبطة بحسابك." />}
     <SectionTitle title="الفواتير" subtitle="تُنشأ بعد تأكيد الدفع من مزود الدفع" />
     {message ? <Text style={[styles.feedback,{color:message.startsWith("أصبحت")?colors.success:colors.warning}]}>{message}</Text> : null}
     {invoices.length ? invoices.map((invoice) => <Card key={invoice.invoiceNumber} style={styles.card}><View style={styles.invoice}><View style={[styles.invoiceIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="document-text-outline" size={22} color={colors.primary} /></View><View style={styles.flex}><Text style={[styles.title, { color: colors.text }]}>فاتورة {invoice.invoiceNumber}</Text><Text style={[styles.meta, { color: colors.textSoft }]}>طلب #{invoice.orderNumber} · {new Date(invoice.issuedAt).toLocaleDateString(locale)}</Text></View><Text style={[styles.amount, { color: colors.text }]}>{invoice.total.toLocaleString(locale)} ر.س</Text></View><AppButton title="فتح أو حفظ الفاتورة" icon="download-outline" variant="soft" loading={downloading===invoice.invoiceNumber} onPress={()=>void downloadInvoice(invoice.orderNumber,invoice.invoiceNumber)}/></Card>) : <EmptyState icon="document-text-outline" title="لا توجد فواتير" text="تظهر الفاتورة تلقائيًا بعد نجاح الدفع والتحقق منه." />}

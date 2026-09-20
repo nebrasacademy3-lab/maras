@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { analyticsEvents, learningTrackInterests, learningTracks } from "@/db/schema";
@@ -28,6 +29,7 @@ function slugFrom(value: unknown) {
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) {
     return Response.json({ ok: true, authenticated: false, activeSlugs: [] }, {
       headers: { "cache-control": "private, no-store", "x-content-type-options": "nosniff", vary: "cookie, authorization" },
@@ -45,6 +47,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!mutationAllowed(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول ليصلك إشعار عند إطلاق المسار", 401);
   if (!await checkRateLimit("learning-track-interest-write", `user:${user.id}`, 20, 60)) {
     return jsonError("محاولات كثيرة. حاول بعد دقيقة.", 429);
@@ -94,6 +97,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   if (!mutationAllowed(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
   if (!await checkRateLimit("learning-track-interest-write", `user:${user.id}`, 20, 60)) {
     return jsonError("محاولات كثيرة. حاول بعد دقيقة.", 429);

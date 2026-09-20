@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
@@ -7,6 +8,7 @@ import { quoteCoupon, quoteCouponForCart } from "@/lib/coupons";
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
   if (!await checkRateLimit("coupon-quote", `user:${user.id}`, 60, 60)) return jsonError("محاولات كوبون كثيرة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;

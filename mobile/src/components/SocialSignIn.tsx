@@ -6,6 +6,7 @@ import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton } from "@/src/components/ui";
 import { api, ApiError } from "@/src/lib/api";
 import { authDestination } from "@/src/lib/account-access";
+import { nativeSocialProviders } from "@/src/lib/social-provider-policy";
 import type { SocialProvider } from "@/src/lib/social-auth";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -16,7 +17,8 @@ export function SocialSignIn({ returnTo, referralCode, disabled = false }: { ret
   const [busy, setBusy] = useState<SocialProvider | null>(null);
   const [error, setError] = useState("");
   const providers = useQuery({ queryKey: ["oauth-providers"], queryFn: () => api<{ google: boolean; apple: boolean }>("/api/auth/oauth/providers"), staleTime: 60_000 });
-  if (Platform.OS === "web" || (!providers.data?.google && !providers.data?.apple)) return null;
+  const available = nativeSocialProviders(Platform.OS, providers.data);
+  if (!available.google && !available.apple) return null;
   const start = async (provider: SocialProvider) => {
     if (busy || disabled) return;
     setBusy(provider); setError("");
@@ -28,8 +30,8 @@ export function SocialSignIn({ returnTo, referralCode, disabled = false }: { ret
   };
   return <View style={styles.wrap}>
     <View style={styles.separator}><View style={[styles.rule, { backgroundColor: colors.border }]} /><Text style={[styles.label, { color: colors.textSoft }]}>أو تابع باستخدام</Text><View style={[styles.rule, { backgroundColor: colors.border }]} /></View>
-    {providers.data?.google ? <AppButton title="المتابعة باستخدام Google" icon="logo-google" variant="ghost" loading={busy === "google"} disabled={disabled || Boolean(busy)} onPress={() => void start("google")} /> : null}
-    {providers.data?.apple ? <AppButton title="المتابعة باستخدام Apple" icon="logo-apple" variant="ghost" loading={busy === "apple"} disabled={disabled || Boolean(busy)} onPress={() => void start("apple")} /> : null}
+    {available.google ? <AppButton title="المتابعة باستخدام Google" icon="logo-google" variant="ghost" loading={busy === "google"} disabled={disabled || Boolean(busy)} onPress={() => void start("google")} /> : null}
+    {available.apple ? <AppButton title="المتابعة باستخدام Apple" icon="logo-apple" variant="ghost" loading={busy === "apple"} disabled={disabled || Boolean(busy)} onPress={() => void start("apple")} /> : null}
     <Text style={[styles.note, { color: colors.textSoft }]}>بعد تسجيل الدخول، أكمل بيانات جامعتك وتخصصك لتجربة تناسبك.</Text>
     {error ? <Text accessibilityRole="alert" style={[styles.note, { color: colors.danger }]}>{error}</Text> : null}
   </View>;

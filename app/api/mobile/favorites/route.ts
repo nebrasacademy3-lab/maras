@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { favorites } from "@/db/schema";
@@ -10,6 +11,7 @@ import { readBoundedJsonObject } from "@/lib/request-body";
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  const workspaceDenied = studentWorkspaceRequirementResponse(user); if (workspaceDenied) return workspaceDenied;
   const rows = await getDb().select().from(favorites).where(eq(favorites.userId, user.id));
   return Response.json({ ok: true, courseSlugs: rows.map((row) => row.courseSlug) }, { headers: mobileNoStoreHeaders });
 }
@@ -18,6 +20,7 @@ export async function POST(request: Request) {
   if (!isMobileRequest(request)) return jsonError("طلب تطبيق غير صالح", 403);
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  const workspaceDenied = studentWorkspaceRequirementResponse(user); if (workspaceDenied) return workspaceDenied;
   if (!await checkRateLimit("favorite-write", `user:${user.id}`, 120, 60)) return jsonError("تحديثات كثيرة للمفضلة. حاول بعد قليل.", 429);
   let payload: Record<string, unknown>;
   try { payload = await readBoundedJsonObject(request); } catch { return jsonError("بيانات غير صالحة"); }

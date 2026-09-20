@@ -1,3 +1,5 @@
+import { processAppleRevocations } from "../lib/apple-account-tokens";
+import { expireInstructorDocuments } from "@/lib/instructor-retention";
 import { expireStudyUploads } from "@/lib/study-resumable-upload";
 import { setTimeout as sleep } from "node:timers/promises";
 import { getDb, closeDb } from "../db";
@@ -14,8 +16,11 @@ try {
   console.info(JSON.stringify({ event: "storage.cleanup.started", ...await storageCleanupSummary(db) }));
   do {
     try {
+      const apple = await processAppleRevocations({ signal: stopping.signal });
+      if (apple.attempted) console.info(JSON.stringify({ event: "apple.revocation.batch", ...apple }));
       await expireResumableVideos(db);
       await expireStudyUploads(db);
+      await expireInstructorDocuments(db);
       const result = await processStorageCleanupBatch(db, { limit: 5, signal: stopping.signal });
       failures = 0;
       if (result.claimed) console.info(JSON.stringify({ event: "storage.cleanup.batch", claimed: result.claimed, completed: result.completed, failed: result.failed.length, lost: result.lost }));

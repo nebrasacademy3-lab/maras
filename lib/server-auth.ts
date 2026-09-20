@@ -12,6 +12,7 @@ export async function currentUser() {
 export async function requireUser(returnTo: string): Promise<SessionUser> {
   const user = await currentUser();
   if (!user) redirect(`/login?return_to=${encodeURIComponent(returnTo)}`);
+  if (user.role === "instructor") redirect("/instructor");
   if (!user.profileCompleted) redirect(`/complete-profile?return_to=${encodeURIComponent(returnTo)}`);
   return user;
 }

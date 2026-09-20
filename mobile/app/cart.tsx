@@ -1,4 +1,3 @@
-import { StorePurchases } from "@/src/components/StorePurchases";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Redirect, router, type Href } from "expo-router";
@@ -10,7 +9,7 @@ import { AppHeader } from "@/src/components/AppHeader";
 import { PurchaseRequirements } from "@/src/components/PurchaseRequirements";
 import { purchaseAccountRequirement } from "@/src/lib/account-access";
 import { AppButton, Card, EmptyState, LoadingState, Screen } from "@/src/components/ui";
-import { api, ApiError, jsonBody, STORE_COMMERCE_ENABLED, NATIVE_PURCHASES_ENABLED } from "@/src/lib/api";
+import { api, ApiError, jsonBody, STORE_COMMERCE_ENABLED, SUBSCRIPTION_ACCESS_MESSAGE } from "@/src/lib/api";
 import { safeExternalLink } from "@/src/lib/notification-routing";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -30,10 +29,9 @@ export default function Cart() {
   const [busy, setBusy] = useState("");
   const cart = useQuery({ queryKey: ["cart", user?.id], queryFn: () => api<{ items: Course[]; subtotal: number; count: number }>("/api/cart"), enabled: STORE_COMMERCE_ENABLED && Boolean(user) });
   const bundleCatalog = useQuery({ queryKey: ["course-bundles"], queryFn: () => api<{ bundles: CourseBundle[] }>("/api/public/bundles"), enabled: STORE_COMMERCE_ENABLED && Boolean(user), staleTime: 60_000 });
-  if (!STORE_COMMERCE_ENABLED) return <Screen><AppHeader title="مراس العلم" subtitle="نسخة المشاهدة" back /><EmptyState icon="shield-checkmark-outline" title="اشتراكاتك جاهزة للمشاهدة" text="هذه النسخة مخصصة لمشاهدة المواد المفعلة في حسابك ولا تعرض أو تنفذ شراء المحتوى الرقمي داخل التطبيق." action={<AppButton title="استكشف المواد" onPress={() => router.replace("/(tabs)/courses")} />} /></Screen>;
+  if (!STORE_COMMERCE_ENABLED) return <Screen><AppHeader title="مراس العلم" subtitle="نسخة المشاهدة" back /><EmptyState icon="shield-checkmark-outline" title="اشتراكاتك جاهزة للمشاهدة" text={SUBSCRIPTION_ACCESS_MESSAGE} action={<AppButton title="استكشف المواد" onPress={() => router.replace("/(tabs)/courses")} />} /></Screen>;
   if (!user) return <Redirect href="/(auth)/login?return_to=%2Fcart" />;
   const items = cart.data?.items || [];
-  if (NATIVE_PURCHASES_ENABLED) return <Screen><AppHeader title="السلة" back /><PurchaseRequirements returnTo="/cart" />{cart.isLoading ? <LoadingState /> : <StorePurchases courseSlugs={items.map(item => item.slug)} />}</Screen>;
   const subtotal = cart.data?.subtotal || 0;
   const sortedCartSlugs = items.map((item) => item.slug).sort();
   const matchingBundles = (bundleCatalog.data?.bundles || []).filter((bundle) => { const slugs = [...bundle.courseSlugs].sort(); return slugs.length === sortedCartSlugs.length && slugs.every((slug, index) => slug === sortedCartSlugs[index]); });

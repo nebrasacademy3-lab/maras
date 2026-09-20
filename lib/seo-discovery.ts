@@ -4,7 +4,7 @@ import { seoDescription, seoUrl } from "@/lib/seo";
 export const DISCOVERY_MAX_ENTRIES = 1000;
 export const DISCOVERY_MAX_BYTES = 256 * 1024;
 const MAX_IDENTITY_NAMES = 8;
-const publicPath = /^(?:\/|\/(?:courses|bundles|universities)(?:\/[^/?#]+)?|\/universities\/[^/?#]+\/specialties\/[^/?#]+|\/(?:tools|about|why-maras|faq|how-it-works|contact|terms|privacy|refund-policy|content-policy|accessibility))$/;
+const publicPath = /^(?:\/|\/(?:courses|bundles|universities)(?:\/[^/?#]+)?|\/universities\/[^/?#]+\/specialties\/[^/?#]+|\/(?:tools|about|why-maras|faq|how-it-works|contact|terms|privacy|refund-policy|content-policy|accessibility|join-instructors))$/;
 
 type PublicIdentity = { name?: string; alternateNames?: string[]; description?: string; distinction?: string };
 

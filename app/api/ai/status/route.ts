@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { getSessionUser, checkRateLimit } from "@/lib/auth";
 import { jsonError } from "@/lib/api";
 import { aiDeepLinks, aiJson } from "@/lib/ai-api";
@@ -10,6 +11,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   return observeRequest(request, "ai.status", async () => {
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-status", `user:${user.id}`, 120, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     const { entitlement, statuses } = await getAiUsageStatuses(user);

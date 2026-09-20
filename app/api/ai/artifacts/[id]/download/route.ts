@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { studyReadAccess } from "@/lib/study-output-access";
 import { isNativeAppRequest } from "@/lib/mobile-api";
 import { and, eq } from "drizzle-orm";
@@ -14,6 +15,7 @@ import { exportStudyPdf, loadStudyPdfSource, StudyPdfError } from "@/lib/study-p
 export const runtime = "nodejs";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول لتنزيل الملف", 401);
   if (!await checkRateLimit("ai-artifact-download", `user:${user.id}`, 30, 60)) return jsonError("طلبات تنزيل كثيرة. حاول بعد دقيقة.", 429);
   const id = Number((await params).id);
@@ -27,6 +29,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       const result = await exportStudyPdf({ artifactId: id, user, client, signal: request.signal, exportId: url.searchParams.get("exportId") });
       // A session may be revoked or switched while Chromium is rendering.
       const current = await getSessionUser(request);
+      if (current?.role === "instructor") return studentWorkspaceRequirementResponse(current)!;
       if (!current || current.id !== user.id) return jsonError("انتهت الجلسة. سجّل الدخول مجددًا لتنزيل الملف.", 401);
       const source = await loadStudyPdfSource(id, current, client);
       if (source.sourceDigest !== result.sourceDigest) throw new StudyPdfError("PDF_SOURCE_CHANGED");

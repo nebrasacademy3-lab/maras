@@ -48,6 +48,7 @@ export const ADMIN_NAVIGATION: readonly AdminGroup[] = [
     destination("seo", "البحث واكتشاف مراس", "/admin/seo", "seo", ["seo.manage"]),
   ] },
   { id: "security", title: "الفريق والأمان", description: "صلاحية واضحة لكل مسؤولية", items: [
+    destination("instructors", "فريق مراس الشارحون", "/admin/instructors", "instructors", ["staff.manage"], "الطلبات والعقود والتكليفات"),
     destination("staff", "المشرفون والصلاحيات", "/admin/staff", "staff", ["staff.manage"]),
     destination("audit", "سجل التدقيق", "/admin?view=audit", "audit", ["audit.view"]),
   ] },
@@ -60,7 +61,7 @@ export const ADMIN_NAVIGATION: readonly AdminGroup[] = [
 export const ADMIN_SELF_SECURITY = destination("security", "حسابي وأماني", "/admin/security", "security", []);
 export function visibleAdminNavigation(permissions: readonly string[], owner: boolean): AdminGroup[] {
   const grants = new Set(permissions);
-  return ADMIN_NAVIGATION.map(group => ({ ...group, items: group.items.filter(item => owner || permissionsCover(grants, item.permissions)) })).filter(group => group.items.length > 0);
+  return ADMIN_NAVIGATION.map(group => ({ ...group, items: group.items.filter(item => owner || item.id !== "instructors" && permissionsCover(grants, item.permissions)) })).filter(group => group.items.length > 0);
 }
 export function activeAdminDestination(pathname: string, view: string | null = null) {
   const path = pathname.replace(/\/$/, "") || "/admin";

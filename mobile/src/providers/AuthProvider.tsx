@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Platform } from "react-native";
 import { api, ApiError, jsonBody, setApiToken } from "@/src/lib/api";
+import type { InstructorRegistration } from "@/src/lib/instructor";
 import type { SessionUser } from "@/src/types";
 import { ensureDeviceIdentity } from "@/src/lib/device";
 import { socialAuthCode, type SocialProvider } from "@/src/lib/social-auth";
@@ -19,6 +20,7 @@ type AuthContextValue = {
   token: string | null;
   login: (value: Credentials) => Promise<AuthResponse>;
   register: (value: Registration) => Promise<AuthResponse>;
+  registerInstructor: (value: InstructorRegistration) => Promise<AuthResponse>;
   socialLogin: (provider: SocialProvider, referralCode?: string) => Promise<AuthResponse | null>;
   logout: () => Promise<void>;
   refresh: () => Promise<SessionUser | null>;
@@ -103,6 +105,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient]);
   const login = useCallback(async (value: Credentials) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse | MfaResponse>("/api/mobile/auth/login", { method: "POST", body: jsonBody(value) })); }, [accept]);
   const register = useCallback(async (value: Registration) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) })); }, [accept]);
+  const registerInstructor = useCallback(async (value: InstructorRegistration) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/instructor/register", { method: "POST", body: jsonBody(value) })); }, [accept]);
   const socialLogin = useCallback(async (provider: SocialProvider, referralCode?: string) => {
     await ensureDeviceIdentity();
     const exchange = await socialAuthCode(provider, referralCode);
@@ -120,7 +123,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!revoked) console.warn("[auth] Remote session revocation was not confirmed before local logout.");
     if (!cleared) console.warn("[auth] Persisted session storage could not be cleared completely.");
   }, [queryClient]);
-  const value = useMemo(() => ({ user, loading, token, login, register, socialLogin, logout, refresh, setUser }), [user, loading, token, login, register, socialLogin, logout, refresh]);
+  const value = useMemo(() => ({ user, loading, token, login, register, registerInstructor, socialLogin, logout, refresh, setUser }), [user, loading, token, login, register, registerInstructor, socialLogin, logout, refresh]);
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 

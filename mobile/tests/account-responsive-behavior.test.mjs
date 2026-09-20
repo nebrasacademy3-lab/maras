@@ -17,7 +17,7 @@ function load(path, mocks = {}) {
   vm.runInNewContext(source, { exports, URL, Uint8Array, console, require: (name) => { if (name in mocks) return mocks[name]; throw new Error(`Unexpected import ${name}`); } }, { filename: path });
   return exports;
 }
-const routing = load("src/lib/notification-routing.ts", { "expo-router": { router: {} }, "react-native": { Linking: {} } });
+const routing = load("src/lib/notification-routing.ts", { "@/src/lib/api": { API_URL: "https://example.test", DIRECT_COMMERCE_ENABLED: false }, "expo-router": { router: {} }, "react-native": { Linking: {} } });
 const access = load("src/lib/account-access.ts", { "@/src/lib/notification-routing": routing });
 const position = load("src/lib/floating-position.ts");
 const user = { id: 1, fullName: "Student Name", phone: "0501234567", universitySlug: "test-university", specialty: "Computer Science", academicLevel: "المستوى الأول", emailVerified: true, profileCompleted: true, onboardingCompleted: true };

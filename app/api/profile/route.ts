@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { and, eq, ne } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
@@ -24,6 +25,7 @@ export async function GET(request: Request) {
 export async function PATCH(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
+  if (current?.role === "instructor") return studentWorkspaceRequirementResponse(current)!;
   if (!current) return jsonError("سجّل الدخول", 401);
   if (!await checkRateLimit("profile-update", `user:${current.id}`, 30, 60 * 60)) return jsonError("تحديثات كثيرة للملف. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;

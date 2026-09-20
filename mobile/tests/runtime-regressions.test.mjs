@@ -10,7 +10,7 @@ const compile = (source) => ts.transpileModule(source, { compilerOptions: { modu
 function load(path, mocks = {}, globals = {}) {
   const interactions = { requestNativeAdminMfa: async () => false, nativeToast: () => {}, verifyNativeLogin: async () => { throw new Error("No MFA challenge expected by this fixture"); } };
   const exports = {};
-  vm.runInNewContext(compile(read(path)), { exports, URL, URLSearchParams, Headers, AbortController, FormData, Blob, setTimeout, clearTimeout, ...globals, require: (name) => { if (name in mocks) return mocks[name]; if (name === "@/src/lib/interaction-events") return interactions; throw new Error("Unexpected import " + name); } });
+  vm.runInNewContext(compile(read(path)), { exports, URL, URLSearchParams, Headers, AbortController, FormData, Blob, setTimeout, clearTimeout, ...globals, require: (name) => { if (name in mocks) return mocks[name]; if (name === "@/src/lib/interaction-events") return interactions; if (name === "@/src/lib/api") return { API_URL: "https://example.test", DIRECT_COMMERCE_ENABLED: false }; throw new Error("Unexpected import " + name); } });
   return exports;
 }
 const progressHelpers = load("src/lib/playback-progress.ts");
@@ -193,7 +193,7 @@ test("route parsing rejects traversal, malformed and multiply encoded separators
   const routes = load("src/lib/notification-routing.ts", { "expo-router": { router: {} }, "react-native": { Linking: {} } });
   for (const path of ["/courses/..", "/courses/%2e%2e", "/courses/%2E/../admin", "/courses/a%2fb", "/courses/%252Fadmin", "/universities/%5cadmin", "/learn/%3Fadmin", "/courses/%E0%A4%A", "/courses/math%00", "//attacker.test", "/\\attacker.test"]) assert.equal(routes.parseInternalLink(path), null, path);
 });
-test("assistant actions use the shared route resolver and retain policy fragments", async () => {
+test("assistant actions use native policy reading and never open checkout from a reader build", async () => {
   const routes = load("src/lib/notification-routing.ts", { "expo-router": { router: {} }, "react-native": { Linking: {} } });
   const source = read("app/assistant.tsx");
   const tree = ts.createSourceFile("assistant.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
@@ -201,14 +201,17 @@ test("assistant actions use the shared route resolver and retain policy fragment
   function find(node) { if (ts.isVariableDeclaration(node) && node.name.getText(tree) === "openAction") action = node.initializer.getText(tree); ts.forEachChild(node, find); }
   find(tree); assert.ok(action);
   const pushed = []; const opened = []; const exported = {};
-  vm.runInNewContext(compile("exports.openAction = " + action), { exports: exported, ...routes, router: { push: (route) => pushed.push(route) }, Linking: { openURL: async (url) => opened.push(url) }, absoluteUrl: (path) => "https://example.test" + path, isRTL: true, setMessages: () => {} });
+  vm.runInNewContext(compile("exports.openAction = " + action), { exports: exported, ...routes, router: { push: (route) => pushed.push(route) }, Linking: { openURL: async (url) => opened.push(url) }, API_URL: "https://example.test", DIRECT_COMMERCE_ENABLED: false, isRTL: true, setMessages: () => {} });
   await exported.openAction("/universities/uni-a#majors");
   await exported.openAction("/dashboard?view=orders#latest");
   await exported.openAction("/learn/math#preview");
   await exported.openAction("/terms#privacy");
   await exported.openAction("/courses/%252fadmin");
-  assert.equal(pushed.length, 3); assert.equal(pushed[0].pathname, "/university/[slug]"); assert.equal(pushed[0].params.slug, "uni-a"); assert.equal(pushed[1], "/orders"); assert.equal(pushed[2].pathname, "/learn/[slug]");
-  assert.deepEqual(opened, ["https://example.test/terms#privacy"]);
+  assert.equal(pushed.length, 4); assert.equal(pushed[0].pathname, "/university/[slug]"); assert.equal(pushed[0].params.slug, "uni-a"); assert.equal(pushed[1], "/orders"); assert.equal(pushed[2].pathname, "/learn/[slug]");
+  assert.equal(pushed[3].pathname, "/legal"); assert.equal(pushed[3].params.document, "terms");
+  await exported.openAction("https://example.test/checkout/math");
+  await exported.openAction("https://payments.example.test/pay");
+  assert.deepEqual(opened, []);
 });
 
 // React Native 0.86 native paragraph renderers invert physical alignment when
