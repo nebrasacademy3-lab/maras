@@ -226,11 +226,11 @@ function ConversationWorkspace({ studentName, initialConversationId, initialQuiz
 }
 
 
-type WorkspaceProps = { studentName: string; initialConversationId: number | null; initialQuizId: number | null; initialService?: StudyAction | null };
+type WorkspaceProps = { userId: number; studentName: string; initialConversationId: number | null; initialQuizId: number | null; initialService?: StudyAction | null };
 export function MerasAiWorkspace(props: WorkspaceProps) {
   const [mode, setMode] = useState<StudyAction | "chat" | null>(props.initialConversationId || props.initialQuizId ? "chat" : props.initialService || null);
   return <div dir="rtl"><section className={toolStyles.page}>
     <header className={toolStyles.hero}><div><span className={toolStyles.eyebrow}><Sparkles size={18}/> أدوات مراس</span><h1>من المحاضرة إلى الفهم</h1><p>اختر أداتك، وارفع ملفك، ثم راجع نتيجة محفوظة في حسابك.</p></div><div className={toolStyles.actions}>{mode && <button className={toolStyles.secondary} onClick={() => setMode(null)}>كل الأدوات</button>}<Link className={toolStyles.secondary} href="/dashboard">العودة إلى لوحة الطالب</Link></div></header>
-    {!mode ? <StudyToolCards includeChat onSelect={setMode}/> : mode !== "chat" ? <StudyFileTools key={mode} action={mode} onBack={() => setMode(null)}/> : null}
+    {!mode ? <StudyToolCards includeChat onSelect={setMode}/> : mode !== "chat" ? <StudyFileTools key={`${props.userId}:${mode}`} storageScope={`${props.userId}:workspace`} action={mode} onBack={() => setMode(null)}/> : null}
   </section>{mode === "chat" && <ConversationWorkspace {...props}/>}</div>;
 }

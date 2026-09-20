@@ -1,7 +1,9 @@
+import { controlStudyJob, type StudyJobControl } from "@/lib/study-job-control";
+import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiFileJobs, aiFiles } from "@/db/schema";
-import { checkRateLimit, getSessionUser } from "@/lib/auth";
+import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { jsonError } from "@/lib/api";
 import { aiError, aiJson } from "@/lib/ai-api";
 import { studyReadAccess } from "@/lib/study-output-access";
@@ -19,5 +21,19 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   if (!row) return jsonError("الطلب غير موجود", 404);
   try {
     return aiJson({ ok: true, job: fileJobPayload(row.job) }, { headers: { "retry-after": "5" } });
+  } catch (error) { return aiError(error); }
+}
+
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
+  const user = await getSessionUser(request);
+  if (!user) return jsonError("سجّل الدخول لإدارة الطلب", 401);
+  if (!await checkRateLimit("ai-job-control", `user:${user.id}`, 30, 60)) return jsonError("طلبات تحكم كثيرة. حاول بعد قليل.", 429);
+  let body: Record<string, unknown>;
+  try { body = await readBoundedJsonObject(request, 1024); } catch { return jsonError("بيانات التحكم غير صالحة أو كبيرة جدًا"); }
+  if (!["pause", "resume", "cancel"].includes(String(body.action)) || Object.keys(body).some(key=>key!=="action")) return jsonError("اختر إيقافًا مؤقتًا أو استئنافًا أو إلغاءً");
+  try {
+    const job = await controlStudyJob({ id: (await params).id, user, client: isNativeAppRequest(request) ? "app" : "web", action: body.action as StudyJobControl });
+    return aiJson({ ok: true, job: fileJobPayload(job) });
   } catch (error) { return aiError(error); }
 }

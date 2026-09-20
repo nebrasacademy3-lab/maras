@@ -53,6 +53,8 @@ jobs:
         run: npm run lint
       - name: Build production web
         run: npm run build
+      - name: Install bounded PDF source tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils util-linux
       - name: Run contracts and smoke tests
         run: |
           set +e
@@ -141,6 +143,7 @@ jobs:
             .data/qa-gemini-refresh-report.json
             .data/qa-study-output-access-report.json
             .data/qa-study-upload-report.json
+            .data/qa-study-processing-report.json
             .data/qa-study-pdf-report.json
             .data/study-pdf/bilingual-science.pdf
             .data/study-pdf/page-*.png

@@ -316,6 +316,13 @@
       "when": 1789862400000,
       "tag": "0044_study_resumable_uploads",
       "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1789862400001,
+      "tag": "0045_study_processing_checkpoints",
+      "breakpoints": true
     }
   ]
 }

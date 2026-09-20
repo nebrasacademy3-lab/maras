@@ -24,6 +24,7 @@ await run(["--import", "./scripts/ai-worker-runtime.mjs", "--require", "./script
 await run(["scripts/qa-seed.mjs"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-upload.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-tools.ts"]);
+await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-processing.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-output-access.ts"]);
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-study-pdf.ts"], { ...env, STUDY_PDF_CHROMIUM_PATH: chromium.executablePath() });
 await run(["--import", "./scripts/ai-worker-runtime.mjs", "--import", "tsx", "scripts/qa-platform-security.ts"]);

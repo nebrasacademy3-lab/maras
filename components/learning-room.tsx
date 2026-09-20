@@ -40,7 +40,7 @@ function resourceTypeLabel(contentType: string) {
   return "ملف";
 }
 
-export function LearningRoom({ course, studentLabel }: { course: Course; studentLabel: string }) {
+export function LearningRoom({ course, studentLabel, userId }: { course: Course; studentLabel: string; userId: number }) {
   const allLessons = useMemo(() => course.units.flatMap((unit) => unit.lessons), [course]);
   const [activeLesson, setActiveLesson] = useState(allLessons[0]);
   const [completed, setCompleted] = useState(() => new Set<string>());
@@ -267,7 +267,7 @@ export function LearningRoom({ course, studentLabel }: { course: Course; student
         <div className="lesson-toolbar"><div><span>الوحدة {course.units.findIndex((unit) => unit.lessons.some((lesson) => lesson.id === activeLesson.id)) + 1}{watched[activeLesson.id] > 5 && !completed.has(activeLesson.id) ? ` · توقفت عند ${formatNoteTime(watched[activeLesson.id])}` : ""}</span><h1>{activeLesson.title}</h1></div><button onClick={markCompleted} disabled={!progressLoaded} className={completed.has(activeLesson.id) ? "completed" : ""}>{completed.has(activeLesson.id) ? <CheckCircle2 size={18} /> : <span />}{completed.has(activeLesson.id) ? "مكتمل" : "تحديد كمكتمل"}</button></div>
         {completionMessage && <p className="notes-feedback">{completionMessage}</p>}
         <div className="lesson-navigation"><button disabled={currentIndex === 0} onClick={() => go(-1)}><ChevronRight size={17} /><span><small>السابق</small><strong>{allLessons[currentIndex - 1]?.title || "—"}</strong></span></button><button disabled={currentIndex === allLessons.length - 1} onClick={() => go(1)}><span><small>التالي</small><strong>{allLessons[currentIndex + 1]?.title || "—"}</strong></span><ChevronLeft size={17} /></button></div>
-        <LessonStudyTools key={activeLesson.id} courseSlug={course.slug} lessonId={activeLesson.id}/>
+        <LessonStudyTools key={`${userId}:${activeLesson.id}`} userId={userId} courseSlug={course.slug} lessonId={activeLesson.id}/>
         <div className="lesson-tabs">
           <button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}><BookOpen size={16} /> نظرة عامة</button>
           <button className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}><NotebookPen size={16} /> ملاحظاتي</button>
