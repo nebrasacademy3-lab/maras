@@ -21,7 +21,8 @@ const documents = await isolated("../lib/study-document.ts", { ...archive, posix
 const exportDocument = await isolated("../lib/study-export.ts", archive);
 const generation = await isolated("../lib/ai-generation.ts", { AiPlatformError, ...documents });
 const identifiers = await isolated("../lib/public-identifiers.ts", { asciiSlug: value => value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") });
-const cache = await isolated("../lib/ai-file-actions.ts", { createHash });
+const summaryPolicy = await isolated("../lib/study-summary-policy.ts");
+const cache = await isolated("../lib/ai-file-actions.ts", { createHash, ...summaryPolicy });
 const docx = main => archive.createDocumentArchive({ "[Content_Types].xml": '<Types><Override ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>', "word/document.xml": `<w:document><w:body>${main}</w:body></w:document>` });
 const slide = text => `<p:sld><a:p><a:r><a:t>${text}</a:t></a:r></a:p></p:sld>`;
 const pptx = (one, two) => archive.createDocumentArchive({
@@ -77,10 +78,11 @@ test("quiz validation requires the exact count, distinct questions and choices a
   }
   assert.deepEqual(Object.keys(generation.publicQuizQuestion(parsed.questions[0])).sort(), ["choices", "id", "question", "type"]);
 });
-test("cache keys are source/version/user scoped, configuration-aware and ignore irrelevant summary options", () => {
+test("cache keys include summary language, ignore unrelated options and retain source/version/user isolation", () => {
   const input = { scope: "user:1:file:2", version: "sha", name: "lecture.pdf", action: "summary", options: { language: "ar", targetLanguage: "ar", questionCount: 5 }, config: { model: "gemini-test", instructions: "", maxOutputTokens: 4096, temperature: 0.1 } };
   const key = cache.fileActionCacheKey(input);
-  assert.equal(key, cache.fileActionCacheKey({ ...input, options: { language: "en", targetLanguage: "en", questionCount: 20 } }));
+  assert.notEqual(key, cache.fileActionCacheKey({ ...input, options: { language: "en", targetLanguage: "en", questionCount: 20 } }));
+  assert.equal(key, cache.fileActionCacheKey({ ...input, options: { language: "العربية", targetLanguage: "en", questionCount: 20 } }));
   assert.notEqual(key, cache.fileActionCacheKey({ ...input, scope: "user:3:file:2" }));
   assert.notEqual(key, cache.fileActionCacheKey({ ...input, version: "changed" }));
   assert.notEqual(key, cache.fileActionCacheKey({ ...input, config: { ...input.config, instructions: "changed" } }));

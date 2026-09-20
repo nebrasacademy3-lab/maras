@@ -108,7 +108,7 @@ test("malformed provider responses and thought-only/safety/token-limit outputs p
     await assert.rejects(p.requestGemini({ apiKey: modern, model: model.name }), error => error.code === "AI_PROVIDER_INVALID_RESPONSE" && !error.message.includes(modern));
   }
   const p = await provider(async () => Response.json({ error: { message: modern } }, { status: 403 }));
-  assert.equal(p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "hidden", thought: true }, { text: "final" }] } }] }).text, "final");
+  assert.equal(p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "hidden", thought: true }, { text: "final" }] }, finishReason: "STOP" }] }).text, "final");
   for (const [payload, code] of [[{ promptFeedback: { blockReason: "SAFETY" } }, "AI_CONTENT_BLOCKED"], [{ candidates: [{ finishReason: "MAX_TOKENS" }] }, "AI_OUTPUT_TOKEN_LIMIT"], [{ candidates: [{ content: { parts: [{ thought: true, text: "reasoning" }] } }] }, "AI_EMPTY_RESPONSE"]]) assert.throws(() => p.geminiTextResponse(payload), error => error.code === code);
 });
 
@@ -177,4 +177,12 @@ test("429 respects a project-wide cooldown and never rotates through more keys",
 test("a truncated token-limit response is rejected even when text is present", async () => {
   const p = await provider(async () => Response.json(answer));
   assert.throws(() => p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "incomplete translation" }] }, finishReason: "MAX_TOKENS" }] }), error => error.code === "AI_OUTPUT_TOKEN_LIMIT");
+});
+
+test("non-streaming candidates must confirm STOP; incomplete, unsupported and safety responses never publish their partial text", async () => {
+  const p = await provider(async () => Response.json(answer));
+  for (const finishReason of [undefined, null, "", "OTHER", "LANGUAGE", "FINISH_REASON_UNSPECIFIED", "MALFORMED_FUNCTION_CALL", "NEW_UNKNOWN_REASON"]) {
+    assert.throws(() => p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "plausible partial explanation" }] }, finishReason }] }), error => error.code === "AI_OUTPUT_INCOMPLETE");
+  }
+  assert.throws(() => p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "partial" }] }, finishReason: "IMAGE_SAFETY" }] }), error => error.code === "AI_CONTENT_BLOCKED");
 });

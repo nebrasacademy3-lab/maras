@@ -91,9 +91,12 @@ export function geminiTextResponse(payload: Record<string, unknown>) {
   const text = parts.flatMap(part => part && typeof part === "object" && part.thought !== true && typeof part.text === "string" ? [part.text] : []).join("\n").trim();
   const finishReason = typeof first.finishReason === "string" ? first.finishReason : null;
   const feedback = payload.promptFeedback && typeof payload.promptFeedback === "object" ? payload.promptFeedback as Record<string, unknown> : {};
-  if (feedback.blockReason || ["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"].includes(finishReason || "")) throw new GeminiProviderError(422, "AI_CONTENT_BLOCKED");
+  if (feedback.blockReason || ["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY"].includes(finishReason || "")) throw new GeminiProviderError(422, "AI_CONTENT_BLOCKED");
   if (finishReason === "MAX_TOKENS") throw new GeminiProviderError(422, "AI_OUTPUT_TOKEN_LIMIT");
-  if (!text) throw new GeminiProviderError(422, finishReason === "MAX_TOKENS" ? "AI_OUTPUT_TOKEN_LIMIT" : "AI_EMPTY_RESPONSE");
+  if (!text) throw new GeminiProviderError(422, "AI_EMPTY_RESPONSE");
+  // generateContent is non-streaming here: only STOP proves a complete candidate.
+  // A valid JSON envelope with OTHER/unknown/no reason is not a finished answer.
+  if (finishReason !== "STOP") throw new GeminiProviderError(422, "AI_OUTPUT_INCOMPLETE");
   return { text, finishReason };
 }
 

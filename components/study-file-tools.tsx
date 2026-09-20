@@ -1,4 +1,5 @@
 "use client";
+import { SUMMARY_LANGUAGES, SUMMARY_DETAILS } from "@/lib/study-summary-policy";
 import { StudyArtifactDownload } from "./study-artifact-download";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { BookOpenCheck, BrainCircuit, FileUp, Languages, LoaderCircle, MessageCircle, Sparkles } from "lucide-react";
@@ -29,6 +30,7 @@ export function StudyFileTools({ action, resources, storageScope = "workspace", 
   const [file, setFile] = useState<AiFilePayload | null>(null);
   const [resourceId, setResourceId] = useState(resources?.[0]?.id || 0);
   const [language, setLanguage] = useState("العربية");
+  const [summaryDetail, setSummaryDetail] = useState("balanced");
   const [questionCount, setQuestionCount] = useState(10);
   const [result, setResult] = useState<StudyActionResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -76,7 +78,7 @@ export function StudyFileTools({ action, resources, storageScope = "workspace", 
         source = response.file;
       }
       if (!source) throw new Error("اختر ملفًا أولًا.");
-      const value = await requestStudyAction<StudyActionResult>(source.id, { action, targetLanguage: language, language, questionCount }, { signal: abort.signal, onStatus: setPhase, onJob: id => { rememberedJob(storageKey, id); setPendingId(id); } });
+      const value = await requestStudyAction<StudyActionResult>(source.id, { action, targetLanguage: language, language, questionCount, summaryDetail }, { signal: abort.signal, onStatus: setPhase, onJob: id => { rememberedJob(storageKey, id); setPendingId(id); } });
       setResult(value); rememberedJob(storageKey, null); setPendingId(null);
     } catch (reason) { if (reason instanceof StudyRequestError && reason.terminal) { rememberedJob(storageKey, null); setPendingId(null); } if (!abort.signal.aborted) setError(reason instanceof Error ? reason.message : "تعذر إكمال المعالجة"); }
     finally { if (!abort.signal.aborted) setBusy(false); }
@@ -85,6 +87,7 @@ export function StudyFileTools({ action, resources, storageScope = "workspace", 
     <header className={styles.panelHeader}><div><span className={styles.eyebrow}><Sparkles size={15}/> أدوات مراس</span><h2>{names[action]}</h2></div>{onBack && <button type="button" className={styles.secondary} onClick={onBack}>كل الأدوات</button>}</header>
     <div className={styles.formGrid}>
       {resources ? <label className={styles.field}>ملف الدرس<select value={resourceId} disabled={busy} onChange={event => { setResourceId(Number(event.target.value)); setResult(null); }}>{resources.map(resource => <option key={resource.id} value={resource.id}>{resource.title}{!resource.lessonId ? " · مشترك" : ""}</option>)}</select><small>يُستخدم الملف المعتمد من الإدارة دون إعادة رفعه.</small></label> : <div><input hidden ref={input} type="file" accept=".pdf,.docx,.pptx,.txt,.md,.png,.jpg,.jpeg" onChange={event => void upload(event.target.files?.[0])}/><button type="button" className={styles.upload} disabled={busy} onClick={() => input.current?.click()}><FileUp size={28}/><span><b>{file?.originalName || "اختر ملف المحاضرة"}</b><small>PDF · Word · PowerPoint · نصوص · صور</small></span></button>{file && <p className={styles.hint}>{(file.sizeBytes / 1024 / 1024).toFixed(1)} م.ب · {file.scanStatus === "clean" ? "اجتاز الفحص الأمني" : "يخضع للفحص الأمني قبل المعالجة"}</p>}</div>}
+      {action === "summary" && <><label className={styles.field}>لغة الملخص<select value={language === "العربية" ? "ar" : language} disabled={busy} onChange={event => setLanguage(event.target.value)}>{SUMMARY_LANGUAGES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className={styles.field}>مستوى التفصيل<select value={summaryDetail} disabled={busy} onChange={event => setSummaryDetail(event.target.value)}>{SUMMARY_DETAILS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select><small>تغيير التفصيل لا يستبعد محاور المصدر أو الحقائق الحاسمة.</small></label></>}
       {action !== "summary" && <label className={styles.field}>{action === "quiz" ? "لغة الاختبار" : "اللغة المطلوبة"}<input value={language} maxLength={60} disabled={busy} onChange={event => setLanguage(event.target.value)}/></label>}
       {action === "quiz" && <label className={styles.field}>عدد الأسئلة<select value={questionCount} disabled={busy} onChange={event => setQuestionCount(Number(event.target.value))}>{[5, 10, 15, 20].map(count => <option key={count} value={count}>{count} أسئلة</option>)}</select></label>}
     </div>

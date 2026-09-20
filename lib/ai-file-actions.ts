@@ -1,3 +1,4 @@
+import { summaryOptions } from "@/lib/study-summary-policy";
 import "server-only";
 import { createHash } from "node:crypto";
 import { and, eq, gt, sql } from "drizzle-orm";
@@ -14,11 +15,11 @@ import { GeminiProviderError } from "@/lib/gemini-errors";
 import { DocumentFormatError } from "@/lib/document-archive";
 
 export type FileAction = "summary" | "translation" | "quiz";
-export type FileActionOptions = { language: string; targetLanguage: string; questionCount: number };
+export type FileActionOptions = { language: string; targetLanguage: string; questionCount: number; summaryDetail?: string };
 export function fileActionOptions(input: Record<string, unknown>): FileActionOptions {
   const language = (value: unknown) => typeof value === "string" ? value.replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 60) || "العربية" : "العربية";
   const count = Number(input.questionCount);
-  return { language: language(input.language), targetLanguage: language(input.targetLanguage), questionCount: Number.isFinite(count) ? Math.max(5, Math.min(20, Math.floor(count))) : 10 };
+  return { language: language(input.language), targetLanguage: language(input.targetLanguage), questionCount: Number.isFinite(count) ? Math.max(5, Math.min(20, Math.floor(count))) : 10, summaryDetail: typeof input.summaryDetail === "string" ? input.summaryDetail : "balanced" };
 }
 
 type Generation = { kind: "quiz"; title: string; questions: StoredQuizQuestion[]; language: string; model: string } | { kind: "summary" | "translation"; title: string; text: string; model: string };
@@ -26,8 +27,8 @@ type Generation = { kind: "quiz"; title: string; questions: StoredQuizQuestion[]
 export function fileActionCacheKey(input: { scope: string; version: string; name: string; action: FileAction; options: FileActionOptions; config: { model: string; instructions: string; maxOutputTokens: number; temperature: number } }) {
   // User uploads NEVER share a cache namespace with another user. Official sources may share after authorization.
   const language = (value: string) => /^(?:ar|arabic|العربية)$/i.test(value.trim()) ? "ar" : /^(?:en|english|الإنجليزية|الانجليزية)$/i.test(value.trim()) ? "en" : value.trim().toLowerCase();
-  const options = input.action === "summary" ? {} : input.action === "translation" ? { targetLanguage: language(input.options.targetLanguage) } : { language: language(input.options.language), questionCount: input.options.questionCount };
-  return createHash("sha256").update(JSON.stringify({ v: 3, ...input, options })).digest("hex");
+  const options = input.action === "summary" ? summaryOptions(input.options.language, input.options.summaryDetail) : input.action === "translation" ? { targetLanguage: language(input.options.targetLanguage) } : { language: language(input.options.language), questionCount: input.options.questionCount };
+  return createHash("sha256").update(JSON.stringify({ v: 4, ...input, options })).digest("hex");
 }
 
 export async function runAiFileAction(input: {
@@ -36,6 +37,10 @@ export async function runAiFileAction(input: {
   job?: { id: string; owner: string };
 }) {
   const { user, action, options } = input;
+  if (action === "summary") {
+    try { summaryOptions(options.language, options.summaryDetail); }
+    catch { throw new AiPlatformError("AI_SUMMARY_OPTIONS_INVALID", "اختر لغة الملخص ومستوى التفصيل من الخيارات المتاحة.", 422); }
+  }
   const [file] = await getDb().select().from(aiFiles).where(and(eq(aiFiles.id, input.fileId), eq(aiFiles.userId, user.id))).limit(1);
   if (!file) throw new AiPlatformError("AI_FILE_MISSING", "الملف غير موجود.", 404);
   const [conversation] = await getDb().select({ id: aiConversations.id }).from(aiConversations).where(and(eq(aiConversations.id, input.conversationId), eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"))).limit(1);
@@ -77,7 +82,7 @@ export async function runAiFileAction(input: {
           generation = { kind: "quiz", title: generated.quiz.title, questions: generated.quiz.questions, language: options.language, model: generated.result.model };
           await finishAiUsage({ eventId: reservation.eventId, status: "succeeded", ...generated.result });
         } else {
-          const generated = await generateFileArtifact({ action, config, bytes, contentType: source.contentType, originalName: source.originalName, targetLanguage: options.targetLanguage });
+          const generated = await generateFileArtifact({ action, config, bytes, contentType: source.contentType, originalName: source.originalName, targetLanguage: options.targetLanguage, language: options.language, summaryDetail: options.summaryDetail });
           generation = { kind: action, title: (action === "summary" ? `ملخص ${source.originalName}` : `ترجمة ${source.originalName} إلى ${options.targetLanguage}`).slice(0, 180), text: generated.text, model: generated.model };
           await finishAiUsage({ eventId: reservation.eventId, status: "succeeded", ...generated });
         }
@@ -115,7 +120,7 @@ export async function runAiFileAction(input: {
       const [message] = await tx.insert(aiMessages).values({ conversationId: conversation.id, userId: user.id, role: "assistant", service: "quiz", content: `اختبار «${value.title}» من ${value.questions.length} أسئلة جاهز. يمكنك إعادته دون توليد جديد.`, fileId: file.id, model: value.model, usageJson: JSON.stringify({ quizId: quiz.id, cached: reused }), createdAt: now }).returning();
       result = { ok: true, action, quiz: quizPayload(quiz), message: messagePayload(message), usage, cached: reused, deepLink: aiDeepLinks({ conversationId: conversation.id, quizId: quiz.id }).quiz };
     } else {
-      const [artifact] = await tx.insert(aiArtifacts).values({ userId: user.id, conversationId: conversation.id, fileId: file.id, kind: value.kind, title: value.title, content: value.text, metadataJson: JSON.stringify({ targetLanguage: options.targetLanguage, cached: reused }), model: value.model, createdAt: now }).returning();
+      const [artifact] = await tx.insert(aiArtifacts).values({ userId: user.id, conversationId: conversation.id, fileId: file.id, kind: value.kind, title: value.title, content: value.text, metadataJson: JSON.stringify({ targetLanguage: options.targetLanguage, ...(value.kind === "summary" ? { summary: summaryOptions(options.language, options.summaryDetail) } : {}), cached: reused }), model: value.model, createdAt: now }).returning();
       const [message] = await tx.insert(aiMessages).values({ conversationId: conversation.id, userId: user.id, role: "assistant", service: action, content: value.text, fileId: file.id, model: value.model, usageJson: JSON.stringify({ artifactId: artifact.id, cached: reused }), createdAt: now }).returning();
       result = { ok: true, action, artifact: artifactPayload(artifact), message: messagePayload(message), usage, cached: reused, deepLink: aiDeepLinks({ conversationId: conversation.id }).conversation };
     }
