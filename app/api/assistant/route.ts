@@ -1,5 +1,5 @@
 import { detectAssistantLanguage, resolveAssistantQuestion } from "@/lib/assistant-search";
-import { answerWithOpenAI } from "@/lib/assistant-ai";
+import { answerWithGemini } from "@/lib/assistant-ai";
 import { answerAssistant, detectAssistantIntent } from "@/lib/assistant-knowledge";
 import { buildAssistantContext, getAssistantLiveCatalog } from "@/lib/assistant-context";
 import { cleanText, jsonError } from "@/lib/api";
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   let reply = null;
   try {
     const context = await buildAssistantContext(user, settings, resolvedQuestion, catalog);
-    reply = await answerWithOpenAI({ question, history, user, settings, context, intent });
+    reply = await answerWithGemini({ question, history, user, settings, context, intent });
   } catch { /* The deterministic guide below keeps the assistant available. */ }
   return Response.json(reply || answerAssistant(resolvedQuestion, user, settings, catalog, detectAssistantLanguage(question)), { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }

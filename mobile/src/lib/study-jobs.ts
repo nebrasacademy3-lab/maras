@@ -1,9 +1,10 @@
+import { normalizeStudyProgress, type StudyProgress } from "@/src/lib/study-progress";
 import * as Crypto from "expo-crypto";
 import * as SecureStore from "expo-secure-store";
 import { AppState, Platform } from "react-native";
 import { api, ApiError, jsonBody } from "@/src/lib/api";
 
-export type StudyJob<T> = { id: string; status: string; result?: T; error?: string; code?: string };
+export type StudyJob<T> = { id: string; status: string; result?: T; error?: string; code?: string; progress?: unknown; supportsControl?: boolean };
 export class StudyJobError extends Error { constructor(message: string, readonly terminal = false) { super(message); } }
 export async function savedStudyJob(scope: string, value?: string | null) {
   const key = `meras.study.${scope.replace(/[^a-zA-Z0-9_.-]/g, "_")}`;
@@ -28,13 +29,15 @@ function wait(ms: number, signal: AbortSignal) {
     signal.addEventListener("abort", abort, { once: true });
   });
 }
-export async function observeStudyJob<T>(initial: StudyJob<T>, signal: AbortSignal, onStatus: (phase: string) => void): Promise<T> {
+export async function observeStudyJob<T>(initial: StudyJob<T>, signal: AbortSignal, onStatus: (phase: string) => void, onProgress?: (progress: StudyProgress | null) => void): Promise<T> {
   let job = initial, failures = 0;
   const started = Date.now();
   while (!signal.aborted) {
     onStatus(job.status);
+    onProgress?.(normalizeStudyProgress(job.progress,job.status));
     if (job.status === "succeeded" && job.result) return job.result;
-    if (job.status === "failed") throw new StudyJobError(job.error || "تعذر إكمال المعالجة.", true);
+    if (job.status === "paused") throw new StudyJobError("الطلب متوقف مؤقتًا. استأنفه من الزر أدناه لإكمال الأجزاء المتبقية.");
+    if (job.status === "failed" || job.status === "cancelled") throw new StudyJobError(job.error || "تعذر إكمال المعالجة.", true);
     if (Date.now() - started > 31 * 60_000) throw new StudyJobError("توقفت المتابعة. أعد فتح الأداة لمتابعة الطلب المحفوظ.");
     await wait(AppState.currentState === "background" ? 30_000 : 5000 + Math.min(failures * 3000, 15_000), signal);
     try {
@@ -50,9 +53,14 @@ export async function observeStudyJob<T>(initial: StudyJob<T>, signal: AbortSign
   }
   throw new StudyJobError("توقفت متابعة الطلب");
 }
-export async function requestStudyAction<T>(fileId: number, payload: Record<string, unknown>, options: { signal: AbortSignal; onJob: (id: string) => Promise<unknown>; onStatus: (phase: string) => void }) {
+export async function requestStudyAction<T>(fileId: number, payload: Record<string, unknown>, options: { signal: AbortSignal; onJob: (id: string) => Promise<unknown>; onStatus: (phase: string) => void; onProgress?: (progress: StudyProgress | null) => void }) {
   const response = await api<{ job: StudyJob<T> }>(`/api/ai/files/${fileId}/actions`, { method: "POST", body: jsonBody({ ...payload, async: true, requestId: payload.requestId || Crypto.randomUUID() }), signal: options.signal });
   if (!response.job?.id) throw new StudyJobError("لم يُرجع الخادم معرّف الطلب.");
+  if (options.signal.aborted) throw new StudyJobError("توقفت متابعة الطلب");
   await options.onJob(response.job.id);
-  return observeStudyJob(response.job, options.signal, options.onStatus);
+  return observeStudyJob(response.job, options.signal, options.onStatus, options.onProgress);
+}
+
+export async function controlStudyJob<T>(id: string, action: "pause" | "resume" | "cancel", signal?: AbortSignal) {
+  return api<{job: StudyJob<T>}>(`/api/ai/jobs/${encodeURIComponent(id)}`, {method:"PATCH",body:jsonBody({action}),signal});
 }

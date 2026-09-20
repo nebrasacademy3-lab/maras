@@ -48,18 +48,9 @@ test("student profile renders every 360 section and safely encodes its API reque
   assert.match(component, /className=\{styles\.ltr\}/);
 });
 
-test("admin dashboard links students and the two administration centers", async () => {
-  const [dashboard, premiumCss] = await Promise.all([
-    read("components/admin-dashboard.tsx"),
-    read("app/admin-premium.css"),
-  ]);
+test("admin dashboard student links and a single capability-scoped administration shell remain connected", async () => {
+  const [dashboard,navigation,shell]=await Promise.all([read("components/admin-dashboard.tsx"),read("lib/admin-navigation.ts"),read("components/admin-shell.tsx")]);
   assert.match(dashboard, /href=\{`\/admin\/students\/\$\{encodeURIComponent\(row\.email\)\}`\}>ملف 360/);
-  assert.ok(dashboard.includes("/admin/finance"));
-  assert.ok(dashboard.includes("/admin/operations"));
-  const centers = await read("components/admin-center-nav.tsx");
-  assert.match(centers, /المركز المالي/);
-  assert.match(centers, /التشغيل والتحليلات/);
-  assert.match(dashboard, /canVisit\(center.href\)/);
-  assert.match(premiumCss, /\.student-profile-link/);
-  assert.match(premiumCss, /\.admin-center-links/);
+  assert.match(navigation,/\/admin\/finance/);assert.match(navigation,/\/admin\/operations/);
+  assert.match(shell,/visibleAdminNavigation/);assert.doesNotMatch(dashboard,/<AdminCenterNav|ADMIN_CENTERS\.map/);
 });

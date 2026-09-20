@@ -76,5 +76,6 @@ export async function GET(request: Request, context: RouteContext) {
 
 export async function HEAD(request: Request, context: RouteContext) {
   const response = await GET(request, context);
+  await response.body?.cancel();
   return new Response(null, { status: response.status, statusText: response.statusText, headers: response.headers });
 }

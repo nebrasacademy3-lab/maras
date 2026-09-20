@@ -1,7 +1,7 @@
 import { normalizeGeminiModel } from "@/lib/gemini-config";
 import { and, count, eq, gt, gte, inArray, isNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiEntitlements, aiServiceSettings, aiUsageEvents, courseAccess, platformSettings, userRewards } from "@/db/schema";
+import { aiEntitlements, aiServiceSettings, aiUsageEvents, aiFileJobs, courseAccess, platformSettings, userRewards } from "@/db/schema";
 import { activeUserAccessWhere } from "@/lib/course-access";
 import { AI_SERVICES, type AiEntitlementStatus, type AiService, type AiUsageStatus } from "@/lib/ai-contracts";
 
@@ -108,7 +108,7 @@ export async function getAiEntitlement(user: { id: number; email: string }): Pro
       lte(userRewards.issuedAt, now),
       or(isNull(userRewards.expiresAt), gt(userRewards.expiresAt, now)),
     )).limit(20).catch(() => []),
-    getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeUserAccessWhere(user.email, now)).limit(1).catch(() => []),
+    getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeUserAccessWhere(user.id, now)).limit(1).catch(() => []),
   ]);
   if (entitlementRows.length) {
     const chosen = entitlementRows.sort((left, right) => {
@@ -134,15 +134,15 @@ export function aiPeriod(now = new Date()) {
   return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
-function periodStartIso(now = new Date()) {
+export function periodStartIso(now = new Date()) {
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
 }
 
-function billableUsageState() {
+export function billableUsageState() {
   const processingLease = new Date(Date.now() - 15 * 60_000).toISOString();
   return or(
     inArray(aiUsageEvents.status, ["succeeded", "billable_failed"]),
-    and(eq(aiUsageEvents.status, "processing"), gte(aiUsageEvents.createdAt, processingLease)),
+    and(eq(aiUsageEvents.status, "processing"), or(gte(aiUsageEvents.createdAt, processingLease), sql`EXISTS (SELECT 1 FROM ai_file_jobs durable_job WHERE durable_job.usage_event_id=${aiUsageEvents.id} AND durable_job.processing_version=2 AND durable_job.status IN ('queued','processing','paused') AND durable_job.created_at::timestamptz > clock_timestamp() - interval '7 days')`)),
   );
 }
 
@@ -173,6 +173,7 @@ export async function beginAiUsage(input: {
   service: AiService;
   conversationId?: number | null;
   fileId?: number | null;
+  job?: { id: string; owner: string };
 }) {
   const { entitlement, settings } = await getAiUsageStatuses(input.user);
   const config = settings[input.service];
@@ -182,8 +183,24 @@ export async function beginAiUsage(input: {
   const now = new Date().toISOString();
   const created = await getDb().transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`meras-ai:${input.user.id}:${input.service}:${aiPeriod()}`}))`);
-    const [duplicate] = await tx.select({ id: aiUsageEvents.id, status: aiUsageEvents.status }).from(aiUsageEvents).where(eq(aiUsageEvents.requestId, input.requestId)).limit(1);
-    if (duplicate) throw new AiPlatformError("AI_DUPLICATE_REQUEST", "تم استلام هذا الطلب مسبقًا.", 409);
+    let checkpointJob: typeof aiFileJobs.$inferSelect | undefined;
+    if (input.job) {
+      const [row] = await tx.select().from(aiFileJobs).where(and(eq(aiFileJobs.id, input.job.id), eq(aiFileJobs.leaseOwner, input.job.owner), eq(aiFileJobs.status, "processing"), sql`${aiFileJobs.leaseUntil}::timestamptz > clock_timestamp()`)).limit(1).for("update");
+      if (!row || row.processingVersion !== 2 || row.userId !== input.user.id || row.action !== input.service || row.fileId !== input.fileId || row.conversationId !== input.conversationId || input.requestId !== `study-job:${row.id}`) throw new AiPlatformError("AI_JOB_LEASE_LOST", "انتهت صلاحية عامل المعالجة؛ لم نكرر حجز الحصة.", 409);
+      checkpointJob = row;
+    }
+    const [duplicate] = await tx.select().from(aiUsageEvents).where(eq(aiUsageEvents.requestId, input.requestId)).limit(1);
+    if (duplicate) {
+      // Only a fenced continuation of this exact job may reuse its reservation.
+      // Synchronous/HTTP request deduplication retains its original rejection.
+      if (!checkpointJob || checkpointJob.usageEventId !== duplicate.id || duplicate.userId !== input.user.id || duplicate.service !== input.service || duplicate.fileId !== input.fileId || duplicate.conversationId !== input.conversationId || !["processing", "failed", "billable_failed"].includes(duplicate.status)) throw new AiPlatformError("AI_DUPLICATE_REQUEST", "تم استلام هذا الطلب مسبقًا.", 409);
+      const [current] = await tx.select({ used: count() }).from(aiUsageEvents).where(and(eq(aiUsageEvents.userId, input.user.id), eq(aiUsageEvents.service, input.service), gte(aiUsageEvents.createdAt, periodStartIso()), billableUsageState()));
+      const reactivating = duplicate.status === "failed" && duplicate.createdAt >= periodStartIso();
+      if (reactivating && Number(current?.used || 0) >= limit) throw new AiPlatformError("AI_LIMIT_REACHED", "استهلكت الحد المتاح لهذه الخدمة هذا الشهر؛ لم نحجز حصة إضافية للاستئناف.", 429);
+      if (duplicate.status !== "processing") await tx.update(aiUsageEvents).set({ status: "processing", errorCode: null }).where(eq(aiUsageEvents.id, duplicate.id));
+      return { eventId: duplicate.id, used: Number(current?.used || 0) + (reactivating ? 1 : 0) };
+    }
+    if (checkpointJob?.usageEventId) throw new AiPlatformError("AI_USAGE_RESERVATION_INVALID", "سجل الحصة يحتاج مراجعة؛ لم نحجز حصة ثانية.", 409);
     const [usage] = await tx.select({ used: count() }).from(aiUsageEvents).where(and(
       eq(aiUsageEvents.userId, input.user.id),
       eq(aiUsageEvents.service, input.service),
@@ -202,15 +219,17 @@ export async function beginAiUsage(input: {
       status: "processing",
       createdAt: now,
     }).returning({ id: aiUsageEvents.id });
+    if (checkpointJob) await tx.update(aiFileJobs).set({ usageEventId: event.id }).where(eq(aiFileJobs.id, checkpointJob.id));
     return { eventId: event.id, used: used + 1 };
   });
   return { ...created, config, entitlement, limit, remaining: Math.max(0, limit - created.used) };
 }
 
-export async function finishAiUsage(input: { eventId: number; status: "succeeded" | "failed"; billable?: boolean; keyId?: number | null; model?: string; inputTokens?: number; outputTokens?: number; errorCode?: string | null }) {
+export async function finishAiUsage(input: { eventId: number; status: "succeeded" | "failed"; billable?: boolean; keyId?: number | null; model?: string; inputTokens?: number; outputTokens?: number; providerTier?: "free" | "paid"; errorCode?: string | null }) {
   await getDb().update(aiUsageEvents).set({
     status: input.status === "failed" ? input.billable === false ? "failed" : "billable_failed" : "succeeded",
     keyId: input.keyId || null,
+    providerTier: input.providerTier || "free",
     model: input.model,
     inputTokens: boundedInteger(input.inputTokens, 0, 0, 100_000_000),
     outputTokens: boundedInteger(input.outputTokens, 0, 0, 100_000_000),

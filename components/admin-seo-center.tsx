@@ -2,7 +2,6 @@
 import { adminFetch } from "@/lib/admin-client";
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { AdminMfaNotice } from "@/components/admin-mfa-notice";
 import styles from "./admin-seo-center.module.css";
 
@@ -51,7 +50,7 @@ export function AdminSeoCenter({ adminName }: { adminName: string }) {
   };
   return <main className={styles.root}>
     <header className={styles.header}><div><Link href="/admin">إدارة مراس</Link><h1>الظهور في البحث والذكاء الاصطناعي</h1><p>{adminName}، راجع أهلية الصفحات وعناوينها وأوصافها من مكان واحد.</p></div><button className="button button-ghost" onClick={() => void load()} disabled={loading || busy}>تحديث التقرير</button></header>
-    <AdminCenterNav />
+
     {error && <p className={styles.error} role="alert">{error}</p>}{message && <p className={styles.message} role="status">{message}</p>}{stepUp && <AdminMfaNotice />}
     {report && <><section className={styles.stats} aria-label="حالة التهيئة">
       <article><span>صفحات عامة معروفة</span><strong>{report.publicTotal.toLocaleString("ar-SA")}</strong></article>

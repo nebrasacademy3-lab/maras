@@ -1,3 +1,4 @@
+import { supervisorScopeId, scopedStudentSql } from "@/lib/supervisor-data-scope";
 import { hasPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { readBoundedJsonObject } from "@/lib/request-body";
@@ -102,6 +103,7 @@ export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
   const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
+  const scopeId = manager ? await supervisorScopeId(current) : null;
   if (!current) return jsonError("سجّل الدخول أولًا للدعم", 401);
   if (!await checkRateLimit("support-write", `${current.id}:${clientIp(request)}`, 60, 60 * 60)) return jsonError("تم إرسال طلبات كثيرة. حاول لاحقًا.", 429);
   const db = getDb();
@@ -135,9 +137,9 @@ export async function POST(request: Request) {
   if (!Number.isSafeInteger(ticketId) || ticketId < 0) { await discardFiles(); return jsonError("معرّف التذكرة غير صالح"); }
   const body = cleanText(values.message ?? values.body, 4000);
   if (ticketId) {
-    const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+    const [ticket] = await db.select().from(supportTickets).where(and(eq(supportTickets.id, ticketId), scopedStudentSql(scopeId, supportTickets.userId, "id"))).limit(1);
     if (!ticket) { await discardFiles(); return jsonError("التذكرة غير موجودة", 404); }
-    if (!manager && ticket.userEmail !== current.email) { await discardFiles(); return jsonError("غير مصرح", 403); }
+    if (!manager && ticket.userId !== current.id) { await discardFiles(); return jsonError("غير مصرح", 403); }
     if (!body && !files.length) { await discardFiles(); return jsonError("اكتب رسالة أو أرفق ملفًا"); }
     const internal = manager && (values.internal === true || values.internal === "true");
     const requestedReplyToId = values.replyToId == null || values.replyToId === "" ? 0 : finiteNumber(values.replyToId);
@@ -171,8 +173,8 @@ export async function POST(request: Request) {
       const title = "رد جديد من دعم مراس";
       const text = body.slice(0, 240) || (files.some((file) => file.contentType.startsWith("audio/")) ? "أرسل فريق مراس رسالة صوتية" : "أُضيف مرفق جديد إلى تذكرتك");
       await createAndSendNotification({
-        values: { userEmail: ticket.userEmail, audience: "student", title, body: text, actionUrl: "/support", actionLabel: "فتح المحادثة" },
-        target: { userEmail: ticket.userEmail },
+        values: { targetUserId: ticket.userId, userEmail: null, audience: "student", title, body: text, actionUrl: "/support", actionLabel: "فتح المحادثة" },
+        target: { userId: ticket.userId! },
         data: { route: "/support", ticketId },
       });
     } else if (!manager) {
@@ -192,7 +194,7 @@ export async function POST(request: Request) {
   let ticket: { id: number; ticketNumber: string; status: string };
   try {
     ticket = await db.transaction(async (tx) => {
-      const [created] = await tx.insert(supportTickets).values({ ticketNumber, category, priority, title, message: body || "مرفق", contactChannel, userEmail: current.email, createdAt: now, updatedAt: now }).returning({ id: supportTickets.id, ticketNumber: supportTickets.ticketNumber, status: supportTickets.status });
+      const [created] = await tx.insert(supportTickets).values({ ticketNumber, category, priority, title, message: body || "مرفق", contactChannel, userId: current.id, userEmail: current.email, createdAt: now, updatedAt: now }).returning({ id: supportTickets.id, ticketNumber: supportTickets.ticketNumber, status: supportTickets.status });
       const [initialReply] = await tx.insert(supportReplies).values({ ticketId: created.id, authorEmail: current.email, authorRole: current.role, body, createdAt: now }).returning({ id: supportReplies.id });
       if (files.length) await tx.insert(supportReplyFiles).values(files.map((file) => ({ replyId: initialReply.id, ticketId: created.id, objectKey: file.objectKey, originalName: file.originalName, contentType: file.contentType, sizeBytes: file.sizeBytes, ...scanColumns(fileScans.get(file.objectKey)!), createdAt: now })));
       return created;
@@ -209,13 +211,14 @@ export async function POST(request: Request) {
 export async function GET(request: Request) {
   const current = await getSessionUser(request);
   const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
+  const scopeId = manager ? await supervisorScopeId(current) : null;
   if (!current && !isAdminRequest(request)) return jsonError("سجّل الدخول لمتابعة التذاكر", 401);
   const db = getDb();
 
   const tickets = manager
-    ? await db.select().from(supportTickets).orderBy(desc(supportTickets.updatedAt)).limit(300)
+    ? await db.select().from(supportTickets).where(scopedStudentSql(scopeId, supportTickets.userId, "id")).orderBy(desc(supportTickets.updatedAt)).limit(300)
     : current
-      ? await db.select().from(supportTickets).where(eq(supportTickets.userEmail, current.email)).orderBy(desc(supportTickets.updatedAt)).limit(100)
+      ? await db.select().from(supportTickets).where(eq(supportTickets.userId, current.id)).orderBy(desc(supportTickets.updatedAt)).limit(100)
       : [];
   const ids = tickets.map((ticket) => ticket.id);
   const replies = ids.length ? await db.select().from(supportReplies).where(manager
@@ -233,6 +236,7 @@ export async function DELETE(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
   const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
+  const scopeId = manager ? await supervisorScopeId(current) : null;
   if (!current || !manager || !await hasPermission(current, ADMIN_PERMISSIONS.RECORDS_DELETE)) return jsonError("غير مصرح بحذف التذاكر", 403);
   try { await requireAdminStepUp(request, current!); } catch (error) {
     if (error instanceof AdminMfaError) return jsonError(error.message, error.status, error.code);
@@ -245,7 +249,7 @@ export async function DELETE(request: Request) {
   const ticketId = finiteNumber(payload.ticketId);
   if (!Number.isSafeInteger(ticketId) || ticketId <= 0) return jsonError("معرّف التذكرة غير صالح");
   const db = getDb();
-  const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+  const [ticket] = await db.select().from(supportTickets).where(and(eq(supportTickets.id, ticketId), scopedStudentSql(scopeId, supportTickets.userId, "id"))).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
   const files = await db.select({ objectKey: supportReplyFiles.objectKey }).from(supportReplyFiles).where(eq(supportReplyFiles.ticketId, ticketId));
   await db.transaction(async (tx) => {
@@ -262,6 +266,7 @@ export async function PATCH(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const current = await getSessionUser(request);
   const manager = await hasPermission(current, ADMIN_PERMISSIONS.SUPPORT_MANAGE);
+  const scopeId = manager ? await supervisorScopeId(current) : null;
   if (!current) return jsonError("سجّل الدخول أولًا", 401);
   let payload: Record<string, unknown>;
   try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("بيانات غير صالحة"); }
@@ -269,11 +274,11 @@ export async function PATCH(request: Request) {
   const action = cleanText(payload.action, 20);
   if (!Number.isSafeInteger(ticketId) || ticketId <= 0 || !["reopen", "close", "rate"].includes(action)) return jsonError("إجراء التذكرة غير صالح");
   const db = getDb();
-  const [ticket] = await db.select().from(supportTickets).where(eq(supportTickets.id, ticketId)).limit(1);
+  const [ticket] = await db.select().from(supportTickets).where(and(eq(supportTickets.id, ticketId), scopedStudentSql(scopeId, supportTickets.userId, "id"))).limit(1);
   if (!ticket) return jsonError("التذكرة غير موجودة", 404);
-  if (!manager && ticket.userEmail !== current.email) return jsonError("غير مصرح", 403);
+  if (!manager && ticket.userId !== current.id) return jsonError("غير مصرح", 403);
   if (action === "rate") {
-    if (ticket.userEmail !== current.email || !["resolved", "closed"].includes(ticket.status)) return jsonError("يمكن تقييم تذكرة مغلقة تخص حسابك فقط", 403);
+    if (ticket.userId !== current.id || !["resolved", "closed"].includes(ticket.status)) return jsonError("يمكن تقييم تذكرة مغلقة تخص حسابك فقط", 403);
     const rating = finiteNumber(payload.rating);
     if (!Number.isInteger(rating) || rating < 1 || rating > 5) return jsonError("التقييم يجب أن يكون من 1 إلى 5");
     const comment = cleanText(payload.comment, 800) || null;
@@ -288,8 +293,8 @@ export async function PATCH(request: Request) {
     const title = status === "closed" ? "أُغلقت تذكرة الدعم" : "أُعيد فتح تذكرة الدعم";
     const body = `${ticket.ticketNumber}: ${status === "closed" ? "تم إنهاء المحادثة ويمكنك إعادة فتحها عند الحاجة." : "أصبحت المحادثة مفتوحة من جديد."}`;
     await createAndSendNotification({
-      values: { userEmail: ticket.userEmail, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة" },
-      target: { userEmail: ticket.userEmail },
+      values: { targetUserId: ticket.userId, userEmail: null, audience: "student", title, body, actionUrl: "/support", actionLabel: "فتح المحادثة" },
+      target: { userId: ticket.userId! },
       data: { route: "/support", ticketId },
     });
   }

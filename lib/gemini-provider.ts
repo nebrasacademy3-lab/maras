@@ -1,4 +1,5 @@
 import "server-only";
+import { reserveGeminiProject, dispatchGeminiProject, settleGeminiProject } from "@/lib/gemini-project-admission";
 import { AiPlatformError } from "@/lib/ai-platform";
 import { validGeminiApiKey } from "@/lib/ai-keys";
 import { geminiModelOption, normalizeGeminiModel, type GeminiModelOption } from "@/lib/gemini-config";
@@ -35,24 +36,50 @@ export async function requestGemini(input: { apiKey: string; model?: string; pag
   if (!model) { url.searchParams.set("pageSize", "1000"); if (input.pageToken) url.searchParams.set("pageToken", input.pageToken); }
   const timeoutMs = Math.max(1_000, Math.min(120_000, input.timeoutMs || 20_000));
   const signal = AbortSignal.timeout(timeoutMs);
-  let response: Response;
+  // Snapshot once: counting and generation must see exactly the same input,
+  // even if a caller mutates its object while admission awaits PostgreSQL.
+  const generation = input.generation ? JSON.parse(JSON.stringify(input.generation)) as Record<string, unknown> : undefined;
+  if (generation && Object.keys(generation).some(k => !["contents", "systemInstruction", "generationConfig", "safetySettings"].includes(k))) throw new AiPlatformError("AI_GENERATION_UNSUPPORTED", "خصائص طلب التوليد غير معتمدة.", 422);
+  const config = generation?.generationConfig as Record<string, unknown> | undefined;
+  const reservation = generation ? await reserveGeminiProject(apiKey, model, config?.maxOutputTokens) : null;
+  let certain = false;
+  let backoff = 0;
+  const send = async (target: URL, body?: Record<string, unknown>) => {
+    let response: Response;
+    try {
+      response = await fetch(target, {
+        method: body ? "POST" : "GET", redirect: "error", cache: "no-store",
+        headers: { "content-type": "application/json", "x-goog-api-client": "meras-ai/1.1", "x-goog-api-key": apiKey },
+        ...(body ? { body: JSON.stringify(body) } : {}), signal,
+      });
+    } catch { throw new GeminiProviderError(signal.aborted ? 408 : 503, signal.aborted ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_UNAVAILABLE", true); }
+    let payload: Record<string, unknown>;
+    try { payload = await readProviderJson(response); }
+    catch (error) {
+      if (!response.ok) throw classifyGeminiError(response.status, {}, response.headers.get("retry-after"));
+      if (signal.aborted) throw new GeminiProviderError(408, "AI_PROVIDER_TIMEOUT");
+      if (error instanceof GeminiProviderError) throw error;
+      throw new GeminiProviderError(502, "AI_PROVIDER_INVALID_RESPONSE");
+    }
+    if (!response.ok) throw classifyGeminiError(response.status, payload, response.headers.get("retry-after"));
+    return payload;
+  };
   try {
-    response = await fetch(url, {
-      method: input.generation ? "POST" : "GET", redirect: "error", cache: "no-store",
-      headers: { "content-type": "application/json", "x-goog-api-client": "meras-ai/1.1", "x-goog-api-key": apiKey },
-      ...(input.generation ? { body: JSON.stringify(input.generation) } : {}), signal,
-    });
-  } catch { throw new GeminiProviderError(signal.aborted ? 408 : 503, signal.aborted ? "AI_PROVIDER_TIMEOUT" : "AI_PROVIDER_UNAVAILABLE", true); }
-  let payload: Record<string, unknown>;
-  try { payload = await readProviderJson(response); }
-  catch (error) {
-    if (!response.ok) throw classifyGeminiError(response.status, {}, response.headers.get("retry-after"));
-    if (signal.aborted) throw new GeminiProviderError(408, "AI_PROVIDER_TIMEOUT");
-    if (error instanceof GeminiProviderError) throw error;
-    throw new GeminiProviderError(502, "AI_PROVIDER_INVALID_RESPONSE");
+    if (reservation && generation) {
+      const counted = await send(new URL(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:countTokens`), { generateContentRequest: { ...generation, model: `models/${model}` } });
+      await dispatchGeminiProject(reservation, counted.totalTokens);
+    }
+    const payload = await send(url, generation);
+    certain = true;
+    return payload;
+  } catch (error) {
+    if (error instanceof GeminiProviderError && error.providerStatus === 429) { certain = true; backoff = error.retryAfterSeconds || (error.code === "AI_QUOTA_EXHAUSTED" ? 3600 : 60); }
+    // Transport failures/timeouts may have reached Google. Do not release their
+    // shared lease early; it expires after the bounded provider deadline.
+    throw error;
+  } finally {
+    if (reservation) await settleGeminiProject(reservation, certain, backoff).catch(() => undefined);
   }
-  if (!response.ok) throw classifyGeminiError(response.status, payload, response.headers.get("retry-after"));
-  return payload;
 }
 
 export function geminiTextResponse(payload: Record<string, unknown>) {
@@ -64,9 +91,12 @@ export function geminiTextResponse(payload: Record<string, unknown>) {
   const text = parts.flatMap(part => part && typeof part === "object" && part.thought !== true && typeof part.text === "string" ? [part.text] : []).join("\n").trim();
   const finishReason = typeof first.finishReason === "string" ? first.finishReason : null;
   const feedback = payload.promptFeedback && typeof payload.promptFeedback === "object" ? payload.promptFeedback as Record<string, unknown> : {};
-  if (feedback.blockReason || ["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII"].includes(finishReason || "")) throw new GeminiProviderError(422, "AI_CONTENT_BLOCKED");
+  if (feedback.blockReason || ["SAFETY", "RECITATION", "BLOCKLIST", "PROHIBITED_CONTENT", "SPII", "IMAGE_SAFETY"].includes(finishReason || "")) throw new GeminiProviderError(422, "AI_CONTENT_BLOCKED");
   if (finishReason === "MAX_TOKENS") throw new GeminiProviderError(422, "AI_OUTPUT_TOKEN_LIMIT");
-  if (!text) throw new GeminiProviderError(422, finishReason === "MAX_TOKENS" ? "AI_OUTPUT_TOKEN_LIMIT" : "AI_EMPTY_RESPONSE");
+  if (!text) throw new GeminiProviderError(422, "AI_EMPTY_RESPONSE");
+  // generateContent is non-streaming here: only STOP proves a complete candidate.
+  // A valid JSON envelope with OTHER/unknown/no reason is not a finished answer.
+  if (finishReason !== "STOP") throw new GeminiProviderError(422, "AI_OUTPUT_INCOMPLETE");
   return { text, finishReason };
 }
 

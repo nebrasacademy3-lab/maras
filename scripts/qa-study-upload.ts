@@ -1,0 +1,100 @@
+/** Isolated PostgreSQL + real local object bytes. Never accepts provider secrets. */
+import assert from "node:assert/strict";
+import { createHash, randomUUID } from "node:crypto";
+import { readFileSync, writeFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { spawn } from "node:child_process";
+import { and, eq, inArray, sql } from "drizzle-orm";
+const local = JSON.parse(readFileSync(".data/qa-database.json", "utf8"));
+if (process.env.DATABASE_URL !== local.url || new URL(local.url).hostname !== "127.0.0.1" || new URL(local.url).pathname !== "/maras_qa" || resolve(process.env.UPLOAD_DIR || "") !== resolve(".data/uploads")) throw new Error("Dedicated isolated database and objects required");
+for (const name of ["S3_BUCKET","S3_ENDPOINT","S3_ACCESS_KEY_ID","S3_SECRET_ACCESS_KEY","GEMINI_API_KEY","GEMINI_API_KEYS","RESEND_API_KEY","TAP_SECRET_KEY","RAILWAY_PROJECT_ID","MALWARE_SCAN_URL"]) if (process.env[name]) throw new Error("Live transport configuration prohibited");
+const [{ getDb, closeDb }, s, service, storage, policy, cleanup, quota] = await Promise.all([import("../db"), import("../db/schema"), import("../lib/study-resumable-upload"), import("../lib/storage"), import("../lib/study-upload-policy"), import("../lib/storage-cleanup"), import("../lib/study-upload-quota")]);
+const { studyUploadSessions } = await import("../db/study-upload-schema");
+const db = getDb(), hash = (bytes: Uint8Array) => createHash("sha256").update(bytes).digest("hex");
+const originalFetch = globalThis.fetch;
+globalThis.fetch = async () => { throw new Error("No live transport in upload acceptance"); };
+const part = Buffer.alloc(policy.STUDY_UPLOAD_CHUNK_BYTES, 65), tail = Buffer.from("\nSynthetic final source section.\n");
+const request = (bytes: Uint8Array, signal?: AbortSignal) => new Request("https://maras-qa.example/api/ai/files/resumable", { method: "PUT", body: new Blob([new Uint8Array(bytes)]), signal });
+if (process.env.QA_STUDY_UPLOAD_CHILD) {
+  const actor = JSON.parse(process.env.QA_STUDY_UPLOAD_ACTOR!);
+  await service.writeStudyUploadPart(db, actor, process.env.QA_STUDY_UPLOAD_CHILD, 0, request(part), async () => actor.id);
+  process.send?.({ written: true }, () => process.exit(84));
+} else {
+  const nonce = randomUUID(), ids: string[] = [], checks: string[] = [], users: number[] = [];
+  const pass = (name: string) => { checks.push(name); console.log("PASS STUDY UPLOAD", name); };
+  const [actor] = await db.insert(s.users).values({ email: `qa-study-upload-${nonce}@example.test`, fullName: "Synthetic upload owner" }).returning(); users.push(actor.id);
+  const [foreign] = await db.insert(s.users).values({ email: `qa-study-other-${nonce}@example.test`, fullName: "Synthetic other owner" }).returning(); users.push(foreign.id);
+  const auth = async () => actor.id;
+  const spec = (data = Buffer.concat([part,tail])) => ({ requestKey: randomUUID(), originalName: "synthetic.txt", contentType: "text/plain", sizeBytes: data.length, hashes: Array.from({ length: Math.ceil(data.length/policy.STUDY_UPLOAD_CHUNK_BYTES) }, (_,i) => hash(data.subarray(i*policy.STUDY_UPLOAD_CHUNK_BYTES,(i+1)*policy.STUDY_UPLOAD_CHUNK_BYTES))) });
+  const begin = async (input = spec()) => { const row = await service.startStudyUpload(db,actor,input,auth); if (!ids.includes(row.id)) ids.push(row.id); return row; };
+  const collect = async () => { for (let i=0;i<4;i++) await cleanup.processStorageCleanupBatch(db,{limit:10}); };
+  const cancel = async (id: string) => { await service.expireStudyUploads(db,actor,id,auth); await collect(); };
+  try {
+    const input = spec(), row = await begin(input);
+    assert.equal((await begin(input)).id,row.id);
+    await assert.rejects(begin({ ...input, originalName: "other.txt" }), { status:409 });
+    await assert.rejects(service.studyUploadStatus(db,foreign,row.id,async()=>foreign.id),{status:404});
+    await assert.rejects(service.studyUploadStatus(db,actor,row.id,async()=>foreign.id),{status:403});
+    await assert.rejects(service.completeStudyUpload(db,actor,row.id,auth),{status:409});
+    pass("manifest replay is idempotent; owner, destination and content cannot be exchanged");
+    await assert.rejects(service.writeStudyUploadPart(db,actor,row.id,1,request(Buffer.alloc(tail.length,0)),auth),{status:422});
+    await assert.rejects(service.writeStudyUploadPart(db,actor,row.id,1,request(Buffer.alloc(tail.length+1)),auth));
+    const abort = new AbortController(); abort.abort();
+    await assert.rejects(service.writeStudyUploadPart(db,actor,row.id,0,request(part,abort.signal),auth));
+    assert.deepEqual((await service.studyUploadStatus(db,actor,row.id,auth)).received,[]);
+    pass("corrupt, oversized and cancelled parts are never accepted");
+    await new Promise<void>((resolveChild,reject) => {
+      const child = spawn(process.execPath,["--require","./scripts/tsx-runtime-bootstrap.cjs","--import","./scripts/ai-worker-runtime.mjs","--import","tsx","scripts/qa-study-upload.ts"],{env:{...process.env,QA_STUDY_UPLOAD_CHILD:row.id,QA_STUDY_UPLOAD_ACTOR:JSON.stringify({id:actor.id,email:actor.email})},stdio:["ignore","ignore","pipe","ipc"]});
+      let stderr="",written=false;child.stderr!.on("data",bytes=>{stderr+=bytes.toString().slice(0,1000);});child.on("message",message=>{written=Boolean((message as {written:boolean}).written);});child.on("error",reject);child.on("exit",code=>code===84&&written?resolveChild():reject(new Error(`Child failed ${code}: ${stderr}`)));
+    });
+    assert.deepEqual((await service.studyUploadStatus(db,actor,row.id,auth)).received,[0]);
+    await service.writeStudyUploadPart(db,actor,row.id,0,request(Buffer.from("retry ignored")),auth);
+    await service.writeStudyUploadPart(db,actor,row.id,1,request(tail),auth);
+    const done = await Promise.all([service.completeStudyUpload(db,actor,row.id,auth),service.completeStudyUpload(db,actor,row.id,auth)]);
+    assert.equal(done[0].file?.id,done[1].file?.id);
+    const [file] = await db.select().from(s.aiFiles).where(eq(s.aiFiles.id,done[0].file!.id));
+    const object=await storage.getObject(file.objectKey,undefined,"local");assert.ok(object);
+    assert.equal(hash(new Uint8Array(await new Response(object.body).arrayBuffer())),hash(Buffer.concat([part,tail])));
+    assert.equal(file.status,"pending_scan");assert.notEqual(file.scanStatus,"clean");
+    assert.equal((await quota.studyStoredUsage(actor.id)).fileCount,1);
+    await assert.rejects(service.writeStudyUploadPart(db,actor,row.id,0,request(part),auth),{status:409});
+    await collect();
+    pass("process exits after part one; missing bytes resume and two finalizers publish one byte-exact pending-scan file, not a fake clean result");
+    const limited = await begin(spec(Buffer.from("Synthetic quota reservation.")));
+    assert.equal((await quota.studyStoredUsage(actor.id)).fileCount,2);
+    process.env.AI_MAX_STORED_FILES_PER_USER="2";
+    await assert.rejects(begin(spec(Buffer.from("Extra upload outside quota."))),{code:"AI_UPLOAD_STORAGE_QUOTA"});
+    delete process.env.AI_MAX_STORED_FILES_PER_USER;
+    await cancel(limited.id);
+    assert.equal((await quota.studyStoredUsage(actor.id)).fileCount,1);
+    pass("pending uploads reserve the same legacy multipart file/byte quota; cancellation releases only after durable cleanup");
+    const corrupt = await begin(spec(Buffer.from("Header to reject")));
+    await service.writeStudyUploadPart(db,actor,corrupt.id,0,request(Buffer.from("Header to reject")),auth);
+    await storage.putObject(`private/resumable/${corrupt.id}/0-${hash(Buffer.from("Header to reject"))}`,new Response(Buffer.from("altered contents")).body!,"application/octet-stream","local");
+    await assert.rejects(service.completeStudyUpload(db,actor,corrupt.id,auth),{status:422});
+    await cancel(corrupt.id);
+    pass("stored-part corruption is checked again during assembly and cannot publish a partial source");
+    const revoked = await begin(spec(Buffer.from("Synthetic revocation file")));
+    await db.update(s.users).set({status:"blocked"}).where(eq(s.users.id,actor.id));
+    await assert.rejects(service.writeStudyUploadPart(db,actor,revoked.id,0,request(Buffer.from("Synthetic revocation file")),auth),{status:403});
+    await service.expireStudyUploads(db);await collect();
+    await db.update(s.users).set({status:"active"}).where(eq(s.users.id,actor.id));
+    pass("disabled accounts cannot add parts; durable inventory survives account status changes");
+    const drift = await begin(spec(Buffer.from("Synthetic storage drift")));
+    await db.update(studyUploadSessions).set({locationFingerprint:"0".repeat(64),expiresAt:new Date(0)}).where(eq(studyUploadSessions.id,drift.id));
+    await service.expireStudyUploads(db);
+    assert.equal((await db.select().from(studyUploadSessions).where(eq(studyUploadSessions.id,drift.id)))[0].status,"blocked");
+    pass("storage relocation creates a review block rather than deleting from a guessed store");
+    await db.delete(s.aiFiles).where(eq(s.aiFiles.id,file.id));
+    await assert.rejects(service.studyUploadStatus(db,actor,row.id,auth),{status:410});
+    pass("deleted completed file does not reopen a mutable upload or return another owner's file");
+    writeFileSync(".data/qa-study-upload-report.json",JSON.stringify({passed:checks.length,checks,storage:"real isolated local bytes; no live S3",physicalDevices:false},null,2));
+  } finally {
+    globalThis.fetch=originalFetch;
+    for(const id of ids){await storage.deletePrefix(`private/resumable/${id}`,"local").catch(()=>undefined);await storage.deleteObject(`ai/${actor.id}/files/${id}.upload`,"local").catch(()=>undefined);}
+    await db.delete(studyUploadSessions).where(eq(studyUploadSessions.ownerId,actor.id));
+    await db.delete(s.users).where(inArray(s.users.id,users));
+    if(ids.length)await db.delete(s.storageCleanupJobs).where(and(inArray(s.storageCleanupJobs.source,["resumable-staging","study-upload-source"]),sql`${sql.join(ids.map(id=>sql`${s.storageCleanupJobs.objectKey} LIKE ${`%${id}%`}`),sql` OR `)}`));
+    await closeDb();
+  }
+}

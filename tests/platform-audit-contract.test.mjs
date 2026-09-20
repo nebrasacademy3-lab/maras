@@ -58,8 +58,11 @@ test("self-account deletion is student-only, transactional, and cleans support o
   assert.match(account, /financialRecordsRetained: true/);
 });
 
-test("health endpoint does not expose database exception details", () => {
-  assert.match(health, /catch \{\r?\n/);
+test("health endpoint does not expose database exception details", async () => {
+  const databaseReadiness = await read("lib/readiness-database.ts");
+  assert.match(databaseReadiness, /catch \{\r?\n/);
+  assert.match(health, /createReadinessProbe/);
+  assert.doesNotMatch(databaseReadiness, /error\.message|String\(error\)/);
   assert.doesNotMatch(health, /error:\s*error/);
   assert.match(health, /no-store/);
 });

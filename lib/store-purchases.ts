@@ -60,26 +60,26 @@ export async function applyVerifiedStorePurchase(client:PoolClient,user:StoreUse
   } else {
     const slugs=JSON.parse(snapshot.course_slugs_json) as string[];
     for(const slug of [...slugs].sort()) {
-      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",["course-access:"+user.email+":"+slug]);
+      await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",["course-access:"+user.id+":"+slug]);
       const existing=(await client.query("SELECT id FROM store_course_grants WHERE transaction_id=$1 AND course_slug=$2",[id,slug])).rows[0];
       if(existing) await client.query("UPDATE store_course_grants SET status=$2 WHERE id=$1",[existing.id,active?"active":"refunded"]);
       else if(active) {
-        const prior=await client.query<{expires_at:string|null}>("SELECT expires_at FROM store_course_grants WHERE user_email=$1 AND course_slug=$2 AND status='active' AND expires_at>$3 UNION ALL SELECT expires_at FROM course_access WHERE user_email=$1 AND course_slug=$2 AND source<>'revenuecat' AND revoked_at IS NULL AND expires_at>$3",[user.email,slug,snapshot.purchased_at]);
+        const prior=await client.query<{expires_at:string|null}>("SELECT expires_at FROM store_course_grants WHERE user_id=$1 AND course_slug=$2 AND status='active' AND expires_at>$3 UNION ALL SELECT expires_at FROM course_access WHERE user_id=$1 AND course_slug=$2 AND source<>'revenuecat' AND revoked_at IS NULL AND expires_at>$3",[user.id,slug,snapshot.purchased_at]);
         const period=nextStorePeriod(snapshot.purchased_at,snapshot.duration_days,prior.rows.map(r=>r.expires_at));
-        await client.query("INSERT INTO store_course_grants(transaction_id,user_email,course_slug,starts_at,expires_at,status) VALUES($1,$2,$3,$4,$5,'active')",[id,user.email,slug,period.startsAt,period.expiresAt]);
+        await client.query("INSERT INTO store_course_grants(transaction_id,user_id,user_email,course_slug,starts_at,expires_at,status) VALUES($1,$2,$3,$4,$5,$6,'active')",[id,user.id,user.email,slug,period.startsAt,period.expiresAt]);
       }
       if(active) {
         // Only create the identity anchor. Independent manual/Tap rights and administrative blocks are never overwritten.
-        await client.query("INSERT INTO course_access(user_email,course_slug,source,starts_at,expires_at,updated_at) VALUES($1,$2,'revenuecat',$3,$3,$4) ON CONFLICT(user_email,course_slug) DO NOTHING",[user.email,slug,snapshot.purchased_at,now]);
-        await client.query("DELETE FROM cart_items WHERE user_email=$1 AND course_slug=$2",[user.email,slug]);
-        await client.query("UPDATE course_waitlist SET status='converted',converted_at=$3,updated_at=$3 WHERE user_email=$1 AND course_slug=$2 AND status IN ('active','notified')",[user.email,slug,now]);
+        await client.query("INSERT INTO course_access(user_id,user_email,course_slug,source,starts_at,expires_at,updated_at) VALUES($1,$2,$3,'revenuecat',$4,$4,$5) ON CONFLICT(user_id,course_slug) DO NOTHING",[user.id,user.email,slug,snapshot.purchased_at,now]);
+        await client.query("DELETE FROM cart_items WHERE user_id=$1 AND course_slug=$2",[user.id,slug]);
+        await client.query("UPDATE course_waitlist SET status='converted',converted_at=$3,updated_at=$3 WHERE user_id=$1 AND course_slug=$2 AND status IN ('active','notified')",[user.id,slug,now]);
       }
-      await client.query("INSERT INTO course_access_events(event_key,user_email,course_slug,action,actor_email,reason,after_json,created_at) VALUES($1,$2,$3,$4,'revenuecat',$5,$6,$7) ON CONFLICT(event_key) DO NOTHING",["store:"+id+":"+slug+":"+purchase.status+":"+now,user.email,slug,active?"store-grant":"store-refund","شراء موثق من المتجر",JSON.stringify({transactionId:id,status:purchase.status}),now]);
+      await client.query("INSERT INTO course_access_events(event_key,user_id,user_email,course_slug,action,actor_email,reason,after_json,created_at) VALUES($1,$2,$3,$4,$5,'revenuecat',$6,$7,$8) ON CONFLICT(event_key) DO NOTHING",["store:"+id+":"+slug+":"+purchase.status+":"+now,user.id,user.email,slug,active?"store-grant":"store-refund","شراء موثق من المتجر",JSON.stringify({transactionId:id,status:purchase.status}),now]);
     }
   }
   if(before?.status==="refunded" && active)await resequenceRestoredStorePeriods(client,user,snapshot.kind,now);
   await audit(client,user.id,active?"store-purchase-verified":"store-purchase-refunded",id,{status:purchase.status,previousStatus:before?.status||null});
-  await client.query("INSERT INTO notifications(user_email,title,body,action_url,dedupe_key,push_enabled,created_at) VALUES($1,$2,$3,$4,$5,true,$6) ON CONFLICT(dedupe_key) DO NOTHING",[user.email,active?"تم تفعيل مشتريات التطبيق":"تم تحديث استرداد المتجر",snapshot.title, snapshot.kind==="ai"?"/study-tools":"/dashboard","store:"+id+":"+purchase.status,now]);
+  await client.query("INSERT INTO notifications(target_user_id,title,body,action_url,dedupe_key,push_enabled,created_at) VALUES($1,$2,$3,$4,$5,true,$6) ON CONFLICT(dedupe_key) DO NOTHING",[user.id,active?"تم تفعيل مشتريات التطبيق":"تم تحديث استرداد المتجر",snapshot.title, snapshot.kind==="ai"?"/study-tools":"/dashboard","store:"+id+":"+purchase.status,now]);
   return true;
 }
 export async function syncStorePurchases(user:StoreUser) {
@@ -108,10 +108,10 @@ export async function syncStorePurchases(user:StoreUser) {
     if(changed && purchases.some(p=>p.status==="refunded")) await reflowFutureStorePeriods(client,user);
     // Refresh only store identity anchors for older display clients. Authorization uses independent grants.
     await client.query(`UPDATE course_access ca SET
-      starts_at=COALESCE((SELECT MIN(g.starts_at) FROM store_course_grants g WHERE g.user_email=ca.user_email AND g.course_slug=ca.course_slug AND g.status='active'),ca.starts_at),
-      expires_at=CASE WHEN EXISTS(SELECT 1 FROM store_course_grants g WHERE g.user_email=ca.user_email AND g.course_slug=ca.course_slug AND g.status='active' AND g.expires_at IS NULL) THEN NULL
-      ELSE COALESCE((SELECT MAX(g.expires_at) FROM store_course_grants g WHERE g.user_email=ca.user_email AND g.course_slug=ca.course_slug AND g.status='active'),ca.starts_at) END,
-      updated_at=$2 WHERE ca.user_email=$1 AND ca.source='revenuecat'`,[user.email,new Date().toISOString()]);
+      starts_at=COALESCE((SELECT MIN(g.starts_at) FROM store_course_grants g WHERE g.user_id=ca.user_id AND g.course_slug=ca.course_slug AND g.status='active'),ca.starts_at),
+      expires_at=CASE WHEN EXISTS(SELECT 1 FROM store_course_grants g WHERE g.user_id=ca.user_id AND g.course_slug=ca.course_slug AND g.status='active' AND g.expires_at IS NULL) THEN NULL
+      ELSE COALESCE((SELECT MAX(g.expires_at) FROM store_course_grants g WHERE g.user_id=ca.user_id AND g.course_slug=ca.course_slug AND g.status='active'),ca.starts_at) END,
+      updated_at=$2 WHERE ca.user_id=$1 AND ca.source='revenuecat'`,[user.id,new Date().toISOString()]);
     await client.query("COMMIT");
     return {changed,verified:purchases.length-unresolved.length,unresolved:unresolved.length};
   } catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
@@ -131,11 +131,11 @@ export async function reflowFutureStorePeriods(client:PoolClient,user:StoreUser,
       for(const row of ai.rows){const end=start+Date.parse(row.expires_at)-Date.parse(row.starts_at);await client.query("UPDATE ai_entitlements SET starts_at=$2,expires_at=$3,updated_at=$4 WHERE id=$1",[row.id,new Date(start).toISOString(),new Date(end).toISOString(),now]);start=end;}
     }
   }
-  const future=await client.query<{id:number;course_slug:string;starts_at:string;expires_at:string}>("SELECT id,course_slug,starts_at,expires_at FROM store_course_grants WHERE user_email=$1 AND status='active' AND starts_at>$2 AND expires_at IS NOT NULL ORDER BY course_slug,starts_at,id FOR UPDATE",[user.email,now]);
+  const future=await client.query<{id:number;course_slug:string;starts_at:string;expires_at:string}>("SELECT id,course_slug,starts_at,expires_at FROM store_course_grants WHERE user_id=$1 AND status='active' AND starts_at>$2 AND expires_at IS NOT NULL ORDER BY course_slug,starts_at,id FOR UPDATE",[user.id,now]);
   const ends=new Map<string,number|null>();
   for(const row of future.rows){
     if(!ends.has(row.course_slug)){
-      const occupied=await client.query<{expires_at:string|null}>("SELECT expires_at FROM store_course_grants WHERE user_email=$1 AND course_slug=$2 AND status='active' AND starts_at<=$3 AND (expires_at IS NULL OR expires_at>$3) UNION ALL SELECT expires_at FROM course_access WHERE user_email=$1 AND course_slug=$2 AND source<>'revenuecat' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>$3)",[user.email,row.course_slug,now]);
+      const occupied=await client.query<{expires_at:string|null}>("SELECT expires_at FROM store_course_grants WHERE user_id=$1 AND course_slug=$2 AND status='active' AND starts_at<=$3 AND (expires_at IS NULL OR expires_at>$3) UNION ALL SELECT expires_at FROM course_access WHERE user_id=$1 AND course_slug=$2 AND source<>'revenuecat' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>$3)",[user.id,row.course_slug,now]);
       ends.set(row.course_slug,occupied.rows.some(r=>r.expires_at===null)?null:Math.max(Date.parse(now),...occupied.rows.map(r=>Date.parse(r.expires_at!))));
     }
     const start=ends.get(row.course_slug);if(start===null||start===undefined)continue;
@@ -154,11 +154,11 @@ export async function resequenceRestoredStorePeriods(client:PoolClient,user:Stor
     for(const row of rows.rows){const remaining=Date.parse(row.expires_at)-Math.max(Date.parse(now),Date.parse(row.starts_at));const end=start+remaining;await client.query("UPDATE ai_entitlements SET starts_at=$2,expires_at=$3,updated_at=$4 WHERE id=$1",[row.id,new Date(start).toISOString(),new Date(end).toISOString(),now]);start=end;}
     return;
   }
-  const rows=await client.query<{id:number;course_slug:string;starts_at:string;expires_at:string}>("SELECT g.id,g.course_slug,g.starts_at,g.expires_at FROM store_course_grants g JOIN store_transactions t ON t.id=g.transaction_id WHERE g.user_email=$1 AND g.status='active' AND g.expires_at>$2 ORDER BY g.course_slug,t.purchased_at,t.id FOR UPDATE OF g",[user.email,now]);
+  const rows=await client.query<{id:number;course_slug:string;starts_at:string;expires_at:string}>("SELECT g.id,g.course_slug,g.starts_at,g.expires_at FROM store_course_grants g JOIN store_transactions t ON t.id=g.transaction_id WHERE g.user_id=$1 AND g.status='active' AND g.expires_at>$2 ORDER BY g.course_slug,t.purchased_at,t.id FOR UPDATE OF g",[user.id,now]);
   const ends=new Map<string,number|null>();
   for(const row of rows.rows){
     if(!ends.has(row.course_slug)){
-      const baseline=await client.query<{expires_at:string|null}>("SELECT expires_at FROM course_access WHERE user_email=$1 AND course_slug=$2 AND source<>'revenuecat' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>$3) UNION ALL SELECT expires_at FROM store_course_grants WHERE user_email=$1 AND course_slug=$2 AND status='active' AND expires_at IS NULL",[user.email,row.course_slug,now]);
+      const baseline=await client.query<{expires_at:string|null}>("SELECT expires_at FROM course_access WHERE user_id=$1 AND course_slug=$2 AND source<>'revenuecat' AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>$3) UNION ALL SELECT expires_at FROM store_course_grants WHERE user_id=$1 AND course_slug=$2 AND status='active' AND expires_at IS NULL",[user.id,row.course_slug,now]);
       ends.set(row.course_slug,baseline.rows.some(r=>r.expires_at===null)?null:Math.max(Date.parse(now),...baseline.rows.map(r=>Date.parse(r.expires_at!))));
     }
     const start=ends.get(row.course_slug);if(start===null||start===undefined)continue;

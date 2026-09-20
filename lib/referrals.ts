@@ -293,7 +293,7 @@ export async function recordReferralRegistrationTx(tx: ReferralTransaction, inpu
   const [referrer] = await tx.select({ email: users.email }).from(users).where(eq(users.id, referral.userId)).limit(1);
   if (status === "qualified" && referrer) {
     await tx.insert(notificationsDb).values({
-      userEmail: referrer.email,
+      targetUserId: referral.userId, userEmail: null,
       audience: "student",
       title: "إحالة جديدة مؤهلة",
       body: "انضم طالب جديد من رابطك الخاص، وتم تحديث تقدمك نحو الهدية التالية.",
@@ -310,8 +310,9 @@ export async function recordReferralRegistrationTx(tx: ReferralTransaction, inpu
   return created;
 }
 
-export async function qualifyReferralForPaidOrderTx(tx: ReferralTransaction, referredEmail: string, now = new Date().toISOString()) {
-  const [referred] = await tx.select({ id: users.id }).from(users).where(eq(users.email, referredEmail.toLowerCase())).limit(1);
+export async function qualifyReferralForPaidOrderTx(tx: ReferralTransaction, referredUserId: number | null, now = new Date().toISOString()) {
+  if (!Number.isSafeInteger(referredUserId) || !referredUserId || referredUserId < 1) return null;
+  const [referred] = await tx.select({ id: users.id }).from(users).where(eq(users.id, referredUserId)).limit(1);
   if (!referred) return null;
   const [candidate] = await tx.select().from(referralAttributions).where(and(
     eq(referralAttributions.referredUserId, referred.id),
@@ -329,7 +330,7 @@ export async function qualifyReferralForPaidOrderTx(tx: ReferralTransaction, ref
   if (!updated) return null;
   const [referrer] = await tx.select({ email: users.email }).from(users).where(eq(users.id, updated.referrerUserId)).limit(1);
   if (referrer) await tx.insert(notificationsDb).values({
-    userEmail: referrer.email,
+    targetUserId: updated.referrerUserId, userEmail: null,
     audience: "student",
     title: "اكتملت إحالة جديدة",
     body: "أتم الطالب المُحال أول اشتراك مدفوع، فأصبحت الإحالة مؤهلة وتم تحديث تقدمك.",
@@ -345,9 +346,9 @@ export async function qualifyReferralForPaidOrderTx(tx: ReferralTransaction, ref
   return updated;
 }
 
-export async function reconcileReferralQualificationAfterRefundTx(tx: ReferralTransaction, referredEmail: string, now = new Date().toISOString()) {
-  const email = referredEmail.trim().toLowerCase();
-  const [referred] = await tx.select({ id: users.id }).from(users).where(eq(users.email, email)).limit(1);
+export async function reconcileReferralQualificationAfterRefundTx(tx: ReferralTransaction, referredUserId: number | null, now = new Date().toISOString()) {
+  if (!Number.isSafeInteger(referredUserId) || !referredUserId || referredUserId < 1) return null;
+  const [referred] = await tx.select({ id: users.id }).from(users).where(eq(users.id, referredUserId)).limit(1);
   if (!referred) return null;
   const [candidate] = await tx.select().from(referralAttributions).where(and(
     eq(referralAttributions.referredUserId, referred.id),
@@ -362,7 +363,7 @@ export async function reconcileReferralQualificationAfterRefundTx(tx: ReferralTr
   )).limit(1);
   if (!attribution) return null;
   const [{ remainingPaidOrders }] = await tx.select({ remainingPaidOrders: sql<number>`count(*)::int` }).from(orders).where(and(
-    eq(orders.customerEmail, email),
+    eq(orders.userId, referredUserId),
     inArray(orders.status, ["paid", "partially_refunded", "payment_review"]),
   ));
   if (Number(remainingPaidOrders || 0) > 0) return null;
@@ -379,7 +380,7 @@ export async function reconcileReferralQualificationAfterRefundTx(tx: ReferralTr
   await reconcileReferralRewardsTx(tx, updated.referrerUserId, now);
   const [referrer] = await tx.select({ email: users.email }).from(users).where(eq(users.id, updated.referrerUserId)).limit(1);
   if (referrer) await tx.insert(notificationsDb).values({
-    userEmail: referrer.email,
+    targetUserId: updated.referrerUserId, userEmail: null,
     audience: "student",
     title: "تم تحديث حالة إحالة",
     body: "تغيّرت حالة اشتراك أحد الطلاب المُحالين، فأعدنا احتساب تقدمك والهدايا غير المستخدمة تلقائيًا.",

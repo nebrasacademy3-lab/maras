@@ -1,6 +1,10 @@
+import {AdminCapability} from "@/src/components/AdminCapability";
+import {AdminNavigation} from "@/src/components/AdminNavigation";
+import {useAdminCapabilities} from "@/src/lib/admin-capabilities";
+import {ADMIN_NAVIGATION,ADMIN_SELF_SECURITY} from "@/src/lib/admin-navigation";
+import {AdminAdditionalPanel} from "@/src/components/AdminAdditionalPanel";
 import { PublicContentEditor } from "@/src/components/public-content-editor";
 import { StaffManager } from "@/src/components/staff-manager";
-import { permissionsCover } from "@/src/lib/staff-policy";
 import { MerasAlert as Alert } from "@/src/lib/interaction-events";
 import { AdminLessonSources } from "@/src/components/admin-lesson-sources";
 import { randomUUID } from "expo-crypto";
@@ -10,10 +14,10 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Linking from "expo-linking";
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { ScaledTextInput as TextInput } from "@/src/components/ScaledTextInput";
-import { Image, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Image, Platform, Pressable, StyleSheet, View } from "react-native";
 import { RegisteredDevices } from "@/src/components/RegisteredDevices";
 import { AppHeader } from "@/src/components/AppHeader";
 import { AdminAi } from "@/src/components/AdminAi";
@@ -60,7 +64,7 @@ type AdminData = {
   settings: Record<string, string>;
 };
 
-type Tab = "pages" | "roster" | "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "finance" | "operations" | "bundles" | "tracks" | "referrals" | "ai" | "reviews" | "communication" | "security" | "appearance";
+type Tab = "settings" | "seo" | "files" | "partners" | "purchases" | "audit" | "pages" | "roster" | "overview" | "users" | "subscriptions" | "staff" | "requests" | "support" | "catalog" | "commerce" | "finance" | "operations" | "bundles" | "tracks" | "referrals" | "ai" | "reviews" | "communication" | "security" | "appearance";
 type Mutate = (payload: Record<string, unknown>, success?: string) => Promise<boolean>;
 type DeleteEntity = (entityType: string, entityId: string | number, label: string, impact: string) => void;
 const arabicMap: Record<string, string> = { ا: "a", أ: "a", إ: "i", آ: "a", ب: "b", ت: "t", ث: "th", ج: "j", ح: "h", خ: "kh", د: "d", ذ: "dh", ر: "r", ز: "z", س: "s", ش: "sh", ص: "s", ض: "d", ط: "t", ظ: "z", ع: "a", غ: "gh", ف: "f", ق: "q", ك: "k", ل: "l", م: "m", ن: "n", ه: "h", و: "w", ي: "y", ة: "h", ى: "a", ء: "a" };
@@ -115,47 +119,33 @@ const accountStatusLabels: Record<string, string> = { active: "نشط", suspende
 const publicationStatusLabels: Record<string, string> = { published: "منشور", hidden: "مخفي", draft: "مسودة", archived: "مؤرشف", active: "نشط", inactive: "غير نشط", disabled: "معطّل" };
 const reviewStatusLabels: Record<string, string> = { pending: "بانتظار المراجعة", published: "منشور", rejected: "مرفوض", hidden: "مخفي" };
 const couponTypeLabels: Record<string, string> = { percent: "نسبة مئوية", fixed: "مبلغ ثابت" };
-const grantTypeLabels: Record<string, string> = { manual_payment: "دفعة يدوية", complimentary: "منحة مجانية" };
 const couponStatusLabels: Record<string, string> = { active: "نشط", inactive: "غير نشط", disabled: "معطّل", expired: "منتهي", exhausted: "مكتمل الاستخدام" };
 const institutionTypeLabels: Record<string, string> = { university: "جامعة", college: "كلية", technical: "تقنية", public: "حكومية", private: "أهلية", "حكومية": "حكومية", "أهلية": "أهلية", "كلية": "كلية", "تقنية": "تقنية" };
 const orderStatusLabels: Record<string, string> = { initiated: "بدأ الدفع", pending: "بانتظار الدفع", verification_pending: "قيد التحقق من الدفع", payment_review: "قيد مراجعة الدفع", paid: "مدفوع", partially_refunded: "مسترد جزئيًا", refunded: "مسترد", failed: "متعذر", canceled: "ملغي", cancelled: "ملغي", voided: "مبطل" };
-const tabs: { key: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>["name"] }[] = [
-  { key: "pages", label: "الصفحات والمحتوى", icon: "document-text-outline" },
-  { key: "overview", label: "الرئيسية", icon: "grid-outline" },
-  { key: "users", label: "الحسابات", icon: "people-outline" },
-  { key: "subscriptions", label: "الاشتراكات", icon: "shield-checkmark-outline" },
-  { key: "staff", label: "الموظفون", icon: "person-add-outline" },
-  { key: "roster", label: "مشتركو المواد والانتظار", icon: "people-circle-outline" },
-  { key: "requests", label: "الطلبات", icon: "cloud-upload-outline" },
-  { key: "support", label: "الدعم", icon: "headset-outline" },
-  { key: "catalog", label: "الكتالوج", icon: "library-outline" },
-  { key: "commerce", label: "المبيعات", icon: "card-outline" },
-  { key: "finance", label: "المالية", icon: "cash-outline" },
-  { key: "operations", label: "التشغيل", icon: "pulse-outline" },
-  { key: "bundles", label: "الباقات", icon: "albums-outline" },
-  { key: "tracks", label: "المسارات", icon: "map-outline" },
-  { key: "referrals", label: "الإحالات", icon: "gift-outline" },
-  { key: "ai", label: "أدوات مراس", icon: "sparkles-outline" },
-  { key: "reviews", label: "التقييمات", icon: "star-outline" },
-  { key: "communication", label: "التواصل", icon: "megaphone-outline" },
-  { key: "security", label: "الأمان", icon: "shield-checkmark-outline" },
-  { key: "appearance", label: "المظهر", icon: "color-palette-outline" },
-];
 
-export default function Admin() {
+export default function Admin() { const {user}=useAuth();return <AdminWorkspace key={user?.id||"signed-out"}/>; }
+function AdminWorkspace() {
   const { user } = useAuth();
   const { colors } = useTheme();
-  const { language, direction, rowDirection } = useLanguage();
+  const { language } = useLanguage();
   const client = useQueryClient();
-  const [tab, setTab] = useState<Tab>("overview");
+  const capabilities=useAdminCapabilities();
+  const mounted=useRef(true),inFlight=useRef(false),actor=useRef(getApiToken());
+  useEffect(()=>{mounted.current=true;actor.current=getApiToken();return()=>{mounted.current=false;};},[]);
+  const [tab,setTabState]=useState<Tab>("overview"),[destinationId,setDestinationId]=useState("overview");
+  const destinations=[...ADMIN_NAVIGATION.flatMap(g=>g.items),ADMIN_SELF_SECURITY];
+  const destination=destinations.find(item=>item.id===destinationId)||ADMIN_NAVIGATION[0]!.items[0]!;
+  const canOpen=capabilities.can(destination.permissions);
+  const chooseDestination=(id:string)=>{const item=destinations.find(v=>v.id===id);if(!item||!capabilities.can(item.permissions))return;setDestinationId(id);setTabState(item.nativeTab as Tab);};
+  const setTab=(next:Tab)=>{const item=destinations.find(v=>v.nativeTab===next);if(item)chooseDestination(item.id);};
   const [message, setMessage] = useState("");
   const [profileEmail, setProfileEmail] = useState("");
   const [courseSelection, setCourseSelection] = useState("");
   const [searchDraft, setSearchDraft] = useState(""); const [serverSearch, setServerSearch] = useState("");
   const [pageState, setPageState] = useState({ tab: "overview", q: "", page: 1 });
-  const view = ({ users: "students", subscriptions: "subscriptions", staff: "staff", requests: "requests", support: "support", reviews: "reviews", commerce: "orders" } as Record<string, string>)[tab] || "overview";
+  const view = destination.view || ({ users: "students", subscriptions: "subscriptions", staff: "staff", requests: "requests", support: "support", reviews: "reviews", commerce: "orders" } as Record<string, string>)[tab] || "overview";
   const page = pageState.tab === tab && pageState.q === serverSearch ? pageState.page : 1;
-  const query = useQuery({ queryKey: ["admin-console", view, serverSearch, page], queryFn: ({ signal }) => api<AdminData>(`/api/admin/console?${new URLSearchParams({ client: "mobile", view, q: serverSearch, page: String(page) })}`, { signal }), enabled: !!user && ["admin", "supervisor"].includes(user.role), staleTime: 15_000, retry: 1 });
+  const query = useQuery({ queryKey: ["admin-console", user?.id, capabilities.permissions.join(","), view, serverSearch, page], queryFn: ({ signal }) => api<AdminData>(`/api/admin/console?${new URLSearchParams({ client: "mobile", scope:"screen", view, q: serverSearch, page: String(page) })}`, { signal }), enabled: !!user && ["admin", "supervisor"].includes(user.role) && canOpen, staleTime: 15_000, retry: 1 });
   const refresh = async () => { await client.invalidateQueries({ queryKey: ["admin-console"] }); };
   const stepUpRequired = (detail?: string) => {
     setMessage(ADMIN_STEP_UP_MESSAGE);
@@ -163,19 +153,22 @@ export default function Admin() {
     Alert.alert(language === "ar" ? "التحقق الإداري مطلوب" : "Admin verification required", detail || ADMIN_STEP_UP_MESSAGE);
   };
   const mutate: Mutate = async (payload, success = "تم حفظ التغيير") => {
+    if(!mounted.current||inFlight.current||actor.current!==getApiToken())return false;inFlight.current=true;
     setMessage("");
     try {
       await api("/api/admin/console", { method: "POST", body: jsonBody(payload) });
+      if(!mounted.current||actor.current!==getApiToken())return false;
       setMessage(success);
       if (payload.action === "saveSettings") await client.invalidateQueries({ queryKey: ["settings"], refetchType: "active" });
-      await refresh();
+      await refresh().catch(()=>{if(mounted.current)setMessage(success+" — تعذر تحديث العرض فقط؛ استخدم التحديث ولا تكرر العملية");});
       return true;
     }
     catch (reason) {
+      if(!mounted.current||actor.current!==getApiToken())return false;
       if (isAdminStepUpError(reason)) { stepUpRequired(reason.message); return false; }
       setMessage(reason instanceof ApiError ? reason.message : "تعذر تنفيذ الإجراء");
       return false;
-    }
+    } finally {inFlight.current=false;}
   };
   const deleteEntity: DeleteEntity = (entityType, entityId, label, impact) => Alert.alert(
     language === "ar" ? "تأكيد الحذف النهائي" : "Confirm permanent deletion",
@@ -187,21 +180,17 @@ export default function Admin() {
   );
 
   if (!user || !["admin", "supervisor"].includes(user.role)) return <Screen><AppHeader title="لوحة الإدارة" back /><EmptyState icon="lock-closed-outline" title="غير مصرح" text="هذه الصفحة متاحة للحسابات الإدارية فقط، ولا توجد حسابات تجريبية عامة." /></Screen>;
+  if(capabilities.isLoading)return <Screen><LoadingState label="التحقق من الصلاحيات…"/></Screen>;
+  if(!canOpen)return <Screen><AppHeader title="الإدارة" back/><AdminNavigation selected={destinationId} permissions={capabilities.permissions} owner={capabilities.owner} onSelect={chooseDestination}/><EmptyState title="القسم غير متاح" text={capabilities.error?.message||"لا توجد صلاحية لهذا القسم؛ لم نحمّل بياناته."} action={<AppButton title="تحديث الصلاحيات" onPress={()=>void capabilities.refetch()}/>}/></Screen>;
   if (query.isLoading) return <Screen><LoadingState label="جارٍ تحميل مركز التحكم..." /></Screen>;
   if (!query.data) return <Screen><AppHeader title="لوحة الإدارة" back /><EmptyState icon="cloud-offline-outline" title="تعذر تحميل البيانات" text="تحقق من الاتصال ثم أعد المحاولة." action={<AppButton title="إعادة المحاولة" onPress={() => query.refetch()} />} /></Screen>;
   const data = query.data;
-  const required: Record<Tab, string[]> = { pages: ["content.manage"], overview: [], roster: ["catalog.view", "students.view"], users: ["students.view"], subscriptions: ["subscriptions.manage"], staff: ["staff.manage"], requests: ["requests.manage"], support: ["support.manage"], catalog: ["catalog.view"], commerce: ["finance.manage"], finance: ["finance.view"], operations: ["operations.manage"], bundles: ["catalog.manage"], tracks: ["roadmap.manage"], referrals: ["referrals.manage"], ai: ["ai.manage"], reviews: ["catalog.manage"], communication: ["notifications.manage", "settings.manage"], security: [], appearance: [] };
-  const availableTabs = tabs.filter(item => data.isPlatformOwner || permissionsCover(new Set(data.permissions), required[item.key]));
-  if (!availableTabs.some(item => item.key === tab)) return <Screen><AppHeader title="الصلاحيات" back/><EmptyState icon="lock-closed-outline" title="هذا القسم غير متاح لصلاحياتك" text="اطلب الصلاحية من المدير الأعلى." action={<AppButton title="العودة للوحة" onPress={() => setTab("overview")}/>}/></Screen>;
 
 
   return <Screen keyboard>
     <AppHeader title="لوحة الإدارة" subtitle="تحكم مباشر وآمن في منصة مراس" back />
-    <View style={[styles.adminNavigator, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
-      <View style={[styles.adminNavigatorHead, { flexDirection: rowDirection }]}><View style={[styles.adminNavigatorIcon, { backgroundColor: colors.surface }]}><Ionicons name="grid-outline" size={23} color={colors.primary} /></View><View style={{ flex: 1 }}><Text style={[styles.adminNavigatorTitle, { color: colors.text }]}>مركز التحكم</Text><Text style={[styles.adminNavigatorCopy, { color: colors.textSoft }]}>انتقل لأي قسم بالاسم، ثم ابحث داخل اختياراته</Text></View></View>
-      <SearchPicker label="أقسام الإدارة" hideLabel value={tab} placeholder="ابحث عن قسم" items={availableTabs.map((item) => ({ key: item.key, label: item.label }))} onSelect={(item) => setTab(item.key as Tab)} />
-    </View>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={[styles.tabs, { direction, flexDirection: rowDirection }]}>{availableTabs.map((item) => <Pressable key={item.key} accessibilityRole="tab" accessibilityState={{ selected: tab === item.key }} onPress={() => setTab(item.key)} style={[styles.tab, { backgroundColor: tab === item.key ? colors.primary : colors.surface, borderColor: tab === item.key ? colors.primary : colors.border }]}><View style={styles.tabIcon}><Ionicons name={item.icon} size={18} color={tab === item.key ? "#FFF" : colors.primary} /></View><Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={.82} style={[styles.tabLabel, { color: tab === item.key ? "#FFF" : colors.text }]}>{item.label}</Text></Pressable>)}</ScrollView>
+    <AdminNavigation selected={destinationId} permissions={capabilities.permissions} owner={capabilities.owner} onSelect={chooseDestination}/>
+    <SectionTitle title={destination.title} subtitle={destination.description}/>
     {message ? <Text style={[styles.message, { color: message.startsWith("تم") ? colors.success : colors.danger }]}>{message}</Text> : null}
     {view !== "overview" && (tab !== "users" || !profileEmail) && <Card><Field label="بحث في جميع السجلات" value={searchDraft} onChangeText={setSearchDraft} /><AppButton title="بحث" onPress={() => { setServerSearch(searchDraft.trim()); setPageState({ tab, q: searchDraft.trim(), page: 1 }); }} /></Card>}
     {tab === "roster" && <AdminCourseRoster key={courseSelection} initialSlug={courseSelection} courses={data.courses} onOpenStudent={email => { setProfileEmail(email); setTab("users"); }} />}
@@ -212,8 +201,8 @@ export default function Admin() {
     {tab === "pages" && <PublicContentEditor />}
     {tab === "requests" && <Requests rows={data.requests} courses={data.courses} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "support" && <Support rows={data.tickets} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
-    {tab === "catalog" && <CatalogAdmin data={data} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity} />}
-    {tab === "commerce" && <Commerce data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
+    {tab === "catalog" && (capabilities.can(["catalog.manage"]) && (!["institutions", "specialties"].includes(destinationId) || capabilities.can(["data.all"]))?<CatalogAdmin key={destinationId} section={destinationId} data={data} colors={colors} mutate={mutate} refresh={refresh} onDelete={deleteEntity}/>:<CatalogReadOnly section={destinationId} data={data} colors={colors}/>)}
+    {tab === "commerce" && <Commerce section={destinationId} data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
     {tab === "finance" && <AdminFinance key={serverSearch} initialSearch={serverSearch} onStepUpRequired={stepUpRequired} />}
     {tab === "operations" && <AdminOperations onStepUpRequired={stepUpRequired} />}
     {tab === "bundles" && <MobileBundleAdmin colors={colors} institutions={data.institutions}/>}
@@ -221,27 +210,31 @@ export default function Admin() {
     {tab === "referrals" && <AdminReferrals onStepUpRequired={stepUpRequired} users={data.users.map((row) => ({ key: row.email, label: row.fullName, detail: row.email }))} courses={data.courses.map((row) => ({ key: row.slug, label: row.title, detail: row.university }))} />}
     {tab === "ai" && <AdminAi onStepUpRequired={stepUpRequired} users={data.users.map((row) => ({ key: row.email, label: row.fullName, detail: row.email }))} />}
     {tab === "reviews" && <Reviews data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
-    {tab === "communication" && <Communication data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
-    {tab === "security" && <MobileAdminSecurity colors={colors} />}
+    {(tab === "communication"||tab==="settings") && <Communication key={destinationId} mode={tab==="settings"?"settings":"notifications"} data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} />}
+    {tab === "security" && <><MobileAdminSecurity colors={colors}/><AppearanceSettings/></>}
+    {["seo","files","partners","purchases","audit"].includes(tab)&&<AdminAdditionalPanel kind={tab as "seo"|"files"|"partners"|"purchases"|"audit"}/>}
     {tab === "appearance" && <AppearanceSettings />}
     {data.pagination && data.pagination.view === view && !(tab === "users" && profileEmail) && <Card><Text style={{ color: colors.text }}>صفحة {page} من {Math.max(1, Math.ceil(data.pagination.total / data.pagination.pageSize))} · {data.pagination.total} سجل مطابق</Text><View style={styles.actionRow}><AppButton full={false} title="السابق" disabled={page <= 1 || query.isFetching} onPress={() => setPageState({ tab, q: serverSearch, page: page - 1 })} /><AppButton full={false} title="التالي" disabled={page * data.pagination.pageSize >= data.pagination.total || query.isFetching} onPress={() => setPageState({ tab, q: serverSearch, page: page + 1 })} /></View></Card>}
   </Screen>;
 }
 
 function Overview({ data, colors }: { data: AdminData; colors: Colors }) {
+  const capabilities=useAdminCapabilities();
   const { locale } = useLanguage();
   const metrics = [
-    { icon: "cash-outline" as const, label: "الإيراد المؤكد", value: `${data.metrics.revenue.toLocaleString(locale)} ر.س` },
-    { icon: "people-outline" as const, label: "الطلاب النشطون", value: String(data.metrics.activeStudents) },
-    { icon: "school-outline" as const, label: "الجهات", value: String(data.metrics.institutions) },
-    { icon: "library-outline" as const, label: "المواد المنشورة", value: String(data.metrics.publishedCourses) },
+    { icon: "cash-outline" as const, permission: "finance.view", label: "الإيراد المؤكد", value: `${data.metrics.revenue.toLocaleString(locale)} ر.س` },
+    { icon: "people-outline" as const, permission: "students.view", label: "الطلاب النشطون", value: String(data.metrics.activeStudents) },
+    { icon: "school-outline" as const, permission: "catalog.view", label: "الجهات", value: String(data.metrics.institutions) },
+    { icon: "library-outline" as const, permission: "catalog.view", label: "المواد المنشورة", value: String(data.metrics.publishedCourses) },
   ];
   return <>
-    <View style={styles.metricGrid}>{metrics.map((item) => <Card key={item.label} style={styles.metric}><Ionicons name={item.icon} size={24} color={colors.primary} /><Text style={[styles.metricValue, { color: colors.text }]}>{item.value}</Text><Text style={[styles.metricLabel, { color: colors.textSoft }]}>{item.label}</Text></Card>)}</View>
+    <View style={styles.metricGrid}>{metrics.filter(item=>capabilities.can([item.permission])).map((item) => <Card key={item.label} style={styles.metric}><Ionicons name={item.icon} size={24} color={colors.primary} /><Text style={[styles.metricValue, { color: colors.text }]}>{item.value}</Text><Text style={[styles.metricLabel, { color: colors.textSoft }]}>{item.label}</Text></Card>)}</View>
     <SectionTitle title="طابور العمل" />
-    <Card><Queue label="طلبات مواد مفتوحة" value={data.metrics.openRequests} colors={colors} /><Queue label="تذاكر دعم مفتوحة" value={data.metrics.openTickets} colors={colors} /><Queue label="تقييمات تنتظر المراجعة" value={data.metrics.pendingReviews} colors={colors} /></Card>
+    <Card>{capabilities.can(["requests.manage"])&&<Queue label="طلبات مواد مفتوحة" value={data.metrics.openRequests} colors={colors}/>}{capabilities.can(["support.manage"])&&<Queue label="تذاكر دعم مفتوحة" value={data.metrics.openTickets} colors={colors}/>}{capabilities.can(["catalog.manage"])&&<Queue label="تقييمات تنتظر المراجعة" value={data.metrics.pendingReviews} colors={colors}/>}</Card>
+    {capabilities.can(["operations.manage", "data.all"])&&<>
     <SectionTitle title="جاهزية الخدمات" />
     <Card>{Object.entries(data.services).map(([key, ready]) => <View key={key} style={styles.service}><Ionicons name={ready ? "checkmark-circle" : "alert-circle"} size={21} color={ready ? colors.success : colors.warning} /><Text style={[styles.serviceText, { color: colors.text }]}>{({ assistant: "المساعد المعرفي", payments: "بوابة Tap للدفع", email: "استعادة الحساب", videoSigning: "الفيديو الخاص" } as Record<string, string>)[key] || "خدمة إضافية"}</Text><Text style={{ color: ready ? colors.success : colors.warning, fontSize: 9, fontWeight: "900" }}>{ready ? "جاهز" : "يحتاج إعداد"}</Text></View>)}</Card>
+    </>}
   </>;
 }
 
@@ -251,42 +244,31 @@ function Queue({ label, value, colors }: { label: string; value: number; colors:
 
 function Users({ data, colors, mutate, onDelete, onOpenProfile }: { data: AdminData; colors: Colors; mutate: Mutate; onDelete: DeleteEntity; onOpenProfile: (email: string) => void }) {
   const { locale } = useLanguage();
-  const supervisors = data.users.filter((row) => row.role === "supervisor");
-  const [query, setQuery] = useState("");
-  const [supervisorId, setSupervisorId] = useState("");
-  const [institutionSlug, setInstitutionSlug] = useState("");
-  const [specialty, setSpecialty] = useState("");
+  const capabilities=useAdminCapabilities();
+  const [query,setQuery]=useState("");
   const normalized = query.trim().toLowerCase();
   const visibleUsers = data.users.filter((row) => !normalized || `${row.fullName} ${row.email} ${row.phone || ""} ${row.specialty || ""}`.toLowerCase().includes(normalized));
-  const programs = useQuery({ queryKey: ["admin-programs", institutionSlug], queryFn: () => api<{ programs: { name: string; degree: string; area: string }[] }>(`/api/catalog/programs?institution=${encodeURIComponent(institutionSlug)}`), enabled: Boolean(institutionSlug) });
+
   return <>
-    <SectionTitle title="أجهزة الطلاب" subtitle="جهازان معتمدان لكل حساب طالب عبر التطبيق والويب" />
-    <Card>
+    {capabilities.can(["students.devices.view"])&&<SectionTitle title="أجهزة الطلاب" subtitle="جهازان معتمدان لكل حساب طالب عبر التطبيق والويب" />}
+    {capabilities.can(["students.devices.view"])&&<Card>
       <Text style={[styles.dataMeta, { color: colors.textSoft }]}>يبقى الجهاز مسجّلًا بعد تسجيل الخروج. بعد اكتمال جهازَي الحساب يُرفض أي جهاز جديد حتى تستبدل الإدارة أحد الجهازين.</Text>
-    </Card>
+    </Card>}
     <SectionTitle title="الحسابات والصلاحيات" subtitle={`${data.users.length} حسابًا · بحث سريع وإدارة الأجهزة`} />
     <SearchBox value={query} onChangeText={setQuery} placeholder="ابحث بالاسم أو البريد أو الجوال أو التخصص" />
     {visibleUsers.length ? visibleUsers.map((row) => <Card key={row.id} style={styles.dataCard}>
       <View style={styles.dataHead}><Text style={[styles.role, { color: colors.primary }]}>{roleLabels[row.role] || "صلاحية غير معروفة"}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.fullName}</Text></View>
       <Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.email} · {row.phone || "بدون جوال"} · MFA: {row.mfaEnabled ? "مفعّل" : "غير مفعّل"}</Text>
       <Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.specialty || "بدون تخصص"} · {row.academicLevel || "المستوى غير محدد"} · {row.profileCompletedAt && row.academicLevel ? "ملف مكتمل" : "ملف ناقص"} · {accountStatusLabels[row.status] || "حالة حساب غير معروفة"}</Text>
-      {row.role === "student" ? <View style={[styles.deviceBox, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
+      {row.role === "student" && capabilities.can(["students.devices.view"]) ? <View style={[styles.deviceBox, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
         <RegisteredDevices studentEmail={row.email} /><Text style={[styles.deviceTitle, { color: colors.text }]}>الجلسات النشطة: {(row.sessions || []).length}</Text><AppButton full={false} title="ملف الطالب 360" icon="person-circle-outline" variant="ghost" onPress={() => onOpenProfile(row.email)} />
         {(row.sessions || []).length ? row.sessions!.map((session) => <View key={session.id} style={[styles.deviceRow, { borderColor: colors.border }]}>
           <View style={styles.deviceCopy}><Text style={[styles.deviceName, { color: colors.text }]}>{session.deviceLabel || (session.platform === "mobile" ? "تطبيق مراس" : "متصفح ويب")}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{session.platform === "mobile" ? "تطبيق" : "ويب"} · آخر نشاط {new Date(session.lastSeenAt || session.createdAt).toLocaleString(locale)}</Text></View>
-          <AppButton full={false} title="تسجيل خروج" variant="danger" onPress={() => mutate({ action: "revokeUserSession", sessionId: session.id }, "تم تسجيل خروج الجهاز")} />
+          {capabilities.can(["students.devices.manage"])&&<AdminCapability all={["students.devices.manage"]}><AppButton full={false} title="تسجيل خروج" variant="danger" onPress={() => mutate({ action: "revokeUserSession", sessionId: session.id }, "تم تسجيل خروج الجهاز")} /></AdminCapability>}
         </View>) : <Text style={[styles.dataMeta, { color: colors.textSoft }]}>لا توجد جلسات نشطة.</Text>}
       </View> : null}
-      <View style={styles.actionRow}><AppButton full={false} title={row.status === "active" ? "تعليق" : "تنشيط"} variant={row.status === "active" ? "danger" : "soft"} onPress={() => mutate({ action: "updateUser", id: row.id, role: row.role, status: row.status === "active" ? "suspended" : "active" })} /><AppButton full={false} title="حذف نهائي" variant="danger" onPress={() => onDelete("user", row.id, row.fullName, "سيُحذف الحساب وبياناته غير المالية وملفات الدعم، ويُمنع إذا وُجد طلب أو فاتورة أو حدث دفع.")} /></View>
+      <AppButton full={false} title="فتح ملف الطالب" variant="soft" onPress={()=>onOpenProfile(row.email)}/><View style={styles.actionRow}>{capabilities.can(["students.manage"])&&<AdminCapability all={["students.manage"]}><AppButton full={false} title={row.status === "active" ? "تعليق" : "تنشيط"} variant={row.status === "active" ? "danger" : "soft"} onPress={() => mutate({ action: "updateUser", id: row.id, role: row.role, status: row.status === "active" ? "suspended" : "active" })} /></AdminCapability>}{capabilities.can(["students.manage","records.delete"])&&<AdminCapability all={["records.delete"]}><AppButton full={false} title="حذف نهائي" variant="danger" onPress={() => onDelete("user", row.id, row.fullName, "سيُحذف الحساب وبياناته غير المالية وملفات الدعم، ويُمنع إذا وُجد طلب أو فاتورة أو حدث دفع.")} /></AdminCapability>}</View>
     </Card>) : <EmptyState title="لا توجد نتائج" text="جرّب اسمًا أو بريدًا أو رقم جوال مختلفًا." />}
-    <SectionTitle title="نطاقات المشرفين" subtitle="يربط المشرف بطلبات ومحتوى الجامعة والتخصص المحددين" />
-    <Card>
-      <SearchPicker label="المشرف" value={supervisorId} placeholder="اختر حساب مشرف" items={supervisors.map((row) => ({ key: String(row.id), label: row.fullName, detail: row.email }))} onSelect={(item) => setSupervisorId(item.key)} />
-      <SearchPicker label="الجامعة أو الكلية" value={institutionSlug} placeholder="اختر الجهة" items={data.institutions.map((row) => ({ key: row.slug, label: row.name, detail: row.region }))} onSelect={(item) => { setInstitutionSlug(item.key); setSpecialty(""); }} />
-      <SearchPicker label="التخصص" value={specialty} placeholder={programs.isFetching ? "جارٍ تحميل التخصصات..." : "اختر تخصص الجهة"} disabled={!institutionSlug || programs.isFetching} items={(programs.data?.programs || []).map((row) => ({ key: row.name, label: row.name, detail: `${row.degree} · ${row.area}` }))} onSelect={(item) => setSpecialty(item.key)} />
-      <AppButton title="حفظ نطاق الإشراف" icon="git-network-outline" disabled={!supervisorId || !institutionSlug || !specialty} onPress={() => mutate({ action: "saveSupervisorAssignment", supervisorId: Number(supervisorId), institutionSlug, specialty, active: true }, "تم ربط المشرف بالنطاق")} />
-    </Card>
-    {data.supervisorAssignments.map((assignment) => { const supervisor = data.users.find((row) => row.id === assignment.supervisorId); const institution = data.institutions.find((row) => row.slug === assignment.institutionSlug); return <Card key={assignment.id} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{supervisor?.fullName || `مشرف #${assignment.supervisorId}`}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{institution?.name || assignment.institutionSlug} · {assignment.specialty}</Text><View style={styles.actionRow}><AppButton full={false} title={assignment.active ? "تعطيل النطاق" : "تفعيل النطاق"} variant={assignment.active ? "danger" : "soft"} onPress={() => mutate({ action: "saveSupervisorAssignment", ...assignment, active: !assignment.active })} /><AppButton full={false} title="حذف التكليف" variant="danger" onPress={() => onDelete("supervisor_assignment", assignment.id, "تكليف المشرف", "سيُحذف نطاق التكليف فقط، ولن يُحذف حساب المشرف.")} /></View></Card>; })}
   </>;
 }
 
@@ -319,8 +301,8 @@ function Requests({ rows, courses, colors, mutate, onDelete }: { rows: AdminData
     <Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.attachmentsCount} مرفقات</Text>
     {row.files?.length ? <View style={styles.requestFiles}><AppButton title="تحميل كل المرفقات ZIP" icon="archive-outline" variant="soft" onPress={() => void downloadAll(row)} />{row.files.map((file) => <Pressable key={file.id} onPress={() => void openFile(file)} style={styles.requestFile}><Ionicons name="download-outline" size={15} color={colors.primary} /><Text numberOfLines={1} style={{ color: colors.primary, fontSize: 9, flex: 1 }}>{file.originalName} · {(file.sizeBytes / 1024 / 1024).toFixed(1)}MB</Text></Pressable>)}</View> : null}
     <SearchPicker label="المادة بعد التجهيز" value={selected} placeholder="اختر مادة منشورة مطابقة" items={options.map((course) => ({ key: course.slug, label: course.title, detail: course.specialty }))} onSelect={(item) => setSelectedCourses((current) => ({ ...current, [row.id]: item.key }))} />
-    <AppButton title="تم تجهيز الطلب وإشعار الطالب" icon="checkmark-done-outline" disabled={!selected} onPress={() => void mutate({ action: "prepareRequest", id: row.id, courseSlug: selected }, "تم تجهيز الطلب وإرسال الإشعار")}/>
-    <AppButton title="حذف الطلب وملفاته" icon="trash-outline" variant="danger" onPress={() => onDelete("course_request", row.id, row.courseName, "سيُحذف الطلب وجميع ملفاته من التخزين نهائيًا.")} />
+    <AdminCapability all={["requests.manage","catalog.manage"]}><AppButton title="تم تجهيز الطلب وإشعار الطالب" icon="checkmark-done-outline" disabled={!selected} onPress={() => void mutate({ action: "prepareRequest", id: row.id, courseSlug: selected }, "تم تجهيز الطلب وإرسال الإشعار")}/></AdminCapability>
+    <AdminCapability all={["records.delete"]}><AppButton title="حذف الطلب وملفاته" icon="trash-outline" variant="danger" onPress={() => onDelete("course_request", row.id, row.courseName, "سيُحذف الطلب وجميع ملفاته من التخزين نهائيًا.")} /></AdminCapability>
     <SearchPicker label="حالة الطلب" value={row.status} placeholder="اختر حالة الطلب" items={requestStatuses.map((key) => ({ key, label: requestStatusLabels[language][key] || key }))} onSelect={(item) => void mutate({ action: "updateRequest", id: row.id, status: item.key, courseSlug: item.key === "available" ? selected : undefined })} />
   </Card>; }) : <EmptyState title="لا توجد نتائج" text="لا توجد طلبات مطابقة لبحثك." />}</>;
 }
@@ -370,7 +352,11 @@ function Support({ rows, colors, mutate, refresh, onDelete }: { rows: AdminData[
   </>;
 }
 
-function CatalogAdmin({ data, colors, mutate, refresh, onDelete }: { data: AdminData; colors: Colors; mutate: Mutate; refresh: () => Promise<void>; onDelete: DeleteEntity }) {
+function CatalogReadOnly({section,data,colors}:{section:string;data:AdminData;colors:Colors}) {
+ const items=section==="institutions"?data.institutions.map(r=>({id:r.slug,title:r.name,description:r.region})):section==="specialties"?data.specialties.map(r=>({id:r.slug,title:r.name,description:r.description})):section==="courses"?data.courses.map(r=>({id:r.slug,title:r.title,description:r.university})):data.lessons.map(r=>({id:r.id,title:r.title,description:r.courseSlug}));
+ return <><Text style={{color:colors.textSoft,lineHeight:25}}>عرض فقط؛ لا توجد أزرار تعديل أو حذف دون صلاحياتها.</Text>{section==="resources"?<AdminLessonSources courses={data.courses}/>:items.map(r=><Card key={r.id}><Text style={{color:colors.text,fontWeight:"700",fontSize:17}}>{r.title}</Text><Text selectable style={{color:colors.textSoft,lineHeight:24}}>{r.description}</Text></Card>)}</>;
+}
+function CatalogAdmin({ data, colors, mutate, refresh, onDelete, section }: { section:string; data: AdminData; colors: Colors; mutate: Mutate; refresh: () => Promise<void>; onDelete: DeleteEntity }) {
   const { t } = useLanguage();
   const [operationKey, setOperationKey] = useState(() => randomUUID());
   const [institution, setInstitution] = useState({ slug: "", name: "", nameEn: "", region: "", type: "حكومية", domain: "", logoUrl: "" });
@@ -444,32 +430,55 @@ function CatalogAdmin({ data, colors, mutate, refresh, onDelete }: { data: Admin
     } finally { setVideoBusy(false); }
   };
   return <>
-    <SectionTitle title="طريقة مشاهدة المحتوى" subtitle="يُفرض الاختيار من خادم البث، بينما يبقى الدرس التجريبي متاحًا في الويب والتطبيق" />
-    <Card><ChoiceRow values={["both", "app_only", "web_only"]} selected={data.settings.content_view_mode || "both"} onSelect={(value) => void mutate({ action: "saveSettings", values: { content_view_mode: value } }, "تم تحديث طريقة مشاهدة المحتوى")} colors={colors} labels={{ both: "الويب والتطبيق", app_only: "التطبيق فقط", web_only: "الويب فقط" }} /></Card>
+
+    {section === "content" && <>
     <SectionTitle title="رفع فيديو درس" subtitle="يحسب الخادم مدة MP4/MOV/WebM/MKV/AVI تلقائيًا ويحدّث مدة الدرس" />
     <Card><SearchPicker label="الدرس" value={videoLessonId} placeholder="اختر الدرس" items={data.lessons.map((item) => ({ key: item.id, label: item.title, detail: item.courseSlug }))} onSelect={(item) => setVideoLessonId(item.key)} /><AppButton title={video ? `الفيديو: ${video.name}` : "اختيار ملف الفيديو"} variant="soft" icon="videocam-outline" onPress={pickVideo} /><View style={styles.spacer} /><AppButton title="رفع وربط الفيديو" icon="cloud-upload-outline" loading={videoBusy} disabled={!video || !videoLessonId} onPress={() => void uploadVideo()} /></Card>
+</>}
+    {section === "institutions" && <>
     <SectionTitle title="تجهيز الكتالوج الكامل" subtitle="ينشئ السجلات الإدارية والوحدات والدروس التجريبية تلقائيًا دون استبدال ما عدّلته يدويًا" />
     <Card><Text style={[styles.dataMeta, { color: colors.textSoft }]}>ستظهر المواد قابلة للاشتراك بسعر قالب 49 ر.س، ويمكنك تعديل السعر والمادة من الإدارة ورفع الفيديوهات لاحقًا لكل درس.</Text><AppButton title="تجهيز كل الجامعات والتخصصات والمواد" icon="sparkles-outline" onPress={() => void syncCatalog()} /></Card>
+</>}
+    {section === "institutions" && <>
     <SectionTitle title="إضافة جامعة أو كلية" subtitle="يمكن رفع شعار شفاف أو استخدام رابط HTTPS رسمي" />
     <Card><Field label="المعرّف (اختياري — يُنشأ تلقائيًا)" value={institution.slug} onChangeText={(value) => setInstitution({ ...institution, slug: value.replace(/[^a-zA-Z0-9._-]/g, "").toLowerCase() })} placeholder="university-slug" autoCapitalize="none" /><Field label="الاسم العربي" value={institution.name} onChangeText={(value) => setInstitution({ ...institution, name: value })} /><Field label="الاسم الإنجليزي" value={institution.nameEn} onChangeText={(value) => setInstitution({ ...institution, nameEn: value })} /><Field label="المنطقة" value={institution.region} onChangeText={(value) => setInstitution({ ...institution, region: value })} /><ChoiceRow values={["حكومية", "أهلية", "كلية", "تقنية"]} selected={institution.type} onSelect={(value) => setInstitution({ ...institution, type: value })} colors={colors} /><Field label="النطاق الرسمي" value={institution.domain} onChangeText={(value) => setInstitution({ ...institution, domain: value })} placeholder="university.edu.sa" autoCapitalize="none" /><Field label="رابط الشعار الرسمي — اختياري" value={institution.logoUrl} onChangeText={(value) => setInstitution({ ...institution, logoUrl: value })} placeholder="https://.../logo.svg" autoCapitalize="none" /><AppButton title={logo ? `الشعار: ${logo.name}` : "رفع ملف شعار"} variant="soft" icon="image-outline" onPress={pickLogo} /><View style={styles.spacer} /><AppButton title="حفظ الجهة" icon="save-outline" disabled={institution.name.length < 3 || !institution.region} onPress={saveInstitution} /></Card>
+</>}
+    {section === "specialties" && <>
     <SectionTitle title="إضافة تخصص وربطه" />
     <Card><Field label="المعرّف (اختياري — يُنشأ تلقائيًا)" value={specialty.slug} onChangeText={(value) => setSpecialty({ ...specialty, slug: value.replace(/[^a-zA-Z0-9._-]/g, "").toLowerCase() })} placeholder="computer-science" /><Field label="اسم التخصص" value={specialty.name} onChangeText={(value) => setSpecialty({ ...specialty, name: value })} /><Field label="وصف مختصر" value={specialty.description} onChangeText={(value) => setSpecialty({ ...specialty, description: value })} /><SearchPicker label="ربطه بجهة" value={specialty.institutionSlug} placeholder="اختر الجامعة أو الكلية" items={data.institutions.map((row) => ({ key: row.slug, label: row.name, detail: row.region }))} onSelect={(item) => setSpecialty({ ...specialty, institutionSlug: item.key })} /><AppButton title="حفظ التخصص" disabled={specialty.name.length < 2 || !specialty.institutionSlug} onPress={() => mutate({ action: "saveSpecialty", intent: "create", ...specialty, status: "published" }, "تم حفظ التخصص وربطه")} /></Card>
+</>}
+    {section === "courses" && <>
     <SectionTitle title="إضافة مادة" subtitle="ترتبط بجهة وتخصص إداري فعليين" />
     <Card><Field label="المعرّف (اختياري — يُنشأ تلقائيًا)" value={course.slug} onChangeText={(value) => setCourse({ ...course, slug: value.replace(/[^a-zA-Z0-9._-]/g, "").toLowerCase() })} placeholder="course-slug" /><Field label="اسم المادة" value={course.title} onChangeText={(value) => setCourse({ ...course, title: value })} /><Field label="الاسم الإنجليزي" value={course.titleEn} onChangeText={(value) => setCourse({ ...course, titleEn: value })} /><Field label="رمز المادة" value={course.code} onChangeText={(value) => setCourse({ ...course, code: value })} /><SearchPicker label="الجهة" value={course.institutionSlug} placeholder="اختر الجهة" items={data.institutions.map((row) => ({ key: row.slug, label: row.name, detail: row.region }))} onSelect={(item) => setCourse({ ...course, institutionSlug: item.key })} /><SearchPicker label="التخصص" value={course.specialtySlug} placeholder="اختر التخصص" items={data.specialties.map((row) => ({ key: row.slug, label: row.name }))} onSelect={(item) => setCourse({ ...course, specialtySlug: item.key })} /><TextInput value={course.description} onChangeText={(value) => setCourse({ ...course, description: value })} placeholder="وصف المادة" placeholderTextColor={colors.textSoft} multiline style={[styles.area, { color: colors.text, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} /><Field label="رابط صورة الغلاف HTTPS — اختياري" value={course.coverImageUrl} onChangeText={(value) => setCourse({ ...course, coverImageUrl: value })} placeholder="https://..." autoCapitalize="none" /><AppButton title={cover ? `الغلاف: ${cover.name}` : "رفع ملف غلاف المادة"} variant="soft" icon="image-outline" onPress={pickCover} />{cover || course.coverImageUrl ? <Image source={{ uri: cover?.uri || absoluteUrl(course.coverImageUrl) }} style={styles.coverPreview} resizeMode="cover" /> : null}<Field label="السعر" value={course.price} onChangeText={(value) => setCourse({ ...course, price: value })} keyboardType="decimal-pad" /><Field label="السعر السابق — اختياري" value={course.oldPrice} onChangeText={(value) => setCourse({ ...course, oldPrice: value })} keyboardType="decimal-pad" /><Field label="مدة الوصول" value={course.accessLabel} onChangeText={(value) => setCourse({ ...course, accessLabel: value })} /><AppButton title="حفظ المادة" disabled={course.title.length < 3 || !course.institutionSlug || !course.specialtySlug || !course.price} onPress={() => void saveCourse()} /></Card>
+</>}
+    {section === "institutions" && <>
     <SectionTitle title="الجهات الحالية" subtitle="نشر وإخفاء وتمييز الصفحات" />
-    {data.institutions.slice(0, 25).map((row) => <Card key={row.slug} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{row.name}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.region} · {institutionTypeLabels[row.type] || "جهة تعليمية"} · {publicationStatusLabels[row.status] || "حالة نشر غير معروفة"}</Text><View style={styles.actionRow}><AppButton full={false} title={row.featured ? "إلغاء التمييز" : "تمييز"} variant="soft" onPress={() => mutate(institutionPayload(row, row.status, !row.featured))} /><AppButton full={false} title={row.status === "published" ? "إخفاء" : "نشر"} variant="ghost" onPress={() => mutate(institutionPayload(row, row.status === "published" ? "hidden" : "published", Boolean(row.featured)))} /><AppButton full={false} title="حذف نهائي" variant="danger" onPress={() => onDelete("institution", row.slug, row.name, "سيُحذف الشعار والمواد والمحتوى التابع، ويُمنع إذا وُجد طلاب أو طلبات أو نشاط مالي مرتبط.")} /></View></Card>)}
+    {data.institutions.slice(0, 25).map((row) => <Card key={row.slug} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{row.name}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.region} · {institutionTypeLabels[row.type] || "جهة تعليمية"} · {publicationStatusLabels[row.status] || "حالة نشر غير معروفة"}</Text><View style={styles.actionRow}><AppButton full={false} title={row.featured ? "إلغاء التمييز" : "تمييز"} variant="soft" onPress={() => mutate(institutionPayload(row, row.status, !row.featured))} /><AppButton full={false} title={row.status === "published" ? "إخفاء" : "نشر"} variant="ghost" onPress={() => mutate(institutionPayload(row, row.status === "published" ? "hidden" : "published", Boolean(row.featured)))} /><AdminCapability all={["records.delete"]}><AppButton full={false} title="حذف نهائي" variant="danger" onPress={() => onDelete("institution", row.slug, row.name, "سيُحذف الشعار والمواد والمحتوى التابع، ويُمنع إذا وُجد طلاب أو طلبات أو نشاط مالي مرتبط.")} /></AdminCapability></View></Card>)}
+</>}
+    {section === "specialties" && <>
     <SectionTitle title="التخصصات الحالية" />
-    {data.specialties.slice(0, 50).map((row) => <Card key={row.slug} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{row.name}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>المعرّف: {row.slug} · {publicationStatusLabels[row.status] || "حالة نشر غير معروفة"}</Text><AppButton full={false} title="حذف التخصص" variant="danger" onPress={() => onDelete("specialty", row.slug, row.name, "سيُحذف ربط التخصص والمواد التابعة، ويُمنع إذا كان مرتبطًا بطلاب أو سجل مالي.")} /></Card>)}
+    {data.specialties.slice(0, 50).map((row) => <Card key={row.slug} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{row.name}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>المعرّف: {row.slug} · {publicationStatusLabels[row.status] || "حالة نشر غير معروفة"}</Text><AdminCapability all={["records.delete"]}><AppButton full={false} title="حذف التخصص" variant="danger" onPress={() => onDelete("specialty", row.slug, row.name, "سيُحذف ربط التخصص والمواد التابعة، ويُمنع إذا كان مرتبطًا بطلاب أو سجل مالي.")} /></AdminCapability></Card>)}
+</>}
+    {section === "courses" && <>
     <SectionTitle title="المواد الحالية" />
-    {data.courses.filter((row) => row.specialtySlug).slice(0, 25).map((row) => <Card key={row.slug} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{row.title}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.university} · {row.price} ر.س · {publicationStatusLabels[row.status] || "حالة نشر غير معروفة"}</Text><View style={styles.actionRow}><AppButton full={false} title={row.featured ? "إلغاء التمييز" : "تمييز"} variant="soft" onPress={() => mutate(coursePayload(row, row.status, !row.featured))} /><AppButton full={false} title={row.status === "published" ? "إخفاء" : "نشر"} variant="ghost" onPress={() => mutate(coursePayload(row, row.status === "published" ? "hidden" : "published", Boolean(row.featured)))} /><AppButton full={false} title="حذف نهائي" variant="danger" onPress={() => onDelete("course", row.slug, row.title, "سيُحذف الغلاف والوحدات والدروس والفيديوهات والتقدم والمفضلة والسلة. يُمنع عند وجود تاريخ مالي أو وصول فعال.")} /></View></Card>)}
+    {data.courses.filter((row) => row.specialtySlug).slice(0, 25).map((row) => <Card key={row.slug} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{row.title}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.university} · {row.price} ر.س · {publicationStatusLabels[row.status] || "حالة نشر غير معروفة"}</Text><View style={styles.actionRow}><AppButton full={false} title={row.featured ? "إلغاء التمييز" : "تمييز"} variant="soft" onPress={() => mutate(coursePayload(row, row.status, !row.featured))} /><AppButton full={false} title={row.status === "published" ? "إخفاء" : "نشر"} variant="ghost" onPress={() => mutate(coursePayload(row, row.status === "published" ? "hidden" : "published", Boolean(row.featured)))} /><AdminCapability all={["records.delete"]}><AppButton full={false} title="حذف نهائي" variant="danger" onPress={() => onDelete("course", row.slug, row.title, "سيُحذف الغلاف والوحدات والدروس والفيديوهات والتقدم والمفضلة والسلة. يُمنع عند وجود تاريخ مالي أو وصول فعال.")} /></AdminCapability></View></Card>)}
+</>}
+    {section === "content" && <>
     <SectionTitle title="إضافة وحدة" subtitle="اختر المادة ثم أضف الوحدة؛ تُنشر مباشرة وتظهر للطالب مع دروسها" />
     <Card><SearchPicker label="المادة" value={unitForm.courseSlug} placeholder="اختر المادة" items={data.courses.map((course) => ({ key: course.slug, label: course.title, detail: course.university }))} onSelect={(item) => setUnitForm({ ...unitForm, courseSlug: item.key })} /><Field label="اسم الوحدة" value={unitForm.title} onChangeText={(title) => setUnitForm({ ...unitForm, title })} /><Field label="وصف الوحدة — اختياري" value={unitForm.description} onChangeText={(description) => setUnitForm({ ...unitForm, description })} /><AppButton title={unitCourse ? `إضافة وحدة إلى ${unitCourse.title}` : "إضافة الوحدة"} icon="add-circle-outline" disabled={!unitForm.courseSlug || unitForm.title.trim().length < 2} onPress={() => void saveUnit()} /></Card>
+</>}
+    {section === "content" && <>
     <SectionTitle title="إضافة درس" subtitle="تُحسب مدة الدرس تلقائيًا من ملف الفيديو عند رفعه" />
     <Card><SearchPicker label="الوحدة" value={lessonForm.unitId} placeholder="اختر الوحدة" items={data.units.map((unit) => ({ key: String(unit.id), label: unit.title, detail: data.courses.find((course) => course.slug === unit.courseSlug)?.title || unit.courseSlug }))} onSelect={(item) => setLessonForm({ ...lessonForm, unitId: item.key })} /><Field label="عنوان الدرس" value={lessonForm.title} onChangeText={(title) => setLessonForm({ ...lessonForm, title })} /><Field label="معرّف الدرس — اختياري" value={lessonForm.id} autoCapitalize="none" inputDirection="ltr" onChangeText={(id) => setLessonForm({ ...lessonForm, id: id.replace(/[^A-Za-z0-9._-]/g, "") })} /><Field label="وصف الدرس — اختياري" value={lessonForm.description} onChangeText={(description) => setLessonForm({ ...lessonForm, description })} /><ChoiceRow values={["paid", "free"]} selected={lessonForm.freePreview ? "free" : "paid"} onSelect={(value) => setLessonForm({ ...lessonForm, freePreview: value === "free" })} colors={colors} labels={{ paid: "درس مدفوع", free: "درس تجريبي مجاني" }} /><AppButton title="حفظ الدرس" icon="add-circle-outline" disabled={!lessonUnit || lessonForm.title.trim().length < 2} onPress={() => void saveLesson()} /></Card>
+</>}
+    {section === "resources" && <>
     <AdminLessonSources courses={data.courses} />
+</>}
+    {section === "content" && <>
     <SectionTitle title="المحتوى الحالي" subtitle="يمكن حذف الوحدة أو الدرس أو الفيديو كلٌّ على حدة" />
-    {data.units.map((unit) => <Card key={`unit-${unit.id}`} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{unit.title}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{unit.courseSlug} · الوحدة #{unit.id}</Text><AppButton full={false} title="حذف الوحدة" variant="danger" onPress={() => onDelete("unit", unit.id, unit.title, "سيُحذف الدروس والفيديوهات والتقدم والملاحظات التابعة.")} /></Card>)}
-    {data.lessons.map((lesson) => <Card key={`lesson-${lesson.id}`} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{lesson.title}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{lesson.courseSlug} · {lesson.description || "بدون وصف"}</Text><View style={styles.actionRow}><AppButton full={false} title="حذف الدرس" variant="danger" onPress={() => onDelete("lesson", lesson.id, lesson.title, "سيُحذف الفيديو والتقدم والملاحظات المرتبطة.")} />{data.videos.filter((video) => video.lessonId === lesson.id).map((video) => <AppButton key={video.id} full={false} title="حذف الفيديو" variant="danger" onPress={() => onDelete("video", video.id, `فيديو ${lesson.title}`, "سيُحذف ملف الفيديو الخاص ويُفصل عن الدرس.")} />)}</View></Card>)}
+    {data.units.map((unit) => <Card key={`unit-${unit.id}`} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{unit.title}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{unit.courseSlug} · الوحدة #{unit.id}</Text><AdminCapability all={["records.delete"]}><AppButton full={false} title="حذف الوحدة" variant="danger" onPress={() => onDelete("unit", unit.id, unit.title, "سيُحذف الدروس والفيديوهات والتقدم والملاحظات التابعة.")} /></AdminCapability></Card>)}
+    {data.lessons.map((lesson) => <Card key={`lesson-${lesson.id}`} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{lesson.title}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{lesson.courseSlug} · {lesson.description || "بدون وصف"}</Text><View style={styles.actionRow}><AdminCapability all={["records.delete"]}><AppButton full={false} title="حذف الدرس" variant="danger" onPress={() => onDelete("lesson", lesson.id, lesson.title, "سيُحذف الفيديو والتقدم والملاحظات المرتبطة.")} /></AdminCapability>{data.videos.filter((video) => video.lessonId === lesson.id).map((video) => <AdminCapability key={video.id} all={["records.delete"]}><AppButton key={video.id} full={false} title="حذف الفيديو" variant="danger" onPress={() => onDelete("video", video.id, `فيديو ${lesson.title}`, "سيُحذف ملف الفيديو الخاص ويُفصل عن الدرس.")} /></AdminCapability>)}</View></Card>)}
+</>}
   </>;
 }
 
@@ -502,48 +511,25 @@ function SubscriptionAdmin({ data, colors, mutate }: { data: AdminData; colors: 
   </>;
 }
 
-function Commerce({ data, colors, mutate, onDelete }: { data: AdminData; colors: Colors; mutate: Mutate; onDelete: DeleteEntity }) {
+function Commerce({ data, colors, mutate, onDelete, section }: {section:string; data: AdminData; colors: Colors; mutate: Mutate; onDelete: DeleteEntity }) {
   const { locale } = useLanguage();
-  const students = data.users.filter((row) => row.role === "student");
-  const [access, setAccess] = useState({ userEmail: "", courseSlug: "", grantType: "manual_payment", price: "", expiresAt: "" });
   const [coupon, setCoupon] = useState({ code: "", type: "percent", value: "", courseSlug: "", usageLimit: "" });
-  const selectedCourse = data.courses.find((row) => row.slug === access.courseSlug);
   return <>
-    <SectionTitle title="عرض وسائل الدفع في الواجهات" subtitle="تحكم بظهور Tap وتابي وتمارا في المحتوى التسويقي" />
-    <Card>
-      <ChoiceRow
-        values={["false", "true"]}
-        selected={data.settings.payment_methods_marketing_enabled || "true"}
-        onSelect={(value) => void mutate(
-          { action: "saveSettings", values: { payment_methods_marketing_enabled: value } },
-          "تم تحديث سياسة عرض وسائل الدفع",
-        )}
-        colors={colors}
-        labels={{ false: "إخفاء الأسماء", true: "السماح بالعرض" }}
-      />
-      <Text style={[styles.dataMeta, { color: colors.textSoft }]}>تعرض الواجهة خيارات التقسيط، وتُحدد طرق الدفع المتاحة عند الطلب حسب الأهلية.</Text>
-    </Card>
-    <SectionTitle title="منح صلاحية مادة" subtitle="اختر هل الوصول ناتج عن دفعة يدوية مسجلة أو منحة مجانية" />
-    <Card>
-      <SearchPicker label="الطالب" value={access.userEmail} placeholder="اختر حساب الطالب" items={students.map((row) => ({ key: row.email, label: row.fullName, detail: `${row.email} · ${row.phone || "بدون جوال"}` }))} onSelect={(item) => setAccess({ ...access, userEmail: item.key })} />
-      <SearchPicker label="المادة" value={access.courseSlug} placeholder="اختر المادة" items={data.courses.map((row) => ({ key: row.slug, label: row.title, detail: `${row.university} · ${row.price} ر.س` }))} onSelect={(item) => { const course = data.courses.find((row) => row.slug === item.key); setAccess({ ...access, courseSlug: item.key, price: access.grantType === "manual_payment" ? String(course?.price ?? "") : "0" }); }} />
-      <Text style={[styles.dataMeta, { color: colors.textSoft }]}>نوع منح الوصول</Text>
-      <ChoiceRow values={["manual_payment", "complimentary"]} selected={access.grantType} onSelect={(value) => setAccess({ ...access, grantType: value, price: value === "manual_payment" ? String(selectedCourse?.price ?? access.price) : "0" })} colors={colors} labels={grantTypeLabels} />
-      {access.grantType === "manual_payment" ? <Field label="السعر المسجل في العملية" value={access.price} onChangeText={(value) => setAccess({ ...access, price: value.replace(/[^0-9.]/g, "") })} keyboardType="decimal-pad" placeholder={selectedCourse ? String(selectedCourse.price) : "0"} /> : <Text style={[styles.dataMeta, { color: colors.textSoft }]}>لن تُسجل المنحة المجانية ضمن الطلبات أو الإيرادات.</Text>}
-      <Field label="انتهاء الصلاحية — اختياري" value={access.expiresAt} onChangeText={(value) => setAccess({ ...access, expiresAt: value })} placeholder="2027-01-31T23:59:00Z" autoCapitalize="none" />
-      <AppButton title={access.grantType === "manual_payment" ? "منح المادة وتسجيل الدفعة" : "منح المادة مجانًا"} icon="key-outline" disabled={!access.userEmail || !access.courseSlug || (access.grantType === "manual_payment" && (access.price === "" || Number(access.price) < 0))} onPress={() => mutate({ action: "grantAccess", userEmail: access.userEmail, courseSlug: access.courseSlug, grantType: access.grantType, price: access.grantType === "manual_payment" ? Number(access.price) : 0, expiresAt: access.expiresAt }, access.grantType === "manual_payment" ? "تم منح المادة وتسجيل الدفعة في المدفوعات" : "تم منح المادة مجانًا دون تسجيل إيراد")} />
-    </Card>
+    {section === "coupons" && <>
     <SectionTitle title="إنشاء كوبون" />
     <Card><Field label="كود الخصم" value={coupon.code} onChangeText={(value) => setCoupon({ ...coupon, code: value.toUpperCase().replace(/[^A-Z0-9_-]/g, "") })} autoCapitalize="characters" /><ChoiceRow values={["percent", "fixed"]} selected={coupon.type} onSelect={(value) => setCoupon({ ...coupon, type: value })} colors={colors} labels={couponTypeLabels} /><Field label={coupon.type === "percent" ? "النسبة" : "المبلغ"} value={coupon.value} onChangeText={(value) => setCoupon({ ...coupon, value })} keyboardType="decimal-pad" /><SearchPicker label="مادة محددة — اختياري" value={coupon.courseSlug} placeholder="كل المواد" items={data.courses.map((row) => ({ key: row.slug, label: row.title, detail: row.university }))} onSelect={(item) => setCoupon({ ...coupon, courseSlug: item.key })} /><Field label="حد الاستخدام — اختياري" value={coupon.usageLimit} onChangeText={(value) => setCoupon({ ...coupon, usageLimit: value })} keyboardType="number-pad" /><AppButton title="حفظ الكوبون" disabled={coupon.code.length < 3 || !coupon.value} onPress={() => mutate({ action: "saveCoupon", ...coupon, value: Number(coupon.value), usageLimit: Number(coupon.usageLimit) }, "تم حفظ الكوبون")} /></Card>
     <SectionTitle title="الكوبونات الحالية" />
-    {data.coupons.map((row) => <Card key={row.id} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{row.code}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.type === "percent" ? `${row.value}%` : row.type === "fixed" ? `${row.value} ر.س` : "نوع خصم غير معروف"} · استُخدم {row.usedCount}{row.usageLimit ? `/${row.usageLimit}` : ""} · {couponStatusLabels[row.status] || "حالة كوبون غير معروفة"}</Text><AppButton full={false} title="حذف الكوبون" variant="danger" onPress={() => onDelete("coupon", row.code, row.code, "سيُحذف الكوبون فقط، ولن تتغير الطلبات أو الفواتير السابقة.")} /></Card>)}
+    {data.coupons.map((row) => <Card key={row.id} style={styles.dataCard}><Text style={[styles.dataTitle, { color: colors.text }]}>{row.code}</Text><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.type === "percent" ? `${row.value}%` : row.type === "fixed" ? `${row.value} ر.س` : "نوع خصم غير معروف"} · استُخدم {row.usedCount}{row.usageLimit ? `/${row.usageLimit}` : ""} · {couponStatusLabels[row.status] || "حالة كوبون غير معروفة"}</Text><AdminCapability all={["records.delete"]}><AppButton full={false} title="حذف الكوبون" variant="danger" onPress={() => onDelete("coupon", row.code, row.code, "سيُحذف الكوبون فقط، ولن تتغير الطلبات أو الفواتير السابقة.")} /></AdminCapability></Card>)}
+</>}
+    {section === "orders" && <>
     <SectionTitle title="آخر الطلبات" subtitle={`${data.metrics.paidOrders} مدفوعة من ${data.metrics.orders}`} />
     {data.orders.slice(0, 50).map((row) => <Card key={row.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={[styles.role, { color: row.status === "paid" ? colors.success : colors.warning }]}>{orderStatusLabels[row.status] || "حالة غير معروفة"}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>#{row.orderNumber}</Text></View><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{row.customerEmail} · {data.courses.find((course) => course.slug === row.courseSlug)?.title || row.courseSlug}</Text><Text style={[styles.amount, { color: colors.text }]}>{row.total.toLocaleString(locale)} ر.س</Text></Card>)}
+</>}
   </>;
 }
 
 function Reviews({ data, colors, mutate, onDelete }: { data: AdminData; colors: Colors; mutate: Mutate; onDelete: DeleteEntity }) {
-  return <><SectionTitle title="التقييمات الموثقة" subtitle="تنشر فقط آراء أصحاب الشراء والتقدم الحقيقيين" />{data.reviews.map((row) => <Card key={row.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={styles.stars}>{"★".repeat(row.rating)}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.userEmail}</Text></View><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{data.courses.find((course) => course.slug === row.courseSlug)?.title || row.courseSlug} · {reviewStatusLabels[row.status] || "حالة تقييم غير معروفة"}</Text><Text style={[styles.ticketBody, { color: colors.text }]}>{row.body}</Text><View style={styles.actionRow}><AppButton full={false} title="نشر" variant="soft" onPress={() => mutate({ action: "updateReview", id: row.id, status: "published" }, "تم نشر التقييم")} /><AppButton full={false} title="رفض" variant="danger" onPress={() => mutate({ action: "updateReview", id: row.id, status: "rejected" }, "تم رفض التقييم")} /><AppButton full={false} title="تعليق" variant="ghost" onPress={() => mutate({ action: "updateReview", id: row.id, status: "pending" })} /><AppButton full={false} title="حذف التقييم" variant="danger" onPress={() => onDelete("review", row.id, `تقييم ${row.courseSlug}`, "سيُحذف التقييم فقط، مع إبقاء المادة والحساب وسجل التدقيق.")} /></View></Card>)}</>;
+  return <><SectionTitle title="التقييمات الموثقة" subtitle="تنشر فقط آراء أصحاب الشراء والتقدم الحقيقيين" />{data.reviews.map((row) => <Card key={row.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={styles.stars}>{"★".repeat(row.rating)}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.userEmail}</Text></View><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{data.courses.find((course) => course.slug === row.courseSlug)?.title || row.courseSlug} · {reviewStatusLabels[row.status] || "حالة تقييم غير معروفة"}</Text><Text style={[styles.ticketBody, { color: colors.text }]}>{row.body}</Text><View style={styles.actionRow}><AppButton full={false} title="نشر" variant="soft" onPress={() => mutate({ action: "updateReview", id: row.id, status: "published" }, "تم نشر التقييم")} /><AppButton full={false} title="رفض" variant="danger" onPress={() => mutate({ action: "updateReview", id: row.id, status: "rejected" }, "تم رفض التقييم")} /><AppButton full={false} title="تعليق" variant="ghost" onPress={() => mutate({ action: "updateReview", id: row.id, status: "pending" })} /><AdminCapability all={["records.delete"]}><AppButton full={false} title="حذف التقييم" variant="danger" onPress={() => onDelete("review", row.id, `تقييم ${row.courseSlug}`, "سيُحذف التقييم فقط، مع إبقاء المادة والحساب وسجل التدقيق.")} /></AdminCapability></View></Card>)}</>;
 }
 
 type MobileBundleCatalogCourse = { slug:string;title:string;university:string;universitySlug:string;specialty:string;specialtySlug:string;price:number;availableForPurchase:boolean };
@@ -658,7 +644,7 @@ function MobileAdminSecurity({ colors }:{ colors:Colors }) {
   </>;
 }
 
-function Communication({ data, colors, mutate, onDelete }: { data: AdminData; colors: Colors; mutate: Mutate; onDelete: DeleteEntity }) {
+function Communication({ data, colors, mutate, onDelete,mode }: {mode:"settings"|"notifications"; data: AdminData; colors: Colors; mutate: Mutate; onDelete: DeleteEntity }) {
   const [settings, setSettings] = useState({
     legal_name: data.settings.legal_name || "",
     commercial_registration_number: data.settings.commercial_registration_number || "",
@@ -690,6 +676,13 @@ function Communication({ data, colors, mutate, onDelete }: { data: AdminData; co
   const templateLabels: Record<string, string> = { general: "إعلان عام", discount: "تخفيض", "new-course": "مادة جديدة", "new-service": "خدمة جديدة", urgent: "تنبيه مهم", success: "خبر سار" };
   const templateIcons: Record<string, React.ComponentProps<typeof Ionicons>["name"]> = { general: "megaphone-outline", discount: "pricetag-outline", "new-course": "book-outline", "new-service": "sparkles-outline", urgent: "alert-circle-outline", success: "checkmark-circle-outline" };
   return <>
+{mode === "settings" && <>
+    <SectionTitle title="طريقة مشاهدة المحتوى" subtitle="يُفرض الاختيار من خادم البث، بينما يبقى الدرس التجريبي متاحًا في الويب والتطبيق" />
+    <Card><ChoiceRow values={["both", "app_only", "web_only"]} selected={data.settings.content_view_mode || "both"} onSelect={(value) => void mutate({ action: "saveSettings", values: { content_view_mode: value } }, "تم تحديث طريقة مشاهدة المحتوى")} colors={colors} labels={{ both: "الويب والتطبيق", app_only: "التطبيق فقط", web_only: "الويب فقط" }} /></Card>
+
+    <SectionTitle title="عرض وسائل الدفع في الواجهات" subtitle="تحكم بظهور أسماء وسائل الدفع في المحتوى التسويقي"/>
+    <Card><ChoiceRow values={["false","true"]} selected={data.settings.payment_methods_marketing_enabled || "true"} onSelect={(value)=>void mutate({action:"saveSettings",values:{payment_methods_marketing_enabled:value}},"تم تحديث سياسة عرض وسائل الدفع")} colors={colors} labels={{false:"إخفاء الأسماء",true:"السماح بالعرض"}}/></Card>
+
     <SectionTitle title="بيانات المنشأة والتراخيص" subtitle="أضف الأرقام وروابط التحقق الرسمية بعد صدورها؛ الحقول الفارغة لا تظهر للطلاب" />
     <Card>
       <View style={[styles.securitySetup, { backgroundColor: colors.surfaceAlt, borderColor: colors.border }]}>
@@ -710,6 +703,8 @@ function Communication({ data, colors, mutate, onDelete }: { data: AdminData; co
     </Card>
     <SectionTitle title="قنوات التواصل" subtitle="تظهر القيم تلقائيًا في الويب والتطبيق والتذييل وصفحة الدعم" />
     <Card><Field label="رقم واتساب" value={settings.whatsapp_number} onChangeText={(value) => update("whatsapp_number", value)} keyboardType="phone-pad" /><Field label="رسالة واتساب الافتراضية" value={settings.whatsapp_message} onChangeText={(value) => update("whatsapp_message", value)} /><Field label="بريد الدعم" value={settings.support_email} onChangeText={(value) => update("support_email", value)} keyboardType="email-address" autoCapitalize="none" /><Field label="ساعات العمل" value={settings.support_hours} onChangeText={(value) => update("support_hours", value)} /><Text style={[styles.dataMeta, { color: colors.textSoft }]}>الشبكات الاجتماعية</Text>{[["social_x", "X"], ["social_instagram", "Instagram"], ["social_tiktok", "TikTok"], ["social_youtube", "YouTube"], ["social_telegram", "Telegram"], ["social_linkedin", "LinkedIn"], ["social_facebook", "Facebook"], ["social_snapchat", "Snapchat"], ["social_threads", "Threads"]].map(([key, label]) => <Field key={key} label={`رابط ${label}`} value={settings[key as keyof typeof settings]} onChangeText={(value) => update(key as keyof typeof settings, value)} autoCapitalize="none" />)}<AppButton title="حفظ قنوات التواصل" icon="save-outline" onPress={() => mutate({ action: "saveSettings", values: settings }, "تم تحديث القنوات في الويب والتطبيق")} /></Card>
+</>}
+{mode === "notifications" && <>
     <SectionTitle title="الإعلانات والإشعارات" subtitle="قوالب جاهزة، نافذة منبثقة أو شريط إعلاني أو مركز إشعارات، ورابط داخلي أو خارجي" />
     <Card>
       <Text style={[styles.dataMeta, { color: colors.textSoft }]}>قالب الإعلان</Text>
@@ -742,7 +737,8 @@ function Communication({ data, colors, mutate, onDelete }: { data: AdminData; co
       <AppButton title="نشر الإعلان" icon="send-outline" disabled={notice.title.length < 3 || notice.body.length < 3 || (notice.audience === "user" && !notice.userEmail) || (notice.audience === "segment" && !notice.segmentUniversity && !notice.segmentSpecialty && !notice.segmentCourse && !notice.segmentAccessState && !notice.segmentInactiveDays)} onPress={() => mutate({ action: "createNotification", ...notice, userEmail: notice.userEmail || null, segmentInactiveDays: Number(notice.segmentInactiveDays) || 0 }, "تم نشر الإعلان والإشعار للشريحة المحددة")} />
     </Card>
     <SectionTitle title="الإعلانات الحالية" />
-    <View>{data.notifications.slice(0, 30).map((row) => <Card key={row.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={[styles.role, { color: colors.primary }]}>{templateLabels[row.template || "general"] || "إعلان مخصص"}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.title}</Text></View><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{notificationAudienceLabels[row.audience] || "جمهور مخصص"} · {row.userEmail || "عام"} · {notificationPresentationLabels[row.presentation || "inbox"] || "عرض مخصص"}</Text>{row.actionUrl ? <Text numberOfLines={1} style={[styles.dataMeta, { color: colors.primary }]}>{row.actionUrl}</Text> : null}<AppButton full={false} title="حذف الإشعار" variant="danger" onPress={() => onDelete("notification", row.id, row.title, "سيُحذف الإشعار فقط، مع إبقاء سجل التدقيق محفوظًا.")} /></Card>)}</View>
+    <View>{data.notifications.slice(0, 30).map((row) => <Card key={row.id} style={styles.dataCard}><View style={styles.dataHead}><Text style={[styles.role, { color: colors.primary }]}>{templateLabels[row.template || "general"] || "إعلان مخصص"}</Text><Text style={[styles.dataTitle, { color: colors.text }]}>{row.title}</Text></View><Text style={[styles.dataMeta, { color: colors.textSoft }]}>{notificationAudienceLabels[row.audience] || "جمهور مخصص"} · {row.userEmail || "عام"} · {notificationPresentationLabels[row.presentation || "inbox"] || "عرض مخصص"}</Text>{row.actionUrl ? <Text numberOfLines={1} style={[styles.dataMeta, { color: colors.primary }]}>{row.actionUrl}</Text> : null}<AdminCapability all={["records.delete"]}><AppButton full={false} title="حذف الإشعار" variant="danger" onPress={() => onDelete("notification", row.id, row.title, "سيُحذف الإشعار فقط، مع إبقاء سجل التدقيق محفوظًا.")} /></AdminCapability></Card>)}</View>
+</>}
   </>;
 }
 

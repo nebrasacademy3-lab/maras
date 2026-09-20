@@ -1,41 +1,48 @@
+import { summaryOptions } from "@/lib/study-summary-policy";
 import "server-only";
 import { createHash } from "node:crypto";
-import { and, eq, gt, sql } from "drizzle-orm";
+import { and, count, eq, gt, gte, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiArtifacts, aiConversations, aiFileCache, aiFileJobs, aiFiles, aiMessages, aiQuizzes } from "@/db/schema";
+import { aiArtifacts, aiConversations, aiFileCache, aiFileJobs, aiFiles, aiMessages, aiQuizzes, aiUsageEvents, users } from "@/db/schema";
 import { aiDeepLinks, artifactPayload, messagePayload, quizPayload } from "@/lib/ai-api";
 import { readAiFileBytes } from "@/lib/ai-files";
 import { resolveAiSource } from "@/lib/ai-course-source";
 import { generateFileArtifact, generateFileQuiz, type StoredQuizQuestion } from "@/lib/ai-generation";
-import { AiPlatformError, beginAiUsage, finishAiUsage, getAiUsageStatuses, usagePayload } from "@/lib/ai-platform";
+import { AiPlatformError, billableUsageState, periodStartIso, beginAiUsage, finishAiUsage, getAiUsageStatuses, usagePayload } from "@/lib/ai-platform";
 import { acquireAiWorkLease, AiBusyError } from "@/lib/ai-work-control";
 import { studyDocumentText } from "@/lib/study-document";
 import { GeminiProviderError } from "@/lib/gemini-errors";
 import { DocumentFormatError } from "@/lib/document-archive";
 
 export type FileAction = "summary" | "translation" | "quiz";
-export type FileActionOptions = { language: string; targetLanguage: string; questionCount: number };
+export type FileActionOptions = { language: string; targetLanguage: string; questionCount: number; summaryDetail?: string };
 export function fileActionOptions(input: Record<string, unknown>): FileActionOptions {
   const language = (value: unknown) => typeof value === "string" ? value.replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 60) || "العربية" : "العربية";
   const count = Number(input.questionCount);
-  return { language: language(input.language), targetLanguage: language(input.targetLanguage), questionCount: Number.isFinite(count) ? Math.max(5, Math.min(20, Math.floor(count))) : 10 };
+  return { language: language(input.language), targetLanguage: language(input.targetLanguage), questionCount: Number.isFinite(count) ? Math.max(5, Math.min(20, Math.floor(count))) : 10, summaryDetail: typeof input.summaryDetail === "string" ? input.summaryDetail : "balanced" };
 }
 
-type Generation = { kind: "quiz"; title: string; questions: StoredQuizQuestion[]; language: string; model: string } | { kind: "summary" | "translation"; title: string; text: string; model: string };
+export type Generation = { kind: "quiz"; title: string; questions: StoredQuizQuestion[]; language: string; model: string } | { kind: "summary" | "translation"; title: string; text: string; model: string };
 
 export function fileActionCacheKey(input: { scope: string; version: string; name: string; action: FileAction; options: FileActionOptions; config: { model: string; instructions: string; maxOutputTokens: number; temperature: number } }) {
   // User uploads NEVER share a cache namespace with another user. Official sources may share after authorization.
   const language = (value: string) => /^(?:ar|arabic|العربية)$/i.test(value.trim()) ? "ar" : /^(?:en|english|الإنجليزية|الانجليزية)$/i.test(value.trim()) ? "en" : value.trim().toLowerCase();
-  const options = input.action === "summary" ? {} : input.action === "translation" ? { targetLanguage: language(input.options.targetLanguage) } : { language: language(input.options.language), questionCount: input.options.questionCount };
-  return createHash("sha256").update(JSON.stringify({ v: 3, ...input, options })).digest("hex");
+  const options = input.action === "summary" ? summaryOptions(input.options.language, input.options.summaryDetail) : input.action === "translation" ? { targetLanguage: language(input.options.targetLanguage) } : { language: language(input.options.language), questionCount: input.options.questionCount };
+  return createHash("sha256").update(JSON.stringify({ v: 4, ...input, options })).digest("hex");
 }
 
-export async function runAiFileAction(input: {
+export type FileActionInput = {
   user: { id: number; email: string }; fileId: number; conversationId: number;
   action: FileAction; options: FileActionOptions; requestId: string; client: "app" | "web";
   job?: { id: string; owner: string };
-}) {
+};
+
+export async function runAiFileAction(input: FileActionInput) {
   const { user, action, options } = input;
+  if (action === "summary") {
+    try { summaryOptions(options.language, options.summaryDetail); }
+    catch { throw new AiPlatformError("AI_SUMMARY_OPTIONS_INVALID", "اختر لغة الملخص ومستوى التفصيل من الخيارات المتاحة.", 422); }
+  }
   const [file] = await getDb().select().from(aiFiles).where(and(eq(aiFiles.id, input.fileId), eq(aiFiles.userId, user.id))).limit(1);
   if (!file) throw new AiPlatformError("AI_FILE_MISSING", "الملف غير موجود.", 404);
   const [conversation] = await getDb().select({ id: aiConversations.id }).from(aiConversations).where(and(eq(aiConversations.id, input.conversationId), eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"))).limit(1);
@@ -77,7 +84,7 @@ export async function runAiFileAction(input: {
           generation = { kind: "quiz", title: generated.quiz.title, questions: generated.quiz.questions, language: options.language, model: generated.result.model };
           await finishAiUsage({ eventId: reservation.eventId, status: "succeeded", ...generated.result });
         } else {
-          const generated = await generateFileArtifact({ action, config, bytes, contentType: source.contentType, originalName: source.originalName, targetLanguage: options.targetLanguage });
+          const generated = await generateFileArtifact({ action, config, bytes, contentType: source.contentType, originalName: source.originalName, targetLanguage: options.targetLanguage, language: options.language, summaryDetail: options.summaryDetail });
           generation = { kind: action, title: (action === "summary" ? `ملخص ${source.originalName}` : `ترجمة ${source.originalName} إلى ${options.targetLanguage}`).slice(0, 180), text: generated.text, model: generated.model };
           await finishAiUsage({ eventId: reservation.eventId, status: "succeeded", ...generated });
         }
@@ -93,13 +100,31 @@ export async function runAiFileAction(input: {
     } finally { await releaseCache().catch(() => undefined); }
   }
   if (!generation) throw new AiPlatformError("AI_RESULT_MISSING", "تعذر حفظ نتيجة المعالجة.", 503);
-  // Recheck subscription/visibility after a long provider call and before returning source-derived content.
-  if (file.sourceResourceId !== null) await resolveAiSource(file, user, input.client);
-  const value = generation;
+  return publishAiFileGeneration(input, { file, conversation, source, generation, usage, reused });
+}
+
+/** Publication is shared by legacy and checkpointed jobs; never weaken its source/access locks. */
+export async function publishAiFileGeneration(input: FileActionInput, saved: {
+  file: typeof aiFiles.$inferSelect; conversation: { id: number }; source: Awaited<ReturnType<typeof resolveAiSource>>;
+  generation: Generation; usage: Awaited<ReturnType<typeof getAiUsageStatuses>>["statuses"][FileAction]; reused: boolean;
+  metadata?: Record<string, unknown>;
+}) {
+  const { user, action, options } = input;
+  const { file, conversation, source, generation: value, usage, reused, metadata } = saved;
   return getDb().transaction(async tx => {
+    // Hold the owner, conversation, file, source and entitlement rows through
+    // publication. A file becoming quarantined/withdrawn while Gemini worked
+    // must not publish a new result, including a cache hit.
+    const [currentUser] = await tx.select({ id: users.id }).from(users).where(and(eq(users.id, user.id), eq(users.status, "active"))).limit(1).for("share");
+    const [currentConversation] = await tx.select({ id: aiConversations.id }).from(aiConversations).where(and(eq(aiConversations.id, conversation.id), eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"))).limit(1).for("update");
+    const [currentFile] = await tx.select().from(aiFiles).where(and(eq(aiFiles.id, file.id), eq(aiFiles.userId, user.id))).limit(1).for("share");
+    if (!currentUser || !currentConversation || !currentFile) throw new AiPlatformError("AI_SOURCE_ACCESS", "لم يعد الحساب أو مصدر النتيجة متاحًا.", 403);
+    const currentSource = await resolveAiSource(currentFile, user, input.client, tx, true);
+    if (currentSource.cacheScope !== source.cacheScope || currentSource.cacheVersion !== source.cacheVersion || currentSource.objectKey !== source.objectKey || currentSource.sizeBytes !== source.sizeBytes || currentSource.contentType !== source.contentType || currentSource.storageProvider !== source.storageProvider || currentSource.originalName !== source.originalName) throw new AiPlatformError("AI_SOURCE_CHANGED", "تغيّر إصدار المصدر أثناء المعالجة. لم تُنشر نتيجة على الإصدار الجديد.", 409);
     if (input.job) {
-      const rows = await tx.execute(sql`SELECT id FROM ai_file_jobs WHERE id = ${input.job.id} AND status = 'processing' AND lease_owner = ${input.job.owner} FOR UPDATE`);
+      const rows = await tx.execute(sql`SELECT id, pause_requested FROM ai_file_jobs WHERE id = ${input.job.id} AND status = 'processing' AND lease_owner = ${input.job.owner} AND lease_until::timestamptz > clock_timestamp() FOR UPDATE`);
       if (!rows.rows.length) throw new AiBusyError(5, "AI_JOB_LEASE_LOST");
+      if (rows.rows[0].pause_requested) throw new AiBusyError(5, "AI_JOB_PAUSED");
     }
     const now = new Date().toISOString();
     let result: Record<string, unknown>;
@@ -108,12 +133,23 @@ export async function runAiFileAction(input: {
       const [message] = await tx.insert(aiMessages).values({ conversationId: conversation.id, userId: user.id, role: "assistant", service: "quiz", content: `اختبار «${value.title}» من ${value.questions.length} أسئلة جاهز. يمكنك إعادته دون توليد جديد.`, fileId: file.id, model: value.model, usageJson: JSON.stringify({ quizId: quiz.id, cached: reused }), createdAt: now }).returning();
       result = { ok: true, action, quiz: quizPayload(quiz), message: messagePayload(message), usage, cached: reused, deepLink: aiDeepLinks({ conversationId: conversation.id, quizId: quiz.id }).quiz };
     } else {
-      const [artifact] = await tx.insert(aiArtifacts).values({ userId: user.id, conversationId: conversation.id, fileId: file.id, kind: value.kind, title: value.title, content: value.text, metadataJson: JSON.stringify({ targetLanguage: options.targetLanguage, cached: reused }), model: value.model, createdAt: now }).returning();
+      const [artifact] = await tx.insert(aiArtifacts).values({ userId: user.id, conversationId: conversation.id, fileId: file.id, kind: value.kind, title: value.title, content: value.text, metadataJson: JSON.stringify({ targetLanguage: options.targetLanguage, ...(value.kind === "summary" ? { summary: summaryOptions(options.language, options.summaryDetail) } : {}), cached: reused, ...(metadata || {}) }), model: value.model, createdAt: now }).returning();
       const [message] = await tx.insert(aiMessages).values({ conversationId: conversation.id, userId: user.id, role: "assistant", service: action, content: value.text, fileId: file.id, model: value.model, usageJson: JSON.stringify({ artifactId: artifact.id, cached: reused }), createdAt: now }).returning();
       result = { ok: true, action, artifact: artifactPayload(artifact), message: messagePayload(message), usage, cached: reused, deepLink: aiDeepLinks({ conversationId: conversation.id }).conversation };
     }
     await tx.update(aiConversations).set({ title: value.title.slice(0, 120), kind: action, updatedAt: now }).where(eq(aiConversations.id, conversation.id));
-    if (input.job) await tx.update(aiFileJobs).set({ status: "succeeded", resultJson: JSON.stringify(result), leaseUntil: null, leaseOwner: null, updatedAt: now }).where(and(eq(aiFileJobs.id, input.job.id), eq(aiFileJobs.leaseOwner, input.job.owner)));
+    if (input.job) {
+      await tx.execute(sql`UPDATE ai_usage_events u SET status=CASE WHEN EXISTS (SELECT 1 FROM study_job_attempts a WHERE a.job_id=${input.job.id} AND a.billable=true) THEN 'succeeded' ELSE 'failed' END,
+        input_tokens=least(100000000, coalesce((SELECT sum(input_tokens) FROM study_job_attempts WHERE job_id=${input.job.id}),0)),
+        output_tokens=least(100000000, coalesce((SELECT sum(output_tokens) FROM study_job_attempts WHERE job_id=${input.job.id}),0)),
+        error_code=NULL
+        FROM ai_file_jobs j WHERE j.id=${input.job.id} AND j.processing_version=2 AND j.usage_event_id=u.id AND u.user_id=j.user_id AND u.status='processing'`);
+      const [currentUsage] = await tx.select({ used: count() }).from(aiUsageEvents).where(and(eq(aiUsageEvents.userId, user.id), eq(aiUsageEvents.service, action), gte(aiUsageEvents.createdAt, periodStartIso()), billableUsageState()));
+      result.usage = { ...usage, used: Number(currentUsage?.used || 0), remaining: Math.max(0, usage.limit - Number(currentUsage?.used || 0)) };
+      await tx.update(aiFileJobs).set({ status: "succeeded", resultJson: JSON.stringify(result), leaseUntil: null, leaseOwner: null, updatedAt: now,
+        progressJson: sql`CASE WHEN processing_version=2 THEN (coalesce(progress_json,'{}')::jsonb || jsonb_build_object('phase','complete','percent',100,'completedUnits',coalesce(progress_json,'{}')::jsonb->'totalUnits','completedParts',coalesce(progress_json,'{}')::jsonb->'totalParts'))::text ELSE progress_json END`,
+      }).where(and(eq(aiFileJobs.id, input.job.id), eq(aiFileJobs.leaseOwner, input.job.owner)));
+    }
     return result;
   });
 }

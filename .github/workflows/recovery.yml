@@ -1,0 +1,68 @@
+name: Recovery acceptance
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  recovery:
+    name: Encrypted backup and restore drill
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: maras_qa
+          POSTGRES_PASSWORD: synthetic-recovery-ci-only
+          POSTGRES_DB: maras_qa
+        ports: ["55439:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maras_qa"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+      - name: Unit tests for authentication, paths and safe destinations
+        run: node --test tests/recovery-bundle.test.mjs tests/recovery-preflight.test.mjs
+      - name: Actual PostgreSQL 18 dump, restore and migration rollback
+        env:
+          QA_DATABASE_URL: postgresql://maras_qa:synthetic-recovery-ci-only@127.0.0.1:55439/maras_qa
+          RECOVERY_RELEASE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          node --input-type=module -e 'import {mkdirSync,writeFileSync} from "node:fs"; mkdirSync(".data",{recursive:true}); writeFileSync(".data/qa-database.json",JSON.stringify({url:process.env.QA_DATABASE_URL}),{mode:0o600});'
+          node_root="$(dirname "$(dirname "$(command -v node)")")"
+          # The image supplies matching pg_dump/pg_restore. Only synthetic QA
+          # variables are forwarded; no application secrets or provider keys.
+          docker run --rm --network host --user "$(id -u):$(id -g)" \
+            -v "$PWD:/workspace" -v "$node_root:/opt/node:ro" -w /workspace \
+            -e QA_DATABASE_URL -e RECOVERY_RELEASE_SHA \
+            -e RECOVERY_PG_BIN_DIR=/usr/lib/postgresql/18/bin \
+            --entrypoint /opt/node/bin/node postgres:18 scripts/qa-recovery.mjs
+      - name: Check tests did not change tracked source
+        if: always()
+        run: git diff --exit-code
+      - name: Retain only non-secret recovery results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: recovery-acceptance
+          path: .data/qa-recovery-report.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 14

@@ -1,6 +1,7 @@
+import { lockOrderOwnerTx, OrderOwnershipError } from "@/lib/order-ownership";
 import { asc, desc, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiSubscriptionOrders, auditLogs, courseAccess, courseAccessEvents, creditNotes, invoices, notificationsDb, orderItems, orders, paymentEvents, refundRequests } from "@/db/schema";
+import { aiSubscriptionOrders, auditLogs, courseAccess, courseAccessEvents, creditNotes, invoices, notificationsDb, orderItems, orders, paymentEvents, refundRequests, users } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, clientIp, sameOriginRequest } from "@/lib/auth";
 import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
@@ -136,6 +137,8 @@ export async function GET(request: Request) {
     const financeEvents: FinancePaymentEvent[] = events.map((event) => ({ providerEventId: event.providerEventId, status: event.status, payload: event.payload }));
     const refund = resolveRefundAmount(order, financeEvents);
     const invoice = invoiceRows[0] || null;
+    const [owner] = order.userId ? await db.select({ status: users.status }).from(users).where(eq(users.id, order.userId)).limit(1) : [];
+    const ownershipStatus = !order.userId ? "unresolved" : owner?.status === "active" ? "bound" : "inactive";
     return Response.json({
       ok: true,
       order: {
@@ -158,6 +161,8 @@ export async function GET(request: Request) {
         refundRequests: refundRows.map((row) => ({ id: row.id, requestNumber: row.requestNumber, amount: fromMinorUnits(row.amountMinor), currency: row.currency, status: row.status, reason: row.reason, requestedByEmail: row.requestedByEmail, createdAt: row.createdAt, completedAt: row.completedAt })),
         creditNotes: creditNoteRows.map((row) => ({ id: row.id, creditNoteNumber: row.creditNoteNumber, invoiceNumber: row.invoiceNumber, amount: fromMinorUnits(row.amountMinor), taxAmount: fromMinorUnits(row.taxAmountMinor), currency: row.currency, reason: row.reason, refundRequestNumber: row.refundRequestNumber, issuedAt: row.issuedAt })),
         reviewable: ["payment_review", "verification_pending"].includes(order.status),
+        ownershipStatus,
+        canApprove: ownershipStatus === "bound" && ["payment_review", "verification_pending"].includes(order.status),
       },
     }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   }
@@ -397,21 +402,27 @@ export async function POST(request: Request) {
     const [current] = await tx.select().from(orders).where(eq(orders.orderNumber, orderNumber)).limit(1);
     if (!current) return { error: "الطلب غير موجود", status: 404 } as const;
     if (!["payment_review", "verification_pending"].includes(current.status)) return { error: `لا يمكن حسم طلب حالته «${statusArabic(current.status)}»`, status: 409 } as const;
+    let owner;
+    try { owner = await lockOrderOwnerTx(tx, current); }
+    catch (error) {
+      if (!(error instanceof OrderOwnershipError)) throw error;
+      return { error: error.message, status: error.status } as const;
+    }
     const items = await tx.select({ courseSlug: orderItems.courseSlug, accessDurationDays: orderItems.accessDurationDays }).from(orderItems).where(eq(orderItems.orderNumber, current.orderNumber));
     const purchaseItems = items.length ? items : [{ courseSlug: current.courseSlug, accessDurationDays: 90 }];
     for (const item of [...purchaseItems].sort((left, right) => left.courseSlug.localeCompare(right.courseSlug))) {
-      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`access:${current.customerEmail}:${item.courseSlug}`}))`);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`course-access:${owner.id}:${item.courseSlug}`}))`);
     }
     const fulfilled = await fulfillPaidOrderTx(tx, current, purchaseItems, { chargeId: current.tapChargeId, actorEmail: user.email, now, extendDuplicates: true });
     notice = fulfilled.notice;
     await tx.insert(paymentEvents).values({ provider: "admin", providerEventId: `admin-review:${current.orderNumber}:${now}`, orderNumber: current.orderNumber, chargeId: current.tapChargeId, objectType: "order", eventType: "payment_review.approved", amountMinor: current.totalMinor ?? toMinorUnits(current.total), currency: current.currency, signatureVerified: true, processedAt: now, status: "review_approved", payload: JSON.stringify({ decision, reason, actor: user.email, previousStatus: current.status }), receivedAt: now });
     await tx.insert(auditLogs).values({ actorEmail: user.email, action: "resolve", entityType: "order", entityId: current.orderNumber, beforeJson: JSON.stringify({ status: current.status }), afterJson: JSON.stringify({ status: "paid", decision, reason, newlyPaid: fulfilled.newlyPaid }), ipAddress: clientIp(request), createdAt: now });
-    return { ok: true as const, previousStatus: current.status, customerEmail: current.customerEmail };
+    return { ok: true as const, previousStatus: current.status, userId: owner.id };
   });
   if ("error" in result) return jsonError(result.error || "تعذر حسم الطلب", result.status || 409);
   const queued = notice as { id: number; title: string; body: string; route: string } | null;
   if (queued) {
-    const delivery = await sendPushNotification({ userEmail: result.customerEmail }, queued.title, queued.body, { route: queued.route, notificationId: queued.id });
+    const delivery = await sendPushNotification({ userId: result.userId }, queued.title, queued.body, { route: queued.route, notificationId: queued.id });
     const pushStatus = delivery.accepted > 0 ? "accepted" : delivery.attempted === 0 ? "no_devices" : "failed";
     await db.update(notificationsDb).set({ pushStatus, pushAttempts: sql`${notificationsDb.pushAttempts} + 1`, pushLastError: delivery.providerErrors.join(" | ").slice(0, 1000) || null, pushDeliveredAt: delivery.accepted > 0 ? new Date().toISOString() : null }).where(eq(notificationsDb.id, queued.id));
   }

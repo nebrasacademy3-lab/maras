@@ -1,8 +1,8 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { pushDevices, users } from "@/db/schema";
 
-type PushTarget = { userEmail?: string | null; audience?: string | null };
+export type PushTarget = { userId?: number | null; userEmail?: string | null; audience?: string | null };
 type ExpoTicket = { status?: "ok" | "error"; id?: string; message?: string; details?: { error?: string } };
 export type PushDeliveryResult = { attempted: number; accepted: number; rejected: number; invalidated: number; providerErrors: string[] };
 
@@ -11,10 +11,25 @@ function uniqueErrors(values: string[]) { return [...new Set(values)].slice(0, 8
 export async function sendPushNotification(target: PushTarget, title: string, body: string, data: Record<string, string | number | boolean | null> = {}): Promise<PushDeliveryResult> {
   const result: PushDeliveryResult = { attempted: 0, accepted: 0, rejected: 0, invalidated: 0, providerErrors: [] };
   try {
-    const rows = await getDb().select({ id: pushDevices.id, token: pushDevices.token, email: users.email, role: users.role })
-      .from(pushDevices).innerJoin(users, eq(pushDevices.userId, users.id)).where(eq(pushDevices.status, "active"));
-    const matching = rows.filter((row) => target.userEmail ? row.email === target.userEmail : !target.audience || target.audience === "user" || target.audience === "public" || row.role === target.audience);
-    const selected = [...new Map(matching.map((row) => [row.token, row])).values()];
+    // Explicit but missing identity must never fall through into a broadcast.
+    const bound = Object.prototype.hasOwnProperty.call(target, "userId");
+    const email = typeof target.userEmail === "string" ? target.userEmail.trim().toLowerCase() : "";
+    if (bound && (!Number.isSafeInteger(target.userId) || !target.userId || target.userId < 1)) {
+      result.providerErrors.push("PUSH_RECIPIENT_UNRESOLVED");
+      return result;
+    }
+    if (!bound && !email && !["student", "supervisor", "admin", "public"].includes(target.audience || "")) {
+      result.providerErrors.push("PUSH_RECIPIENT_UNRESOLVED");
+      return result;
+    }
+    const predicate = bound ? eq(users.id, target.userId!)
+      : email ? eq(users.email, email)
+      : target.audience === "public" ? undefined : eq(users.role, target.audience!);
+    const rows = await getDb().select({ id: pushDevices.id, token: pushDevices.token })
+      .from(pushDevices).innerJoin(users, eq(pushDevices.userId, users.id)).where(and(
+        eq(pushDevices.status, "active"), eq(users.status, "active"), predicate,
+      ));
+    const selected = [...new Map(rows.map((row) => [row.token, row])).values()];
     result.attempted = selected.length;
     if (!selected.length) return result;
 
@@ -25,6 +40,7 @@ export async function sendPushNotification(target: PushTarget, title: string, bo
       try {
         const response = await fetch("https://exp.host/--/api/v2/push/send", {
           method: "POST",
+          redirect: "error",
           headers: { "content-type": "application/json", accept: "application/json", "accept-encoding": "gzip, deflate" },
           body: JSON.stringify(messages),
           signal: AbortSignal.timeout(10_000),

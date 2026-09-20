@@ -113,6 +113,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       "expo-font",
       "expo-secure-store",
       "expo-video",
+      "expo-image",
+      "expo-localization",
+      "expo-sharing",
+      "expo-web-browser",
 
       [
         "expo-audio",

@@ -2,12 +2,14 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import {
   aiSubscriptionOrders, storeTransactions, storePurchaseAccounts, storeCourseGrants, adminMfaFactors, analyticsEvents, auditLogs, authSessions, cartItems, catalogCourses, catalogInstitutions, catalogSpecialties, couponsDb,
-  courseAccess, courseRequestFiles, courseRequests, courseReviews, courseUnitsDb, favorites, invoices,
+  courseAccess, courseAccessEvents, courseWaitlist, courseRequestFiles, courseRequests, courseReviews, courseUnitsDb, favorites, invoices,
   institutionSpecialties, lessonNotes, lessonProgress, lessonsDb, notificationsDb, orderItems, orders,
   passwordResetTokens, paymentEvents, pushDevices, supportReplyFiles, supportReplies,
   supportTickets, supervisorAssignments, userRoles, users, videoAssets,
 } from "@/db/schema";
-import { deleteObject } from "@/lib/storage";
+import type { StorageProvider } from "@/lib/storage";
+import { enqueueStorageCleanupTx, processStorageCleanupBatch } from "@/lib/storage-cleanup";
+import { normalizeStorageKey, normalizeStoragePrefix } from "@/lib/storage-policy";
 
 export const ADMIN_DELETION_TYPES = [
   "institution", "specialty", "course", "unit", "lesson", "video", "user", "course_request",
@@ -23,7 +25,42 @@ export class DeletionPolicyError extends Error {
   }
 }
 
-type CleanupKey = { key: string; source: string };
+type CleanupKey = { key: string; source: string; provider?: StorageProvider; recursive?: boolean };
+type VideoCleanupAsset = Pick<typeof videoAssets.$inferSelect,
+  "id" | "objectKey" | "storageProvider" | "derivativesPrefix" | "hlsMasterObjectKey" | "thumbnailObjectKey">;
+
+export function collectVideoCleanup(asset: VideoCleanupAsset, cleanup: CleanupKey[]) {
+  // A row's provider is immutable cleanup context; a new default must not move
+  // deletion to a different bucket or to a same-named local file.
+  if (asset.storageProvider !== "local" && asset.storageProvider !== "s3") {
+    throw new DeletionPolicyError("مزود تخزين الفيديو غير معروف؛ راجع السجل قبل الحذف.");
+  }
+  const provider = asset.storageProvider;
+  try {
+    const source = normalizeStorageKey(asset.objectKey);
+    const ownedPath = (value: string, prefix: boolean) => {
+      const key = prefix ? normalizeStoragePrefix(value) : normalizeStorageKey(value);
+      const parts = key.split("/");
+      // Only one worker attempt belonging to this exact asset may be removed
+      // recursively. A course-wide, asset-wide, foreign or malformed prefix
+      // is never an acceptable substitute for missing derivative metadata.
+      if (parts[0] !== "private" || parts[1] !== "video-derived" || parts[2] !== String(asset.id)
+          || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(parts[3] || "")
+          || (prefix ? parts.length !== 4 : parts.length < 5)) throw new Error("Unowned derivative path");
+      return key;
+    };
+    const prefix = asset.derivativesPrefix ? ownedPath(asset.derivativesPrefix, true) : null;
+    const exactKeys = [asset.hlsMasterObjectKey, asset.thumbnailObjectKey]
+      .filter((key): key is string => Boolean(key)).map(key => ownedPath(key, false));
+    cleanup.push({ key: source, source: "video", provider });
+    if (prefix) cleanup.push({ key: prefix, source: "video-derived", provider, recursive: true });
+    for (const key of exactKeys) {
+      if (!prefix || !key.startsWith(prefix + "/")) cleanup.push({ key, source: "video-derived", provider });
+    }
+  } catch {
+    throw new DeletionPolicyError("مسار ملفات الفيديو غير آمن أو لا يتبع هذا الفيديو؛ راجع بيانات التخزين قبل الحذف.");
+  }
+}
 
 type DeletionResult = {
   entityType: AdminDeletionType;
@@ -31,6 +68,7 @@ type DeletionResult = {
   deleted: true;
   deletedRows: number;
   cleanupFailures: string[];
+  cleanupPending: number;
 };
 
 type DeletionInput = {
@@ -78,9 +116,13 @@ async function ensureCourseDeletable(db: ReturnType<typeof getDb>, courseSlug: s
 }
 
 async function deleteVideoRows(tx: Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0], courseSlug: string, lessonIds: string[] | null, cleanup: CleanupKey[]) {
-  const condition = lessonIds?.length ? and(eq(videoAssets.courseSlug, courseSlug), inArray(videoAssets.lessonId, lessonIds)) : eq(videoAssets.courseSlug, courseSlug);
-  const assets = await tx.select({ id: videoAssets.id, objectKey: videoAssets.objectKey }).from(videoAssets).where(condition);
-  cleanup.push(...assets.map((asset) => ({ key: asset.objectKey, source: "video" })));
+  // null is an explicit whole-course deletion; [] means no lessons, not all.
+  if (lessonIds !== null && lessonIds.length === 0) return 0;
+  const condition = lessonIds === null ? eq(videoAssets.courseSlug, courseSlug)
+    : and(eq(videoAssets.courseSlug, courseSlug), inArray(videoAssets.lessonId, lessonIds));
+  // Wait for an in-flight worker publication before taking the cleanup snapshot.
+  const assets = await tx.select().from(videoAssets).where(condition).for("update");
+  for (const asset of assets) collectVideoCleanup(asset, cleanup);
   if (assets.length) await tx.delete(videoAssets).where(inArray(videoAssets.id, assets.map((asset) => asset.id)));
   return assets.length;
 }
@@ -92,7 +134,7 @@ async function deleteCourseRows(tx: Parameters<Parameters<ReturnType<typeof getD
   const unitIds = units.map((unit) => unit.id);
   const lessons = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(eq(lessonsDb.courseSlug, courseSlug));
   const lessonIds = lessons.map((lesson) => lesson.id);
-  await deleteVideoRows(tx, courseSlug, lessonIds.length ? lessonIds : null, cleanup);
+  await deleteVideoRows(tx, courseSlug, null, cleanup);
   if (lessonIds.length) {
     await tx.delete(lessonNotes).where(inArray(lessonNotes.lessonId, lessonIds));
     await tx.delete(lessonProgress).where(inArray(lessonProgress.lessonId, lessonIds));
@@ -125,6 +167,7 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
   if (input.confirmation !== "حذف") throw new DeletionPolicyError("اكتب كلمة «حذف» حرفيًا لتأكيد العملية المدمرة.");
   // All destructive branches below follow children-first deletion order.
   const cleanup: CleanupKey[] = [];
+  let cleanupJobIds: string[] = [];
   let deletedRows = 0;
   let before: unknown = null;
   const now = nowIso();
@@ -159,10 +202,10 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
     }
     const storeHistory = await db.select({ id: storeTransactions.id }).from(storeTransactions).where(eq(storeTransactions.userId, targetId)).limit(1);
     const aiHistory = await db.select({ id: aiSubscriptionOrders.id }).from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.userId, targetId)).limit(1);
-    const storeGrants = await db.select({ id: storeCourseGrants.id }).from(storeCourseGrants).where(eq(storeCourseGrants.userEmail, target.email)).limit(1);
+    const storeGrants = await db.select({ id: storeCourseGrants.id }).from(storeCourseGrants).where(eq(storeCourseGrants.userId, targetId)).limit(1);
     if (storeHistory.length || aiHistory.length || storeGrants.length) throw new DeletionPolicyError("لا يمكن حذف حساب مرتبط بمشتريات متجر أو أدوات؛ استخدم تعطيل الحساب للحفاظ على الحقوق والسجل المالي.");
-    const userOrders = await db.select({ orderNumber: orders.orderNumber }).from(orders).where(eq(orders.customerEmail, target.email));
-    const userInvoices = await db.select({ id: invoices.id }).from(invoices).where(eq(invoices.customerEmail, target.email));
+    const userOrders = await db.select({ orderNumber: orders.orderNumber }).from(orders).where(eq(orders.userId, target.id));
+    const userInvoices = userOrders.length ? await db.select({ id: invoices.id }).from(invoices).where(inArray(invoices.orderNumber, userOrders.map((row) => row.orderNumber))) : [];
     const userPayments = userOrders.length ? await db.select({ id: paymentEvents.id }).from(paymentEvents).where(inArray(paymentEvents.orderNumber, userOrders.map((row) => row.orderNumber))) : [];
     if (userOrders.length || userInvoices.length || userPayments.length) throw new DeletionPolicyError("لا يمكن حذف الحساب لأنه مرتبط بسجل طلبات أو فاتورة أو أحداث دفع؛ لحماية السجل المالي استخدم التعطيل أو إخفاء الهوية كإجراء منفصل.");
   }
@@ -196,12 +239,12 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
     } else if (input.entityType === "unit") {
       const unitId = Number(input.entityId);
       if (!Number.isSafeInteger(unitId) || unitId <= 0) throw new DeletionPolicyError("معرّف الوحدة غير صالح.");
-      const [row] = await tx.select().from(courseUnitsDb).where(eq(courseUnitsDb.id, unitId)).limit(1);
+      const [row] = await tx.select().from(courseUnitsDb).where(eq(courseUnitsDb.id, unitId)).limit(1).for("update");
       if (!row) throw new DeletionPolicyError("الوحدة غير موجودة.");
       before = { id: row.id, courseSlug: row.courseSlug, title: row.title };
-      const lessons = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(eq(lessonsDb.unitId, unitId));
+      const lessons = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.unitId, unitId), eq(lessonsDb.courseSlug, row.courseSlug)));
       const lessonIds = lessons.map((lesson) => lesson.id);
-      await deleteVideoRows(tx, row.courseSlug, lessonIds.length ? lessonIds : null, cleanup);
+      await deleteVideoRows(tx, row.courseSlug, lessonIds, cleanup);
       if (lessonIds.length) { await tx.delete(lessonNotes).where(inArray(lessonNotes.lessonId, lessonIds)); await tx.delete(lessonProgress).where(inArray(lessonProgress.lessonId, lessonIds)); await tx.delete(lessonsDb).where(inArray(lessonsDb.id, lessonIds)); }
       await tx.delete(courseUnitsDb).where(eq(courseUnitsDb.id, unitId));
       deletedRows = lessons.length + 1;
@@ -217,17 +260,20 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
     } else if (input.entityType === "video") {
       const videoId = Number(input.entityId);
       if (!Number.isSafeInteger(videoId) || videoId <= 0) throw new DeletionPolicyError("معرّف الفيديو غير صالح.");
-      const [row] = await tx.select().from(videoAssets).where(eq(videoAssets.id, videoId)).limit(1);
+      const [row] = await tx.select().from(videoAssets).where(eq(videoAssets.id, videoId)).limit(1).for("update");
       if (!row) throw new DeletionPolicyError("الفيديو غير موجود.");
       before = { id: row.id, courseSlug: row.courseSlug, lessonId: row.lessonId, objectKey: row.objectKey };
-      cleanup.push({ key: row.objectKey, source: "video" });
+      collectVideoCleanup(row, cleanup);
       await tx.delete(videoAssets).where(eq(videoAssets.id, videoId));
       await tx.update(lessonsDb).set({ videoAssetId: null, updatedAt: now }).where(eq(lessonsDb.videoAssetId, videoId));
       deletedRows = 1;
     } else if (input.entityType === "user") {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"active-admin-membership"}))`);
       const targetId = Number(input.entityId);
-      const [row] = await tx.select().from(users).where(eq(users.id, targetId)).limit(1);
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(${targetId})`);
+      const [row] = await tx.select().from(users).where(eq(users.id, targetId)).limit(1).for("update");
+      const boundOrders = await tx.select({ id: orders.id }).from(orders).where(eq(orders.userId, targetId)).limit(1);
+      if (boundOrders.length) throw new DeletionPolicyError("هذا الحساب مرتبط بطلبات مالية محفوظة. استخدم مسار إغلاق الحساب مع حفظ سجله.");
       if (row?.isPlatformOwner) throw new DeletionPolicyError("لا يمكن حذف حساب المدير الأعلى");
       if (!row) throw new DeletionPolicyError("المستخدم غير موجود.");
       if (row.role === "admin" && row.status === "active") {
@@ -235,24 +281,20 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
         if (activeAdmins.length <= 1) throw new DeletionPolicyError("لا يمكن حذف آخر مدير نشط في المنصة.");
       }
       before = { id: row.id, email: row.email, role: row.role, status: row.status };
+      const accessHistory = await tx.select({ id: courseAccessEvents.id }).from(courseAccessEvents).where(eq(courseAccessEvents.userId, targetId)).limit(1);
+      const aiHistory = await tx.select({ id: aiSubscriptionOrders.id }).from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.userId, targetId)).limit(1);
+      if (accessHistory.length || aiHistory.length) throw new DeletionPolicyError("الحساب مرتبط بسجل حقوق محفوظ؛ استخدم إغلاق الحساب بدل الحذف النهائي.");
       const requests = await tx.select({ id: courseRequests.id }).from(courseRequests).where(eq(courseRequests.userId, targetId));
       const requestIds = requests.map((item) => item.id);
       const requestFiles = requestIds.length ? await tx.select({ objectKey: courseRequestFiles.objectKey }).from(courseRequestFiles).where(inArray(courseRequestFiles.requestId, requestIds)) : [];
       cleanup.push(...requestFiles.map((file) => ({ key: file.objectKey, source: "course-request" })));
       if (requestIds.length) await tx.delete(courseRequestFiles).where(inArray(courseRequestFiles.requestId, requestIds));
       if (requestIds.length) await tx.delete(courseRequests).where(inArray(courseRequests.id, requestIds));
-      const tickets = await tx.select({ id: supportTickets.id }).from(supportTickets).where(eq(supportTickets.userEmail, row.email));
+      const tickets = await tx.select({ id: supportTickets.id }).from(supportTickets).where(eq(supportTickets.userId, targetId));
       for (const ticket of tickets) await deleteSupportTicketRows(tx, ticket.id, cleanup);
-      const authoredReplies = await tx.select({ id: supportReplies.id }).from(supportReplies).where(eq(supportReplies.authorEmail, row.email));
-      const authoredReplyIds = authoredReplies.map((reply) => reply.id);
-      if (authoredReplyIds.length) {
-        const replyFiles = await tx.select({ objectKey: supportReplyFiles.objectKey }).from(supportReplyFiles).where(inArray(supportReplyFiles.replyId, authoredReplyIds));
-        cleanup.push(...replyFiles.map((file) => ({ key: file.objectKey, source: "support" })));
-        await tx.delete(supportReplyFiles).where(inArray(supportReplyFiles.replyId, authoredReplyIds));
-        await tx.delete(supportReplies).where(inArray(supportReplies.id, authoredReplyIds));
-      }
+      // Historical authorship is not ownership of another account's support ticket.
       const storeHistory = await tx.select({ id: storeTransactions.id }).from(storeTransactions).where(eq(storeTransactions.userId, targetId)).limit(1);
-      const storeGrants = await tx.select({ id: storeCourseGrants.id }).from(storeCourseGrants).where(eq(storeCourseGrants.userEmail, row.email)).limit(1);
+      const storeGrants = await tx.select({ id: storeCourseGrants.id }).from(storeCourseGrants).where(eq(storeCourseGrants.userId, targetId)).limit(1);
       if (storeHistory.length || storeGrants.length) throw new DeletionPolicyError("لا يمكن حذف حساب مرتبط بحقوق مشتريات متجر.");
       await tx.delete(storePurchaseAccounts).where(eq(storePurchaseAccounts.userId, targetId));
       await tx.delete(authSessions).where(eq(authSessions.userId, targetId));
@@ -262,15 +304,16 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       await tx.delete(userRoles).where(eq(userRoles.userId, targetId));
       await tx.delete(supervisorAssignments).where(eq(supervisorAssignments.supervisorId, targetId));
       await tx.update(courseRequests).set({ assignedSupervisorId: null, updatedAt: now }).where(eq(courseRequests.assignedSupervisorId, targetId));
-      await tx.update(supportTickets).set({ assignedTo: null, updatedAt: now }).where(eq(supportTickets.assignedTo, row.email));
-      await tx.delete(favorites).where(eq(favorites.userEmail, row.email));
-      await tx.delete(cartItems).where(eq(cartItems.userEmail, row.email));
-      await tx.delete(lessonNotes).where(eq(lessonNotes.userEmail, row.email));
-      await tx.delete(lessonProgress).where(eq(lessonProgress.userEmail, row.email));
-      await tx.delete(courseReviews).where(eq(courseReviews.userEmail, row.email));
-      await tx.delete(courseAccess).where(eq(courseAccess.userEmail, row.email));
-      await tx.delete(notificationsDb).where(eq(notificationsDb.userEmail, row.email));
-      await tx.delete(analyticsEvents).where(eq(analyticsEvents.userEmail, row.email));
+      // Email-only historical assignments are not proof of account ownership; retain them for review.
+      await tx.delete(favorites).where(eq(favorites.userId, targetId));
+      await tx.delete(cartItems).where(eq(cartItems.userId, targetId));
+      await tx.delete(lessonNotes).where(eq(lessonNotes.userId, targetId));
+      await tx.delete(lessonProgress).where(eq(lessonProgress.userId, targetId));
+      await tx.delete(courseReviews).where(eq(courseReviews.userId, targetId));
+      await tx.delete(courseAccess).where(eq(courseAccess.userId, targetId));
+      await tx.delete(notificationsDb).where(eq(notificationsDb.targetUserId, row.id));
+      await tx.delete(courseWaitlist).where(eq(courseWaitlist.userId, targetId));
+      // Legacy analytics have no stable owner; never erase another account's history by an email snapshot.
       await tx.delete(users).where(eq(users.id, targetId));
       deletedRows = 1;
     } else if (input.entityType === "course_request") {
@@ -323,16 +366,29 @@ export async function deleteAdminEntity(db: ReturnType<typeof getDb>, input: Del
       await tx.delete(supervisorAssignments).where(eq(supervisorAssignments.id, id));
       deletedRows = 1;
     }
+    cleanupJobIds = await enqueueStorageCleanupTx(tx, cleanup);
     await tx.insert(auditLogs).values({ actorEmail: input.actor, action: "delete", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson(before), afterJson: null, ipAddress: input.ipAddress, createdAt: now });
   });
 
-  const uniqueCleanup = [...new Map(cleanup.map((item) => [item.key, item])).values()];
   const cleanupFailures: string[] = [];
-  await Promise.all(uniqueCleanup.map(async (item) => {
-    try { await deleteObject(item.key); } catch { cleanupFailures.push(`${item.source}:${item.key}`); }
-  }));
-  if (cleanupFailures.length) {
-    await db.insert(auditLogs).values({ actorEmail: input.actor, action: "cleanup_warning", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson({ failedObjects: cleanupFailures }), afterJson: null, ipAddress: input.ipAddress, createdAt: nowIso() });
+  const cleanupTargets: CleanupKey[] = [];
+  let completed = 0;
+  // Do not hold an HTTP request open indefinitely. The durable worker recovers
+  // jobs not drained here, including process death immediately after COMMIT.
+  const signal = AbortSignal.timeout(20_000);
+  for (let offset = 0; offset < cleanupJobIds.length && !signal.aborted; offset += 10) {
+    try {
+      const batch = await processStorageCleanupBatch(db, { limit: 10, jobIds: cleanupJobIds.slice(offset, offset + 10), signal });
+      completed += batch.completed;
+      for (const job of batch.failed) { cleanupFailures.push(`${job.source}:${job.key}`); cleanupTargets.push(job); }
+    } catch {
+      // Parent deletion has committed: do not return an ambiguous failed delete
+      // or discard queued work when the database/transport temporarily fails.
+      break;
+    }
   }
-  return { entityType: input.entityType, entityId: input.entityId, deleted: true, deletedRows, cleanupFailures };
+  if (cleanupFailures.length) {
+    try { await db.insert(auditLogs).values({ actorEmail: input.actor, action: "cleanup_warning", entityType: input.entityType, entityId: input.entityId, beforeJson: asJson({ failedObjects: cleanupFailures, cleanupTargets }), afterJson: null, ipAddress: input.ipAddress, createdAt: nowIso() }); } catch { /* Durable job retains the failure when audit transport is unavailable. */ }
+  }
+  return { entityType: input.entityType, entityId: input.entityId, deleted: true, deletedRows, cleanupFailures, cleanupPending: cleanupJobIds.length - completed };
 }

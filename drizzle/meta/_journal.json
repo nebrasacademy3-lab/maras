@@ -232,6 +232,97 @@
       "when": 1789485863352,
       "tag": "0032_platform_identity_security",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789516550314,
+      "tag": "0033_device_return_policy",
+      "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1789600000000,
+      "tag": "0034_ai_paid_budget",
+      "breakpoints": true
+    },
+    {
+      "idx": 35,
+      "version": "7",
+      "when": 1789609290719,
+      "tag": "0035_email_change_identity",
+      "breakpoints": true
+    },
+    {
+      "idx": 36,
+      "version": "7",
+      "when": 1789650000000,
+      "tag": "0036_order_owner_and_notification_target",
+      "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789779600000,
+      "tag": "0037_stable_user_ownership",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789830000000,
+      "tag": "0038_storage_cleanup_outbox",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789830100000,
+      "tag": "0039_resumable_video_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789842000000,
+      "tag": "0040_gemini_project_admission",
+      "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789846200000,
+      "tag": "0041_gemini_project_refresh",
+      "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1789852800000,
+      "tag": "0042_study_output_authorization_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 43,
+      "version": "7",
+      "when": 1789858800000,
+      "tag": "0043_study_pdf_exports",
+      "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789862400000,
+      "tag": "0044_study_resumable_uploads",
+      "breakpoints": true
+    },
+    {
+      "idx": 45,
+      "version": "7",
+      "when": 1789862400001,
+      "tag": "0045_study_processing_checkpoints",
+      "breakpoints": true
     }
   ]
 }

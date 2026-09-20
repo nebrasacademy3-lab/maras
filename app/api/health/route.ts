@@ -1,5 +1,6 @@
-import { sql } from "drizzle-orm";
-import { getDb } from "@/db";
+import { getPool } from "@/db";
+import { createReadinessProbe } from "@/lib/readiness-probe";
+import { checkDatabaseReadiness } from "@/lib/readiness-database";
 import { observeRequest } from "@/lib/observability";
 import { scannerConfigured } from "@/lib/file-security";
 import { checkStorageReadiness } from "@/lib/storage";
@@ -27,18 +28,8 @@ function configuredAny(...names: string[]) {
   return names.some((name) => Boolean(process.env[name]?.trim()));
 }
 
-async function databaseReadiness(): Promise<CheckStatus> {
-  try {
-    await getDb().execute(sql`select 1`);
-    return "ready";
-  } catch {
-    return "unavailable";
-  }
-}
-
-async function storageReadiness(): Promise<CheckStatus> {
-  return await checkStorageReadiness() ? "ready" : "unavailable";
-}
+const databaseReadiness = createReadinessProbe(signal => checkDatabaseReadiness(getPool(), signal));
+const storageReadiness = createReadinessProbe(signal => checkStorageReadiness(signal));
 
 export async function GET(request: Request) {
   return observeRequest(request, "health.readiness", async (requestId) => {
@@ -62,7 +53,7 @@ export async function GET(request: Request) {
     const capabilities = {
       payments: configured("TAP_SECRET_KEY", "TAP_WEBHOOK_SECRET") ? "enabled" : "disabled",
       email: configured("RESEND_API_KEY", "EMAIL_FROM") ? "enabled" : "disabled",
-      enhancedAssistant: configuredAny("GEMINI_API_KEY", "GEMINI_API_KEYS", "OPENAI_API_KEY") ? "enabled" : "disabled",
+      enhancedAssistant: configuredAny("GEMINI_API_KEY", "GEMINI_API_KEYS", "GEMINI_FREE_API_KEYS", "GOOGLE_API_KEY") ? "enabled" : "disabled",
       pushDispatch: optionalConfiguration.scheduledTasks === "configured" ? "enabled" : "disabled",
       lifecycleScheduler: schedulerEnabled ? "enabled" : "disabled",
       malwareScanning: optionalConfiguration.malwareScanner === "configured" ? "enabled" : "disabled",

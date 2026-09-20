@@ -45,21 +45,81 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: package-lock.json
+      - name: Verify committed source and shared contracts
+        run: node scripts/verify-source-integrity.mjs
       - name: Install exact dependencies
         run: npm ci --no-audit --no-fund
       - name: Lint web
         run: npm run lint
       - name: Build production web
         run: npm run build
+      - name: Install bounded PDF source tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils util-linux
       - name: Run contracts and smoke tests
-        run: node --test --test-concurrency=1 tests/*.test.mjs
+        run: |
+          set +e
+          node --test --test-concurrency=1 tests/*.test.mjs > "$RUNNER_TEMP/meras-web-tests.log" 2>&1
+          result=$?
+          set -e
+          node --input-type=module <<'NODE'
+          import { readFileSync, writeFileSync } from 'node:fs';
+          const lines = readFileSync(process.env.RUNNER_TEMP + '/meras-web-tests.log', 'utf8').split('\n');
+          const selected = [];
+          for (let i = 0; i < lines.length; i++) {
+            if (/^\s*not ok\b/.test(lines[i])) {
+              selected.push(...lines.slice(Math.max(0, i - 1), i + 16).map(line => line.slice(0, 500)));
+            } else if (/^# (tests|pass|fail|cancelled|skipped|todo|duration_ms)\b/.test(lines[i])) {
+              selected.push(lines[i]);
+            }
+          }
+          if (!selected.length) selected.push(...lines.slice(-30).map(line => line.slice(0, 500)));
+          const summary = selected.join('\n');
+          writeFileSync(process.env.RUNNER_TEMP + '/meras-web-tests-summary.txt', summary);
+          console.log(summary.slice(0, 16000));
+          NODE
+          exit "$result"
+      - name: Keep complete isolated test evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: web-test-results
+          path: |
+            ${{ runner.temp }}/meras-web-tests.log
+            ${{ runner.temp }}/meras-web-tests-summary.txt
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: Verify source was not rewritten by tests
+        if: always()
+        run: node scripts/verify-source-integrity.mjs
       - name: Install isolated browser engines
         run: node node_modules/playwright/cli.js install --with-deps chromium firefox webkit
+      - name: Install multilingual PDF validation tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-core poppler-utils
+      - name: Install private-media test tooling
+        run: |
+          if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          fi
       - name: Verify platform security and responsive interfaces
         env:
           QA_DATABASE_URL: postgresql://maras_qa:synthetic-ci-only@127.0.0.1:55439/maras_qa
           QA_BROWSERS: chromium,firefox,webkit
-        run: node scripts/qa-study-ci.mjs
+        run: |
+          set +e
+          node scripts/qa-study-ci.mjs > "$RUNNER_TEMP/meras-platform-qa.log" 2>&1
+          result=$?
+          set -e
+          tail -n 100 "$RUNNER_TEMP/meras-platform-qa.log" | cut -c 1-600
+          exit "$result"
+      - name: Keep isolated integration diagnostics
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: platform-integration-log
+          path: ${{ runner.temp }}/meras-platform-qa.log
+          if-no-files-found: ignore
+          retention-days: 7
       - name: Keep non-secret visual evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -67,9 +127,33 @@ jobs:
           name: platform-visual-qa
           path: |
             .data/study-browser/
+            .data/study-pdf-browser/
             .data/platform-browser/
             .data/study-server.log
             .data/study-worker.log
+            .data/qa-device-return-report.json
+            .data/qa-supervisor-scope-report.json
+            .data/qa-email-change-results.json
+            .data/qa-order-ownership-report.json
+            .data/qa-order-ownership-migration-report.json
+            .data/qa-stable-user-ownership-migration-report.json
+            .data/qa-admin-stable-ownership-report.json
+            .data/qa-admin-media-deletion-report.json
+            .data/qa-gemini-projects-report.json
+            .data/qa-gemini-refresh-report.json
+            .data/qa-study-output-access-report.json
+            .data/qa-study-upload-report.json
+            .data/qa-study-processing-report.json
+            .data/qa-study-pdf-report.json
+            .data/study-pdf/bilingual-science.pdf
+            .data/study-pdf/page-*.png
+            .data/qa-storage-cleanup-report.json
+            .data/qa-resumable-video-report.json
+            .data/qa-resumable-browser-report.json
+            .data/resumable-browser/
+            .data/protected-video/report.json
+            .data/protected-video/real-playback.png
+          include-hidden-files: true
           retention-days: 7
 
   mobile:

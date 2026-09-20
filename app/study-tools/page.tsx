@@ -11,5 +11,5 @@ export default async function StudyToolsPage({ searchParams }: { searchParams: P
   const conversationId = Math.max(0, Math.floor(Number(query.conversation)) || 0);
   const quizId = Math.max(0, Math.floor(Number(query.quiz)) || 0);
   const service = query.service === "summary" || query.service === "translation" || query.service === "quiz" ? query.service : null;
-  return <main><SiteHeader appMode userName={user.fullName}/><MerasAiWorkspace studentName={user.fullName} initialConversationId={conversationId || null} initialQuizId={quizId || null} initialService={service}/></main>;
+  return <main><SiteHeader appMode userName={user.fullName}/><MerasAiWorkspace key={user.id} userId={user.id} studentName={user.fullName} initialConversationId={conversationId || null} initialQuizId={quizId || null} initialService={service}/></main>;
 }

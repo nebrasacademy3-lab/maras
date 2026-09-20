@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { isolated, sql, eq, ne, and, tables, database } from "./helpers/business-fixtures.mjs";
+const ownership = await isolated("../lib/order-ownership.ts", { ...tables, eq, sql });
 const api = await isolated("../lib/api.ts");
 const refunds = await isolated("../lib/refunds.ts");
 const state = await isolated("../lib/payment-state.ts");
-const order = { id: 1, orderNumber: "MR-test", customerEmail: "owner@example.test", customerName: "Owner", courseSlug: "physics", total: 100, totalMinor: 10000, subtotal: 100, discount: 0, currency: "SAR", tapChargeId: "chg_test", status: "paid", paidAt: "2026-01-01T00:00:00.000Z" };
+const order = { id: 1, orderNumber: "MR-test", userId: 9, customerEmail: "owner@example.test", customerName: "Owner", courseSlug: "physics", total: 100, totalMinor: 10000, subtotal: 100, discount: 0, currency: "SAR", tapChargeId: "chg_test", status: "paid", paidAt: "2026-01-01T00:00:00.000Z" };
 const aiOrder = { id: 1, userId: 9, orderNumber: "AI-one", customerEmail: "owner@example.test", amountMinor: 10000, currency: "SAR", tapChargeId: "chg_ai", status: "pending" };
 async function webhook(db, extra = {}) {
   return isolated("../app/api/webhooks/tap/route.ts", { ...tables, ...api, ...refunds, ...state, getDb: () => db, eq, ne, and, sql, createAndSendNotification: async () => {}, sendPushNotification: async () => ({ accepted: 0, attempted: 0, providerErrors: [] }), qualifyReferralForPaidOrderTx: async () => {}, reconcileReferralQualificationAfterRefundTx: async () => {}, ...extra }, "export { handleAiSubscriptionCharge, handleRefundWebhook }; ");
@@ -68,9 +69,10 @@ test("separate confirmed AI refunds accumulate once per provider refund id", asy
 
 test("replayed course fulfillment preserves administrator suspensions and revocations", async () => {
   for (const stopped of [{ suspendedAt: "2026-01-02", suspensionReason: "review" }, { revokedAt: "2026-01-02", revocationReason: "policy" }]) {
-    const db = database({ orders: [{ ...order }], courseAccess: [{ id: 1, orderNumber: order.orderNumber, userEmail: order.customerEmail, courseSlug: order.courseSlug, expiresAt: "2027-01-01", ...stopped }] });
-    const fulfillment = await isolated("../lib/order-fulfillment.ts", { ...tables, eq, ne, and, sql, normalizeAccessDurationDays: value => value, accessExpiryIso: () => "2027-01-01", qualifyReferralForPaidOrderTx: async () => {} });
+    const db = database({ users: [{ id: 9, email: order.customerEmail, status: "active" }], orders: [{ ...order }], courseAccess: [{ id: 1, userId: order.userId, orderNumber: order.orderNumber, userEmail: order.customerEmail, courseSlug: order.courseSlug, expiresAt: "2027-01-01", ...stopped }] });
+    const fulfillment = await isolated("../lib/order-fulfillment.ts", { ...tables, ...ownership, eq, ne, and, sql, normalizeAccessDurationDays: value => value, accessExpiryIso: () => "2027-01-01", qualifyReferralForPaidOrderTx: async () => {} });
     await fulfillment.fulfillPaidOrderTx(db, order, [{ courseSlug: "physics", accessDurationDays: 90 }], { chargeId: "chg_test", now: new Date().toISOString(), actorEmail: "tap-webhook" });
+    assert.equal(db.rows.courseAccess.length, 1, "replay cannot create a second access beside a stopped stable-owner record");
     for (const [key, value] of Object.entries(stopped)) assert.equal(db.rows.courseAccess[0][key], value);
   }
 });
@@ -78,7 +80,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 
 test("course charge callbacks cannot erase partial refunds and reject sub-halala underpayments", async () => {
   for (const scenario of [{ current: "partially_refunded", incoming: "CAPTURED", amount: 100, status: 200 }, { current: "partially_refunded", incoming: "FAILED", amount: 100, status: 200 }, { current: "pending", incoming: "CAPTURED", amount: 99.999, status: 409 }]) {
-    const db = database({ orders: [{ ...order, status: scenario.current }] });
+    const db = database({ users: [{ id: 9, email: order.customerEmail, status: "active" }], orders: [{ ...order, status: scenario.current }] });
     let fulfills = 0;
     const verified = { id: "chg_test", status: scenario.incoming, amount: scenario.amount, currency: "SAR", metadata: { order_number: "MR-test" } };
     const source = await isolated("../app/api/webhooks/tap/route.ts", { ...tables, ...api, ...refunds, ...state, getDb: () => db, eq, ne, and, sql, createHmac, timingSafeEqual, readBoundedJsonObject: request => request.json(), process: { env: { TAP_SECRET_KEY: "fixture-secret" } }, fetch: async () => Response.json(verified), fulfillPaidOrderTx: async () => { fulfills++; return { notice: null }; } }, "export { hashValue };");

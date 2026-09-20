@@ -1,3 +1,4 @@
+import { supervisorScopeId, scopedStudentSql } from "@/lib/supervisor-data-scope";
 import { and, count, desc, eq, gt, ilike, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, courseWaitlist, users } from "@/db/schema";
@@ -6,6 +7,7 @@ import { checkRateLimit, getSessionUser, roleAllowed } from "@/lib/auth";
 import { getCourseCatalog } from "@/lib/catalog-store";
 import { activeAccessCondition, effectiveAccessRows } from "@/lib/course-access";
 import { adminPage } from "@/lib/admin-operations";
+import { getSupervisorScopes, supervisorScopesAllow } from "@/lib/supervisor-scope";
 
 type Props = { params: Promise<{ slug: string }> };
 export async function GET(request: Request, { params }: Props) {
@@ -15,6 +17,11 @@ export async function GET(request: Request, { params }: Props) {
   const { slug } = await params;
   const course = await getCourseCatalog(slug, true);
   if (!course) return jsonError("المادة غير موجودة", 404);
+  const scopeId = await supervisorScopeId(admin);
+  if (scopeId !== null) {
+    const scopes = await getSupervisorScopes(scopeId);
+    if (!supervisorScopesAllow(scopes, course)) return jsonError("هذه المادة خارج نطاق إشرافك المحدد", 403);
+  }
   const query = new URL(request.url).searchParams;
   const kind = query.get("kind") === "waitlist" ? "waitlist" : "subscriptions";
   const search = (query.get("q") || "").trim().slice(0, 160);
@@ -25,26 +32,26 @@ export async function GET(request: Request, { params }: Props) {
   const student = { id: users.id, email: users.email, fullName: users.fullName, phone: users.phone, status: users.status };
   const active = activeAccessCondition(now);
   const totals = await db.execute(sql`SELECT
-    (SELECT count(*) FROM course_access WHERE course_slug = ${slug}) AS subscriptions,
-    (SELECT count(*) FROM course_access WHERE course_slug = ${slug} AND ${active}) AS active,
-    (SELECT count(*) FROM course_waitlist WHERE course_slug = ${slug} AND status = 'active') AS waiting,
-    (SELECT count(*) FROM course_waitlist WHERE course_slug = ${slug} AND notified_at IS NOT NULL) AS notified`);
+    (SELECT count(*) FROM course_access WHERE course_slug = ${slug} AND ${scopedStudentSql(scopeId, sql`course_access.user_id`, "id")}) AS subscriptions,
+    (SELECT count(*) FROM course_access WHERE course_slug = ${slug} AND ${scopedStudentSql(scopeId, sql`course_access.user_id`, "id")} AND ${active}) AS active,
+    (SELECT count(*) FROM course_waitlist WHERE course_slug = ${slug} AND ${scopedStudentSql(scopeId, sql`course_waitlist.user_id`, "id")} AND status = 'active') AS waiting,
+    (SELECT count(*) FROM course_waitlist WHERE course_slug = ${slug} AND ${scopedStudentSql(scopeId, sql`course_waitlist.user_id`, "id")} AND notified_at IS NOT NULL) AS notified`);
   let rows: unknown[]; let total: number;
   if (kind === "waitlist") {
     if (!["all", "active", "notified", "converted", "cancelled"].includes(status)) return jsonError("حالة الانتظار غير صالحة");
-    const where = and(eq(courseWaitlist.courseSlug, slug), status === "all" ? undefined : eq(courseWaitlist.status, status), search ? or(ilike(courseWaitlist.userEmail, pattern), ilike(users.fullName, pattern), ilike(users.phone, pattern)) : undefined);
+    const where = and(scopedStudentSql(scopeId, courseWaitlist.userId, "id"), eq(courseWaitlist.courseSlug, slug), status === "all" ? undefined : eq(courseWaitlist.status, status), search ? or(ilike(courseWaitlist.userEmail, pattern), ilike(users.fullName, pattern), ilike(users.phone, pattern)) : undefined);
     const [selected, counters] = await Promise.all([
-      db.select({ record: courseWaitlist, student }).from(courseWaitlist).leftJoin(users, eq(users.email, courseWaitlist.userEmail)).where(where).orderBy(desc(courseWaitlist.createdAt), desc(courseWaitlist.id)).limit(pageSize).offset(offset),
-      db.select({ total: count() }).from(courseWaitlist).leftJoin(users, eq(users.email, courseWaitlist.userEmail)).where(where),
+      db.select({ record: courseWaitlist, student }).from(courseWaitlist).leftJoin(users, eq(users.id, courseWaitlist.userId)).where(where).orderBy(desc(courseWaitlist.createdAt), desc(courseWaitlist.id)).limit(pageSize).offset(offset),
+      db.select({ total: count() }).from(courseWaitlist).leftJoin(users, eq(users.id, courseWaitlist.userId)).where(where),
     ]);
     rows = selected.map(({ record, student }) => ({ ...record, student })); total = Number(counters[0]?.total || 0);
   } else {
     if (!["all", "active", "suspended", "revoked", "expired", "scheduled"].includes(status)) return jsonError("حالة الاشتراك غير صالحة");
     const state = status === "active" ? active : status === "revoked" ? isNotNull(courseAccess.revokedAt) : status === "suspended" ? and(isNull(courseAccess.revokedAt), isNotNull(courseAccess.suspendedAt)) : status === "scheduled" ? and(isNull(courseAccess.revokedAt), isNull(courseAccess.suspendedAt), gt(courseAccess.startsAt, now)) : status === "expired" ? and(isNull(courseAccess.revokedAt), isNull(courseAccess.suspendedAt), lte(courseAccess.startsAt, now), lte(courseAccess.expiresAt, now)) : undefined;
-    const where = and(eq(courseAccess.courseSlug, slug), state, ["revoked", "scheduled", "expired"].includes(status) ? sql`NOT (${active})` : undefined, search ? or(ilike(courseAccess.userEmail, pattern), ilike(users.fullName, pattern), ilike(users.phone, pattern), ilike(courseAccess.orderNumber, pattern)) : undefined);
+    const where = and(scopedStudentSql(scopeId, courseAccess.userId, "id"), eq(courseAccess.courseSlug, slug), state, ["revoked", "scheduled", "expired"].includes(status) ? sql`NOT (${active})` : undefined, search ? or(ilike(courseAccess.userEmail, pattern), ilike(users.fullName, pattern), ilike(users.phone, pattern), ilike(courseAccess.orderNumber, pattern)) : undefined);
     const [selected, counters] = await Promise.all([
-      db.select({ record: courseAccess, student }).from(courseAccess).leftJoin(users, eq(users.email, courseAccess.userEmail)).where(where).orderBy(desc(courseAccess.updatedAt), desc(courseAccess.id)).limit(pageSize).offset(offset),
-      db.select({ total: count() }).from(courseAccess).leftJoin(users, eq(users.email, courseAccess.userEmail)).where(where),
+      db.select({ record: courseAccess, student }).from(courseAccess).leftJoin(users, eq(users.id, courseAccess.userId)).where(where).orderBy(desc(courseAccess.updatedAt), desc(courseAccess.id)).limit(pageSize).offset(offset),
+      db.select({ total: count() }).from(courseAccess).leftJoin(users, eq(users.id, courseAccess.userId)).where(where),
     ]);
     const effective = await effectiveAccessRows(selected.map((row) => row.record), now);
     rows = selected.map(({ student }, index) => { const record = effective[index]; return ({ ...record, student, status: record.revokedAt ? "revoked" : record.suspendedAt ? "suspended" : record.startsAt > now ? "scheduled" : record.expiresAt && record.expiresAt <= now ? "expired" : "active" }); }); total = Number(counters[0]?.total || 0);

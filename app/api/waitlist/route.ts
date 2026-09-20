@@ -16,7 +16,7 @@ export async function GET(request: Request) {
   if (!user) return jsonError("سجّل الدخول لإدارة تنبيهات الإطلاق", 401);
   const courseSlug = cleanText(new URL(request.url).searchParams.get("courseSlug"), 120).replace(/[^A-Za-z0-9_-]/g, "");
   if (!courseSlug) return jsonError("المادة مطلوبة");
-  const [row] = await getDb().select({ status: courseWaitlist.status, createdAt: courseWaitlist.createdAt }).from(courseWaitlist).where(and(eq(courseWaitlist.userEmail, user.email), eq(courseWaitlist.courseSlug, courseSlug))).limit(1);
+  const [row] = await getDb().select({ status: courseWaitlist.status, createdAt: courseWaitlist.createdAt }).from(courseWaitlist).where(and(eq(courseWaitlist.userId, user.id), eq(courseWaitlist.courseSlug, courseSlug))).limit(1);
   return Response.json({ ok: true, active: row?.status === "active", createdAt: row?.createdAt || null }, { headers: { "cache-control": "no-store" } });
 }
 
@@ -33,7 +33,7 @@ export async function POST(request: Request) {
   const now = new Date().toISOString();
   const source = cleanText(payload.source, 40).replace(/[^a-z0-9_-]/gi, "") || "course_page";
   await getDb().transaction(async (tx) => {
-    await tx.insert(courseWaitlist).values({ userEmail: user.email, courseSlug, source, status: "active", notifiedAt: null, convertedAt: null, createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: [courseWaitlist.userEmail, courseWaitlist.courseSlug], set: { source, status: "active", notifiedAt: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.notifiedAt} ELSE NULL END`, convertedAt: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.convertedAt} ELSE NULL END`, enrollmentVersion: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.enrollmentVersion} ELSE ${courseWaitlist.enrollmentVersion} + 1 END`, createdAt: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.createdAt} ELSE ${now} END`, updatedAt: now } });
+    await tx.insert(courseWaitlist).values({ userId: user.id, userEmail: user.email, courseSlug, source, status: "active", notifiedAt: null, convertedAt: null, createdAt: now, updatedAt: now }).onConflictDoUpdate({ target: [courseWaitlist.userId, courseWaitlist.courseSlug], set: { source, status: "active", notifiedAt: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.notifiedAt} ELSE NULL END`, convertedAt: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.convertedAt} ELSE NULL END`, enrollmentVersion: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.enrollmentVersion} ELSE ${courseWaitlist.enrollmentVersion} + 1 END`, createdAt: sql`CASE WHEN ${courseWaitlist.status} = 'active' THEN ${courseWaitlist.createdAt} ELSE ${now} END`, updatedAt: now } });
     await tx.insert(analyticsEvents).values({ event: "waitlist_join", userEmail: user.email, courseSlug, metadataJson: JSON.stringify({ source }), createdAt: now });
   });
   return Response.json({ ok: true, active: true, message: "سنعلمك فور فتح الاشتراك في المادة" }, { headers: { "cache-control": "no-store" } });
@@ -47,6 +47,6 @@ export async function DELETE(request: Request) {
   try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("الطلب غير صالح"); }
   const courseSlug = cleanText(payload.courseSlug, 120).replace(/[^A-Za-z0-9_-]/g, "");
   if (!courseSlug) return jsonError("المادة مطلوبة");
-  await getDb().update(courseWaitlist).set({ status: "cancelled", updatedAt: new Date().toISOString() }).where(and(eq(courseWaitlist.userEmail, user.email), eq(courseWaitlist.courseSlug, courseSlug)));
+  await getDb().update(courseWaitlist).set({ status: "cancelled", updatedAt: new Date().toISOString() }).where(and(eq(courseWaitlist.userId, user.id), eq(courseWaitlist.courseSlug, courseSlug)));
   return Response.json({ ok: true, active: false }, { headers: { "cache-control": "no-store" } });
 }

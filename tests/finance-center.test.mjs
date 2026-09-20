@@ -112,5 +112,6 @@ test("finance API and UI expose complete filters, details, review queues, and CS
   assert.match(route, /fulfillPaidOrderTx\(tx, current, purchaseItems, \{ chargeId: current\.tapChargeId, actorEmail: user\.email, now, extendDuplicates: true \}\)/);
   assert.match(route, /aiSubscriptions/);
   assert.match(component, /resolvePaymentReview/);
-  assert.match(component, /AdminCenterNav/);
+  assert.doesNotMatch(component, /<AdminCenterNav/);
+  assert.match(await readFile(new URL("lib/admin-navigation.ts", root), "utf8"), /\/admin\/finance/);
 });

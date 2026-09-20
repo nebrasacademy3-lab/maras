@@ -1,3 +1,4 @@
+import { supervisorCourseAllowed } from "@/lib/supervisor-data-scope";
 import { timingSafeEqual } from "node:crypto";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -24,6 +25,7 @@ import {
   headDirectUpload,
 } from "@/lib/railway-direct-upload";
 import { probeStoredVideoDuration } from "@/lib/video-metadata";
+import { normalizeStorageKey } from "@/lib/storage-policy";
 import {
   enqueueVideoProcessing,
   videoProcessingSummary,
@@ -96,7 +98,8 @@ function compatibleVideoType(declared: string, detected: string) {
 
   return (
     (declared === "video/webm" || declared === "video/x-matroska") &&
-    detected === "video/webm"
+    (detected === "video/webm"
+    )
   );
 }
 
@@ -142,7 +145,9 @@ async function authorize(request: Request) {
   const user = tokenAuthorized ? null : await getSessionUser(request);
 
   if (!tokenAuthorized && !roleAllowed(user, ["admin", "supervisor"])) {
-    return jsonError("غير مصرح برفع الفيديو", 401);
+    // The shared session boundary also returns null for a missing catalog.manage
+    // capability. Do not turn that denial into an expired-session signal for apps.
+    return jsonError("غير مصرح برفع الفيديو", 403);
   }
 
   const identity = tokenAuthorized
@@ -179,10 +184,17 @@ export async function GET(request: Request) {
     return jsonError("حجم الفيديو غير صالح", 413);
   }
 
+  if (!await supervisorCourseAllowed(access.user, courseSlug)) return jsonError("المادة خارج نطاق إشرافك", 403);
+
   if (activeStorageProvider() !== "s3") {
     return jsonError("التخزين المباشر غير مفعّل", 503);
   }
 
+  // Compatible-looking S3 endpoints are not assumed to enforce conditional PUT.
+  // Use the application resumable route until provider-specific acceptance is recorded.
+  if (process.env.S3_DIRECT_UPLOAD_CONDITIONAL_WRITES_VERIFIED !== "true") {
+    return jsonError("الرفع المباشر معطل حتى اعتماد قيوده؛ استخدم الرفع القابل للاستئناف من لوحة الإدارة", 503);
+  }
   const course = await getCourseCatalog(courseSlug, true);
 
   if (!course?.units.some((unit) =>
@@ -211,11 +223,12 @@ export async function GET(request: Request) {
     `${crypto.randomUUID()}.${extensionFor(contentType)}`;
 
   try {
-    const uploadUrl = await createDirectUploadUrl(objectKey, contentType);
+    const uploadUrl = await createDirectUploadUrl(objectKey, contentType, sizeBytes);
 
     return Response.json({
       ok: true,
       uploadUrl,
+      uploadHeaders: { "content-type": contentType, "if-none-match": "*" },
       objectKey,
       courseSlug,
       lessonId,
@@ -254,16 +267,11 @@ export async function POST(request: Request) {
   const sizeBytes = Number(payload.sizeBytes);
   const suppliedDuration = safeDuration(payload.durationSeconds);
 
-  const expectedPrefix =
-    `private/video-source/${courseSlug}/${lessonId}/`;
-
-  if (
-    !courseSlug ||
-    !lessonId ||
-    !objectKey ||
-    !objectKey.startsWith(expectedPrefix) ||
-    objectKey.includes("..")
-  ) {
+  const expectedPrefix = `private/video-source/${courseSlug}/${lessonId}/`;
+  let normalizedObjectKey = "";
+  try { normalizedObjectKey = normalizeStorageKey(objectKey); } catch { return jsonError("بيانات الفيديو غير صالحة", 400); }
+  const objectName = normalizedObjectKey.startsWith(expectedPrefix) ? normalizedObjectKey.slice(expectedPrefix.length) : "";
+  if (!courseSlug || !lessonId || normalizedObjectKey !== objectKey || !objectName || objectName.includes("/")) {
     return jsonError("بيانات الفيديو غير صالحة", 400);
   }
 
@@ -279,6 +287,7 @@ export async function POST(request: Request) {
     return jsonError("حجم الفيديو غير صالح", 413);
   }
 
+  if (!await supervisorCourseAllowed(access.user, courseSlug)) return jsonError("المادة خارج نطاق إشرافك", 403);
   const course = await getCourseCatalog(courseSlug, true);
 
   if (!course?.units.some((unit) =>
@@ -304,7 +313,7 @@ export async function POST(request: Request) {
     return jsonError("أنشئ سجل الدرس قبل رفع الفيديو", 409);
   }
 
-  const stored = await headDirectUpload(objectKey);
+  const stored = await headDirectUpload(normalizedObjectKey);
 
   if (!stored) {
     return jsonError("لم يكتمل رفع الفيديو إلى التخزين", 409);
@@ -313,9 +322,13 @@ export async function POST(request: Request) {
   if (stored.size !== sizeBytes) {
     return jsonError("لم يكتمل رفع الفيديو بالكامل", 409);
   }
+  const storedType = stored.contentType?.split(";")[0].trim().toLowerCase();
+  if (storedType && storedType !== contentType) {
+    return jsonError("نوع الملف المخزن لا يطابق النوع الموقّع", 422);
+  }
 
   const headerObject = await getObject(
-    objectKey,
+    normalizedObjectKey,
     { offset: 0, length: 64 },
     "s3",
   );
@@ -337,7 +350,7 @@ export async function POST(request: Request) {
     const durationSeconds =
       suppliedDuration ||
       await probeStoredVideoDuration(
-        objectKey,
+        normalizedObjectKey,
         sizeBytes,
         contentType,
         "s3",
@@ -367,7 +380,7 @@ export async function POST(request: Request) {
           eq(videoAssets.lessonId, lessonId),
         ));
 
-      const sameUpload = previous.find(item => item.objectKey === objectKey && item.storageProvider === "s3");
+      const sameUpload = previous.find(item => item.objectKey === normalizedObjectKey && item.storageProvider === "s3");
       if (sameUpload) return { asset: sameUpload, replacedAssets: [], reused: true };
 
       const [created] = await tx
@@ -375,7 +388,7 @@ export async function POST(request: Request) {
         .values({
           courseSlug,
           lessonId,
-          objectKey,
+          objectKey: normalizedObjectKey,
           storageProvider: "s3",
           contentType,
           sizeBytes,

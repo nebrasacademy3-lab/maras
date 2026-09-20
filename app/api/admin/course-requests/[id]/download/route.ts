@@ -1,4 +1,5 @@
-import { eq } from "drizzle-orm";
+import { supervisorScopeId, scopedRequestSql } from "@/lib/supervisor-data-scope";
+import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseRequestFiles, courseRequests } from "@/db/schema";
 import { jsonError } from "@/lib/api";
@@ -12,7 +13,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const id = Number((await params).id);
   if (!Number.isInteger(id) || id <= 0) return jsonError("الطلب غير صالح");
   const db = getDb();
-  const [courseRequest] = await db.select({ id: courseRequests.id, courseName: courseRequests.courseName }).from(courseRequests).where(eq(courseRequests.id, id)).limit(1);
+  const [courseRequest] = await db.select({ id: courseRequests.id, courseName: courseRequests.courseName }).from(courseRequests).where(and(eq(courseRequests.id, id), scopedRequestSql(await supervisorScopeId(user), courseRequests.id))).limit(1);
   if (!courseRequest) return jsonError("الطلب غير موجود", 404);
   const files = await db.select().from(courseRequestFiles).where(eq(courseRequestFiles.requestId, id));
   if (!files.length) return jsonError("لا توجد مرفقات لهذا الطلب", 404);

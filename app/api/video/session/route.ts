@@ -35,9 +35,10 @@ export async function POST(request: Request) {
   }
 
   const email = viewer?.email || "";
+  const viewerId = viewer?.id || 0;
   if (!lesson.free) {
-    if (!email) return jsonError("سجّل الدخول لمشاهدة هذا الدرس", 401);
-    const [access] = await getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(email, courseSlug)).limit(1);
+    if (!viewerId) return jsonError("سجّل الدخول لمشاهدة هذا الدرس", 401);
+    const [access] = await getDb().select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(viewerId, courseSlug)).limit(1);
     if (!access) return jsonError("لا توجد صلاحية نشطة لهذه المادة", 403);
   }
 

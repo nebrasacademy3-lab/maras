@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
 export default async function LearnPage({params}:{params:Promise<{slug:string}>}){
   const slug=(await params).slug;const course=await getCourseCatalog(slug);if(!course)notFound();
   const user=await requireUser(`/learn/${slug}`);const now=new Date().toISOString();
-  const [access]=await getDb().select({id:courseAccess.id}).from(courseAccess).where(activeCourseAccessWhere(user.email,slug,now)).limit(1);
+  const [access]=await getDb().select({id:courseAccess.id}).from(courseAccess).where(activeCourseAccessWhere(user.id,slug,now)).limit(1);
   if(!access)redirect(`/courses/${slug}?access=required`);
   if(!course.units.some((unit)=>unit.lessons.length>0))redirect(`/courses/${slug}?status=preparing`);
-  return <LearningRoom course={course} studentLabel={`${user.fullName} · M-${String(user.id).padStart(5,"0")}`}/>;
+  return <LearningRoom key={user.id} userId={user.id} course={course} studentLabel={`${user.fullName} · M-${String(user.id).padStart(5,"0")}`}/>;
 }

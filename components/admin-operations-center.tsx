@@ -1,9 +1,11 @@
 "use client";
+import { useAdminAccess } from "@/components/admin-access";
+import { AdminCapability } from "@/components/admin-capability";
+import { GEMINI_VERIFICATION_METRICS, OPERATIONS_PANELS, OPERATIONS_TASKS, type GeminiVerificationSummary, type OperationsPanel } from "@/lib/operations-contract";
 import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import { useRealtimeSync } from "@/components/realtime-sync";
 import styles from "./admin-operations-center.module.css";
@@ -13,8 +15,8 @@ type AnalyticsData = { range:{days:number};totals:Record<string,number>;funnel:F
 type SupportData = { summary:{total:number;open:number;responseBreached:number;resolutionBreached:number;averageFirstResponseMinutes:number|null;resolved:number};queues:Array<{category:string;count:number;overdue:number}>;tickets:Array<{id:number;ticketNumber:string;title:string;priority:string;status:string;assignedTo:string|null;responseBreached:boolean;resolutionBreached:boolean;firstResponseDueAt:string;resolutionDueAt:string}> };
 type ComplianceItem = { key:string;area:string;title:string;description:string;evidenceHint:string;status:string;owner:string;evidence:string;reviewDate:string;notes:string };
 type ComplianceData = { disclaimer:string;progress:number;items:ComplianceItem[] };
-type OperationsData = { waitlist:Record<string,number>;bundles:Record<string,number>;queues:{filesPendingScan:number;abandonedCheckout:number;expiringAccess:number;pushPending:number;refundPending:number;settlementUnmatched:number};generatedAt:string };
-type Tab = "analytics"|"support"|"automation"|"compliance";
+type OperationsData = { geminiVerification?:GeminiVerificationSummary;waitlist:Record<string,number>;bundles:Record<string,number>;queues:{storageCleanupPending?:number;storageCleanupBlocked?:number;storageCleanupOverdue?:number;filesPendingScan:number;abandonedCheckout:number;expiringAccess:number;pushPending:number;refundPending:number;settlementUnmatched:number};generatedAt:string };
+type Tab = OperationsPanel;
 type TaskResult = { lifecycle?:{cartReminders:number;paymentReminders:number;expiryReminders:number;launchNotifications:number};push?:{attempted:number;accepted:number;rejected:number;invalidated:number;providerErrors?:string[]};summary?:{scanned:number;clean:number;quarantined:number;pending:number};result?:{attempted:number;accepted:number;rejected:number;invalidated:number;providerErrors?:string[]} };
 
 const categoryLabel:Record<string,string>={technical:"تقني",payment:"الدفع",course:"المحتوى",account:"الحساب",other:"أخرى"};
@@ -33,7 +35,14 @@ function describeTask(label:string,payload:TaskResult){
 }
 
 export function AdminOperationsCenter({adminName}:{adminName:string}) {
-  const [tab,setTab]=useState<Tab>("analytics");
+  const access = useAdminAccess();
+  if (!access.can(OPERATIONS_PANELS.automation.permissions)) return <p role="status">لا تملك صلاحية عرض التشغيل.</p>;
+  // Permission changes discard data and drafts from the previous authorization context.
+  return <OperationsCenter key={`${access.owner}:${[...access.permissions].sort().join(",")}`} adminName={adminName}/>;
+}
+function OperationsCenter({adminName}:{adminName:string}) {
+  const { can } = useAdminAccess();
+  const [tab,setTab]=useState<Tab>("automation");
   const [days,setDays]=useState(30);
   const [course,setCourse]=useState("");
   const [analytics,setAnalytics]=useState<AnalyticsData|null>(null);
@@ -43,16 +52,28 @@ export function AdminOperationsCenter({adminName}:{adminName:string}) {
   const [loading,setLoading]=useState(true);
   const [message,setMessage]=useState("");
   const [editing,setEditing]=useState<ComplianceItem|null>(null);
-  const lastLoad=useRef(0);
+  const lastLoad=useRef(0), loadVersion=useRef(0), active=useRef(true), mutationPending=useRef(false);
+  const [pendingOperation,setPendingOperation]=useState("");
+  useEffect(()=>{active.current=true;return()=>{active.current=false;};},[]);
 
   const load=useCallback(async(signal?:AbortSignal,silent=false)=>{
+    if(!active.current||!can(OPERATIONS_PANELS[tab].permissions))return;
+    const version=++loadVersion.current;
     if(!silent){setLoading(true);setMessage("");}
     lastLoad.current=Date.now();
-    const endpoint=tab==="analytics"?`/api/admin/analytics?days=${days}${course?`&course=${encodeURIComponent(course)}`:""}`:tab==="support"?"/api/admin/support/metrics":tab==="automation"?"/api/admin/operations/summary":"/api/admin/compliance";
-    try{const response=await adminFetch(endpoint,{credentials:"same-origin",cache:"no-store",signal});const payload=await response.json();if(!response.ok)throw new Error(payload.error||"تعذر تحميل البيانات");if(tab==="analytics")setAnalytics(payload);else if(tab==="support")setSupport(payload);else if(tab==="automation")setOperations(payload);else setCompliance(payload);}
-    catch(error){if(error instanceof DOMException&&error.name==="AbortError")return;setMessage(error instanceof Error?error.message:"تعذر التحميل");}
-    finally{if(!signal?.aborted)setLoading(false);}
-  },[tab,days,course]);
+    const endpoint=OPERATIONS_PANELS[tab].endpoint+(tab==="analytics"?`?days=${days}${course?`&course=${encodeURIComponent(course)}`:""}`:"");
+    try{
+      const response=await adminFetch(endpoint,{credentials:"same-origin",cache:"no-store",signal});
+      const payload=await response.json();
+      if(!active.current||signal?.aborted||version!==loadVersion.current)return;
+      if(!response.ok)throw new Error(payload.error||"تعذر تحميل البيانات");
+      if(tab==="analytics")setAnalytics(payload);else if(tab==="support")setSupport(payload);else if(tab==="automation")setOperations(payload);else setCompliance(payload);
+    }catch(error){
+      if(!active.current||signal?.aborted||version!==loadVersion.current)return;
+      if(error instanceof DOMException&&error.name==="AbortError")return;
+      setMessage(error instanceof Error?error.message:"تعذر التحميل");
+    }finally{if(active.current&&!signal?.aborted&&version===loadVersion.current)setLoading(false);}
+  },[tab,days,course,can]);
   useEffect(()=>{const controller=new AbortController();const timer=window.setTimeout(()=>void load(controller.signal),0);return()=>{window.clearTimeout(timer);controller.abort();};},[load]);
   useRealtimeSync((payload)=>{
     if(payload.changed&&!payload.changed.some((channel)=>channel==="admin"||channel==="support"))return;
@@ -60,15 +81,30 @@ export function AdminOperationsCenter({adminName}:{adminName:string}) {
     void load(undefined,true);
   });
 
-  const saveCompliance=async()=>{if(!editing)return;setMessage("");const response=await adminFetch("/api/admin/compliance",{method:"POST",credentials:"same-origin",headers:{"content-type":"application/json"},body:JSON.stringify(editing)});const payload=await response.json();if(isAdminStepUpResponse(response)){setMessage(ADMIN_STEP_UP_MESSAGE);return;}if(!response.ok){setMessage(payload.error||"تعذر الحفظ");return;}setEditing(null);setMessage("تم حفظ بند الامتثال");await load(undefined,true);};
-  const runOperation=async(endpoint:string,label:string)=>{setMessage("");const response=await adminFetch(endpoint,{method:"POST",credentials:"same-origin"});const payload=await response.json() as TaskResult&{error?:string};if(isAdminStepUpResponse(response)){setMessage(ADMIN_STEP_UP_MESSAGE);return;}if(!response.ok){setMessage(payload.error||"تعذر تشغيل المهمة");return;}setMessage(describeTask(label,payload));await load(undefined,true);};
+  const mutate=async(endpoint:string,label:string,body?:ComplianceItem)=>{
+    if(!active.current||mutationPending.current)return;
+    mutationPending.current=true;setPendingOperation(label);setMessage("");
+    try{
+      const response=await adminFetch(endpoint,{method:"POST",credentials:"same-origin",...(body?{headers:{"content-type":"application/json"},body:JSON.stringify(body)}:{})});
+      const payload=await response.json() as TaskResult&{error?:string};
+      if(!active.current)return;
+      if(isAdminStepUpResponse(response)){setMessage(ADMIN_STEP_UP_MESSAGE);return;}
+      if(!response.ok)throw new Error(payload.error||"تعذر تنفيذ الإجراء");
+      if(body)setEditing(null);
+      setMessage(body?label:describeTask(label,payload));await load(undefined,true);
+    }catch(error){if(active.current)setMessage(error instanceof Error?error.message:"تعذر تنفيذ الإجراء");}
+    finally{mutationPending.current=false;if(active.current)setPendingOperation("");}
+  };
+  const saveCompliance=async()=>{if(editing&&can(["compliance.manage","data.all"]))await mutate(OPERATIONS_PANELS.compliance.endpoint,"تم حفظ بند الامتثال",editing);};
+  const runOperation=async(endpoint:string,label:string)=>{const task=Object.values(OPERATIONS_TASKS).find(item=>item.endpoint===endpoint);if(task&&can(task.permissions))await mutate(endpoint,label);};
 
   return <main className={styles.page}><div className={styles.shell}>
-    <AdminCenterNav />
+
     <header className={styles.header}><div><h1>مركز التشغيل والتحليلات</h1><p>{adminName} · قرارات مبنية على بيانات حية وحوكمة قابلة للتتبع</p></div><nav className={styles.links}><button type="button" onClick={()=>void load()} disabled={loading}>تحديث</button></nav></header>
-    <div className={styles.tabs}><button className={tab==="analytics"?styles.active:""} onClick={()=>{setMessage("");setTab("analytics");}}>التحويل والاحتفاظ</button><button className={tab==="support"?styles.active:""} onClick={()=>{setMessage("");setTab("support");}}>تشغيل الدعم وSLA</button><button className={tab==="automation"?styles.active:""} onClick={()=>{setMessage("");setTab("automation");}}>الأتمتة والطوابير</button><button className={tab==="compliance"?styles.active:""} onClick={()=>{setMessage("");setTab("compliance");}}>ملف الامتثال</button></div>
+    <div className={styles.tabs}>{(Object.keys(OPERATIONS_PANELS) as Tab[]).filter(key=>can(OPERATIONS_PANELS[key].permissions)).map(key=><button key={key} className={tab===key?styles.active:""} onClick={()=>{setMessage("");setTab(key);}}>{OPERATIONS_PANELS[key].label}</button>)}</div>
+    {pendingOperation?<p role="status" aria-live="polite">جارٍ تنفيذ الإجراء…</p>:null}
     {message?isAdminStepUpMessage(message)?<AdminMfaNotice/>:<div className={styles.notice}>{message}</div>:null}
-    {loading?<div className={styles.loading}>جارٍ تحميل المؤشرات…</div>:tab==="analytics"&&analytics?<AnalyticsView data={analytics} days={days} setDays={setDays} course={course} setCourse={setCourse}/>:tab==="support"&&support?<SupportView data={support}/>:tab==="automation"&&operations?<OperationsView data={operations} run={runOperation}/>:tab==="compliance"&&compliance?<ComplianceView data={compliance} editing={editing} setEditing={setEditing} save={saveCompliance}/>:null}
+    {loading?<div className={styles.loading}>جارٍ تحميل المؤشرات…</div>:tab==="analytics"&&analytics?<AnalyticsView data={analytics} days={days} setDays={setDays} course={course} setCourse={setCourse}/>:tab==="support"&&support?<SupportView data={support}/>:tab==="automation"&&operations?<OperationsView data={operations} run={runOperation} busy={Boolean(pendingOperation)}/>:tab==="compliance"&&compliance?<ComplianceView data={compliance} editing={editing} setEditing={setEditing} save={saveCompliance}/>:null}
   </div></main>;
 }
 
@@ -76,8 +112,8 @@ function AnalyticsView({data,days,setDays,course,setCourse}:{data:AnalyticsData;
 
 function SupportView({data}:{data:SupportData}){const breached=data.tickets.filter((row)=>row.responseBreached||row.resolutionBreached);const onTrack=data.tickets.filter((row)=>!row.responseBreached&&!row.resolutionBreached&&!["resolved","closed"].includes(row.status));const due=(value:string)=>new Date(value).toLocaleString("ar-SA",{dateStyle:"short",timeStyle:"short"});return <><section className={styles.grid}><Metric title="إجمالي التذاكر" value={data.summary.total}/><Metric title="تذاكر مفتوحة" value={data.summary.open}/><Metric title="محلولة" value={data.summary.resolved}/><Metric title="تجاوز الرد" value={data.summary.responseBreached} tone="danger"/><Metric title="تجاوز الحل" value={data.summary.resolutionBreached} tone="warning"/><Metric title="متوسط أول رد" value={data.summary.averageFirstResponseMinutes===null?"—":`${data.summary.averageFirstResponseMinutes} د`}/></section><div className={styles.two}><section className={styles.panel}><h2>الطوابير</h2><div className={styles.funnel}>{data.queues.map((row)=><article key={row.category}><span>{categoryLabel[row.category]||row.category}</span><b>{row.count}</b><em className={row.overdue?styles.danger:styles.ok}>{row.overdue?`${row.overdue} متأخرة`:"ضمن SLA"}</em></article>)}</div></section><section className={styles.panel}><h2>الأولوية التشغيلية</h2><div className={styles.table}><table><thead><tr><th>التذكرة</th><th>العنوان</th><th>الأولوية</th><th>الحالة</th><th>المسؤول</th><th>الاستحقاق</th><th>SLA</th></tr></thead><tbody>{breached.slice(0,30).map((row)=><tr key={row.id}><td dir="ltr">{row.ticketNumber}</td><td>{row.title}</td><td>{priorityLabel[row.priority]||row.priority}</td><td>{ticketStatusLabel[row.status]||row.status}</td><td>{row.assignedTo||"غير مسندة"}</td><td>{row.responseBreached?`رد: ${due(row.firstResponseDueAt)}`:`حل: ${due(row.resolutionDueAt)}`}</td><td className={styles.danger}>{row.responseBreached?"تجاوز الرد":"تجاوز الحل"}</td></tr>)}{breached.length===0?<tr><td colSpan={7}>لا توجد تذاكر متأخرة — جميع التذاكر ضمن SLA.</td></tr>:null}</tbody></table></div></section></div><section className={styles.panel}><h2>التذاكر النشطة ضمن SLA</h2><div className={styles.table}><table><thead><tr><th>التذكرة</th><th>العنوان</th><th>الأولوية</th><th>الحالة</th><th>المسؤول</th><th>موعد أول رد</th><th>موعد الحل</th></tr></thead><tbody>{onTrack.slice(0,40).map((row)=><tr key={row.id}><td dir="ltr">{row.ticketNumber}</td><td>{row.title}</td><td>{priorityLabel[row.priority]||row.priority}</td><td>{ticketStatusLabel[row.status]||row.status}</td><td>{row.assignedTo||"غير مسندة"}</td><td>{due(row.firstResponseDueAt)}</td><td>{due(row.resolutionDueAt)}</td></tr>)}{onTrack.length===0?<tr><td colSpan={7}>لا توجد تذاكر نشطة حاليًا.</td></tr>:null}</tbody></table></div></section></>}
 
-function OperationsView({data,run}:{data:OperationsData;run:(endpoint:string,label:string)=>Promise<void>}){return <><section className={styles.grid}><Metric title="سلال/دفعات متروكة" value={data.queues.abandonedCheckout}/><Metric title="وصول ينتهي قريبًا" value={data.queues.expiringAccess}/><Metric title="مرفقات تنتظر الفحص" value={data.queues.filesPendingScan} tone="warning"/><Metric title="Push ينتظر الإرسال" value={data.queues.pushPending}/><Metric title="استردادات قيد المراجعة" value={data.queues.refundPending}/><Metric title="تسويات غير مطابقة" value={data.queues.settlementUnmatched} tone="warning"/><Metric title="قائمة انتظار نشطة" value={data.waitlist.active||0}/><Metric title="أُبلغوا من قائمة الانتظار" value={data.waitlist.notified||0}/><Metric title="تحولوا للاشتراك" value={data.waitlist.converted||0}/><Metric title="باقات منشورة" value={data.bundles.published||0}/><Metric title="باقات مسودة" value={data.bundles.draft||0}/><Metric title="باقات مؤرشفة" value={data.bundles.archived||0}/></section><section className={styles.panel}><h2>تشغيل المهام الآمنة</h2><p>يمكن تشغيلها يدويًا هنا، وتعمل أيضًا عبر المجدول باستخدام مفتاح مستقل.</p><div className={styles.actions}><button onClick={()=>void run("/api/admin/lifecycle/dispatch","اكتملت تنبيهات دورة الحياة")}>تنبيهات السلة والتجديد والإطلاق</button><button onClick={()=>void run("/api/admin/files/scan","اكتمل فحص دفعة المرفقات")}>فحص المرفقات المعلقة</button><button onClick={()=>void run("/api/admin/notifications/dispatch","اكتمل إرسال الإشعارات المستحقة")}>إرسال Push المستحق</button></div></section></>}
+function OperationsView({data,run,busy}:{data:OperationsData;run:(endpoint:string,label:string)=>Promise<void>;busy:boolean}){return <>{data.geminiVerification?<section className={styles.panel} aria-label="إثبات مشاريع Gemini"><h2>إثبات مشاريع Gemini</h2><p>انتهاء الإثبات يمنع التوليد؛ تجديده لا يفعّل الاحتياط المدفوع.</p><div className={styles.grid}>{GEMINI_VERIFICATION_METRICS.map(item=><Metric key={item.key} title={item.label} value={data.geminiVerification![item.key]} tone={["expired","expiring","failed","overdue"].includes(item.key)?"warning":undefined}/>)}</div><p>إعداد أو إيقاف التجديد إجراء تشغيلي صريح؛ لا تُعرض المفاتيح أو رموز الهوية هنا.</p></section>:null}<section className={styles.grid}><Metric title="ملفات تنتظر التنظيف" value={data.queues.storageCleanupPending||0}/><Metric title="تنظيف يحتاج مراجعة" value={data.queues.storageCleanupBlocked||0} tone="warning"/><Metric title="تنظيف متأخر" value={data.queues.storageCleanupOverdue||0} tone="warning"/><Metric title="سلال/دفعات متروكة" value={data.queues.abandonedCheckout}/><Metric title="وصول ينتهي قريبًا" value={data.queues.expiringAccess}/><Metric title="مرفقات تنتظر الفحص" value={data.queues.filesPendingScan} tone="warning"/><Metric title="Push ينتظر الإرسال" value={data.queues.pushPending}/><Metric title="استردادات قيد المراجعة" value={data.queues.refundPending}/><Metric title="تسويات غير مطابقة" value={data.queues.settlementUnmatched} tone="warning"/><Metric title="قائمة انتظار نشطة" value={data.waitlist.active||0}/><Metric title="أُبلغوا من قائمة الانتظار" value={data.waitlist.notified||0}/><Metric title="تحولوا للاشتراك" value={data.waitlist.converted||0}/><Metric title="باقات منشورة" value={data.bundles.published||0}/><Metric title="باقات مسودة" value={data.bundles.draft||0}/><Metric title="باقات مؤرشفة" value={data.bundles.archived||0}/></section><section className={styles.panel}><h2>تشغيل المهام الآمنة</h2><p>يمكن تشغيلها يدويًا هنا، وتعمل أيضًا عبر المجدول باستخدام مفتاح مستقل.</p><div className={styles.actions}><AdminCapability all={OPERATIONS_TASKS.lifecycle.permissions}><button disabled={busy} onClick={()=>void run("/api/admin/lifecycle/dispatch","اكتملت تنبيهات دورة الحياة")}>تنبيهات السلة والتجديد والإطلاق</button></AdminCapability><AdminCapability all={OPERATIONS_TASKS.scan.permissions}><button disabled={busy} onClick={()=>void run("/api/admin/files/scan","اكتمل فحص دفعة المرفقات")}>فحص المرفقات المعلقة</button></AdminCapability><AdminCapability all={OPERATIONS_TASKS.push.permissions}><button disabled={busy} onClick={()=>void run("/api/admin/notifications/dispatch","اكتمل إرسال الإشعارات المستحقة")}>إرسال Push المستحق</button></AdminCapability></div></section></>}
 
-function ComplianceView({data,editing,setEditing,save}:{data:ComplianceData;editing:ComplianceItem|null;setEditing:(item:ComplianceItem|null)=>void;save:()=>void}){return <><section className={styles.grid}><Metric title="نسبة الجاهزية" value={`${data.progress}%`}/><Metric title="بنود موثقة" value={data.items.filter((item)=>item.status==="verified").length}/><Metric title="قيد العمل" value={data.items.filter((item)=>item.status==="in_progress").length}/><Metric title="لم تبدأ" value={data.items.filter((item)=>item.status==="not_started").length}/></section><div className={styles.notice}>{data.disclaimer}</div><section className={styles.items}>{data.items.map((item)=><article className={styles.item} key={item.key}><header><div><small>{item.area}</small><h3>{item.title}</h3></div><span className={styles.status}>{statusLabel[item.status]||item.status}</span></header><p>{item.description}</p><small>الدليل المقترح: {item.evidenceHint}</small><button onClick={()=>setEditing(editing?.key===item.key?null:{...item})}>{editing?.key===item.key?"إغلاق":"تحديث البند"}</button>{editing?.key===item.key?<div className={styles.editor}><label>الحالة<SearchableSelect value={editing.status} onChange={(event)=>setEditing({...editing,status:event.target.value})}><option value="not_started">لم يبدأ</option><option value="in_progress">قيد العمل</option><option value="ready">جاهز للمراجعة</option><option value="verified">موثّق</option></SearchableSelect></label><label>المسؤول<input value={editing.owner} onChange={(event)=>setEditing({...editing,owner:event.target.value})}/></label><label>رابط أو وصف الدليل<textarea value={editing.evidence} onChange={(event)=>setEditing({...editing,evidence:event.target.value})}/></label><label>تاريخ المراجعة<input type="date" value={editing.reviewDate} onChange={(event)=>setEditing({...editing,reviewDate:event.target.value})}/></label><label>ملاحظات<textarea value={editing.notes} onChange={(event)=>setEditing({...editing,notes:event.target.value})}/></label><button className={styles.save} onClick={save}>حفظ وتوثيق</button></div>:null}</article>)}</section></>}
+function ComplianceView({data,editing,setEditing,save}:{data:ComplianceData;editing:ComplianceItem|null;setEditing:(item:ComplianceItem|null)=>void;save:()=>void}){return <><section className={styles.grid}><Metric title="نسبة الجاهزية" value={`${data.progress}%`}/><Metric title="بنود موثقة" value={data.items.filter((item)=>item.status==="verified").length}/><Metric title="قيد العمل" value={data.items.filter((item)=>item.status==="in_progress").length}/><Metric title="لم تبدأ" value={data.items.filter((item)=>item.status==="not_started").length}/></section><div className={styles.notice}>{data.disclaimer}</div><section className={styles.items}>{data.items.map((item)=><article className={styles.item} key={item.key}><header><div><small>{item.area}</small><h3>{item.title}</h3></div><span className={styles.status}>{statusLabel[item.status]||item.status}</span></header><p>{item.description}</p><small>الدليل المقترح: {item.evidenceHint}</small><AdminCapability all={["compliance.manage","data.all"]}><button onClick={()=>setEditing(editing?.key===item.key?null:{...item})}>{editing?.key===item.key?"إغلاق":"تحديث البند"}</button></AdminCapability>{editing?.key===item.key?<div className={styles.editor}><label>الحالة<SearchableSelect value={editing.status} onChange={(event)=>setEditing({...editing,status:event.target.value})}><option value="not_started">لم يبدأ</option><option value="in_progress">قيد العمل</option><option value="ready">جاهز للمراجعة</option><option value="verified">موثّق</option></SearchableSelect></label><label>المسؤول<input value={editing.owner} onChange={(event)=>setEditing({...editing,owner:event.target.value})}/></label><label>رابط أو وصف الدليل<textarea value={editing.evidence} onChange={(event)=>setEditing({...editing,evidence:event.target.value})}/></label><label>تاريخ المراجعة<input type="date" value={editing.reviewDate} onChange={(event)=>setEditing({...editing,reviewDate:event.target.value})}/></label><label>ملاحظات<textarea value={editing.notes} onChange={(event)=>setEditing({...editing,notes:event.target.value})}/></label><button className={styles.save} onClick={save}>حفظ وتوثيق</button></div>:null}</article>)}</section></>}
 
 function Metric({title,value,tone}:{title:string;value:string|number;tone?:"danger"|"warning"}){return <article className={styles.metric}><small>{title}</small><strong className={tone?styles[tone]:undefined}>{typeof value==="number"?value.toLocaleString("ar-SA"):value}</strong><em>بيانات حية</em></article>}

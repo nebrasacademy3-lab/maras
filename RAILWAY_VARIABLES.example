@@ -62,14 +62,20 @@ TAP_TABBY_ENABLED=false
 TAP_TAMARA_ENABLED=false
 
 # مراس AI — أدخل مفاتيح Gemini الحقيقية في Railway ولا تضعها في المستودع.
+# Free-tier projects only. Keep paid credentials separate; the server will not use them while the audited budget policy is disabled.
 GEMINI_API_KEY=
 GEMINI_API_KEYS=
+GEMINI_FREE_API_KEYS=
+GEMINI_PAID_API_KEYS=
+# Optional proof renewal: off until migration 0041, verified plan registration and trusted token rotation.
+GEMINI_PROJECT_REFRESH_ENABLED=false
+GEMINI_CONTROL_PLANE_TOKEN_FILE=
 AI_KEYS_ENCRYPTION_KEY=REPLACE_WITH_AN_INDEPENDENT_RANDOM_32_BYTE_KEY
 AI_MONTHLY_PRICE_SAR=30
 AI_MAX_STORED_FILES_PER_USER=30
 AI_MAX_STORED_BYTES_PER_USER=209715200
 AI_MAX_CONCURRENT_FILE_ACTIONS=4
-AI_GEMINI_MAX_KEY_ATTEMPTS=3
+AI_GEMINI_MAX_KEY_ATTEMPTS=10
 AI_GEMINI_ATTEMPT_TIMEOUT_MS=35000
 AI_GEMINI_OVERALL_TIMEOUT_MS=85000
 
@@ -80,10 +86,8 @@ RESEND_TEMPLATE_CHANGE_PASSWORD=
 RESEND_TEMPLATE_RESET_PASSWORD=
 EMAIL_FROM=
 
-# المساعد الخارجي — اختياري؛ المحرك المحلي يبقى فعالًا بدونه.
-OPENAI_API_KEY=
-OPENAI_API_URL=https://api.openai.com/v1
-ASSISTANT_MODEL=gpt-5-mini
+# المساعد العام يستخدم Gemini فقط بالمفاتيح المجانية المؤهلة والإعداد المعتمد لخدمة chat.
+# عند التعطل يعود للدليل البرمجي للمنصة؛ لا ينتقل إلى مزود آخر أو احتياط مدفوع.
 
 # Google / Apple sign-in — fill only real server credentials (docs/oauth-setup.md).
 GOOGLE_CLIENT_ID=
@@ -98,3 +102,10 @@ OAUTH_MOBILE_REDIRECT_URI=merasalelm://oauth/callback
 GOOGLE_SITE_VERIFICATION=
 # Set false on staging. APP_URL / NEXT_PUBLIC_SITE_URL must be the real HTTPS origin.
 SEO_INDEXING_ENABLED=true
+
+# Enable only after stable account ownership migration and ID acceptance tests.
+EMAIL_CHANGE_ENABLED=false
+
+# Supervised web/workers: graceful shutdown, then bounded forced termination.
+RUNTIME_SHUTDOWN_TIMEOUT_MS=25000
+# S3 settings are all-or-none; production S3 endpoints must use HTTPS.

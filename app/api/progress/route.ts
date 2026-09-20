@@ -9,11 +9,11 @@ import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-b
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const userEmail = (await getSessionUser(request))?.email || "";
+  const user = await getSessionUser(request);
   const courseSlug = cleanText(url.searchParams.get("course"), 120);
-  if (!userEmail) return jsonError("سجّل الدخول لحفظ التقدم", 401);
+  if (!user) return jsonError("سجّل الدخول لحفظ التقدم", 401);
   if (!courseSlug) return jsonError("المادة مطلوبة");
-  const rows = await getDb().select().from(lessonProgress).where(and(eq(lessonProgress.userEmail, userEmail), eq(lessonProgress.courseSlug, courseSlug)));
+  const rows = await getDb().select().from(lessonProgress).where(and(eq(lessonProgress.userId, user.id), eq(lessonProgress.courseSlug, courseSlug)));
   return Response.json({ ok: true, progress: rows }, { headers: { "cache-control": "no-store" } });
 }
 
@@ -35,7 +35,7 @@ export async function POST(request: Request) {
   const [lessonRow] = await db.select({ durationSeconds: lessonsDb.durationSeconds }).from(lessonsDb).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug), eq(lessonsDb.status, "published"))).limit(1);
   if (!lessonRow) return jsonError("الدرس غير منشور", 404);
   if (!lesson.free) {
-    const [access] = await db.select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.email, courseSlug)).limit(1);
+    const [access] = await db.select({ id: courseAccess.id }).from(courseAccess).where(activeCourseAccessWhere(user.id, courseSlug)).limit(1);
     if (!access) return jsonError("لا توجد صلاحية نشطة لهذه المادة", 403);
   }
   const completionThreshold = lessonRow.durationSeconds > 0 ? Math.max(5, Math.floor(lessonRow.durationSeconds * .85)) : 30;
@@ -46,12 +46,12 @@ export async function POST(request: Request) {
   const explicitlyUncompleted = manual && payload.completed === false;
   const now = new Date().toISOString();
   const [existingLesson, existingCourse] = await Promise.all([
-    db.select({ completed: lessonProgress.completed }).from(lessonProgress).where(and(eq(lessonProgress.userEmail, user.email), eq(lessonProgress.lessonId, lessonId))).limit(1),
-    db.select({ id: lessonProgress.id }).from(lessonProgress).where(and(eq(lessonProgress.userEmail, user.email), eq(lessonProgress.courseSlug, courseSlug))).limit(1),
+    db.select({ completed: lessonProgress.completed }).from(lessonProgress).where(and(eq(lessonProgress.userId, user.id), eq(lessonProgress.lessonId, lessonId))).limit(1),
+    db.select({ id: lessonProgress.id }).from(lessonProgress).where(and(eq(lessonProgress.userId, user.id), eq(lessonProgress.courseSlug, courseSlug))).limit(1),
   ]);
   const saved = await db.transaction(async (tx) => {
-    const [row] = await tx.insert(lessonProgress).values({ userEmail: user.email, courseSlug, lessonId, watchedSeconds, completed: explicitlyCompleted, updatedAt: now }).onConflictDoUpdate({
-      target: [lessonProgress.userEmail, lessonProgress.lessonId],
+    const [row] = await tx.insert(lessonProgress).values({ userId: user.id, userEmail: user.email, courseSlug, lessonId, watchedSeconds, completed: explicitlyCompleted, updatedAt: now }).onConflictDoUpdate({
+      target: [lessonProgress.userId, lessonProgress.lessonId],
       set: {
         watchedSeconds: sql`GREATEST(${lessonProgress.watchedSeconds}, ${watchedSeconds})`,
         completed: explicitlyUncompleted ? sql`false` : sql`${lessonProgress.completed} OR ${explicitlyCompleted}`,

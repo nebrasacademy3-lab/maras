@@ -1,6 +1,7 @@
+import { revokeRefundedOrderAccessTx } from "@/lib/refunded-order-access";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseAccess, courseAccessEvents, creditNotes, invoices, orders, paymentEvents, refundRequests } from "@/db/schema";
+import { creditNotes, invoices, orders, paymentEvents, refundRequests } from "@/db/schema";
 
 const TAP_REFUND_FAILURE_STATUSES = new Set([
   "ABANDONED",
@@ -130,25 +131,7 @@ export async function applyConfirmedRefundToOrder(input: { orderNumber: string; 
     const now = new Date().toISOString();
     if (changed) await tx.update(orders).set({ status, updatedAt: now }).where(eq(orders.id, current.id));
 
-    if (fullyRefunded) {
-      const affected = await tx.select().from(courseAccess).where(sql`${courseAccess.orderNumber} = ${current.orderNumber} AND lower(${courseAccess.userEmail}) = lower(${current.customerEmail})`);
-      for (const access of affected) {
-        if (!access.revokedAt) await tx.update(courseAccess).set({ revokedAt: now, revocationReason: "payment_refunded", suspendedAt: null, suspensionReason: null, updatedAt: now }).where(eq(courseAccess.id, access.id));
-        await tx.insert(courseAccessEvents).values({
-          eventKey: `order:${current.orderNumber}:refund:${access.courseSlug}`,
-          accessId: access.id,
-          userEmail: access.userEmail,
-          courseSlug: access.courseSlug,
-          action: "refund_revoked",
-          actorEmail: "tap-webhook",
-          reason: "payment_refunded",
-          orderNumber: current.orderNumber,
-          beforeJson: JSON.stringify(access),
-          afterJson: JSON.stringify({ revokedAt: access.revokedAt || now }),
-          createdAt: now,
-        }).onConflictDoNothing({ target: courseAccessEvents.eventKey });
-      }
-    }
+    if (fullyRefunded) await revokeRefundedOrderAccessTx(tx, current, now);
 
     return {
       ok: true as const,
@@ -159,6 +142,7 @@ export async function applyConfirmedRefundToOrder(input: { orderNumber: string; 
       newlyFullyRefunded,
       refundedAmountMinor,
       customerEmail: current.customerEmail,
+      userId: current.userId,
       currency: current.currency,
     };
   });

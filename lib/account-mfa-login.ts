@@ -33,7 +33,7 @@ export async function completeMfaLogin(request: Request, mobile = false) {
     if (error instanceof RequestBodyTooLargeError) return jsonError(error.message, 413);
     if (error instanceof SyntaxError || error instanceof TypeError) return jsonError("بيانات التحقق غير صالحة", 400);
     if (error instanceof AdminMfaError) return jsonError(error.message, error.status, error.code);
-    if (error instanceof DeviceLimitError) return jsonError("حسابك مرتبط بالجهازين المعتمدين؛ استخدم أحدهما أو تواصل مع الدعم", 409, "DEVICE_LIMIT_REACHED");
+    if (error instanceof DeviceLimitError) return jsonError(error.userMessage, error.status, error.code);
     return jsonError("تعذر إكمال تسجيل الدخول", 500);
   }
 }

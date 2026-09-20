@@ -78,11 +78,13 @@ export async function runLifecycleAutomations(now = new Date()): Promise<Lifecyc
   }
 
   for (const order of pendingOrders) {
+    if (!order.userId) continue; // Unresolved financial owners are never broadcast targets.
     const ageHours = (now.getTime() - Date.parse(order.createdAt)) / 3_600_000;
     const stage = ageHours >= 24 ? "24h" : "2h";
     const pendingVerification = ["verification_pending", "payment_review"].includes(order.status);
     if (await enqueue({
-      userEmail: order.customerEmail,
+      targetUserId: order.userId,
+      userEmail: null,
       audience: "student",
       title: pendingVerification ? "نتابع عملية الدفع" : "يمكنك استكمال الدفع بأمان",
       body: pendingVerification ? `الطلب ${order.orderNumber} قيد التحقق، ولا تحتاج إلى إنشاء عملية دفع أخرى.` : `طلبك ${order.orderNumber} لم يكتمل بعد. افتح الطلب لمتابعة الحالة أو استكمال المحاولة الحالية.`,

@@ -1,4 +1,7 @@
 "use client";
+import {AdminCapability} from "@/components/admin-capability";
+
+
 import { confirmAction } from "@/lib/interaction-events";
 import { adminFetch } from "@/lib/admin-client";
 import { SearchableSelect } from "@/components/searchable-select";
@@ -10,7 +13,6 @@ import {
   FileText, GraduationCap, LoaderCircle, Pencil, RefreshCw, Search, ShieldAlert,
   ShieldCheck, Trash2, Upload, X,
 } from "lucide-react";
-import { AdminCenterNav } from "@/components/admin-center-nav";
 import { ADMIN_STEP_UP_MESSAGE, AdminMfaNotice, isAdminStepUpMessage, isAdminStepUpResponse } from "@/components/admin-mfa-notice";
 import styles from "./admin-course-resources-center.module.css";
 
@@ -262,7 +264,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
   }
 
   return <main className={styles.page} dir="rtl"><div className={styles.shell}>
-    <AdminCenterNav />
+
     <header className={styles.header}>
       <div><span><FileStack size={16} /> مكتبة المحتوى المساند</span><h1>ملفات المواد ونطاق الظهور</h1><p>{adminName} · ارفع مراجع المادة، افحصها، وحدد بدقة من يراها عبر الويب والتطبيق.</p></div>
       <nav><button type="button" disabled={loadingCatalog || loadingResources} onClick={() => { void loadCatalog(); if (selectedSlug) void loadResources(selectedSlug); }}><RefreshCw size={15} /> تحديث</button><Link href="/admin">لوحة الإدارة</Link></nav>
@@ -294,7 +296,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
             </div>
           </section>
 
-          <form className={styles.uploadCard} onSubmit={(event) => void uploadResource(event)}>
+          <AdminCapability all={["catalog.manage"]}><form className={styles.uploadCard} onSubmit={(event) => void uploadResource(event)}>
             <div className={styles.sectionHeading}><div><span><Upload size={16} /> ملف جديد</span><h3>أضف مادة مساندة للطلاب</h3><p>PDF وWord وPowerPoint وExcel والصور والنصوص فقط، بحد أقصى 25 ميجابايت.</p></div><ShieldCheck size={27} /></div>
             <div className={styles.formGrid}>
               <label>العنوان الظاهر للطالب<input name="title" maxLength={160} placeholder="مثال: ملخص الوحدة الأولى" /></label>
@@ -305,7 +307,7 @@ export function AdminCourseResourcesCenter({ adminName }: { adminName: string })
               <label className={styles.switch}><input name="studentVisible" type="checkbox" value="true" /><span><Eye size={17} /> إظهاره للطلاب بعد نجاح الفحص</span></label>
             </div>
             <button className={styles.primary} disabled={saving} type="submit">{saving ? <LoaderCircle className={styles.spin} size={17} /> : <Upload size={17} />} رفع الملف</button>
-          </form>
+          </form></AdminCapability>
 
           {editingId && editState ? (() => {
             const resource = resources.find((item) => item.id === editingId);

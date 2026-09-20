@@ -14,8 +14,9 @@ async function isolated(file, dependencies = {}) {
     return await import("data:text/javascript;base64," + Buffer.from(output).toString("base64"));
   } finally { delete globalThis[key]; }
 }
+class AiBusyError extends Error {}
 class AiPlatformError extends Error { constructor(code, message, status = 400) { super(message); this.code = code; this.status = status; } }
-const platform = { AiPlatformError };
+const platform = { AiPlatformError, AiBusyError };
 const config = await isolated("../lib/gemini-config.ts");
 const errors = await isolated("../lib/gemini-errors.ts", platform);
 const legacy = "AIza" + "synthetic_not_real_".repeat(2);
@@ -23,7 +24,12 @@ const modern = "AQ." + "synthetic_not_real_".repeat(30) + ".signature";
 const keys = await isolated("../lib/ai-keys.ts", { ...crypto, ...platform, process: { env: { AI_KEYS_ENCRYPTION_KEY: "12".repeat(32) } } });
 const model = { name: "models/gemini-test-flash", displayName: "Synthetic test model", supportedGenerationMethods: ["generateContent"], inputTokenLimit: 10000, outputTokenLimit: 2048 };
 const answer = { candidates: [{ content: { parts: [{ text: "OK" }] }, finishReason: "STOP" }], usageMetadata: { promptTokenCount: 3, candidatesTokenCount: 1 } };
-const provider = fetch => isolated("../lib/gemini-provider.ts", { ...platform, ...config, ...errors, ...keys, fetch });
+// Isolate transport contracts; project admission is exercised without this mock
+// in gemini-project-boundary.test.mjs and qa-gemini-projects.ts.
+const provider = fetch => isolated("../lib/gemini-provider.ts", { ...platform, ...config, ...errors, ...keys,
+  reserveGeminiProject: async () => ({}), dispatchGeminiProject: async () => {}, settleGeminiProject: async () => {},
+  fetch: (url, init) => String(url).endsWith(":countTokens") ? Response.json({ totalTokens: 3 }) : fetch(url, init),
+});
 
 test("modern dotted auth keys survive validation, authenticated encryption and all environment formats", () => {
   for (const key of [legacy, modern]) {
@@ -102,16 +108,16 @@ test("malformed provider responses and thought-only/safety/token-limit outputs p
     await assert.rejects(p.requestGemini({ apiKey: modern, model: model.name }), error => error.code === "AI_PROVIDER_INVALID_RESPONSE" && !error.message.includes(modern));
   }
   const p = await provider(async () => Response.json({ error: { message: modern } }, { status: 403 }));
-  assert.equal(p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "hidden", thought: true }, { text: "final" }] } }] }).text, "final");
+  assert.equal(p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "hidden", thought: true }, { text: "final" }] }, finishReason: "STOP" }] }).text, "final");
   for (const [payload, code] of [[{ promptFeedback: { blockReason: "SAFETY" } }, "AI_CONTENT_BLOCKED"], [{ candidates: [{ finishReason: "MAX_TOKENS" }] }, "AI_OUTPUT_TOKEN_LIMIT"], [{ candidates: [{ content: { parts: [{ thought: true, text: "reasoning" }] } }] }, "AI_EMPTY_RESPONSE"]]) assert.throws(() => p.geminiTextResponse(payload), error => error.code === code);
 });
 
 async function runtime(sequence, environment = {}) {
   const updates = [], calls = [], gates = [];
-  const rows = [modern, legacy].map((key, index) => ({ id: index + 1, encryptedKey: keys.encryptAiApiKey(key), fingerprint: keys.aiKeyFingerprint(key), priority: index, lastUsedAt: null, cooldownUntil: null }));
+  const rows = [modern, legacy].map((key, index) => ({ id: index + 1, status: "active", encryptedKey: keys.encryptAiApiKey(key), fingerprint: keys.aiKeyFingerprint(key), priority: index, lastUsedAt: null, cooldownUntil: null }));
   const db = { select: () => ({ from: () => ({ where: () => ({ orderBy: async () => rows }) }) }), update: () => ({ set: values => ({ where: async () => { updates.push(values); } }) }) };
   const p = await provider(async (url, init) => { calls.push({ url: String(url), init }); return sequence(calls.length); });
-  const compiledModule = await isolated("../lib/gemini.ts", { ...platform, ...config, ...errors, ...keys, ...p, createHash: crypto.createHash, asc: () => true, eq: () => true, getDb: () => db, aiApiKeys: {}, acquireAiProviderSlot: async () => { gates.push("acquire"); return async () => { gates.push("release"); }; }, deferAiProvider: async delay => gates.push(delay), process: { env: environment } });
+  const compiledModule = await isolated("../lib/gemini.ts", { ...platform, ...config, ...errors, ...keys, ...p, createHash: crypto.createHash, and: () => true, sql: () => true, asc: () => true, eq: () => true, getDb: () => db, geminiProjectIdentities: async () => new Map(rows.map(row => [row.fingerprint, { projectNumber: String(row.id), tier: "free" }])), aiApiKeys: {}, acquireAiProviderSlot: async () => { gates.push("acquire"); return async () => { gates.push("release"); }; }, deferAiProvider: async delay => gates.push(delay), process: { env: environment } });
   return { ...compiledModule, updates, calls, gates };
 }
 const generation = { config: { model: model.name, temperature: 0.2, maxOutputTokens: 4096 }, systemInstruction: "Test only", contents: [{ role: "user", parts: [{ text: "OK" }] }] };
@@ -132,9 +138,9 @@ test("invalid-key signals disable only that key while model failures do not rota
 
 
 test("corrupt encrypted key reports configuration failure instead of generic provider outage", async () => {
-  const rows=[{id:1,encryptedKey:"bad",fingerprint:"bad",priority:1,cooldownUntil:null}];
+  const rows=[{id:1,status:"active",encryptedKey:"bad",fingerprint:"bad",priority:1,cooldownUntil:null}];
   const db={select:()=>({from:()=>({where:()=>({orderBy:async()=>rows})})})};
-  const r=await isolated("../lib/gemini.ts",{...platform,...config,...errors,createHash:crypto.createHash,asc:()=>true,eq:()=>true,aiApiKeys:{},getDb:()=>db,decryptAiApiKey:()=>{throw Error("private-key-secret");},geminiEnvironmentKeys:()=>[],process:{env:{}}});
+  const r=await isolated("../lib/gemini.ts",{...platform,...config,...errors,createHash:crypto.createHash,and:()=>true,sql:()=>true,asc:()=>true,eq:()=>true,geminiProjectIdentities:async()=>new Map([["bad",{projectNumber:"123456",tier:"free"}]]),aiApiKeys:{},getDb:()=>db,decryptAiApiKey:()=>{throw Error("private-key-secret");},geminiEnvironmentKeys:()=>[],process:{env:{}}});
   await assert.rejects(r.generateGeminiContent(generation),error=>error.code==="AI_KEY_DECRYPTION_FAILED"&&!error.message.includes("private-key-secret"));
   const ciphertext=keys.encryptAiApiKey(modern);
   assert.throws(()=>keys.decryptAiApiKey(ciphertext+".extra"),error=>error.code==="AI_KEY_DECRYPTION_FAILED");
@@ -171,4 +177,12 @@ test("429 respects a project-wide cooldown and never rotates through more keys",
 test("a truncated token-limit response is rejected even when text is present", async () => {
   const p = await provider(async () => Response.json(answer));
   assert.throws(() => p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "incomplete translation" }] }, finishReason: "MAX_TOKENS" }] }), error => error.code === "AI_OUTPUT_TOKEN_LIMIT");
+});
+
+test("non-streaming candidates must confirm STOP; incomplete, unsupported and safety responses never publish their partial text", async () => {
+  const p = await provider(async () => Response.json(answer));
+  for (const finishReason of [undefined, null, "", "OTHER", "LANGUAGE", "FINISH_REASON_UNSPECIFIED", "MALFORMED_FUNCTION_CALL", "NEW_UNKNOWN_REASON"]) {
+    assert.throws(() => p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "plausible partial explanation" }] }, finishReason }] }), error => error.code === "AI_OUTPUT_INCOMPLETE");
+  }
+  assert.throws(() => p.geminiTextResponse({ candidates: [{ content: { parts: [{ text: "partial" }] }, finishReason: "IMAGE_SAFETY" }] }), error => error.code === "AI_CONTENT_BLOCKED");
 });

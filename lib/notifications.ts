@@ -47,7 +47,15 @@ export async function createAndSendNotification({
   target: PushTarget;
   data?: PushData;
 }): Promise<ImmediateNotificationResult> {
+  const explicitId = Object.prototype.hasOwnProperty.call(values, "targetUserId");
+  const targetId = Object.prototype.hasOwnProperty.call(target, "userId");
+  if ((explicitId && (!Number.isSafeInteger(values.targetUserId) || !values.targetUserId || values.targetUserId < 1))
+    || (targetId && (!explicitId || target.userId !== values.targetUserId))
+    || (!explicitId && typeof target.userEmail === "string" && target.userEmail.trim().toLowerCase() !== values.userEmail?.trim().toLowerCase())) {
+    return { notificationId: null, saved: false, persistenceError: "NOTIFICATION_RECIPIENT_UNRESOLVED", ...emptyDelivery() };
+  }
   const db = getDb();
+  let persistedTarget: PushTarget | null = null;
   let notificationId: number | null = null;
   let persistenceError: string | null = null;
 
@@ -60,16 +68,22 @@ export async function createAndSendNotification({
       pushClaimedAt: new Date().toISOString(),
       pushLastError: null,
       pushDeliveredAt: null,
-    }).returning({ id: notificationsDb.id });
+    }).returning({ id: notificationsDb.id, targetUserId: notificationsDb.targetUserId, userEmail: notificationsDb.userEmail, audience: notificationsDb.audience });
     notificationId = created?.id ?? null;
+    if (created) persistedTarget = created.targetUserId != null
+      ? { userId: created.targetUserId }
+      : created.userEmail != null ? { userId: null } : { audience: created.audience };
   } catch (error) {
     persistenceError = errorMessage(error);
   }
 
+  // Deliver only the recorded recipient, never a historical email resolved anew.
+  // Without a durable row there is no safe campaign identity or retry boundary.
+  if (!notificationId || !persistedTarget) return { notificationId, saved: false, persistenceError: persistenceError || "NOTIFICATION_NOT_SAVED", ...emptyDelivery() };
   let delivery = emptyDelivery();
   try {
     delivery = await sendPushNotification(
-      target,
+      persistedTarget,
       values.title,
       values.body,
       notificationId ? { ...data, notificationId } : data,

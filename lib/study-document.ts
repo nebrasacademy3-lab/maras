@@ -18,7 +18,7 @@ function attributes(tag: string) {
   return Object.fromEntries([...tag.matchAll(/([\w:.-]+)\s*=\s*(["'])([\s\S]*?)\2/g)].map(match => [match[1], decodeXmlText(match[3])]));
 }
 
-function xmlText(xml: string) {
+export function xmlText(xml: string) {
   // Do not count comments, field instructions, deleted revisions or alt-text as lesson facts.
   const content = xml.replace(/<!--[\s\S]*?-->/g, "").replace(/<w:del\b[^>]*>[\s\S]*?<\/w:del>/g, "");
   const tokens = content.match(/<(?:w|a|m):t(?:\s[^>]*)?>[\s\S]*?<\/(?:w|a|m):t>|<(?:w|a):(?:tab|br)\b[^>]*\/>|<\/(?:w|a):(?:p|tr|tc)>/g) || [];

@@ -1,5 +1,6 @@
+import { normalizeStudyProgress, type StudyProgress } from "@/lib/study-progress";
 /** Browser-side job polling. Aborting stops observation, not a job already accepted by the server. */
-export type StudyJob<T> = { id: string; status: string; result?: T; error?: string; code?: string };
+export type StudyJob<T> = { id: string; status: string; result?: T; error?: string; code?: string; progress?: unknown; supportsControl?: boolean };
 export class StudyRequestError extends Error {
   constructor(message: string, readonly status: number, readonly terminal = false) { super(message); this.name = "StudyRequestError"; }
 }
@@ -18,15 +19,17 @@ function pause(ms: number, signal?: AbortSignal) {
     signal?.addEventListener("abort", abort, { once: true });
   });
 }
-export async function observeStudyJob<T>(initial: StudyJob<T>, options: { signal?: AbortSignal; onStatus?: (status: string) => void } = {}): Promise<T> {
+export async function observeStudyJob<T>(initial: StudyJob<T>, options: { signal?: AbortSignal; onStatus?: (status: string) => void; onProgress?: (progress: StudyProgress | null) => void } = {}): Promise<T> {
   let job = initial;
   const started = Date.now();
   let failures = 0;
   while (true) {
     options.signal?.throwIfAborted();
     options.onStatus?.(job.status);
+    options.onProgress?.(normalizeStudyProgress(job.progress,job.status));
     if (job.status === "succeeded" && job.result) return job.result;
-    if (job.status === "failed") throw new StudyRequestError(job.error || "تعذر إكمال المعالجة.", 422, true);
+    if (job.status === "paused") throw new StudyRequestError("الطلب متوقف مؤقتًا. استأنفه من الزر أدناه لإكمال الأجزاء المتبقية.", 409, false);
+    if (job.status === "failed" || job.status === "cancelled") throw new StudyRequestError(job.error || "تعذر إكمال المعالجة.", 422, true);
     if (Date.now() - started > 31 * 60_000) throw new Error("توقفت المتابعة. يمكنك العودة إلى الطلب المحفوظ أو إعادة فتح الأداة.");
     await pause(typeof document !== "undefined" && document.hidden ? 15_000 : 5000 + Math.min(failures * 3000, 10_000), options.signal);
     try {
@@ -40,9 +43,14 @@ export async function observeStudyJob<T>(initial: StudyJob<T>, options: { signal
     }
   }
 }
-export async function requestStudyAction<T>(fileId: number, payload: Record<string, unknown>, options: { signal?: AbortSignal; onJob?: (id: string) => void; onStatus?: (status: string) => void } = {}): Promise<T> {
+export async function requestStudyAction<T>(fileId: number, payload: Record<string, unknown>, options: { signal?: AbortSignal; onJob?: (id: string) => void; onStatus?: (status: string) => void; onProgress?: (progress: StudyProgress | null) => void } = {}): Promise<T> {
   const response = await studyJson<{ job: StudyJob<T> }>(`/api/ai/files/${fileId}/actions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...payload, async: true, requestId: payload.requestId || crypto.randomUUID() }), signal: options.signal });
   if (!response.job?.id) throw new Error("لم يُرجع الخادم معرّف الطلب. حدّث الصفحة ثم حاول مجددًا.");
+  options.signal?.throwIfAborted();
   options.onJob?.(response.job.id);
   return observeStudyJob(response.job, options);
+}
+
+export async function controlStudyJob<T>(id: string, action: "pause" | "resume" | "cancel", signal?: AbortSignal) {
+  return studyJson<{job: StudyJob<T>}>(`/api/ai/jobs/${encodeURIComponent(id)}`, {method:"PATCH",headers:{"content-type":"application/json"},body:JSON.stringify({action}),signal});
 }

@@ -12,6 +12,7 @@ export type StoredMultipartFile = {
 };
 
 type MultipartOptions = {
+  timeoutMs?: number;
   fieldName?: string;
   maxFiles: number;
   maxFileBytes: number;
@@ -34,6 +35,13 @@ export async function deleteStoredMultipartFiles(files: StoredMultipartFile[]) {
 }
 
 export async function parseStoredMultipart(request: Request, options: MultipartOptions) {
+  const timeoutMs = options.timeoutMs ?? 15 * 60_000;
+  if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60_000) throw new RangeError("Invalid multipart timeout");
+  if (![options.maxFiles, options.maxFileBytes, options.maxTotalBytes].every(value => Number.isSafeInteger(value) && value > 0)
+      || options.maxTotalBytes > Number.MAX_SAFE_INTEGER - 2 * 1024 * 1024) throw new RangeError("Invalid multipart limits");
+  const cancellation = new AbortController();
+  const signal = AbortSignal.any([request.signal, cancellation.signal, AbortSignal.timeout(timeoutMs)]);
+  signal.throwIfAborted();
   if (!request.body) throw new Error("الطلب لا يحتوي بيانات");
   const contentType = request.headers.get("content-type") || "";
   if (!contentType.toLowerCase().includes("multipart/form-data")) throw new Error("صيغة الرفع غير صالحة");
@@ -77,13 +85,12 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
     let headerBytes = 0;
     let fileBytes = 0;
     let truncated = false;
-    let totalExceeded = false;
     file.once("limit", () => { truncated = true; });
     const validator = new Transform({
       transform(chunk: Buffer, _encoding, callback) {
         fileBytes += chunk.byteLength;
         totalBytes += chunk.byteLength;
-        if (totalBytes > options.maxTotalBytes) totalExceeded = true;
+        if (totalBytes > options.maxTotalBytes) return callback(new Error("إجمالي حجم المرفقات أكبر من المسموح"));
         if (headerBytes < 64) {
           const needed = Math.min(64 - headerBytes, chunk.byteLength);
           headerChunks.push(chunk.subarray(0, needed));
@@ -93,7 +100,6 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
       },
       flush(callback) {
         if (truncated || fileBytes > options.maxFileBytes) return callback(new Error(`الملف ${originalName} أكبر من المسموح`));
-        if (totalExceeded) return callback(new Error("إجمالي حجم المرفقات أكبر من المسموح"));
         if (fileBytes <= 0) return callback(new Error(`الملف ${originalName} فارغ`));
         const header = new Uint8Array(Buffer.concat(headerChunks).subarray(0, 64));
         if (!options.validSignature(mimeType, header)) return callback(new Error(`محتوى الملف ${originalName} لا يطابق نوعه`));
@@ -103,10 +109,11 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
     file.once("error", (error) => validator.destroy(error));
     uploadStreams.push({ file, validator });
     const webStream = Readable.toWeb(file.pipe(validator)) as ReadableStream<Uint8Array>;
-    uploadTasks.push(putObject(objectKey, webStream, mimeType).then(() => {
+    uploadTasks.push(putObject(objectKey, webStream, mimeType, undefined, { signal, maxBytes: options.maxFileBytes }).then(() => {
       files.push({ objectKey, originalName, contentType: mimeType, sizeBytes: fileBytes });
     }).catch((error) => {
       failure ||= error instanceof Error ? error.message : `تعذر رفع ${originalName}`;
+      cancellation.abort(error);
     }));
   });
   parser.once("filesLimit", () => { failure ||= `الحد الأقصى ${options.maxFiles} مرفقات`; });
@@ -115,7 +122,7 @@ export async function parseStoredMultipart(request: Request, options: MultipartO
 
   try {
     const body = boundedRequestBody(request, options.maxTotalBytes + 2 * 1024 * 1024)!;
-    await pipeline(Readable.fromWeb(body as import("node:stream/web").ReadableStream<Uint8Array>), parser);
+    await pipeline(Readable.fromWeb(body as import("node:stream/web").ReadableStream<Uint8Array>), parser, { signal });
     await Promise.all(uploadTasks);
     if (failure) throw new Error(failure);
     return { fields, files };

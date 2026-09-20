@@ -1,0 +1,68 @@
+name: Mobile release validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  bundle:
+    name: ${{ matrix.platform }} release bundle and native configuration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [android, ios]
+    defaults:
+      run:
+        working-directory: mobile
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      EXPO_PUBLIC_API_URL: https://maras-qa.example
+      EXPO_PUBLIC_STORE_MODE: iap
+      EAS_BUILD_PROFILE: production
+    steps:
+      - name: Checkout exact source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install locked native dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Report Expo patch compatibility
+        id: expo-compat
+        continue-on-error: true
+        run: npx expo install --check
+      - name: Surface Expo patch advisory
+        if: steps.expo-compat.outcome == 'failure'
+        run: echo "::warning::Expo recommends newer patch releases than this reviewed lockfile; native prebuild/export remain blocking checks."
+      - name: Typecheck application
+        run: npm run typecheck
+      - name: Generate native project without signing or installing pods
+        run: npx expo prebuild --platform ${{ matrix.platform }} --no-install
+      - name: Bundle production JavaScript and assets
+        run: npx expo export --platform ${{ matrix.platform }} --output-dir dist-ci/${{ matrix.platform }}
+      - name: Preserve non-secret bundle evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-${{ matrix.platform }}-bundle-evidence
+          path: mobile/dist-ci/${{ matrix.platform }}/metadata.json
+          if-no-files-found: error
+          retention-days: 7
+      - name: Explain verification boundary
+        run: |
+          printf 'Validated native configuration and release JS/assets for %s. This is not a signed APK/AAB/IPA, physical-device test, or store submission.\n' '${{ matrix.platform }}' >> "$GITHUB_STEP_SUMMARY"

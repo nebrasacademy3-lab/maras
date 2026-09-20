@@ -1,3 +1,5 @@
+import { supervisorScopeId, scopedRequestSql } from "@/lib/supervisor-data-scope";
+import { getSupervisorScopes, supervisorScopesAllow } from "@/lib/supervisor-scope";
 import { sessionUserFromRow } from "@/lib/auth";
 import { hasPermission, ADMIN_PERMISSIONS } from "@/lib/permissions";
 import { desc, eq, inArray } from "drizzle-orm";
@@ -31,7 +33,13 @@ async function supervisorFor(institutionSlug: string, specialty: string) {
   const candidates = await db.select().from(users).where(inArray(users.role, ["supervisor", "admin"]));
   const match = assignments.find(row => row.institutionSlug === institutionSlug && row.specialty === specialty);
   candidates.sort((a, b) => Number(b.id === match?.supervisorId) - Number(a.id === match?.supervisorId) || Number(b.isPlatformOwner) - Number(a.isPlatformOwner));
-  for (const row of candidates) if (row.status === "active" && await hasPermission(sessionUserFromRow(row), ADMIN_PERMISSIONS.REQUESTS_MANAGE)) return row.id;
+  for (const row of candidates) {
+    if (row.status !== "active") continue;
+    const user = sessionUserFromRow(row);
+    if (!await hasPermission(user, ADMIN_PERMISSIONS.REQUESTS_MANAGE)) continue;
+    const scopeId = await supervisorScopeId(user);
+    if (scopeId === null || supervisorScopesAllow(await getSupervisorScopes(scopeId), { universitySlug: institutionSlug, specialty })) return row.id;
+  }
   return null;
 }
 
@@ -123,8 +131,7 @@ export async function GET(request: Request) {
   if (!machineAuthorized && !await hasPermission(user, ADMIN_PERMISSIONS.REQUESTS_MANAGE)) return jsonError("غير مصرح", 401);
   const identity = machineAuthorized ? `machine:${clientIp(request)}` : `user:${user!.id}`;
   if (!await checkRateLimit("course-request-read", identity, 30, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
-  const rows = machineAuthorized || await hasPermission(user, ADMIN_PERMISSIONS.REQUESTS_MANAGE)
-    ? await getDb().select().from(courseRequests).orderBy(desc(courseRequests.createdAt)).limit(100)
-    : await getDb().select().from(courseRequests).where(eq(courseRequests.assignedSupervisorId, user!.id)).orderBy(desc(courseRequests.createdAt)).limit(100);
+  const scopeId = await supervisorScopeId(user);
+  const rows = await getDb().select().from(courseRequests).where(scopedRequestSql(scopeId, courseRequests.id)).orderBy(desc(courseRequests.createdAt), desc(courseRequests.id)).limit(100);
   return Response.json({ ok: true, requests: rows }, { headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
 }

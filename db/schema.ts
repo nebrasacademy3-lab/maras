@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { boolean, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, uniqueIndex } from "drizzle-orm/pg-core";
+import { boolean, check, foreignKey, index, integer, pgTable, primaryKey, real, serial, text, timestamp, uniqueIndex } from "drizzle-orm/pg-core";
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
@@ -34,6 +34,30 @@ export const emailVerificationCodes = pgTable("email_verification_codes", {
   sentAt: text("sent_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, (table) => [index("email_verification_user_purpose_created_idx").on(table.userId, table.purpose, table.createdAt)]);
+
+export const emailChangeRequests = pgTable("email_change_requests", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  currentEmail: text("current_email").notNull(),
+  newEmail: text("new_email").notNull(),
+  challengeNonce: text("challenge_nonce").notNull(),
+  currentCodeHash: text("current_code_hash").notNull(),
+  newCodeHash: text("new_code_hash").notNull(),
+  currentAttempts: integer("current_attempts").notNull().default(0),
+  newAttempts: integer("new_attempts").notNull().default(0),
+  currentSentAt: text("current_sent_at"),
+  newSentAt: text("new_sent_at"),
+  currentVerifiedAt: text("current_verified_at"),
+  newVerifiedAt: text("new_verified_at"),
+  expiresAt: text("expires_at").notNull(),
+  usedAt: text("used_at"),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+}, (table) => [
+  index("email_change_user_created_idx").on(table.userId, table.createdAt),
+  index("email_change_user_used_idx").on(table.userId, table.usedAt),
+  check("email_change_current_attempts_check", sql`${table.currentAttempts} BETWEEN 0 AND 5`),
+  check("email_change_new_attempts_check", sql`${table.newAttempts} BETWEEN 0 AND 5`),
+]);
 
 export const oauthIdentities = pgTable("oauth_identities", {
   id: serial("id").primaryKey(),
@@ -114,6 +138,7 @@ export const courseRequestFiles = pgTable("course_request_files", {
 
 export const supportTickets = pgTable("support_tickets", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   ticketNumber: text("ticket_number").notNull(),
   userEmail: text("user_email"),
   category: text("category").notNull(),
@@ -130,9 +155,11 @@ export const supportTickets = pgTable("support_tickets", {
   satisfactionComment: text("satisfaction_comment"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("support_ticket_number_unique").on(table.ticketNumber), index("support_status_idx").on(table.status), index("support_user_idx").on(table.userEmail)]);
+}, (table) => [uniqueIndex("support_ticket_number_unique").on(table.ticketNumber), index("support_status_idx").on(table.status), index("support_user_idx").on(table.userEmail), index("support_user_id_idx").on(table.userId, table.updatedAt)]);
 
 export const orders = pgTable("orders", {
+  // Stable owner; customer fields are the immutable-at-checkout payer snapshot.
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   id: serial("id").primaryKey(),
   orderNumber: text("order_number").notNull(),
   customerEmail: text("customer_email").notNull(),
@@ -160,7 +187,15 @@ export const orders = pgTable("orders", {
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   paidAt: text("paid_at"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("orders_number_unique").on(table.orderNumber), uniqueIndex("orders_checkout_key_unique").on(table.checkoutKey), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
+}, (table) => [index("orders_owner_created_idx").on(table.userId, table.createdAt), uniqueIndex("orders_number_unique").on(table.orderNumber), uniqueIndex("orders_checkout_key_unique").on(table.checkoutKey), index("orders_customer_idx").on(table.customerEmail), index("orders_status_idx").on(table.status), uniqueIndex("orders_tap_charge_unique").on(table.tapChargeId)]);
+
+export const orderOwnershipReviews = pgTable("order_ownership_reviews", {
+  orderId: integer("order_id").primaryKey().references(() => orders.id, { onDelete: "cascade" }),
+  reason: text("reason").notNull(),
+  candidateCount: integer("candidate_count").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
+  resolvedAt: text("resolved_at"),
+});
 
 export const orderItems = pgTable("order_items", {
   id: serial("id").primaryKey(),
@@ -192,6 +227,7 @@ export const paymentEvents = pgTable("payment_events", {
 
 export const courseAccess = pgTable("course_access", {
   storeAccessBlockedAt: text("store_access_blocked_at"),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   id: serial("id").primaryKey(),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
@@ -204,10 +240,11 @@ export const courseAccess = pgTable("course_access", {
   revokedAt: text("revoked_at"),
   revocationReason: text("revocation_reason"),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_access_user_course_unique").on(table.userEmail, table.courseSlug), index("course_access_course_idx").on(table.courseSlug)]);
+}, (table) => [uniqueIndex("course_access_owner_course_unique").on(table.userId, table.courseSlug), index("course_access_owner_idx").on(table.userId, table.updatedAt), index("course_access_course_idx").on(table.courseSlug)]);
 
 export const courseAccessEvents = pgTable("course_access_events", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   eventKey: text("event_key").notNull(),
   accessId: integer("access_id"),
   userEmail: text("user_email").notNull(),
@@ -219,17 +256,18 @@ export const courseAccessEvents = pgTable("course_access_events", {
   beforeJson: text("before_json"),
   afterJson: text("after_json"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_access_events_key_unique").on(table.eventKey), index("course_access_events_access_idx").on(table.userEmail, table.courseSlug, table.createdAt)]);
+}, (table) => [uniqueIndex("course_access_events_key_unique").on(table.eventKey), index("course_access_events_access_idx").on(table.userId, table.courseSlug, table.createdAt)]);
 
 export const lessonProgress = pgTable("lesson_progress", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   lessonId: text("lesson_id").notNull(),
   watchedSeconds: integer("watched_seconds").notNull().default(0),
   completed: boolean("completed").notNull().default(false),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("lesson_progress_unique").on(table.userEmail, table.lessonId), index("lesson_progress_course_idx").on(table.courseSlug)]);
+}, (table) => [uniqueIndex("lesson_progress_owner_lesson_unique").on(table.userId, table.lessonId), index("lesson_progress_owner_course_idx").on(table.userId, table.courseSlug), index("lesson_progress_course_idx").on(table.courseSlug)]);
 
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),
@@ -499,7 +537,10 @@ export const authDevices = pgTable("auth_devices", {
   revokedAt: text("revoked_at"),
   revokedBy: text("revoked_by"),
   revocationReason: text("revocation_reason"),
-}, (table) => [uniqueIndex("auth_devices_user_device_unique").on(table.userId, table.deviceId), index("auth_devices_user_active_idx").on(table.userId, table.revokedAt)]);
+  returnPolicy: text("return_policy").notNull().default("blocked"),
+  blockedUntil: text("blocked_until"),
+  policyVersion: integer("policy_version").notNull().default(0),
+}, (table) => [uniqueIndex("auth_devices_user_device_unique").on(table.userId, table.deviceId), index("auth_devices_user_active_idx").on(table.userId, table.revokedAt), check("auth_devices_return_policy_check", sql`${table.returnPolicy} IN ('blocked', 'allowed', 'approval')`), check("auth_devices_policy_version_check", sql`${table.policyVersion} >= 0`), check("auth_devices_block_expiry_policy_check", sql`${table.blockedUntil} IS NULL OR ${table.returnPolicy} = 'allowed'`)]);
 
 export const authRateLimits = pgTable("auth_rate_limits", {
   key: text("key").primaryKey(),
@@ -549,30 +590,34 @@ export const otpChallenges = pgTable("otp_challenges", {
 
 export const favorites = pgTable("favorites", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("favorites_user_course_unique").on(table.userEmail, table.courseSlug)]);
+}, (table) => [uniqueIndex("favorites_owner_course_unique").on(table.userId, table.courseSlug)]);
 
 export const cartItems = pgTable("cart_items", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("cart_items_user_course_unique").on(table.userEmail, table.courseSlug), index("cart_items_user_idx").on(table.userEmail, table.createdAt)]);
+}, (table) => [uniqueIndex("cart_items_owner_course_unique").on(table.userId, table.courseSlug), index("cart_items_user_idx").on(table.userId, table.createdAt)]);
 
 export const lessonNotes = pgTable("lesson_notes", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   lessonId: text("lesson_id").notNull(),
   body: text("body").notNull().default(""),
   timestampSeconds: integer("timestamp_seconds").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("lesson_notes_user_lesson_idx").on(table.userEmail, table.lessonId), index("lesson_notes_lesson_time_idx").on(table.lessonId, table.timestampSeconds)]);
+}, (table) => [index("lesson_notes_user_lesson_idx").on(table.userId, table.lessonId), index("lesson_notes_lesson_time_idx").on(table.lessonId, table.timestampSeconds)]);
 
 export const courseReviews = pgTable("course_reviews", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   rating: integer("rating").notNull(),
@@ -580,9 +625,11 @@ export const courseReviews = pgTable("course_reviews", {
   status: text("status").notNull().default("pending"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_reviews_user_course_unique").on(table.userEmail, table.courseSlug), index("course_reviews_status_idx").on(table.status), index("course_reviews_course_status_idx").on(table.courseSlug, table.status)]);
+}, (table) => [uniqueIndex("course_reviews_owner_course_unique").on(table.userId, table.courseSlug), index("course_reviews_status_idx").on(table.status), index("course_reviews_course_status_idx").on(table.courseSlug, table.status)]);
 
 export const notificationsDb = pgTable("notifications", {
+  // A bound target never falls back to a historical email or a broadcast audience.
+  targetUserId: integer("target_user_id").references(() => users.id, { onDelete: "cascade" }),
   id: serial("id").primaryKey(),
   userEmail: text("user_email"),
   audience: text("audience").notNull().default("user"),
@@ -604,7 +651,7 @@ export const notificationsDb = pgTable("notifications", {
   dismissible: boolean("dismissible").notNull().default(true),
   readAt: text("read_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("notifications_dedupe_key_unique").on(table.dedupeKey), index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience), index("notifications_push_dispatch_idx").on(table.pushEnabled, table.pushStatus, table.pushClaimedAt, table.startsAt)]);
+}, (table) => [index("notifications_target_user_idx").on(table.targetUserId, table.createdAt), uniqueIndex("notifications_dedupe_key_unique").on(table.dedupeKey), index("notifications_user_idx").on(table.userEmail, table.readAt), index("notifications_audience_idx").on(table.audience), index("notifications_push_dispatch_idx").on(table.pushEnabled, table.pushStatus, table.pushClaimedAt, table.startsAt)]);
 
 export const notificationReads = pgTable("notification_reads", {
   notificationId: integer("notification_id").notNull().references(() => notificationsDb.id, { onDelete: "cascade" }),
@@ -843,6 +890,7 @@ export const supportReplyFiles = pgTable("support_reply_files", {
 
 export const courseWaitlist = pgTable("course_waitlist", {
   enrollmentVersion: integer("enrollment_version").notNull().default(1),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   id: serial("id").primaryKey(),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
@@ -852,7 +900,7 @@ export const courseWaitlist = pgTable("course_waitlist", {
   convertedAt: text("converted_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [uniqueIndex("course_waitlist_user_course_unique").on(table.userEmail, table.courseSlug), index("course_waitlist_course_status_idx").on(table.courseSlug, table.status)]);
+}, (table) => [uniqueIndex("course_waitlist_owner_course_unique").on(table.userId, table.courseSlug), index("course_waitlist_course_status_idx").on(table.courseSlug, table.status)]);
 
 export const learningTracks = pgTable("learning_tracks", {
   id: serial("id").primaryKey(),
@@ -1127,6 +1175,7 @@ export const aiUsageEvents = pgTable("ai_usage_events", {
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   service: text("service").notNull(),
   keyId: integer("key_id").references(() => aiApiKeys.id, { onDelete: "set null" }),
+  providerTier: text("provider_tier").notNull().default("free"),
   conversationId: integer("conversation_id").references(() => aiConversations.id, { onDelete: "set null" }),
   fileId: integer("file_id").references(() => aiFiles.id, { onDelete: "set null" }),
   model: text("model"),
@@ -1148,7 +1197,7 @@ export const aiArtifacts = pgTable("ai_artifacts", {
   metadataJson: text("metadata_json"),
   model: text("model"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("ai_artifacts_user_idx").on(table.userId, table.createdAt), index("ai_artifacts_file_idx").on(table.fileId, table.kind, table.createdAt)]);
+}, (table) => [index("ai_artifacts_user_idx").on(table.userId, table.createdAt), index("ai_artifacts_file_idx").on(table.fileId, table.kind, table.createdAt), index("ai_artifacts_conversation_owner_idx").on(table.conversationId, table.userId, table.fileId)]);
 
 export const aiQuizzes = pgTable("ai_quizzes", {
   id: serial("id").primaryKey(),
@@ -1161,7 +1210,7 @@ export const aiQuizzes = pgTable("ai_quizzes", {
   model: text("model"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
   updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, (table) => [index("ai_quizzes_user_idx").on(table.userId, table.createdAt), index("ai_quizzes_file_idx").on(table.fileId, table.createdAt)]);
+}, (table) => [index("ai_quizzes_user_idx").on(table.userId, table.createdAt), index("ai_quizzes_file_idx").on(table.fileId, table.createdAt), index("ai_quizzes_conversation_owner_idx").on(table.conversationId, table.userId, table.fileId)]);
 
 export const aiQuizAttempts = pgTable("ai_quiz_attempts", {
   id: serial("id").primaryKey(),
@@ -1214,13 +1263,14 @@ export const storeTransactions = pgTable("store_transactions", {
 
 export const storeCourseGrants = pgTable("store_course_grants", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "restrict" }),
   transactionId: text("transaction_id").notNull().references(() => storeTransactions.id, { onDelete: "restrict" }),
   userEmail: text("user_email").notNull(),
   courseSlug: text("course_slug").notNull(),
   startsAt: text("starts_at").notNull(),
   expiresAt: text("expires_at"),
   status: text("status").notNull(),
-}, table => [uniqueIndex("store_course_grant_unique").on(table.transactionId, table.courseSlug), index("store_course_grant_access_idx").on(table.userEmail, table.courseSlug, table.status, table.expiresAt)]);
+}, table => [uniqueIndex("store_course_grant_unique").on(table.transactionId, table.courseSlug), index("store_course_grant_access_idx").on(table.userId, table.courseSlug, table.status, table.expiresAt)]);
 
 export const storeWebhookEvents = pgTable("store_webhook_events", {
   eventId: text("event_id").primaryKey(),
@@ -1258,6 +1308,12 @@ export const aiFileJobs = pgTable("ai_file_jobs", {
   client: text("client").notNull(),
   optionsJson: text("options_json").notNull(),
   status: text("status").notNull().default("queued"),
+  processingVersion: integer("processing_version").notNull().default(1),
+  sourceFingerprint: text("source_fingerprint"),
+  generationConfigJson: text("generation_config_json"),
+  usageEventId: integer("usage_event_id").references(() => aiUsageEvents.id, { onDelete: "set null" }),
+  progressJson: text("progress_json"),
+  pauseRequested: boolean("pause_requested").notNull().default(false),
   attempts: integer("attempts").notNull().default(0),
   failures: integer("failures").notNull().default(0),
   availableAt: text("available_at").notNull(),
@@ -1268,7 +1324,7 @@ export const aiFileJobs = pgTable("ai_file_jobs", {
   errorMessage: text("error_message"),
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
-}, table => [uniqueIndex("ai_file_jobs_request_unique").on(table.requestId), index("ai_file_jobs_queue_idx").on(table.status, table.availableAt), index("ai_file_jobs_user_idx").on(table.userId, table.status), index("ai_file_jobs_lease_idx").on(table.status, table.leaseUntil)]);
+}, table => [uniqueIndex("ai_file_jobs_request_unique").on(table.requestId), index("ai_file_jobs_queue_idx").on(table.status, table.availableAt), index("ai_file_jobs_user_idx").on(table.userId, table.status), index("ai_file_jobs_lease_idx").on(table.status, table.leaseUntil), index("ai_file_jobs_conversation_owner_idx").on(table.conversationId, table.userId, table.fileId)]);
 
 // Direct, explicit staff grants. No wildcard or implicit "admin" bypass.
 export const staffPermissions = pgTable("staff_permissions", {
@@ -1295,3 +1351,60 @@ export const accountMfaRecoveryCodes = pgTable("account_mfa_recovery_codes", {
   usedAt: text("used_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, table => [uniqueIndex("account_mfa_recovery_unique").on(table.userId, table.codeHash)]);
+
+// Independent outbox rows survive deletion of their parent media records.
+export const storageCleanupJobs = pgTable("storage_cleanup_jobs", {
+  id: text("id").primaryKey(),
+  objectKey: text("object_key").notNull(),
+  provider: text("provider").notNull(),
+  operation: text("operation").notNull(),
+  locationFingerprint: text("location_fingerprint").notNull(),
+  source: text("source").notNull(),
+  status: text("status").notNull().default("pending"),
+  attempts: integer("attempts").notNull().default(0),
+  availableAt: timestamp("available_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  leaseUntil: timestamp("lease_until", { withTimezone: true }),
+  leaseToken: text("lease_token"),
+  errorCode: text("error_code"),
+  completedAt: timestamp("completed_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, t => [
+  index("storage_cleanup_pending_idx").on(t.availableAt, t.createdAt, t.id).where(sql`${t.status} = 'pending'`),
+  index("storage_cleanup_lease_idx").on(t.leaseUntil).where(sql`${t.status} = 'processing'`),
+  check("storage_cleanup_jobs_provider_check", sql`${t.provider} IN ('local', 's3')`),
+  check("storage_cleanup_jobs_operation_check", sql`${t.operation} IN ('object', 'prefix')`),
+  check("storage_cleanup_jobs_location_fingerprint_check", sql`${t.locationFingerprint} ~ '^[a-f0-9]{64}$'`),
+  check("storage_cleanup_jobs_status_check", sql`${t.status} IN ('pending', 'processing', 'completed', 'blocked')`),
+  check("storage_cleanup_jobs_attempts_check", sql`${t.attempts} BETWEEN 0 AND 12`),
+  check("storage_cleanup_lease_check", sql`(${t.status} = 'processing' AND ${t.leaseToken} IS NOT NULL AND ${t.leaseUntil} IS NOT NULL) OR (${t.status} <> 'processing' AND ${t.leaseToken} IS NULL AND ${t.leaseUntil} IS NULL)`),
+  check("storage_cleanup_complete_check", sql`(${t.status} = 'completed') = (${t.completedAt} IS NOT NULL)`),
+]);
+
+export const resumableVideoUploads = pgTable("resumable_video_uploads", {
+  id: text("id").primaryKey(),
+  requestKey: text("request_key").notNull(),
+  ownerId: integer("owner_id").notNull(),
+  courseSlug: text("course_slug").notNull(),
+  lessonId: text("lesson_id").notNull(),
+  objectKey: text("object_key").notNull(),
+  provider: text("provider").notNull(),
+  locationFingerprint: text("location_fingerprint").notNull(),
+  contentType: text("content_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  hashesJson: text("hashes_json").notNull(),
+  receivedJson: text("received_json").notNull().default("[]"),
+  status: text("status").notNull().default("open"),
+  assetId: integer("asset_id"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull().default(sql`clock_timestamp() + interval '24 hours'`),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().default(sql`clock_timestamp()`),
+}, t => [
+  uniqueIndex("resumable_owner_request_unique").on(t.ownerId, t.requestKey),
+  index("resumable_expiry_idx").on(t.status, t.expiresAt),
+  check("resumable_video_uploads_owner_id_check", sql`${t.ownerId} > 0`),
+  check("resumable_video_uploads_provider_check", sql`${t.provider} IN ('local', 's3')`),
+  check("resumable_video_uploads_location_fingerprint_check", sql`${t.locationFingerprint} ~ '^[a-f0-9]{64}$'`),
+  check("resumable_video_uploads_size_bytes_check", sql`${t.sizeBytes} BETWEEN 1 AND 209715200`),
+  check("resumable_video_uploads_status_check", sql`${t.status} IN ('open', 'completed', 'expired', 'blocked')`),
+]);

@@ -55,7 +55,9 @@ test("Gemini rotation never leaks keys and has bounded failover", () => {
   assert.match(gemini, /429/);
   assert.match(gemini, /408/);
   assert.match(gemini, /status\s*>?=\s*500|5\d\d/);
-  assert.match(gemini, /(?:MAX_(?:KEY_)?ATTEMPTS|MAX_PROVIDER_ATTEMPTS)\s*=\s*[123]\b|\.slice\(0,\s*[123]\)/);
+  assert.match(gemini, /DEFAULT_MAX_KEY_ATTEMPTS\s*=\s*10\b/);
+  assert.match(gemini, /boundedRuntimeMs\(process\.env\.AI_GEMINI_MAX_KEY_ATTEMPTS, DEFAULT_MAX_KEY_ATTEMPTS, 1, 64\)/);
+  assert.match(gemini, /freeCandidates\.slice\(0, maxAttempts\)/);
   assert.match(gemini, /overall.*(?:deadline|timeout)|deadlineAt|requestDeadline/i);
   assert.doesNotMatch(gemini, /throw[^\n]*(?:await\s+)?response\.(?:text|json)\(\)|message\s*:\s*(?:await\s+)?response\.(?:text|json)\(\)/);
 });

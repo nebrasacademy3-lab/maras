@@ -36,7 +36,7 @@ try{
  await pool.query("INSERT INTO course_access(user_email,course_slug,source,starts_at,expires_at) VALUES($1,'qa-physics','admin_complimentary',$2,NULL)",[a.email,now]);
  await check("lifetime baseline survives store purchase and refund",async()=>{
   const p=purchase("-lifetime");await apply(a,p,course);await apply(a,{...p,status:"refunded"},course,true);
-  const r=await getDb().select().from(courseAccess).where(activeCourseAccessWhere(a.email,"qa-physics"));
+  const r=await getDb().select().from(courseAccess).where(activeCourseAccessWhere(a.id,"qa-physics"));
   assert.equal(r.length,1);assert.equal(r[0].expiresAt,null);assert.equal(r[0].source,"admin_complimentary");
  });
  await check("concurrent duplicate transaction creates one 30-day entitlement",async()=>{
@@ -61,25 +61,25 @@ try{
  });
  await check("store course access respects suspension and explicit admin revocation",async()=>{
   const p=purchase("-courseb");await apply(b,p,course);
-  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.email,"qa-physics"))).length,1);
-  await pool.query("UPDATE course_access SET suspended_at=$2 WHERE user_email=$1",[b.email,now]);
-  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.email,"qa-physics"))).length,0);
-  await pool.query("UPDATE course_access SET suspended_at=NULL,store_access_blocked_at=$2 WHERE user_email=$1",[b.email,now]);
-  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.email,"qa-physics"))).length,0);
-  await pool.query("UPDATE course_access SET store_access_blocked_at=NULL,revoked_at=$2 WHERE user_email=$1",[b.email,now]);
-  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.email,"qa-physics"))).length,1);
+  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.id,"qa-physics"))).length,1);
+  await pool.query("UPDATE course_access SET suspended_at=$2 WHERE user_id=$1",[b.id,now]);
+  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.id,"qa-physics"))).length,0);
+  await pool.query("UPDATE course_access SET suspended_at=NULL,store_access_blocked_at=$2 WHERE user_id=$1",[b.id,now]);
+  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.id,"qa-physics"))).length,0);
+  await pool.query("UPDATE course_access SET store_access_blocked_at=NULL,revoked_at=$2 WHERE user_id=$1",[b.id,now]);
+  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.id,"qa-physics"))).length,1);
  });
  await check("refund and reversal retain original expiry rather than issuing new time",async()=>{
   const p=purchase("-courseb"),id=storeTransactionKey(p);
   const before=(await pool.query("SELECT expires_at FROM store_course_grants WHERE transaction_id=$1",[id])).rows[0];
   await apply(b,{...p,status:"refunded"},course,true);
-  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.email,"qa-physics"))).length,0);
+  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.id,"qa-physics"))).length,0);
   await apply(b,p,course);const after=(await pool.query("SELECT expires_at FROM store_course_grants WHERE transaction_id=$1",[id])).rows[0];assert.equal(after.expires_at,before.expires_at);
  });
  await check("second course purchase remains usable after first purchase refund",async()=>{
   const p=purchase("-courseb");await apply(b,purchase("-courseb2"),course);await apply(b,{...p,status:"refunded"},course,true);
-  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.email,"qa-physics"))).length,1);
-  const grants=(await pool.query("SELECT * FROM store_course_grants WHERE user_email=$1 AND status='active'",[b.email])).rows;assert.equal(grants.length,1);assert.equal(Date.parse(grants[0].expires_at)-Date.parse(grants[0].starts_at),30*86400000);
+  assert.equal((await getDb().select().from(courseAccess).where(activeCourseAccessWhere(b.id,"qa-physics"))).length,1);
+  const grants=(await pool.query("SELECT * FROM store_course_grants WHERE user_id=$1 AND status='active'",[b.id])).rows;assert.equal(grants.length,1);assert.equal(Date.parse(grants[0].expires_at)-Date.parse(grants[0].starts_at),30*86400000);
  });
  mkdirSync("outputs/verification",{recursive:true});writeFileSync("outputs/verification/store-integration.json",JSON.stringify({at:new Date().toISOString(),provider:"synthetic verified payloads; no real store purchase",database:"real local PostgreSQL",checks},null,2));
 }finally{await closeDb();}
