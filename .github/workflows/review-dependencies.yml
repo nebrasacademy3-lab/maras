@@ -1,0 +1,42 @@
+name: Isolated review dependencies
+on:
+  push:
+    branches: [maintenance/review-snapshot-20260920]
+    paths: [.github/workflows/review-dependencies.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4da17d52f0e101b33bdef268df55610bf0492869
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Install pinned web and native dependencies
+        run: |
+          npm ci --no-audit --no-fund
+          (cd mobile && npm ci --no-audit --no-fund)
+          test "$(git rev-parse HEAD)" = "4da17d52f0e101b33bdef268df55610bf0492869"
+          git diff --exit-code
+      - name: Archive installed dependency directories only
+        run: |
+          tar -czf "$RUNNER_TEMP/web-dependencies.tar.gz" node_modules
+          tar -czf "$RUNNER_TEMP/native-dependencies.tar.gz" mobile/node_modules
+          sha256sum "$RUNNER_TEMP/web-dependencies.tar.gz" "$RUNNER_TEMP/native-dependencies.tar.gz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pinned-web-dependencies-4da17d52
+          path: ${{ runner.temp }}/web-dependencies.tar.gz
+          retention-days: 1
+          compression-level: 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pinned-native-dependencies-4da17d52
+          path: ${{ runner.temp }}/native-dependencies.tar.gz
+          retention-days: 1
+          compression-level: 0
