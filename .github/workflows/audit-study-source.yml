@@ -1,0 +1,38 @@
+name: Isolated study source review
+on:
+  push:
+    branches: [audit/study-checkpoint-source-20260920]
+    paths: [.github/workflows/audit-study-source.yml]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4da17d52f0e101b33bdef268df55610bf0492869
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Archive only committed source
+        run: |
+          test "$(git rev-parse HEAD)" = 4da17d52f0e101b33bdef268df55610bf0492869
+          git archive --format=tar HEAD | gzip > "$RUNNER_TEMP/maras-source.tar.gz"
+          git ls-tree -r HEAD > "$RUNNER_TEMP/source-tree.txt"
+      - name: Install lockfile dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Archive dependency packages only
+        run: tar -czf "$RUNNER_TEMP/maras-dependencies.tar.gz" node_modules
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: isolated-study-source
+          path: |
+            ${{ runner.temp }}/maras-source.tar.gz
+            ${{ runner.temp }}/maras-dependencies.tar.gz
+            ${{ runner.temp }}/source-tree.txt
+          retention-days: 1
+          compression-level: 0
+          if-no-files-found: error
