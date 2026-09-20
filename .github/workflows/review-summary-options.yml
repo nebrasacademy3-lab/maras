@@ -1,0 +1,59 @@
+name: Preserve reviewed summary source
+on:
+  push:
+    branches: [audit/summary-options-20260920]
+    paths: [.github/workflows/review-summary-options.yml]
+permissions:
+  contents: write
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+          path: transport
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: b5cbe8a0aa8bc0eeb0eec850fe06781b406e0541
+          persist-credentials: false
+          path: source
+      - name: Validate reviewable plaintext patch and exact target tree
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, hashlib
+          p=pathlib.Path('transport/.audit-summary/changes.patch').read_bytes()
+          # Repair one transcription space in a diff header, then verify every byte.
+          p=p.replace(b'\n diff --git',b'\ndiff --git')
+          assert len(p)==31830
+          assert hashlib.sha256(p).hexdigest()=='ab7158e2c8d24968c7364b1890a4b924f6c6644297d05a919f739eca97a8b6d2'
+          pathlib.Path('reviewed.patch').write_bytes(p)
+          PY
+          cd source
+          test "$(git rev-parse HEAD^{tree})" = 8e0b829833b2d8544cb904f772c2ac12bf03aa49
+          git apply --unidiff-zero --check --index ../reviewed.patch
+          git apply --unidiff-zero --index ../reviewed.patch
+          test "$(git write-tree)" = 09e85d47b83e14e916ef2e82be08200332690710
+      - name: Store verified ordinary source objects only
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import {execFileSync} from 'node:child_process';
+          import {createHash} from 'node:crypto';
+          const repo=process.env.GITHUB_REPOSITORY;
+          if(repo!=='nebrasacademy3-lab/maras')throw new Error('Wrong repository');
+          const git=(...args)=>execFileSync('git',args,{maxBuffer:4*1024*1024});
+          const paths=git('diff','--cached','--name-only','-z').toString().split('\0').filter(Boolean).sort();
+          const expected=['components/study-file-tools.tsx','docs/SUMMARY_LANGUAGE_ACCEPTANCE_2026_09_20_AR.md','lib/ai-file-actions.ts','lib/ai-generation.ts','lib/gemini-errors.ts','lib/gemini-provider.ts','lib/study-summary-policy.ts','mobile/src/components/study-file-tools.tsx','mobile/src/lib/study-summary-policy.ts','tests/gemini-provider.test.mjs','tests/study-summary-policy.test.mjs','tests/study-tools-runtime.test.mjs'].sort();
+          if(JSON.stringify(paths)!==JSON.stringify(expected))throw new Error('Unexpected files');
+          const post=async(kind,body)=>{const r=await fetch(`https://api.github.com/repos/${repo}/git/${kind}`,{method:'POST',headers:{Authorization:`Bearer ${process.env.GH_TOKEN}`,Accept:'application/vnd.github+json','Content-Type':'application/json'},body:JSON.stringify(body),signal:AbortSignal.timeout(20000)});if(!r.ok)throw new Error(`Git ${kind}: ${r.status}`);return r.json();};
+          const tree=[];
+          for(const path of paths){const bytes=git('show',`:${path}`);const sha=createHash('sha1').update(`blob ${bytes.length}\0`).update(bytes).digest('hex');const obj=await post('blobs',{encoding:'utf-8',content:bytes.toString('utf8')});if(obj.sha!==sha)throw new Error('Blob mismatch');tree.push({path,mode:'100644',type:'blob',sha});}
+          const result=await post('trees',{base_tree:'8e0b829833b2d8544cb904f772c2ac12bf03aa49',tree});
+          if(result.sha!=='09e85d47b83e14e916ef2e82be08200332690710')throw new Error('Tree mismatch');
+          console.log(JSON.stringify({tree:result.sha,files:tree.length,updatedRefs:0}));
+          JS
