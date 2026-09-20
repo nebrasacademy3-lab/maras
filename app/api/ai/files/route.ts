@@ -1,4 +1,5 @@
-import { isNull, and, count, eq, sql } from "drizzle-orm";
+import { studyStoredUsage as storedUsage } from "@/lib/study-upload-quota";
+import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiConversations, aiFiles } from "@/db/schema";
 import { jsonError } from "@/lib/api";
@@ -12,21 +13,9 @@ import { observeRequest } from "@/lib/observability";
 import { activeStorageProvider } from "@/lib/storage";
 
 class AiFileQuotaError extends Error {}
-type Database = ReturnType<typeof getDb>;
-type AiFileTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
-
 function boundedStorageLimit(value: string | undefined, fallback: number, minimum: number, maximum: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, Math.floor(parsed))) : fallback;
-}
-
-async function storedUsage(userId: number, tx?: AiFileTransaction) {
-  const selection = { fileCount: count(), totalBytes: sql<string>`COALESCE(SUM(${aiFiles.sizeBytes}), 0)::text` };
-  const rows = tx
-    ? await tx.select(selection).from(aiFiles).where(and(eq(aiFiles.userId, userId), isNull(aiFiles.sourceResourceId)))
-    : await getDb().select(selection).from(aiFiles).where(and(eq(aiFiles.userId, userId), isNull(aiFiles.sourceResourceId)));
-  const [row] = rows;
-  return { fileCount: Number(row?.fileCount || 0), totalBytes: Number(row?.totalBytes || 0) };
 }
 
 export async function POST(request: Request) {

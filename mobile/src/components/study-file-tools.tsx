@@ -4,11 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
 import { router } from "expo-router";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Platform, Pressable, View } from "react-native";
+import { Pressable, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton, Card, Field, LoadingState, SectionTitle } from "@/src/components/ui";
-import { api, apiUpload } from "@/src/lib/api";
-import { assetMimeType } from "@/src/lib/file-types";
+import { api } from "@/src/lib/api";
+import { uploadNativeStudyFile } from "@/src/lib/study-upload-native";
 import { downloadStudyPdf } from "@/src/lib/study-pdf-native";
 import { observeStudyJob, requestStudyAction, savedStudyJob, StudyJobError } from "@/src/lib/study-jobs";
 import { useAuth } from "@/src/providers/AuthProvider";
@@ -70,19 +70,15 @@ export function StudyFileTools({ action, resources, scope = "workspace" }: { act
     return () => { abortRef.current?.abort(); abort.abort(); };
   }, [jobScope, resume, user?.id]);
   async function upload() {
-    if (busy) return;
+    if (busy || !user) return;
     try {
       const selected = await DocumentPicker.getDocumentAsync({ type: [docxMime, pptxMime, "application/pdf", "text/plain", "text/markdown", "image/png", "image/jpeg"], copyToCacheDirectory: true, multiple: false });
       if (selected.canceled || !selected.assets[0]) return;
       const asset = selected.assets[0];
-      if ((asset.size || 0) > 20 * 1024 * 1024) throw new Error("قسّم الملف إلى أجزاء لا تتجاوز 20 ميجابايت.");
       setBusy(true); setPhase("upload"); setError(""); setResult(null);
       const abort = new AbortController(); abortRef.current = abort;
-      const form = new FormData();
-      if (Platform.OS === "web" && asset.file) form.append("file", asset.file, asset.name);
-      else form.append("file", { uri: asset.uri, name: asset.name, type: assetMimeType(asset, "application/octet-stream") } as unknown as Blob);
-      const payload = await apiUpload<{ file: StudyFile }>("/api/ai/files", form, { signal: abort.signal, timeoutMs: 15 * 60_000 });
-      if (!abort.signal.aborted) setFile(payload.file);
+      const uploaded = await uploadNativeStudyFile(asset, user.id, abort.signal, value => setPhase(value.phase === "hashing" ? "فحص بصمة الملف…" : value.phase === "finalizing" ? "اعتماد الملف وفحصه الأمني…" : `رفع الأجزاء: ${value.percent}%`));
+      if (!abort.signal.aborted) setFile(uploaded);
     } catch (reason) { if (!abortRef.current?.signal.aborted) setError(reason instanceof Error ? reason.message : "تعذر رفع الملف"); }
     finally { if (!abortRef.current?.signal.aborted) setBusy(false); }
   }
@@ -105,9 +101,10 @@ export function StudyFileTools({ action, resources, scope = "workspace" }: { act
     {action !== "summary" && <Field label={action === "quiz" ? "لغة الاختبار" : "اللغة المطلوبة"} value={language} maxLength={60} editable={!busy} onChangeText={setLanguage}/>}
     {action === "quiz" && <View style={{ gap: 9 }}><Text style={{ color: colors.textSoft }}>عدد الأسئلة</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{[5, 10, 15, 20].map(count => <AppButton key={count} title={String(count)} full={false} disabled={busy} variant={count === questionCount ? "primary" : "soft"} onPress={() => setQuestionCount(count)}/>)}</View></View>}
     <AppButton title={busy ? "جارٍ المعالجة" : names[action]} loading={busy} disabled={(resources ? !resourceId : !file) || !language.trim()} onPress={() => void run()}/>
-    {busy && <Text selectable accessibilityLiveRegion="polite" style={{ color: colors.primary, lineHeight: 24 }}>{phase === "upload" ? "جارٍ رفع الملف وفحصه…" : phase === "processing" ? "جارٍ إعداد النتيجة…" : phase === "reconnecting" ? "إعادة الاتصال بالطلب المحفوظ…" : "طلبك محفوظ في قائمة المعالجة. لا ترسله مجددًا."}</Text>}
+    {busy && <Text selectable accessibilityLiveRegion="polite" style={{ color: colors.primary, lineHeight: 24 }}>{phase === "upload" ? "جارٍ رفع الملف وفحصه…" : phase === "processing" ? "جارٍ إعداد النتيجة…" : phase === "reconnecting" ? "إعادة الاتصال بالطلب المحفوظ…" : phase.startsWith("رفع الأجزاء:") || phase.includes("الملف") ? phase : "طلبك محفوظ في قائمة المعالجة. لا ترسله مجددًا."}</Text>}
+    {busy && (phase === "upload" || phase.startsWith("رفع الأجزاء:") || phase.includes("الملف")) && <AppButton title="إيقاف الرفع مؤقتًا" variant="soft" onPress={() => { abortRef.current?.abort(); setBusy(false); setPhase(""); setError("توقف الرفع مؤقتًا. أعد اختيار الملف نفسه لاستئناف الأجزاء الناقصة فقط."); }}/ >}
     {error ? <Text selectable accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 24 }}>{error}</Text> : null}
-    {pendingId && !busy && <AppButton title="متابعة الطلب المحفوظ" variant="soft" onPress={() => { const abort = new AbortController(); abortRef.current = abort; void resume(pendingId, abort.signal); }}/>}
+    {pendingId && !busy && <AppButton title="متابعة الطلب المحفوظ" variant="soft" onPress={() => { const abort = new AbortController(); abortRef.current = abort; void resume(pendingId, abort.signal); }}/ >}
     {result?.cached && <Text style={{ color: colors.textSoft }}>نتيجة محفوظة لنفس المصدر والإعدادات، دون طلب توليد جديد.</Text>}
     {result?.artifact && <View style={{ gap: 16 }}><Text style={{ color: colors.text, fontSize: 19, fontWeight: "800" }}>{result.artifact.title}</Text><StudyArtifactDownload id={result.artifact.id}/><Text selectable style={{ color: colors.text, fontSize: 16, lineHeight: 29 }}>{result.artifact.content}</Text></View>}
     {result?.quiz && <View style={{ gap: 10 }}><Text style={{ color: colors.text }}>{result.quiz.title}</Text><AppButton title="بدء الاختبار بالبطاقات" icon="play-outline" onPress={() => router.push({ pathname: "/ai/quiz/[id]", params: { id: String(result.quiz!.id) } })}/></View>}

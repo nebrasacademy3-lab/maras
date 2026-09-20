@@ -140,6 +140,7 @@ jobs:
             .data/qa-gemini-projects-report.json
             .data/qa-gemini-refresh-report.json
             .data/qa-study-output-access-report.json
+            .data/qa-study-upload-report.json
             .data/qa-study-pdf-report.json
             .data/study-pdf/bilingual-science.pdf
             .data/study-pdf/page-*.png

@@ -309,6 +309,13 @@
       "when": 1789858800000,
       "tag": "0043_study_pdf_exports",
       "breakpoints": true
+    },
+    {
+      "idx": 44,
+      "version": "7",
+      "when": 1789862400000,
+      "tag": "0044_study_resumable_uploads",
+      "breakpoints": true
     }
   ]
 }

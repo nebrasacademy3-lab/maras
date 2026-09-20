@@ -1,3 +1,4 @@
+import { expireStudyUploads } from "@/lib/study-resumable-upload";
 import { setTimeout as sleep } from "node:timers/promises";
 import { getDb, closeDb } from "../db";
 import { expireResumableVideos } from "../lib/resumable-video-upload";
@@ -14,6 +15,7 @@ try {
   do {
     try {
       await expireResumableVideos(db);
+      await expireStudyUploads(db);
       const result = await processStorageCleanupBatch(db, { limit: 5, signal: stopping.signal });
       failures = 0;
       if (result.claimed) console.info(JSON.stringify({ event: "storage.cleanup.batch", claimed: result.claimed, completed: result.completed, failed: result.failed.length, lost: result.lost }));
