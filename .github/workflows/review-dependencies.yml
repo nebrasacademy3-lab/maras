@@ -1,4 +1,4 @@
-name: Isolated review dependencies
+name: Isolated PDF dependency review
 on:
   push:
     branches: [maintenance/review-snapshot-20260920]
@@ -8,7 +8,7 @@ permissions:
 jobs:
   dependencies:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -17,26 +17,16 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: 22
-      - name: Install pinned web and native dependencies
+      - name: Resolve only the explicit pinned dependency for review
         run: |
-          npm ci --no-audit --no-fund
-          (cd mobile && npm ci --no-audit --no-fund)
-          test "$(git rev-parse HEAD)" = "4da17d52f0e101b33bdef268df55610bf0492869"
-          git diff --exit-code
-      - name: Archive installed dependency directories only
-        run: |
-          tar -czf "$RUNNER_TEMP/web-dependencies.tar.gz" node_modules
-          tar -czf "$RUNNER_TEMP/native-dependencies.tar.gz" mobile/node_modules
-          sha256sum "$RUNNER_TEMP/web-dependencies.tar.gz" "$RUNNER_TEMP/native-dependencies.tar.gz"
+          npm install --save-exact --ignore-scripts --no-audit --no-fund pdf-lib@1.17.1
+          node -e 'const p=require("./package.json"); if(p.dependencies["pdf-lib"]!=="1.17.1") process.exit(1)'
+          mkdir "$RUNNER_TEMP/pdf-review"
+          cp package.json package-lock.json "$RUNNER_TEMP/pdf-review/"
+          tar -czf "$RUNNER_TEMP/pdf-review/pdf-dependency.tar.gz" node_modules/pdf-lib node_modules/@pdf-lib node_modules/pako node_modules/tslib
+          git diff --stat
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: pinned-web-dependencies-4da17d52
-          path: ${{ runner.temp }}/web-dependencies.tar.gz
+          name: pinned-pdf-dependency-review
+          path: ${{ runner.temp }}/pdf-review/
           retention-days: 1
-          compression-level: 0
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: pinned-native-dependencies-4da17d52
-          path: ${{ runner.temp }}/native-dependencies.tar.gz
-          retention-days: 1
-          compression-level: 0
