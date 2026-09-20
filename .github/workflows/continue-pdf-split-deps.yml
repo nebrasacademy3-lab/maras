@@ -1,0 +1,35 @@
+name: Exact PDF segmentation dependencies
+on:
+  push:
+    branches: [audit/continue-source-20260920]
+    paths: [.github/workflows/continue-pdf-split-deps.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 9abf7008379b9a8721ad2bc534dbaa5d6d1ffbf3
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+      - run: npm install --save-exact --ignore-scripts --no-audit --no-fund pdf-lib@1.17.1
+      - name: Archive exact dependency tree and lock
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/deps"
+          cp package.json package-lock.json "$RUNNER_TEMP/deps/"
+          tar -czf "$RUNNER_TEMP/deps/node-modules.tgz" node_modules
+          cd "$RUNNER_TEMP/deps"
+          sha256sum package.json package-lock.json node-modules.tgz > SHA256SUMS
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pdf-split-locked-dependencies
+          path: ${{ runner.temp }}/deps/
+          retention-days: 2
+          if-no-files-found: error
