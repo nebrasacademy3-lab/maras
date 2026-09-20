@@ -1,0 +1,27 @@
+name: Pinned review source snapshot
+on:
+  push:
+    branches: [maintenance/review-snapshot-20260920]
+    paths: [.github/workflows/review-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4da17d52f0e101b33bdef268df55610bf0492869
+          persist-credentials: false
+      - name: Archive only versioned source from the reviewed commit
+        run: |
+          test "$(git rev-parse HEAD)" = "4da17d52f0e101b33bdef268df55610bf0492869"
+          git archive --format=tar.gz --output="$RUNNER_TEMP/maras-source.tar.gz" HEAD
+          sha256sum "$RUNNER_TEMP/maras-source.tar.gz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: maras-review-source-4da17d52
+          path: ${{ runner.temp }}/maras-source.tar.gz
+          if-no-files-found: error
+          retention-days: 1
