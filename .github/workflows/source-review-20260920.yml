@@ -1,0 +1,28 @@
+name: Pinned source review 20260920
+on:
+  push:
+    branches: [audit/study-processing-20260920]
+    paths: [.github/workflows/source-review-20260920.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4da17d52f0e101b33bdef268df55610bf0492869
+          persist-credentials: false
+      - name: Export tracked source only
+        run: |
+          git archive --format=tar.gz --output="$RUNNER_TEMP/maras-source-4da17d5.tar.gz" HEAD
+          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/source-revision.txt"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pinned-source-4da17d5
+          path: |
+            ${{ runner.temp }}/maras-source-4da17d5.tar.gz
+            ${{ runner.temp }}/source-revision.txt
+          retention-days: 1
+          if-no-files-found: error

@@ -1,0 +1,33 @@
+name: Isolated dependency review 20260920
+on:
+  push:
+    branches: [audit/study-processing-20260920]
+    paths: [.github/workflows/dependency-review-20260920.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4da17d52f0e101b33bdef268df55610bf0492869
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Install exact isolated test dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Pack dependencies without credentials or project data
+        run: |
+          tar -czf "$RUNNER_TEMP/maras-test-dependencies.tar.gz" node_modules
+          cp "$(node -p 'process.execPath')" "$RUNNER_TEMP/node22"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: isolated-test-dependencies-4da17d5
+          path: |
+            ${{ runner.temp }}/maras-test-dependencies.tar.gz
+            ${{ runner.temp }}/node22
+          retention-days: 1
+          if-no-files-found: error
