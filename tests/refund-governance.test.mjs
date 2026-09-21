@@ -7,7 +7,7 @@ const root = new URL("..", import.meta.url);
 const [refundsSource, adminRoute, webhookRoute] = await Promise.all([
   readFile(new URL("lib/refunds.ts", root), "utf8"),
   readFile(new URL("app/api/admin/refunds/route.ts", root), "utf8"),
-  readFile(new URL("app/api/webhooks/tap/route.ts", root), "utf8"),
+  readFile(new URL("lib/tap-webhook.ts", root), "utf8"),
 ]);
 
 const pureRefundSource = refundsSource.slice(

@@ -14,7 +14,7 @@ import {
   userRewards,
   users,
 } from "@/db/schema";
-import { clientIp } from "@/lib/auth";
+import { trustedClientIp } from "@/lib/client-ip";
 
 type Database = ReturnType<typeof getDb>;
 export type ReferralTransaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
@@ -68,16 +68,11 @@ function deviceSignal(request: Request) {
 }
 
 function sourceIpHash(request: Request) {
-  const trustedHeader = process.env.REFERRAL_TRUSTED_IP_HEADER?.trim().toLowerCase();
-  const raw = trustedHeader === "cf-connecting-ip"
-    ? request.headers.get("cf-connecting-ip")
-    : trustedHeader === "x-forwarded-for"
-      ? request.headers.get("x-forwarded-for")?.split(",")[0]
-      : process.env.NODE_ENV !== "production"
-        ? clientIp(request)
-        : null;
-  const ip = (raw || "").trim().slice(0, 80);
-  return ip && ip !== "unknown" ? privateHash(ip) : null;
+  // Railway's edge source always wins over legacy per-feature configuration.
+  // Outside Railway retain explicit referral configuration, with the same
+  // single-address validation and normalization used by authentication.
+  const ip = trustedClientIp(request, process.env.REFERRAL_TRUSTED_IP_HEADER?.trim() || undefined);
+  return ip !== "unknown" ? privateHash(ip) : null;
 }
 
 function rewardExpiry(now: string, days: number | null | undefined) {

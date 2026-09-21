@@ -82,3 +82,40 @@ test("native legal reader receives the same published sections and current suppo
   assert.match(terms.sections.at(-1).body, /نموذج الدعم/);
   assert.doesNotMatch(JSON.stringify(privacy), /className|<p>|href/);
 });
+
+
+test("partner cards use the same reader-safe routing as notifications", () => {
+  const pushed = [], opened = [];
+  const routes = isolated("src/lib/notification-routing.ts", {
+    "expo-router": { router: { push: value => pushed.push(value) } },
+    "react-native": { Linking: { openURL: async value => opened.push(value) } },
+    "@/src/lib/api": { API_URL: "https://example.test", DIRECT_COMMERCE_ENABLED: false },
+  });
+  const partners = [
+    { id: 1, kind: "partner", name: "External checkout", destinationUrl: "https://pay.example.test/purchase" },
+    { id: 2, kind: "payment", name: "Website checkout", destinationUrl: "https://example.test/checkout/math" },
+    { id: 3, kind: "partner", name: "Native course", destinationUrl: "https://example.test/courses/math" },
+  ];
+  const component = isolated("src/components/HomePartners.tsx", {
+    react: { default: {} }, "react/jsx-runtime": { jsx: (type, props) => ({ type, props }), jsxs: (type, props) => ({ type, props }) },
+    "@expo/vector-icons": { Ionicons: "Icon" },
+    "@tanstack/react-query": { useQuery: () => ({ data: { partners } }) },
+    "expo-image": { Image: "Image" },
+    "react-native": { Pressable: "Pressable", ScrollView: "ScrollView", StyleSheet: { create: value => value }, useWindowDimensions: () => ({ width: 390 }), View: "View" },
+    "@/src/components/ScaledText": { ScaledText: "Text" },
+    "@/src/components/ui": { SectionTitle: "Title", useReduceMotion: () => true },
+    "@/src/lib/api": { absoluteUrl: value => value, api: () => {}, API_URL: "https://example.test", DIRECT_COMMERCE_ENABLED: false },
+    "@/src/lib/notification-routing": routes,
+    "@/src/providers/LanguageProvider": { useLanguage: () => ({ direction: "rtl", rowDirection: "row-reverse" }) },
+    "@/src/providers/ThemeProvider": { useTheme: () => ({ colors: {} }) },
+  });
+  const tree = component.HomePartners();
+  const cards = [];
+  const visit = node => { if (!node || typeof node !== "object") return; if (Array.isArray(node)) return node.forEach(visit); if (node.type === "Pressable") cards.push(node); visit(node.props?.children); };
+  visit(tree);
+  assert.deepEqual(cards.map(card => card.props.disabled), [true, true, false]);
+  for (const card of cards) card.props.onPress();
+  assert.equal(opened.length, 0);
+  assert.equal(pushed.length, 1);
+  assert.equal(pushed[0].pathname, "/course/[slug]");
+});

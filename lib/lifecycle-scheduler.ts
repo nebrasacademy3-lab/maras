@@ -25,15 +25,21 @@ async function runTick() {
   if (!state || state.running) return;
   state.running = true;
   try {
-    const [{ runLifecycleAutomations }, { dispatchDuePushNotifications }] = await Promise.all([
+    const [{ runLifecycleAutomations }, { dispatchDuePushNotifications }, { reconcilePendingTapCharges }] = await Promise.all([
       import("@/lib/lifecycle-automation"),
       import("@/lib/push-campaigns"),
+      import("@/lib/tap-reconciliation"),
     ]);
     await withLifecycleSchedulerLock(async () => {
       const startedAt = Date.now();
+      const payments = await reconcilePendingTapCharges().catch(() => {
+        // Provider/finance availability must not prevent due notifications.
+        logEvent("warn", "tap.reconciliation.failed");
+        return { checked: 0, resolved: 0, pending: 0, failed: 1 };
+      });
       const lifecycle = await runLifecycleAutomations();
       const push = await dispatchDuePushNotifications(100);
-      logEvent("info", "lifecycle.scheduler.tick", { durationMs: Date.now() - startedAt, ...lifecycle, pushAttempted: push.attempted, pushAccepted: push.accepted, pushRejected: push.rejected });
+      logEvent("info", "lifecycle.scheduler.tick", { durationMs: Date.now() - startedAt, ...lifecycle, paymentsChecked: payments.checked, paymentsResolved: payments.resolved, paymentsPending: payments.pending, paymentsFailed: payments.failed, pushAttempted: push.attempted, pushAccepted: push.accepted, pushRejected: push.rejected });
     });
   } catch (error) {
     logEvent("warn", "lifecycle.scheduler.failed", { message: error instanceof Error ? error.message : "unknown error" });

@@ -25,7 +25,7 @@ async function fixture(options = {}) {
  const fileSecurity = await isolated("../lib/file-security.ts", { ...cryptography });
  const dependencies = { ...tables, ...api, ...security, ...policy, ...mobile, ...requestBody, ...onboarding, ...cryptography, DeviceLimitError,
   sql, eq, and, or, desc: column => column, getDb: () => db, getSessionUser: async () => actor, sameOriginRequest,
-  checkRateLimit: async () => true, clientIp: () => "synthetic", validEmail: value => /^[^@]+@[^@]+\.[^@]+$/.test(value), validPassword: value => value.length >= 10,
+  checkRateLimit: async () => true, consumeRateLimit: options.consumeRateLimit || (async () => ({ allowed: true, retryAfterSeconds: 0 })), clientIp: () => "synthetic", validEmail: value => /^[^@]+@[^@]+\.[^@]+$/.test(value), validPassword: value => value.length >= 10,
   hashPassword: async () => "synthetic-hash", sessionUserFromRow: row => ({ id: row.id, role: row.role }),
   createSession: async () => { calls.session++; return { token: "synthetic-token", expiresAt: "2027-01-01", cookie: "session=synthetic", deviceCookie: "device=synthetic" }; },
   ensureVerificationEmail: async () => { calls.verification++; return { ok: true }; },
@@ -179,3 +179,72 @@ test("tampered encrypted document never returns bytes to the client", async () =
  assert.equal(f.db.rows.instructorDocuments.length, 0); assert.equal(f.stored.size, 1);
  const [job] = f.db.rows.storageCleanupJobs; assert.equal(job.status, "pending"); assert.equal(job.source, "instructor-document-staging"); assert.equal(job.provider, "local"); assert.ok(f.stored.has(job.objectKey)); assert.ok(job.availableAt.getTime() > Date.now());
  });
+
+function registrationLimiter() {
+ const windows = new Map(), calls = []; let now = 0;
+ return { windows, calls, advance: seconds => { now += seconds; }, consumeRateLimit: async (scope, identity, limit, seconds) => {
+  calls.push({ scope, identity, limit, seconds });
+  const key = scope + ":" + identity.trim().toLowerCase();
+  let row = windows.get(key);
+  if (!row || row.expiresAt <= now) { row = { attempts: 0, expiresAt: now + seconds }; windows.set(key, row); }
+  row.attempts++;
+  return { allowed: row.attempts <= limit, retryAfterSeconds: row.attempts <= limit ? 0 : row.expiresAt - now };
+ } };
+}
+const registrationBody = (index = 1, extra = {}) => ({ ...profileInput, fullName: "Synthetic New Instructor", email: "new" + index + "@example.test", phone: "+20101234" + String(index).padStart(4, "0"), password: "Synthetic!12345", termsAccepted: true, privacyAccepted: true, ...extra });
+
+test("invalid form retries on a shared network do not lock a second instructor account for an hour", async () => {
+ const limiter = registrationLimiter(), f = await fixture(limiter);
+ for (let i = 0; i < 12; i++) assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody(1, { fullName: "A" })))).status, 400);
+ assert.ok(limiter.calls.every(call => call.seconds === 60), "form errors must not consume identity or creation quota");
+ assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody(2)))).status, 201);
+ assert.equal(f.calls.session, 1);
+});
+
+test("misconfigured encryption does not consume account or creation quota", async () => {
+ const limiter = registrationLimiter(), f = await fixture(limiter);
+ f.env.INSTRUCTOR_DATA_ENCRYPTION_KEY = "";
+ for (let i = 0; i < 12; i++) assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody()))).status, 503);
+ assert.ok(limiter.calls.every(call => call.seconds === 60));
+ f.env.INSTRUCTOR_DATA_ENCRYPTION_KEY = "31".repeat(32);
+ assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody()))).status, 201);
+});
+
+test("identity lock stays with the normalized email and cannot be bypassed by rotating phones", async () => {
+ const limiter = registrationLimiter(), f = await fixture(limiter);
+ for (let i = 0; i < 5; i++) assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody(i, { email: fullUser.email })))).status, 409);
+ const blocked = await f.routes.register.POST(jsonRequest("register", registrationBody(8, { email: "  " + fullUser.email.toUpperCase() + "  " })));
+ assert.equal(blocked.status, 429); assert.equal((await blocked.json()).code, "INSTRUCTOR_REGISTRATION_IDENTITY_LIMIT");
+ assert.equal(blocked.headers.get("retry-after"), "900");
+ assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody(9)))).status, 201);
+ assert.equal(limiter.calls.filter(call => call.scope.includes("create-v2")).length, 1, "duplicate account retries must not consume network creation quota");
+});
+
+test("phone protection cannot be bypassed by rotating emails, and its delay reports the existing window", async () => {
+ const limiter = registrationLimiter(), f = await fixture(limiter);
+ for (let i = 0; i < 5; i++) assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody(i, { phone: fullUser.phone })))).status, 409);
+ limiter.advance(121);
+ const blocked = await f.routes.register.POST(jsonRequest("register", registrationBody(6, { phone: fullUser.phone })));
+ assert.equal(blocked.status, 429); assert.equal(blocked.headers.get("retry-after"), "779");
+ assert.equal((await blocked.json()).retryAfterSeconds, 779);
+ limiter.advance(779);
+ assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody(7, { phone: fullUser.phone })))).status, 409, "account window expires without manual reset");
+});
+
+test("malformed request floods retain short network protection and recover automatically", async () => {
+ const limiter = registrationLimiter(), f = await fixture(limiter);
+ for (let i = 0; i < 60; i++) assert.equal((await f.routes.register.POST(jsonRequest("register", {}))).status, 400);
+ const blocked = await f.routes.register.POST(jsonRequest("register", registrationBody()));
+ assert.equal(blocked.status, 429); assert.equal(blocked.headers.get("retry-after"), "60");
+ assert.equal((await blocked.json()).code, "INSTRUCTOR_REGISTRATION_NETWORK_LIMIT");
+ limiter.advance(60);
+ assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody()))).status, 201);
+});
+
+test("bulk account creation remains bounded even with unrelated valid identities", async () => {
+ const limiter = registrationLimiter(), f = await fixture(limiter);
+ for (let i = 0; i < 20; i++) assert.equal((await f.routes.register.POST(jsonRequest("register", registrationBody(i)))).status, 201);
+ const blocked = await f.routes.register.POST(jsonRequest("register", registrationBody(21)));
+ assert.equal(blocked.status, 429); assert.equal((await blocked.json()).code, "INSTRUCTOR_REGISTRATION_NETWORK_LIMIT");
+ assert.equal(blocked.headers.get("retry-after"), "3600"); assert.equal(f.calls.session, 20);
+});

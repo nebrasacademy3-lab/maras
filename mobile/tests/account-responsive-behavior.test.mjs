@@ -40,6 +40,16 @@ test("every purchase needs actual profile fields even when the account is an adm
   assert.equal(access.purchaseAccountRequirement({ ...user, emailVerified: false }), "/verify-email");
   assert.equal(access.purchaseAccountRequirement(null), "/(auth)/login");
 });
+
+test("verified staff sign in to their role workspace before student onboarding", () => {
+  for (const [role, path] of [["admin", "/admin"], ["supervisor", "/supervisor"], ["instructor", "/instructor"]]) {
+    const staff = { ...user, role, profileCompleted: false, onboardingCompleted: false };
+    assert.equal(access.accountRequirement(staff), null);
+    assert.equal(access.authDestination(staff, "/dashboard", "/cart"), path);
+    assert.equal(access.authDestination({ ...staff, emailVerified: false }), "/verify-email");
+    assert.equal(access.purchaseAccountRequirement(staff), "/complete-profile");
+  }
+});
 test("one-time codes normalize Arabic and Persian digits without changing their length", () => {
   assert.equal(access.normalizeEmailCode("١٢٣٤٥٦"), "123456");
   assert.equal(access.normalizeEmailCode("۱۲۳۴۵۶"), "123456");

@@ -54,3 +54,29 @@ test("web footer and contact use normalized channels with safe external links", 
   assert.match(admin, /!normalizeWhatsappNumber\(value\)/);
   assert.ok(admin.indexOf("!normalizeSocialUrl(key, value)") < admin.indexOf("// Validate the entire form first"));
 });
+
+test("network homepages never masquerade as configured official channels", () => {
+  const settings = {};
+  for (const channel of SOCIAL_CHANNELS) {
+    if (channel.key === "whatsapp_number") continue;
+    for (const host of channel.hosts) {
+      assert.equal(normalizeSocialUrl(channel.key, `https://${host}/?utm_source=footer`), "", host);
+      assert.equal(normalizeSocialUrl(channel.key, `https://www.${host}/#profile`), "", host);
+    }
+    settings[channel.key] = `https://${channel.hosts[0]}/`;
+  }
+  settings.social_telegram = "https://t.me/marasalelm";
+  assert.deepEqual(Array.from(normalizedSocialLinks(settings), link => link.url), ["https://t.me/marasalelm"]);
+});
+
+test("malformed Saudi contact numbers stay hidden including legacy WhatsApp URLs", () => {
+  for (const number of ["9665555555", "+966 55 555 55", "9665012345678"]) {
+    assert.equal(normalizeWhatsappNumber(number), "", number);
+    assert.equal(publicWhatsappUrl({ whatsapp_number: number }), "", number);
+    assert.equal(publicWhatsappUrl({ whatsapp_url: `https://wa.me/${number.replace(/[^0-9]/g, "")}` }), "");
+  }
+  assert.equal(publicWhatsappUrl({ whatsapp_url: "https://api.whatsapp.com/send?phone=9665555555" }), "");
+  assert.equal(publicWhatsappUrl({ whatsapp_url: "https://wa.me/" }), "");
+  assert.equal(publicWhatsappUrl({ whatsapp_url: "https://api.whatsapp.com/send?phone=966501234567" }), "https://api.whatsapp.com/send?phone=966501234567");
+  assert.equal(publicWhatsappUrl({ whatsapp_number: "0501234567", whatsapp_url: "https://wa.me/9665555555" }), "https://wa.me/966501234567?text=");
+});

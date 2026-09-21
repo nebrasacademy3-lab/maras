@@ -1,12 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Image } from "expo-image";
-import * as Linking from "expo-linking";
 import React from "react";
 import { Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { SectionTitle, useReduceMotion } from "@/src/components/ui";
-import { absoluteUrl, api } from "@/src/lib/api";
+import { absoluteUrl, api, API_URL, DIRECT_COMMERCE_ENABLED } from "@/src/lib/api";
+import { openNotificationRoute, resolveAppAction } from "@/src/lib/notification-routing";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { PublicPartner, PublicPartnersResponse } from "@/src/types";
@@ -60,13 +60,14 @@ export function HomePartners() {
       contentContainerStyle={[styles.rail, { direction, flexDirection: rowDirection }]}
     >
       {partners.map((partner) => {
-        const target = destination(partner);
+        const destinationUrl = destination(partner);
+        const target = resolveAppAction(destinationUrl, { apiUrl: API_URL, directCommerce: DIRECT_COMMERCE_ENABLED }) ? destinationUrl : null;
         return <Pressable
           accessibilityRole={target ? "link" : undefined}
           accessibilityLabel={target ? `${actionLabel(partner)}: ${partner.name}` : partner.name}
           disabled={!target}
           key={partner.id}
-          onPress={() => target ? void Linking.openURL(target) : undefined}
+          onPress={() => target ? openNotificationRoute(target) : undefined}
           style={({ pressed }) => [
             styles.card,
             {

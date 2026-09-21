@@ -82,7 +82,7 @@ test("finance API and UI expose complete filters, details, review queues, and CS
     readFile(new URL("app/api/admin/finance/route.ts", root), "utf8"),
     readFile(new URL("components/finance-center.tsx", root), "utf8"),
     readFile(new URL("app/admin/finance/page.tsx", root), "utf8"),
-    readFile(new URL("app/api/webhooks/tap/route.ts", root), "utf8"),
+    readFile(new URL("lib/tap-webhook.ts", root), "utf8"),
     readFile(new URL("lib/order-fulfillment.ts", root), "utf8"),
   ]);
   assert.match(route, /authorizePermission\(request, ADMIN_PERMISSIONS\.FINANCE_VIEW\)/);

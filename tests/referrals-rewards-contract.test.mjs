@@ -81,7 +81,7 @@ test("owned coupons are verified and reserved atomically before checkout", async
   const [coupons, checkout, webhook] = await Promise.all([
     read("lib/coupons.ts"),
     read("app/api/checkout/route.ts"),
-    read("app/api/webhooks/tap/route.ts"),
+    read("lib/tap-webhook.ts"),
   ]);
   assert.match(coupons, /coupon\.ownerUserId !== null && coupon\.ownerUserId !== userId/);
   assert.match(coupons, /pg_advisory_xact_lock/);
@@ -102,7 +102,7 @@ test("owned coupons are verified and reserved atomically before checkout", async
 });
 
 test("full refunds atomically downgrade first-paid referrals and recalculate unused rewards", async () => {
-  const [referrals, webhook] = await Promise.all([read("lib/referrals.ts"), read("app/api/webhooks/tap/route.ts")]);
+  const [referrals, webhook] = await Promise.all([read("lib/referrals.ts"), read("lib/tap-webhook.ts")]);
   assert.match(referrals, /reconcileReferralQualificationAfterRefundTx/);
   assert.match(referrals, /inArray\(orders\.status, \["paid", "partially_refunded", "payment_review"\]\)/);
   assert.match(referrals, /status: "pending"[\s\S]{0,140}qualifiedAt: null/);
