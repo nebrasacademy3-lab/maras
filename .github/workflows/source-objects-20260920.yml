@@ -1,0 +1,85 @@
+name: Verify tested checkpoint source objects
+on:
+  push:
+    branches: [audit/study-processing-20260920]
+    paths: [.github/workflows/source-objects-20260920.yml]
+permissions:
+  contents: read
+jobs:
+  objects:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4da17d52f0e101b33bdef268df55610bf0492869
+          persist-credentials: false
+      - name: Ensure source-delta tooling
+        run: |
+          if ! command -v zstd >/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends zstd
+          fi
+      - name: Verify byte-exact source and store immutable Git objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 <<'PY'
+          import base64, hashlib, json, os, pathlib, subprocess, urllib.request
+          root = pathlib.Path(os.environ['RUNNER_TEMP'])
+          repo = 'nebrasacademy3-lab/maras'
+          expected_tree = 'ae8a884fb5ccac9825fbb7ba7fe60339ffd423d5'
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          assert git('rev-parse', 'HEAD').decode().strip() == '4da17d52f0e101b33bdef268df55610bf0492869'
+          assert git('write-tree').decode().strip() == 'ee076dd92f40a3abbd3d7aee1fe83d0888f42941'
+          def api(path, payload=None):
+              req = urllib.request.Request('https://api.github.com/repos/' + repo + path, data=None if payload is None else json.dumps(payload).encode(), headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'}, method='GET' if payload is None else 'POST')
+              with urllib.request.urlopen(req, timeout=40) as response:
+                  return json.load(response)
+          parts = ['df9809fd47c12ba6ce842032e023e6d15dc2d43d', '04d0b5b702e09cc2522609141d146fb398c413fa', '539ce0f9ec74f59f0778b2ca5bd1d0bec1920b8c', 'eb597d9bdce65da881b72dff52127aa4014b9f2b', '8b845a459734c3b8c086c28586cc7cefa7c10b67', '7bdc3be8ef0269184ab6a201f28d1c9323d0d51c']
+          compressed = bytearray()
+          for sha in parts:
+              obj = api('/git/blobs/' + sha)
+              data = base64.b64decode(obj['content'])
+              assert hashlib.sha1(b'blob ' + str(len(data)).encode() + b'\0' + data).hexdigest() == sha
+              compressed.extend(data)
+          assert hashlib.sha256(compressed).hexdigest() == '732e080b9f4064480a0b391c627ca6cf555f4978d631b1a660df6d61fe94f31e'
+          delta = root / 'checkpoint-source.zst'
+          delta.write_bytes(compressed)
+          reference = root / 'checkpoint-base.dict'
+          with reference.open('wb') as out:
+              for path in git('ls-tree', '-r', '--name-only', 'HEAD').decode().splitlines():
+                  if path.endswith(('.ts', '.tsx', '.mjs', '.sql', '.json', '.yml', '.md')):
+                      out.write(git('show', 'HEAD:' + path))
+          assert hashlib.sha256(reference.read_bytes()).hexdigest() == '2d07bf28a4369754b02b1de050b77fee7c7a2dd43152e2e29ff2dba023143766'
+          patch = root / 'checkpoint-source.patch'
+          subprocess.run(['zstd', '-d', '--patch-from=' + str(reference), str(delta), '-o', str(patch)], check=True)
+          assert hashlib.sha256(patch.read_bytes()).hexdigest() == '5e4127ad169c798004d7bf84778cea809da7a23f1bbc341bf75e1de4cbd6913e'
+          subprocess.run(['git', 'apply', '--check', '--index', '--unidiff-zero', str(patch)], check=True)
+          subprocess.run(['git', 'apply', '--index', '--unidiff-zero', str(patch)], check=True)
+          assert git('write-tree').decode().strip() == expected_tree
+          # Create content-addressed blobs only. No ref update, push, deployment,
+          # secrets access, dependency execution, or migration occurs in this job.
+          manifest = []
+          for path in git('diff', '--cached', '--name-only', '--diff-filter=ACMRTUXB').decode().splitlines():
+              mode, sha, stage = git('ls-files', '--stage', '--', path).decode().split('\t')[0].split()
+              assert stage == '0' and mode == '100644'
+              content = git('show', ':' + path)
+              result = api('/git/blobs', {'encoding': 'base64', 'content': base64.b64encode(content).decode()})
+              assert result['sha'] == sha
+              manifest.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': sha})
+              print(path, sha)
+          assert len(manifest) == 36
+          (root / 'checkpoint-source-objects.json').write_text(json.dumps({'base': '4da17d52f0e101b33bdef268df55610bf0492869', 'tree': expected_tree, 'entries': manifest}, indent=2))
+          print('VERIFIED_TREE', expected_tree)
+          PY
+      - name: Keep non-secret source revision evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: verified-checkpoint-source-objects
+          path: ${{ runner.temp }}/checkpoint-source-objects.json
+          retention-days: 7
+          if-no-files-found: error

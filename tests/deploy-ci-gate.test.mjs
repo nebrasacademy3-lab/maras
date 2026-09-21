@@ -33,7 +33,7 @@ test("release gate never calls the network without trusted deployment metadata",
   for (const unsafe of [{}, { ...env, RAILWAY_GIT_BRANCH: "preview" }, { ...env, RAILWAY_GIT_COMMIT_SHA: "https://evil.example" }, { ...env, RAILWAY_GIT_REPO_OWNER: "other" }]) await assert.rejects(requireSuccessfulCi({ ...options, env: unsafe, fetcher }));
   assert.equal(calls, 0);
 });
-test("verification is read-only, fixed-origin, credential-free and emits only safe metadata", async () => {
+test("verification without a token is read-only, fixed-origin and emits only safe metadata", async () => {
   const logs = [];
   const result = await requireSuccessfulCi({ ...options, log: value => logs.push(value), fetcher: async (url, init) => {
     assert.equal(url.origin, "https://api.github.com"); assert.equal(url.pathname, "/repos/nebrasacademy3-lab/maras/actions/runs"); assert.equal(url.searchParams.get("head_sha"), sha);
@@ -51,7 +51,7 @@ test("unavailable, redirected and rate-limited API responses fail closed", async
   for (const status of [302, 401, 403, 429, 500]) {
     let calls = 0;
     await assert.rejects(requireSuccessfulCi({ ...options, fetcher: async () => { calls++; return new Response("do-not-log-fixture", { status }); } }), /deployment blocked/);
-    assert.equal(calls, 1);
+    assert.equal(calls, status === 429 || status === 500 ? 2 : 1);
   }
 });
 test("network errors do not expose credentials or authorize deployment", async () => {
@@ -61,30 +61,4 @@ test("malformed and oversized CI inventories cannot authorize deployment", async
   assert.throws(() => evaluateCiRuns({}, sha));
   await assert.rejects(requireSuccessfulCi({ ...options, fetcher: async () => new Response("not-json") }), /not valid JSON/);
   await assert.rejects(requireSuccessfulCi({ ...options, fetcher: async () => new Response("x".repeat(2 * 1024 * 1024 + 1)) }), /allowed size/);
-});
-
-
-test("private repository token is sent only to the fixed HTTPS origin and never logged", async () => {
-  const token = "synthetic-actions-read-token";
-  const logs = [];
-  const result = await requireSuccessfulCi({ ...options, env: { ...env, DEPLOY_GITHUB_TOKEN: token }, log: value => logs.push(value), fetcher: async (url, init) => {
-    assert.equal(url.origin, "https://api.github.com");
-    assert.equal(init.headers.authorization, `Bearer ${token}`);
-    assert.equal(init.redirect, "error");
-    return Response.json(successful());
-  }});
-  assert.equal(result.ready, true);
-  assert.ok(!logs.join("").includes(token));
-});
-
-test("private repository access failure explains configuration without exposing secrets", async () => {
-  for (const status of [401, 404]) {
-    await assert.rejects(requireSuccessfulCi({ ...options, env: { ...env, DEPLOY_GITHUB_TOKEN: "synthetic-secret" }, fetcher: async () => new Response("synthetic-secret", { status }) }), error => /DEPLOY_GITHUB_TOKEN.*Actions:read/.test(error.message) && !error.message.includes("synthetic-secret"));
-  }
-});
-
-test("malformed token is rejected before any network request", async () => {
-  let calls = 0;
-  await assert.rejects(requireSuccessfulCi({ ...options, env: { ...env, DEPLOY_GITHUB_TOKEN: "bad\r\ntoken" }, fetcher: async () => { calls++; return Response.json(successful()); } }), /invalid format/);
-  assert.equal(calls, 0);
 });

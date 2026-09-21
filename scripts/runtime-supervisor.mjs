@@ -17,7 +17,9 @@ export function runtimeServices(env = process.env) {
     if (!isAbsolute(tokenFile) || normalize(tokenFile) !== tokenFile || tokenFile.includes("\0") || tokenFile.length > 4096) throw new Error("Invalid Gemini renewal token source");
     services.push({ name: "gemini-project-refresh-worker", command: process.execPath, args: ["--import", "./scripts/ai-worker-runtime.mjs", "--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/gemini-project-refresh-worker.ts"] });
   }
-  if (enabled("STORAGE_CLEANUP_WORKER_ENABLED")) services.push({ name: "storage-cleanup-worker", command: process.execPath, args: ["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/storage-cleanup-worker.ts"] });
+  // Cleanup imports study-upload code marked server-only, just like the AI worker.
+  // Register the server-entry loader before tsx without removing browser guards.
+  if (enabled("STORAGE_CLEANUP_WORKER_ENABLED")) services.push({ name: "storage-cleanup-worker", command: process.execPath, args: ["--import", "./scripts/ai-worker-runtime.mjs", "--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/storage-cleanup-worker.ts"] });
   if (enabled("VIDEO_WORKER_ENABLED")) {
     if ((env.VIDEO_WORKER_ONCE || "").trim().toLowerCase() === "true") throw new Error("VIDEO_WORKER_ONCE is not allowed in the supervised service");
     services.push({ name: "video-worker", command: process.execPath, args: ["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/video-worker.ts"] });
