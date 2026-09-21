@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { readFileSync, writeFileSync, mkdirSync, openSync, closeSync } from "node:fs";
 import { chromium } from "playwright-core";
+import { assertPrivateNoStore } from "./qa-private-response-policy.mjs";
 const local = JSON.parse(readFileSync(".data/qa-database.json", "utf8"));
 const fixtures = JSON.parse(readFileSync(".data/qa-fixtures.json", "utf8"));
 const origin = "http://127.0.0.1:3100";
@@ -71,7 +72,7 @@ try {
   await page.getByText("تم توقيع نسخة العقد. يمكنك تنزيل النسخة الموثقة من حسابك.", { exact: true }).waitFor();
   pass("signature UI requires consent/password/drawn strokes and commits the exact offered synthetic contract");
   const pdf = await alice.request.get(origin + `/api/instructor/contracts/${fixtures.instructor.offeredContractId}/download`, { maxRedirects: 0 });
-  assert.equal(pdf.status(), 200); const cacheControl = pdf.headers()["cache-control"].split(",").map(value => value.trim().toLowerCase());\n  assert.ok(cacheControl.includes("private") && cacheControl.includes("no-store"), `Unexpected private PDF cache policy: ${pdf.headers()["cache-control"]}`);
+  assert.equal(pdf.status(), 200); assertPrivateNoStore(pdf.headers()["cache-control"]);
   assert.match((await pdf.body()).subarray(0, 8).toString(), /^%PDF-/); await pdf.dispose();
   pass("the browser-authenticated account retrieves its signed private PDF over the local HTTP server");
   await page.screenshot({ path: `${dir}/workspace-desktop.png`, fullPage: false });
@@ -92,5 +93,5 @@ try {
 } finally {
   for (const value of contexts) await value.close().catch(() => undefined);
   await browser?.close().catch(() => undefined);
-  if (server.exitCode === null) { const stopped = new Promise(resolve => server.once("exit", resolve)); server.kill("SIGTERM"); const timer = setTimeout(() => server.kill("SIGKILL"), 5000); await stopped; clearTimeout(timer); }
+  if (server.exitCode === null && !serverError) { const stopped = new Promise(resolve => server.once("exit", resolve)); server.kill("SIGTERM"); const timer = setTimeout(() => server.kill("SIGKILL"), 5000); await stopped; clearTimeout(timer); }
 }
