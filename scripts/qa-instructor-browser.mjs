@@ -71,7 +71,7 @@ try {
   await page.getByText("تم توقيع نسخة العقد. يمكنك تنزيل النسخة الموثقة من حسابك.", { exact: true }).waitFor();
   pass("signature UI requires consent/password/drawn strokes and commits the exact offered synthetic contract");
   const pdf = await alice.request.get(origin + `/api/instructor/contracts/${fixtures.instructor.offeredContractId}/download`, { maxRedirects: 0 });
-  assert.equal(pdf.status(), 200); assert.equal(pdf.headers()["cache-control"], "private, no-store");
+  assert.equal(pdf.status(), 200); const cacheControl = pdf.headers()["cache-control"].split(",").map(value => value.trim().toLowerCase());\n  assert.ok(cacheControl.includes("private") && cacheControl.includes("no-store"), `Unexpected private PDF cache policy: ${pdf.headers()["cache-control"]}`);
   assert.match((await pdf.body()).subarray(0, 8).toString(), /^%PDF-/); await pdf.dispose();
   pass("the browser-authenticated account retrieves its signed private PDF over the local HTTP server");
   await page.screenshot({ path: `${dir}/workspace-desktop.png`, fullPage: false });
