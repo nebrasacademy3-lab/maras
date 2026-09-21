@@ -22,7 +22,7 @@ const rawIdentity = await raw.json();
 console.log(JSON.stringify({ event: "synthetic.supervisor.raw-auth", status: raw.status, authenticated: Boolean(rawIdentity.user), role: rawIdentity.user?.role, owner: rawIdentity.user?.isPlatformOwner }));
 const browser = await chromium.launch({ headless: true });
 try {
-  const context = await browser.newContext(); context.setDefaultTimeout(15000);
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } }); context.setDefaultTimeout(15000);
   await context.addCookies([{ name: "meras_session", value: fixture.supervisor.token, domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax" }]);
   assert.equal((await context.cookies(origin)).filter(cookie => cookie.name === "meras_session").length, 1);
   const me = await context.request.get(origin + "/api/admin/me");
@@ -38,12 +38,25 @@ try {
   const links = await page.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').evaluateAll(nodes => nodes.map(node => ({ href: node.getAttribute("href"), text: node.textContent?.slice(0, 100), container: node.parentElement?.className })));
   console.log(JSON.stringify({ event: "supervisor.navigation.boundary", status: response.status(), path: new URL(page.url()).pathname, owner: identity.user.isPlatformOwner, permissions: identity.permissions, forbiddenLinks: links }, null, 2));
   await page.getByRole("heading", { name: "نظرة عامة", exact: true }).waitFor();
-  await page.getByRole("banner").getByText("مشرف بصلاحيات محددة", { exact: true }).waitFor();
+  // The redesigned shell shows the workspace label in the banner and the
+  // restricted account role in the sidebar; neither check should be dropped.
+  await page.getByRole("banner").getByText("مساحة المشرف", { exact: true }).waitFor();
+  await page.getByRole("complementary").getByText("مشرف بصلاحيات محددة", { exact: true }).waitFor();
   const hydrated = await page.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').evaluateAll(nodes => nodes.map(node => ({ href: node.getAttribute("href"), text: node.textContent?.slice(0, 100), container: node.parentElement?.className })));
   console.log(JSON.stringify({ event: "supervisor.navigation.ready", forbiddenLinks: hydrated }, null, 2));
   mkdirSync(".data/platform-browser", { recursive: true });
   writeFileSync(".data/platform-browser/supervisor-boundary.json", JSON.stringify({ owner: identity.user.isPlatformOwner, permissions: identity.permissions, forbiddenLinks: hydrated }, null, 2));
   await page.screenshot({ path: ".data/platform-browser/supervisor-boundary.png", fullPage: true, animations: "disabled" });
   assert.equal(hydrated.length, 0, "restricted supervisor must not receive owner/finance/content links");
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("button", { name: "فتح أقسام الإدارة", exact: true }).click();
+  const navigation = page.getByRole("dialog", { name: "أقسام الإدارة", exact: true });
+  await navigation.getByText("مشرف بصلاحيات محددة", { exact: true }).waitFor();
+  const mobileForbiddenLinks = await navigation.locator('a[href="/admin/staff"],a[href="/admin/finance"],a[href="/admin/content"]').count();
+  assert.equal(mobileForbiddenLinks, 0, "mobile supervisor navigation must preserve the same permission boundary");
+  await page.screenshot({ path: ".data/platform-browser/supervisor-boundary-mobile.png", fullPage: true, animations: "disabled" });
+  await navigation.getByRole("button", { name: "إغلاق القائمة", exact: true }).click();
+  await navigation.waitFor({ state: "hidden" });
+  console.log(JSON.stringify({ event: "supervisor.navigation.mobile", width: 390, forbiddenLinks: mobileForbiddenLinks, roleVisible: true, menuClosed: true }));
   await context.close();
 } finally { await browser.close(); }
