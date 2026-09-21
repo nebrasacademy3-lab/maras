@@ -10,7 +10,7 @@ test("instructor endpoints reject students, supervisors, guests and unverified a
   for (const user of [null, { role: "student", emailVerified: true }, { role: "supervisor", emailVerified: true }, { role: "admin", isPlatformOwner: true, emailVerified: true }, { role: "instructor", emailVerified: false }]) await assert.rejects(security.instructorActor(request(user)));
   assert.equal((await security.instructorActor(request({ role: "instructor", emailVerified: true, id: 7 }))).id, 7);
 });
-test("only the single platform owner can administer instructors and writes require step-up", async () => {
+test("legacy owner-only helper remains strict and always enforces requested step-up", async () => {
   for (const user of [null, { role: "instructor", isPlatformOwner: false }, { role: "supervisor", isPlatformOwner: true }, { role: "admin", isPlatformOwner: false }]) await assert.rejects(security.instructorOwner(request(user)));
   const owner = request({ role: "admin", isPlatformOwner: true, id: 1 });
   assert.equal((await security.instructorOwner(owner)).id, 1);

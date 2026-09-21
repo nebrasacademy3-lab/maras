@@ -3,7 +3,7 @@ import { getDb } from "@/db";
 import { lessonsDb, videoAssets } from "@/db/schema";
 import { instructorLessons, instructorUnits } from "@/db/instructor-schema";
 import { checkRateLimit, getSessionUser } from "@/lib/auth";
-import { instructorActor, instructorOwner, InstructorError } from "@/lib/instructor-security";
+import { instructorActor, instructorAdmin, InstructorError } from "@/lib/instructor-security";
 import { instructorApiError, INSTRUCTOR_PRIVATE_HEADERS } from "@/lib/instructor-onboarding";
 import { assertDraftAsset, authorizedInstructorAssignment, instructorAssignmentId } from "@/lib/instructor-assignments";
 import { getObject } from "@/lib/storage";
@@ -20,8 +20,8 @@ function requestedRange(value: string | null, size: number) {
 }
 async function serve(request: Request, context: Context) {
  try {
-  const session = await getSessionUser(request), admin = session?.role === "admin" && session.isPlatformOwner;
-  const user = admin ? await instructorOwner(request) : await instructorActor(request);
+  const session = await getSessionUser(request), admin = (session?.role === "admin" && session.isPlatformOwner === true) || session?.role === "supervisor";
+  const user = admin ? await instructorAdmin(request) : await instructorActor(request);
   if (!await checkRateLimit("instructor-video-preview", String(user.id), 240, 60)) throw new InstructorError("طلبات كثيرة", 429);
   const params = await context.params, db = getDb(), assignment = await authorizedInstructorAssignment(db, instructorAssignmentId(params.id), admin ? null : user.id, { requireActive: !admin });
   const [lesson] = await db.select().from(instructorLessons).where(eq(instructorLessons.id, instructorAssignmentId(params.lessonId))).limit(1);

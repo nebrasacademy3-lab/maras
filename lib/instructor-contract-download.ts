@@ -3,7 +3,7 @@ import { getDb, getPool } from "@/db";
 import { instructorContracts } from "@/db/instructor-schema";
 import { auditLogs } from "@/db/schema";
 import { contractView } from "@/lib/instructor-contracts";
-import { instructorActor, instructorOwner, InstructorError } from "@/lib/instructor-security";
+import { instructorActor, instructorAdmin, InstructorError } from "@/lib/instructor-security";
 import { checkRateLimit, clientIp } from "@/lib/auth";
 import { renderInstructorContractPdf } from "@/lib/study-pdf-process";
 import { StudyPdfError } from "@/lib/study-pdf-document.mjs";
@@ -13,7 +13,7 @@ import type { InstructorContractPdfInput } from "@/lib/instructor-contract-docum
 export async function downloadInstructorContract(request: Request, id: number, admin: boolean) {
  try {
   if (!Number.isSafeInteger(id) || id < 1) throw new InstructorError("العقد غير موجود",404);
-  const actor = admin ? await instructorOwner(request,true) : await instructorActor(request);
+  const actor = admin ? await instructorAdmin(request,true) : await instructorActor(request);
   if (!await checkRateLimit("instructor-contract-pdf",String(actor.id),6,60)) throw new InstructorError("انتظر قليلاً قبل تنزيل نسخة أخرى",429);
   const read = async () => {
    const [row] = await getDb().select().from(instructorContracts).where(and(eq(instructorContracts.id,id),admin ? undefined : and(eq(instructorContracts.userId,actor.id),ne(instructorContracts.status,"draft")))).limit(1);
@@ -34,7 +34,7 @@ export async function downloadInstructorContract(request: Request, id: number, a
    if(slot!==null){try{await connection.query("SELECT pg_advisory_unlock($1)",[slot]);}catch{destroy=true;}}
    connection.release(destroy);
   }
-  const currentActor=admin?await instructorOwner(request,true):await instructorActor(request);
+  const currentActor=admin?await instructorAdmin(request,true):await instructorActor(request);
   if(currentActor.id!==actor.id)throw new InstructorError("تغيرت الجلسة؛ أعد فتح العقد",403);
   const current=await read();
   if(current.revision!==row.revision)throw new InstructorError("تغير العقد أثناء التصدير؛ افتحه مجدداً",409);

@@ -4,6 +4,7 @@ import { inArray } from "drizzle-orm";
 import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 import { getSessionUser, type SessionUser } from "@/lib/auth";
 import { requireAdminStepUp } from "@/lib/admin-mfa";
+import { hasPermission } from "@/lib/permissions";
 
 export class InstructorError extends Error {
   constructor(message: string, readonly status = 400, readonly code = "INSTRUCTOR_INVALID") { super(message); this.name = "InstructorError"; }
@@ -21,6 +22,19 @@ export async function instructorOwner(request: Request, stepUp = false): Promise
   const user = await getSessionUser(request);
   if (!user || user.role !== "admin" || !user.isPlatformOwner) throw new InstructorError("إدارة الشارحين للمدير الأعلى فقط", 403, "INSTRUCTOR_OWNER_REQUIRED");
   if (stepUp) await requireAdminStepUp(request, user);
+  return user;
+}
+
+/** Team capabilities are distinct from managing staff accounts or student data. */
+export async function instructorAdmin(request: Request, stepUp = false): Promise<SessionUser> {
+  const user = await getSessionUser(request);
+  const read = ["GET", "HEAD"].includes(request.method.toUpperCase());
+  const owner = user?.role === "admin" && user.isPlatformOwner;
+  if (!user || (!owner && (user.role !== "supervisor" || !await hasPermission(user, read ? "instructors.view" : "instructors.manage")))) {
+    throw new InstructorError("ليست لديك صلاحية " + (read ? "عرض" : "تعديل") + " فريق مراس الشارحون", 403, "INSTRUCTOR_PERMISSION_REQUIRED");
+  }
+  // Sensitive reads retain step-up; every mutation requires it regardless of caller.
+  if (stepUp || !read) await requireAdminStepUp(request, user);
   return user;
 }
 

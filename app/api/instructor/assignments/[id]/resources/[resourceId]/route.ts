@@ -2,7 +2,7 @@ import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseResources } from "@/db/schema";
 import { checkRateLimit, getSessionUser } from "@/lib/auth";
-import { instructorActor, instructorOwner, InstructorError } from "@/lib/instructor-security";
+import { instructorActor, instructorAdmin, InstructorError } from "@/lib/instructor-security";
 import { instructorApiError, INSTRUCTOR_PRIVATE_HEADERS } from "@/lib/instructor-onboarding";
 import { authorizedInstructorAssignment, instructorAssignmentId } from "@/lib/instructor-assignments";
 import { safeAttachmentDisposition } from "@/lib/course-resource-access";
@@ -11,8 +11,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export async function GET(request: Request, context: { params: Promise<{ id: string; resourceId: string }> }) {
  try {
-  const session = await getSessionUser(request), admin = session?.role === "admin" && session.isPlatformOwner;
-  const user = admin ? await instructorOwner(request) : await instructorActor(request);
+  const session = await getSessionUser(request), admin = (session?.role === "admin" && session.isPlatformOwner === true) || session?.role === "supervisor";
+  const user = admin ? await instructorAdmin(request) : await instructorActor(request);
   if (!await checkRateLimit("instructor-resource-download", String(user.id), 40, 60)) throw new InstructorError("طلبات تنزيل كثيرة", 429);
   const params = await context.params, db = getDb(), assignment = await authorizedInstructorAssignment(db, instructorAssignmentId(params.id), admin ? null : user.id, { requireActive: !admin });
   const [resource] = await db.select().from(courseResources).where(and(eq(courseResources.id, instructorAssignmentId(params.resourceId)), eq(courseResources.courseSlug, assignment.courseSlug), eq(courseResources.status, "active"), eq(courseResources.scanStatus, "clean"))).limit(1);

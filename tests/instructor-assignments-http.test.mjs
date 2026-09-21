@@ -10,7 +10,7 @@ async function fixture(options = {}) {
  const calls = { get: 0, stepUp: 0, start: [], target: [] };
  const db = database({ users: [actor], instructorProfiles: [{ userId: 9, status: "approved" }], instructorContracts: [{ id: 20, userId: 9, status: options.contractStatus || "signed" }], instructorAssignments: [{ id: 1, userId: 9, contractId: 20, courseSlug: "assigned", status: "in_progress", revision: 3 }], instructorUnits: [{ id: 4, assignmentId: 1, title: "Unit", position: 0 }], instructorLessons: [{ id: 5, unitId: 4, title: "Lesson", videoAssetId: 6 }], videoAssets: [{ id: 6, courseSlug: "instructor-1", lessonId: "draft-5", objectKey: "private/video-source/instructor-1/draft-5/private.upload", sizeBytes: 10, contentType: "video/mp4", status: "ready", storageProvider: "local" }], courseResources: [{ id: 8, courseSlug: "assigned", objectKey: "private/assigned", originalName: "تجربة.pdf", contentType: "application/pdf", sizeBytes: 10, status: "active", scanStatus: "clean" }, { id: 9, courseSlug: "foreign", objectKey: "private/foreign", originalName: "foreign.pdf", contentType: "application/pdf", sizeBytes: 10, status: "active", scanStatus: "clean" }] });
  const inArray = (column, values) => or(...values.map(value => eq(column, value))), getSessionUser = async () => user, sameOriginRequest = request => request.headers.get("origin") === "https://example.test";
- const security = await isolated("../lib/instructor-security.ts", { getSessionUser, requireAdminStepUp: async () => { calls.stepUp++; if (options.stepUp === false) throw new AdminMfaError(); } });
+ const security = await isolated("../lib/instructor-security.ts", { getSessionUser, hasPermission: async (_user, permission) => (options.permissions || []).includes(permission) || permission === "instructors.view" && (options.permissions || []).includes("instructors.manage"), requireAdminStepUp: async () => { calls.stepUp++; if (options.stepUp === false) throw new AdminMfaError(); } });
  const onboarding = await isolated("../lib/instructor-onboarding.ts", { ...security, ...policy, ...api, ...requestBody, AdminMfaError, sameOriginRequest, isNativeAppRequest: () => false, sql, eq, ...tables });
  const dependencies = { ...tables, ...api, ...policy, ...requestBody, ...security, ...onboarding, ...resource, sql, eq, and, or, inArray, asc: value => value, getDb: () => db, getSessionUser, checkRateLimit: async () => true, enqueueStorageCleanupTx: async () => [], collectVideoCleanup: () => undefined, invalidateCatalogCache: () => undefined,
   getObject: async (_key, range) => { calls.get++; const bytes = new TextEncoder().encode("0123456789"); return { body: new Response(range ? bytes.slice(range.offset, range.offset + range.length) : bytes).body, size: bytes.length }; },
@@ -45,7 +45,7 @@ test("video preview ranges are scoped to the exact assigned draft and published 
  f.db.rows.videoAssets[0].lessonId = "draft-5"; f.db.rows.lessonsDb.push({ id: "published-existing", videoAssetId: 6 });
  assert.equal((await f.routes.video.GET(request(), context({ lessonId: "5" }))).status, 409);
 });
-test("only the platform owner may review assignment content and writes always require step-up", async () => {
+test("ungranted accounts cannot review assignment content and owner writes require step-up", async () => {
  for (const person of [actor, { ...actor, role: "supervisor" }, { ...actor, role: "admin", isPlatformOwner: false }]) {
   const f = await fixture({ actor: person }); assert.equal((await f.routes.admin.POST(request("POST", { action: "create" }))).status, 403); assert.equal(f.db.writes.length, 0);
  }
@@ -59,4 +59,23 @@ test("upload route assigns its own namespace and rejects invalid revision and cr
  assert.equal(f.calls.start[0].body.courseSlug, "instructor-1"); assert.equal(f.calls.start[0].body.lessonId, "draft-5"); assert.equal(f.calls.start[0].body.objectKey, undefined); assert.equal(f.calls.start[0].body.target, undefined); assert.deepEqual(f.calls.target, [{ id: 1, revision: 3 }]);
  assert.equal((await f.routes.upload.POST(request("POST", { ...value, expectedRevision: 0 }), context({}))).status, 409);
  assert.equal((await f.routes.upload.POST(request("POST", value, { origin: "https://foreign.test" }), context({}))).status, 403); assert.equal(f.calls.start.length, 1);
+});
+
+test("delegated viewer previews assigned media but cannot mutate even with MFA", async () => {
+ const viewer = { ...actor, role: "supervisor", id: 80 };
+ const f = await fixture({ actor: viewer, permissions: ["instructors.view"] });
+ assert.equal((await f.routes.resource.GET(request(), context({ resourceId: "8" }))).status, 200);
+ assert.equal((await f.routes.video.GET(request(), context({ lessonId: "5" }))).status, 200);
+ assert.equal((await f.routes.resource.GET(request(), context({ resourceId: "9" }))).status, 404);
+ assert.equal((await f.routes.admin.POST(request("POST", { action: "create" }))).status, 403);
+ assert.equal((await f.routes.review.POST(request("POST", { action: "publish", expectedRevision: 3, reason: "Read-only must fail" }), context({}))).status, 403);
+ assert.equal(f.db.writes.length, 0); assert.equal(f.calls.stepUp, 0);
+ f.setActor({ ...actor, role: "student", id: 80 });
+ assert.equal((await f.routes.video.GET(request(), context({ lessonId: "5" }))).status, 403);
+});
+test("delegated manager includes view but writes still require MFA", async () => {
+ const f = await fixture({ actor: { ...actor, id: 81, role: "supervisor" }, permissions: ["instructors.manage"], stepUp: false });
+ assert.equal((await f.routes.video.HEAD(request("HEAD"), context({ lessonId: "5" }))).status, 200);
+ assert.equal((await f.routes.admin.POST(request("POST", { action: "create" }))).status, 403);
+ assert.equal(f.calls.stepUp, 1); assert.equal(f.db.writes.length, 0);
 });
