@@ -73,3 +73,8 @@
 - سجل HTTP بعد النشر أظهر 200 للمسارات العامة الجديدة مثل `/join-instructors` و`/instructor/register`، و200 لمسار المزامنة؛ 401 لـ`/api/auth/me` بدون جلسة متوقع ومقبول. هذا تحقق حي للمسارات العامة، وليس اختبار قبول بحسابات حقيقية أو تحصيلًا ماليًا.
 - فحوصات `main` الخمسة للـmerge commit اكتملت بنجاح: Quality gates، Production public checks، Dependency security، Recovery acceptance، وMobile release validation.
 - المتبقي التشغيلي الموثق: إضافة `INSTRUCTOR_DATA_ENCRYPTION_KEY` و`OAUTH_TOKEN_ENCRYPTION_KEY` المستقلين في Railway عند تفعيل تلك الميزات، إدخال أساس جمع الهوية ومدة الاحتفاظ من الإدارة، اختبار Tap sandbox بمفاتيحه الفعلية، اختبار شراء/استرداد دون بيانات حقيقية، وتوقيع ملفات المتاجر والتحقق من SEO بعد النشر. لا تُعد هذه البنود مكتملة بمجرد نجاح البناء.
+
+## تحقق لاحق للنشر — 2026-09-21
+- نشر Railway الأخير من commit التوثيق `dc62fe32ef4781ec4da8978610f02b79e859c152` هو `df5f5973-2d4d-4294-a1b6-bace183b0d09` وحالته `SUCCESS`. نجح البناء، healthcheck، وتشغيل الخدمات الثلاث في الإنتاج.
+- فحوصات GitHub الخمسة لنفس الـcommit اكتملت بنجاح في 2026-09-21: Production public checks، Dependency security، Recovery acceptance، Mobile release validation، وQuality gates.
+- هذا النشر توثيقي لنفس كود الدمج ولا يثبت قبول المتاجر أو تحصيل Tap الحقيقي. تبقى البنود التشغيلية المذكورة أعلاه مطلوبة قبل إعلان الجاهزية النهائية.
