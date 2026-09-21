@@ -185,7 +185,7 @@ jobs:
         run: npm test
 
   instructor-privacy:
-    name: Instructor contracts, uploads and account deletion
+    name: Instructor privacy and browser acceptance
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -222,7 +222,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-core poppler-utils util-linux
       - name: Verify private instructor and account lifecycle
         run: node scripts/qa-platform-readiness-ci.mjs
-      - name: Keep status-only acceptance evidence
+      - name: Keep fresh non-secret acceptance evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
@@ -230,7 +230,9 @@ jobs:
           path: |
             .data/qa-instructor-assignments-report.json
             .data/qa-account-deletion-results.json
-            verification/instructor-contracts-local.json
+            .data/qa-instructor-contracts-report.json
+            .data/instructor-browser/report.json
+            .data/instructor-browser/workspace-*.png
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
