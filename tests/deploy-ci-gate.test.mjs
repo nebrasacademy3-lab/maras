@@ -33,7 +33,7 @@ test("release gate never calls the network without trusted deployment metadata",
   for (const unsafe of [{}, { ...env, RAILWAY_GIT_BRANCH: "preview" }, { ...env, RAILWAY_GIT_COMMIT_SHA: "https://evil.example" }, { ...env, RAILWAY_GIT_REPO_OWNER: "other" }]) await assert.rejects(requireSuccessfulCi({ ...options, env: unsafe, fetcher }));
   assert.equal(calls, 0);
 });
-test("verification is read-only, fixed-origin, credential-free and emits only safe metadata", async () => {
+test("verification without a token is read-only, fixed-origin and emits only safe metadata", async () => {
   const logs = [];
   const result = await requireSuccessfulCi({ ...options, log: value => logs.push(value), fetcher: async (url, init) => {
     assert.equal(url.origin, "https://api.github.com"); assert.equal(url.pathname, "/repos/nebrasacademy3-lab/maras/actions/runs"); assert.equal(url.searchParams.get("head_sha"), sha);
@@ -51,7 +51,7 @@ test("unavailable, redirected and rate-limited API responses fail closed", async
   for (const status of [302, 401, 403, 429, 500]) {
     let calls = 0;
     await assert.rejects(requireSuccessfulCi({ ...options, fetcher: async () => { calls++; return new Response("do-not-log-fixture", { status }); } }), /deployment blocked/);
-    assert.equal(calls, 1);
+    assert.equal(calls, status === 429 || status === 500 ? 2 : 1);
   }
 });
 test("network errors do not expose credentials or authorize deployment", async () => {
