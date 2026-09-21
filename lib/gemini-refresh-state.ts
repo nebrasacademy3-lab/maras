@@ -6,7 +6,8 @@ import { getDb } from "@/db";
 import { parseGeminiProjectPlan } from "@/lib/gemini-project-policy";
 
 type Executor = Pick<ReturnType<typeof getDb>, "execute">;
-export type GeminiRefreshFence = { projectNumber: string; leaseId: string; planRevision: string };
+// Snapshot the proof identity, not a comparison between application and database clocks.
+export type GeminiRefreshFence = { projectNumber: string; leaseId: string; planRevision: string; proofRevision: string };
 export type GeminiRefreshClaim = GeminiRefreshFence & { planJson: string; planDigest: string };
 export type GeminiRefreshFailure = "TOKEN_UNAVAILABLE" | "VERIFICATION_FAILED" | "PLAN_INVALID";
 export const GEMINI_REFRESH_LEASE_SECONDS = 45;
@@ -14,6 +15,7 @@ export const geminiPlanDigest = (json: string) => createHash("sha256").update(js
 
 /** Must run after acquiring the project advisory lock, in the same transaction as the proof write. */
 export async function assertGeminiRefreshFence(tx: Executor, fence: GeminiRefreshFence) {
+  if (typeof fence.proofRevision !== "string" || !/^[a-f0-9-]{36}$/i.test(fence.proofRevision)) throw new Error("GEMINI_REFRESH_PROOF_CHANGED");
   const rows = await tx.execute(sql`SELECT project_number FROM gemini_project_refresh
     WHERE project_number = ${fence.projectNumber} AND lease_id = ${fence.leaseId} AND plan_revision = ${fence.planRevision}
       AND enabled AND lease_until > clock_timestamp() FOR UPDATE`);
@@ -60,25 +62,29 @@ export async function claimGeminiProjectRefresh(): Promise<GeminiRefreshClaim | 
     const picked = await tx.execute(sql`SELECT project_number FROM gemini_project_refresh WHERE enabled AND next_attempt_at <= clock_timestamp()
       AND (lease_until IS NULL OR lease_until <= clock_timestamp()) ORDER BY next_attempt_at, project_number FOR UPDATE SKIP LOCKED LIMIT 1`);
     if (!picked.rows.length) return null;
+    // RETURNING observes the proof in this statement's MVCC snapshot, not a later read.
     const updated = await tx.execute(sql`UPDATE gemini_project_refresh SET lease_id = ${leaseId}, lease_until = clock_timestamp() + ${GEMINI_REFRESH_LEASE_SECONDS} * interval '1 second',
       state = 'checking', last_attempt_at = clock_timestamp(), updated_at = clock_timestamp() WHERE project_number = ${picked.rows[0].project_number as string}
-      RETURNING project_number, plan_revision, plan_json, plan_digest`);
+      RETURNING project_number, plan_revision, plan_json, plan_digest,
+        (SELECT p.revision FROM gemini_projects p WHERE p.project_number = gemini_project_refresh.project_number) AS proof_revision`);
     const row = updated.rows[0];
-    return { projectNumber: row.project_number as string, leaseId, planRevision: row.plan_revision as string, planJson: row.plan_json as string, planDigest: row.plan_digest as string };
+    if (typeof row.proof_revision !== "string") throw new Error("GEMINI_REFRESH_PROOF_CHANGED");
+    return { projectNumber: row.project_number as string, leaseId, planRevision: row.plan_revision as string, proofRevision: row.proof_revision, planJson: row.plan_json as string, planDigest: row.plan_digest as string };
   });
 }
 
-/** A stale worker is not allowed to alter the proof, retry time or successor's lease. */
+/** A stale worker is not allowed to alter a newer proof, retry time or successor's lease. */
 export async function finishGeminiProjectRefresh(fence: GeminiRefreshFence, failure?: GeminiRefreshFailure) {
   if (failure && !["TOKEN_UNAVAILABLE", "VERIFICATION_FAILED", "PLAN_INVALID"].includes(failure)) throw new Error("GEMINI_REFRESH_FAILURE_INVALID");
+  if (typeof fence.proofRevision !== "string" || !/^[a-f0-9-]{36}$/i.test(fence.proofRevision)) throw new Error("GEMINI_REFRESH_PROOF_CHANGED");
   return getDb().transaction(async tx => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`gemini-project:${fence.projectNumber}`}, 0))`);
-    const current = await tx.execute(sql`SELECT failures, last_attempt_at FROM gemini_project_refresh WHERE project_number = ${fence.projectNumber}
+    const current = await tx.execute(sql`SELECT failures FROM gemini_project_refresh WHERE project_number = ${fence.projectNumber}
       AND lease_id = ${fence.leaseId} AND plan_revision = ${fence.planRevision} AND enabled AND lease_until > clock_timestamp() FOR UPDATE`);
     if (!current.rows.length) return false;
     const failures = failure ? Math.min(32, Number(current.rows[0].failures) + 1) : 0;
     const delay = failure ? Math.min(300, 30 * 2 ** Math.min(4, failures - 1)) + randomInt(0, 16) : 240 + randomInt(0, 31);
-    if (failure) await tx.execute(sql`UPDATE gemini_projects SET valid_until = LEAST(valid_until, clock_timestamp()) WHERE project_number = ${fence.projectNumber} AND verified_at <= ${current.rows[0].last_attempt_at as Date}`);
+    if (failure) await tx.execute(sql`UPDATE gemini_projects SET valid_until = LEAST(valid_until, clock_timestamp()) WHERE project_number = ${fence.projectNumber} AND revision = ${fence.proofRevision}`);
     await tx.execute(sql`UPDATE gemini_project_refresh SET state = ${failure ? "failed" : "verified"}, failures = ${failures}, last_error = ${failure || null},
       last_success_at = CASE WHEN ${!failure} THEN clock_timestamp() ELSE last_success_at END, next_attempt_at = clock_timestamp() + ${delay} * interval '1 second',
       lease_id = NULL, lease_until = NULL, updated_at = clock_timestamp() WHERE project_number = ${fence.projectNumber}`);

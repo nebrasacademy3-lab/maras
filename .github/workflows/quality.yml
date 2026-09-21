@@ -141,6 +141,7 @@ jobs:
             .data/qa-admin-media-deletion-report.json
             .data/qa-gemini-projects-report.json
             .data/qa-gemini-refresh-report.json
+            .data/qa-gemini-refresh-ordering-report.json
             .data/qa-study-output-access-report.json
             .data/qa-study-upload-report.json
             .data/qa-study-processing-report.json
@@ -182,3 +183,54 @@ jobs:
         run: npm run lint
       - name: Test app behavior
         run: npm test
+
+  instructor-privacy:
+    name: Instructor contracts, uploads and account deletion
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: maras_qa
+          POSTGRES_PASSWORD: synthetic-ci-only
+          POSTGRES_DB: maras_qa
+        ports: ["55439:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maras_qa"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+      MARAS_LOOPBACK_QA: "true"
+      QA_DATABASE_URL: postgresql://maras_qa:synthetic-ci-only@127.0.0.1:55439/maras_qa
+    steps:
+      - name: Checkout without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Use Node.js 22
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: package-lock.json
+      - name: Install exact dependencies
+        run: npm ci --no-audit --no-fund
+      - name: Install isolated Chromium
+        run: node node_modules/playwright/cli.js install --with-deps chromium
+      - name: Install bounded multilingual PDF tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-core poppler-utils util-linux
+      - name: Verify private instructor and account lifecycle
+        run: node scripts/qa-platform-readiness-ci.mjs
+      - name: Keep status-only acceptance evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: instructor-privacy-acceptance
+          path: |
+            .data/qa-instructor-assignments-report.json
+            .data/qa-account-deletion-results.json
+            verification/instructor-contracts-local.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7

@@ -52,11 +52,16 @@ export async function verifyGoogleProject(value: unknown, accessToken: string, e
 /** Operator CLI or fenced renewal worker only. No HTTP action accepts a user-supplied proof. */
 export async function refreshGeminiProject(value: unknown, accessToken: string, options: { signal?: AbortSignal; fence?: GeminiRefreshFence } = {}) {
   const plan = parseGeminiProjectPlan(value);
-  const started = new Date();
   const planDigest = createHash("sha256").update(JSON.stringify(plan)).digest("hex");
-  const fence = options.fence ? { projectNumber: options.fence.projectNumber, leaseId: options.fence.leaseId, planRevision: options.fence.planRevision } : undefined;
-  if (fence && fence.projectNumber !== plan.projectNumber) throw new Error("AI_PROJECT_VERIFICATION_FAILED");
+  const fence = options.fence ? { projectNumber: options.fence.projectNumber, leaseId: options.fence.leaseId, planRevision: options.fence.planRevision, proofRevision: options.fence.proofRevision } : undefined;
+  if (fence && (fence.projectNumber !== plan.projectNumber || typeof fence.proofRevision !== "string" || !/^[a-f0-9-]{36}$/i.test(fence.proofRevision))) throw new Error("AI_PROJECT_VERIFICATION_FAILED");
+  let expectedRevision: string | null = fence?.proofRevision ?? null;
   try {
+    // Snapshot before transport. A later success/failure can only replace/expire this proof.
+    if (!fence) {
+      const before = await getDb().execute(sql`SELECT revision FROM gemini_projects WHERE project_number = ${plan.projectNumber}`);
+      expectedRevision = before.rows[0] ? String(before.rows[0].revision) : null;
+    }
     const proof = await verifyGoogleProject(plan, accessToken, options.signal);
     const environment = new Set(geminiEnvironmentKeys().map(aiKeyFingerprint));
     const revision = randomUUID();
@@ -64,8 +69,8 @@ export async function refreshGeminiProject(value: unknown, accessToken: string, 
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`gemini-project:${plan.projectNumber}`}, 0))`);
       options.signal?.throwIfAborted();
       if (fence) await assertGeminiRefreshFence(tx, fence);
-      const current = await tx.execute(sql`SELECT project_id, verified_at FROM gemini_projects WHERE project_number = ${plan.projectNumber}`);
-      if (current.rows[0] && (current.rows[0].project_id !== plan.projectId || new Date(current.rows[0].verified_at as string).getTime() > proof.observedAt.getTime())) throw new Error("AI_PROJECT_VERIFICATION_SUPERSEDED");
+      const current = await tx.execute(sql`SELECT project_id, revision, verified_at FROM gemini_projects WHERE project_number = ${plan.projectNumber}`);
+      if ((current.rows[0]?.revision ?? null) !== expectedRevision || current.rows[0] && (current.rows[0].project_id !== plan.projectId || new Date(current.rows[0].verified_at as string).getTime() > proof.observedAt.getTime())) throw new Error("AI_PROJECT_VERIFICATION_SUPERSEDED");
       const clock = await tx.execute(sql`SELECT clock_timestamp() AS now`);
       if (Math.abs(new Date(clock.rows[0].now as string).getTime() - proof.observedAt.getTime()) > 30_000) throw new Error("AI_PROJECT_CLOCK_UNSAFE");
       for (const key of plan.keys) {
@@ -90,11 +95,11 @@ export async function refreshGeminiProject(value: unknown, accessToken: string, 
     });
     return { revision, projectNumber: plan.projectNumber, projectId: plan.projectId, billingState: proof.billingState, keyCount: plan.keys.length, modelCount: plan.models.length, validUntil: new Date(proof.observedAt.getTime() + GEMINI_PROOF_TTL_SECONDS * 1000).toISOString() };
   } catch {
-    // A failed refresh revokes older evidence, but cannot revoke a newer refresh.
+    // Revision equality remains correct for equal millisecond timestamps and clock skew.
     await getDb().transaction(async tx => {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`gemini-project:${plan.projectNumber}`}, 0))`);
       if (fence) await assertGeminiRefreshFence(tx, fence);
-      await tx.execute(sql`UPDATE gemini_projects SET valid_until = LEAST(valid_until, clock_timestamp()) WHERE project_number = ${plan.projectNumber} AND verified_at <= ${started.toISOString()}::timestamptz`);
+      await tx.execute(sql`UPDATE gemini_projects SET valid_until = LEAST(valid_until, clock_timestamp()) WHERE project_number = ${plan.projectNumber} AND revision = ${expectedRevision}`);
     }).catch(() => undefined);
     throw new Error("AI_PROJECT_VERIFICATION_FAILED");
   }
