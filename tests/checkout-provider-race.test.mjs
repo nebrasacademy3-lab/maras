@@ -13,6 +13,7 @@ async function isolated(path, dependencies) {
   } finally { delete globalThis[key]; }
 }
 
+const tap = await isolated("../lib/tap-payments.ts", {});
 const paths = { course: "../app/api/checkout/route.ts", ai: "../app/api/ai/subscription/checkout/route.ts" };
 const table = name => new Proxy({ name }, { get: (target, key) => key === "name" ? target.name : { column: String(key) } });
 const resolve = (value, row) => value?.column ? row[value.column] : value;
@@ -53,7 +54,7 @@ async function setup(kind) {
     } }; } }),
   };
   const dependencies = {
-    ...tables, eq, and, sql, gt: () => () => true, inArray: () => () => true, isNull: () => () => true, or: () => () => true, desc: value => value,
+    ...tap, ...tables, eq, and, sql, gt: () => () => true, inArray: () => () => true, isNull: () => () => true, or: () => () => true, desc: value => value,
     getDb: () => db, sameOriginRequest: () => true, getSessionUser: async () => ({ id: 7, fullName: "Synthetic Student", email: "test@example.test", phone: "+966512345678" }),
     purchaseRequirementResponse: () => null, checkRateLimit: async () => true, clientIp: () => "synthetic",
     readBoundedJsonObject: request => request.json(), cleanText: (value, length = 500) => typeof value === "string" ? value.trim().slice(0, length) : "",
@@ -64,7 +65,7 @@ async function setup(kind) {
     releaseCouponReservation: async () => { calls.couponRelease += 1; }, getActiveCourseBundleQuote: async () => null,
     allocateBundleDiscountMinor: (_prices, discount) => [discount], normalizeAccessDurationDays: () => 30,
     process: { env: { TAP_SECRET_KEY: "synthetic-no-network", APP_URL: "https://example.test" } },
-    fetch: async (_url, init) => { calls.provider += 1; stored.orderNumber = JSON.parse(init.body).reference.order; beginProvider(); return providerResponse; },
+    fetch: async (_url, init) => { assert.equal(init.redirect, "error"); const payload = JSON.parse(init.body); assert.equal(payload.reference.idempotent, payload.reference.order); calls.provider += 1; stored.orderNumber = JSON.parse(init.body).reference.order; beginProvider(); return providerResponse; },
   };
   const route = await isolated(paths[kind], dependencies);
   const request = new Request("https://example.test/api/checkout", { method: "POST", body: JSON.stringify({ courseSlug: "test-course", coupon: "TEST", checkoutKey: "synthetic-race-attempt" }) });
@@ -77,11 +78,11 @@ for (const kind of Object.keys(paths)) {
       const state = await setup(kind);
       const response = state.run(); await state.started;
       Object.assign(state.stored, { status: webhookStatus, paidAt: "2026-09-09T12:00:00.000Z" });
-      state.finishProvider(Response.json({ id: "charge_synthetic", transaction: { url: "https://checkout.tap.company/synthetic" } }));
+      state.finishProvider(Response.json({ id: "chg_synthetic", transaction: { url: "https://checkout.tap.company/synthetic" } }));
       assert.equal((await response).status, 201);
       assert.equal(state.stored.status, webhookStatus);
       assert.equal(state.stored.paidAt, "2026-09-09T12:00:00.000Z");
-      assert.equal(state.stored.tapChargeId, "charge_synthetic");
+      assert.equal(state.stored.tapChargeId, "chg_synthetic");
       assert.equal(state.stored.checkoutUrl, "https://checkout.tap.company/synthetic");
       assert.equal(state.calls.couponRelease, 0); assert.equal(state.calls.provider, 1);
     });
@@ -93,21 +94,24 @@ for (const kind of Object.keys(paths)) {
         if (outcome === "timeout") state.failProvider(new Error("Synthetic timeout after webhook"));
         else if (outcome === "malformed") state.finishProvider(new Response("invalid JSON"));
         else state.finishProvider(Response.json({ errors: [{ description: "Synthetic provider rejection" }] }, { status: 500 }));
-        assert.equal((await response).status, outcome === "timeout" ? 202 : 502);
+        assert.equal((await response).status, 202);
         assert.equal(state.stored.status, webhookStatus);
         assert.equal(state.calls.applied, 0); assert.equal(state.calls.couponRelease, 0); assert.equal(state.calls.provider, 1);
       });
     }
   }
   test(`${kind}: untouched pending order still advances, reconciles, or fails correctly`, async () => {
-    for (const outcome of ["success", "timeout", "rejected"]) {
+    for (const outcome of ["success", "timeout", "rejected", "unavailable", "malformed", "captured"]) {
       const state = await setup(kind);
       const response = state.run(); await state.started;
       if (outcome === "timeout") state.failProvider(new Error("Synthetic timeout"));
-      else if (outcome === "success") state.finishProvider(Response.json({ id: "charge_test", transaction: { url: "https://checkout.tap.company/test" } }));
+      else if (outcome === "success") state.finishProvider(Response.json({ id: "chg_test", transaction: { url: "https://checkout.tap.company/test" } }));
+      else if (outcome === "unavailable") state.finishProvider(Response.json({}, { status: 503 }));
+      else if (outcome === "malformed") state.finishProvider(Response.json(null));
+      else if (outcome === "captured") state.finishProvider(Response.json({ id: "chg_captured", status: "CAPTURED" }));
       else state.finishProvider(Response.json({}, { status: 400 }));
       await response;
-      assert.equal(state.stored.status, outcome === "success" ? "initiated" : outcome === "timeout" ? "verification_pending" : "failed");
+      assert.equal(state.stored.status, outcome === "success" ? "initiated" : outcome === "rejected" ? "failed" : "verification_pending");
       assert.equal(state.calls.couponRelease, kind === "course" && outcome === "rejected" ? 1 : 0);
       assert.equal(state.calls.provider, 1); assert.equal(state.calls.applied, 1);
     }

@@ -428,6 +428,10 @@ const settingFields:ReadonlyArray<{key:string;label:string;type?:"email"|"number
   {key:"nelc_program_name",label:"اسم البرنامج المشمول بترخيص التعليم الإلكتروني"},
   {key:"nelc_program_license_number",label:"رقم ترخيص البرنامج",dir:"ltr"},
   {key:"nelc_program_license_verify_url",label:"رابط التحقق من الترخيص (اختياري)",dir:"ltr"},
+  {key:"employment_authorization_number",label:"مرجع توثيق التوظيف لدى الوزارة",dir:"ltr"},
+  {key:"employment_authorization_verify_url",label:"رابط التحقق من توثيق التوظيف",dir:"ltr"},
+  {key:"instructor_identity_legal_basis",label:"السند النظامي لجمع نسخ الهوية",hint:"أدخل المرجع النظامي الفعلي؛ رقم السجل التجاري وحده لا يحدد أساس جمع الهوية."},
+  {key:"instructor_identity_retention_days",label:"مدة الاحتفاظ بالهوية بالأيام",type:"number",min:1,max:365,hint:"مدة معتمدة تناسب غرض التحقق؛ تتوقف إتاحة الوثيقة عند انتهائها ثم تُحذف من التخزين."},
   {key:"legal_address",label:"العنوان النظامي"},
   {key:"vat_number",label:"الرقم الضريبي — عند الانطباق",dir:"ltr"},
   {key:"positioning_claim",label:"الوصف التعريفي للمنصة",hint:"يظهر في الواجهة الرئيسية."},
@@ -452,13 +456,15 @@ const settingFields:ReadonlyArray<{key:string;label:string;type?:"email"|"number
   {key:"social_threads",label:"رابط Threads",dir:"ltr"},
 ];
 const settingsSections = [
-  { title: "بيانات المنشأة والتوثيق", description: "الأرقام التي تحفظها هنا تظهر مباشرة في الرئيسية والتذييل.", keys: ["legal_name", "commercial_registration_number", "ecommerce_authentication_number", "nelc_program_name", "nelc_program_license_number", "vat_number", "legal_address", "commercial_registration_verify_url", "ecommerce_authentication_verify_url", "nelc_program_license_verify_url"] },
+  { title: "بيانات المنشأة والتوثيق", description: "الأرقام التي تحفظها هنا تظهر مباشرة في الرئيسية والتذييل.", keys: ["legal_name", "commercial_registration_number", "employment_authorization_number", "employment_authorization_verify_url", "ecommerce_authentication_number", "nelc_program_name", "nelc_program_license_number", "vat_number", "legal_address", "commercial_registration_verify_url", "ecommerce_authentication_verify_url", "nelc_program_license_verify_url"] },
+  { title: "خصوصية مستندات الشارحين", description: "لا يُفعّل رفع الهوية حتى يحفظ المدير الأعلى المرجع النظامي ومدة الاحتفاظ المعتمدة.", keys: ["instructor_identity_legal_basis", "instructor_identity_retention_days"] },
   { title: "هوية المنصة ومحتوى الرئيسية", description: "حدّث النصوص التعريفية والعبارة الرئيسية من مكان واحد.", keys: ["positioning_claim", "first_platform_claim_text", "footer_description"] },
   { title: "تطبيقات الجوال", description: "عناوين التنزيل وروابط المتاجر التي يراها الطلاب.", keys: ["app_download_title", "app_download_description", "ios_app_url", "android_app_url"] },
   { title: "التواصل والدعم", description: "قنوات خدمة الطلاب وحسابات المنصة.", keys: ["support_email", "support_hours", "whatsapp_number", "whatsapp_message", "social_x", "social_instagram", "social_tiktok", "social_youtube", "social_telegram", "social_linkedin", "social_facebook", "social_snapchat", "social_threads"] },
 ];
 
 function PlatformSettings({ data, mutate }: { data: ConsoleData; mutate: (p: Record<string, unknown>, s?: string) => Promise<boolean> }) {
+  const { owner } = useAdminAccess();
   const [saving, setSaving] = useState(false);
   return <>
     <form className="admin-panel live-settings admin-settings-form" onSubmit={async (event) => {
@@ -469,7 +475,7 @@ function PlatformSettings({ data, mutate }: { data: ConsoleData; mutate: (p: Rec
       try { await mutate({ action: "saveSettings", values }, "تم تحديث إعدادات المنصة"); }
       finally { setSaving(false); }
     }}>
-      {settingsSections.map((section) => <fieldset className="admin-settings-section" key={section.title}>
+      {settingsSections.filter(section => owner || !section.keys.includes("instructor_identity_legal_basis")).map((section) => <fieldset className="admin-settings-section" key={section.title}>
         <legend>{section.title}</legend>
         <p>{section.description}</p>
         <div className="admin-settings-fields">

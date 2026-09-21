@@ -39,6 +39,7 @@ export function requiredRoutePermissions(path: string, method = "GET"): string[]
   if (["/api/admin/me", "/api/admin/console", "/api/admin/security/mfa"].includes(path)) return [];
   if (path === "/api/admin/logos") return ["catalog.manage", "data.all"];
   if (path === "/api/admin/videos/direct" || path === "/api/admin/videos/resumable") return ["catalog.manage"];
+  if (/^\/api\/admin\/instructors(\/|$)/.test(path)) return ["staff.manage"];
   if (path === "/api/admin/staff") return ["staff.manage"];
   if (/^\/api\/admin\/(finance|refunds|settlements|purchases)(\/|$)/.test(path)) return [read ? "finance.view" : "finance.manage", ...global];
   if (/^\/api\/admin\/students\/[^/]+\/devices$/.test(path)) return [read ? "students.devices.view" : "students.devices.manage"];
@@ -84,6 +85,6 @@ export function adminPagePermissions(path: string): string[] | null {
   if (path === "/admin" || path === "/admin/security") return [];
   if (path.startsWith("/admin/students/")) return ["students.view"];
   if (path === "/admin/courses" || path.startsWith("/admin/courses/")) return ["catalog.view", "students.view"];
-  const map: Record<string, string[]> = { "/admin/partners": ["content.manage"], "/admin/files": ["operations.manage", "data.all"], "/admin/purchases": ["finance.view", "data.all"], "/admin/finance": ["finance.view", "data.all"], "/admin/operations": ["operations.manage", "data.all"], "/admin/ai": ["ai.manage", "data.all"], "/admin/referrals": ["referrals.manage", "data.all"], "/admin/seo": ["seo.manage"], "/admin/course-resources": ["catalog.view"], "/admin/bundles": ["catalog.view", "data.all"], "/admin/learning-tracks": ["roadmap.manage", "data.all"], "/admin/staff": ["staff.manage"], "/admin/content": ["content.manage"] };
+  const map: Record<string, string[]> = { "/admin/partners": ["content.manage"], "/admin/files": ["operations.manage", "data.all"], "/admin/purchases": ["finance.view", "data.all"], "/admin/finance": ["finance.view", "data.all"], "/admin/operations": ["operations.manage", "data.all"], "/admin/ai": ["ai.manage", "data.all"], "/admin/referrals": ["referrals.manage", "data.all"], "/admin/seo": ["seo.manage"], "/admin/course-resources": ["catalog.view"], "/admin/bundles": ["catalog.view", "data.all"], "/admin/learning-tracks": ["roadmap.manage", "data.all"], "/admin/staff": ["staff.manage"], "/admin/instructors": ["staff.manage"], "/admin/content": ["content.manage"] };
   return map[path] || null;
 }

@@ -1,5 +1,6 @@
+import { useAuth } from "@/src/providers/AuthProvider";
 import { Ionicons } from "@expo/vector-icons";
-import { Tabs } from "expo-router";
+import { Tabs, Redirect, type Href } from "expo-router";
 import React from "react";
 import { useWindowDimensions, type ColorValue } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -11,10 +12,12 @@ function icon(name: React.ComponentProps<typeof Ionicons>["name"]) {
 }
 export default function TabsLayout() {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const { direction, t } = useLanguage();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const barWidth = Math.min(700, width - Math.max(insets.left + insets.right, 0) - 16);
+  if (user?.role === "instructor") return <Redirect href={"/instructor" as Href} />;
   return <Tabs screenOptions={{
     headerShown: false,
     sceneStyle: { direction },

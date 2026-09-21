@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { notificationRecipientWhere } from "@/lib/notification-visibility";
 import { effectiveAccessRows } from "@/lib/course-access";
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
@@ -11,6 +12,7 @@ import { mobileNoStoreHeaders } from "@/lib/mobile-api";
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
   if (!user) return jsonError("سجّل الدخول", 401);
+  const workspaceDenied = studentWorkspaceRequirementResponse(user); if (workspaceDenied) return workspaceDenied;
   const db = getDb();
   const now = new Date().toISOString();
   const visibleNotifications = and(

@@ -36,6 +36,8 @@ export function oauthConfig(provider: OAuthProvider) {
   const clientId = (provider === "google" ? process.env.GOOGLE_CLIENT_ID : process.env.APPLE_CLIENT_ID)?.trim() || "";
   const secret = process.env.GOOGLE_CLIENT_SECRET?.trim() || "";
   if (!clientId || (provider === "google" ? !secret : !process.env.APPLE_TEAM_ID || !process.env.APPLE_KEY_ID || !process.env.APPLE_PRIVATE_KEY)) throw new OAuthError("provider_unavailable");
+  const encryption = process.env.OAUTH_TOKEN_ENCRYPTION_KEY?.trim() || "";
+  if (provider === "apple" && !(/^[a-f0-9]{64}$/i.test(encryption) || /^[A-Za-z0-9+/]{43}=$/.test(encryption))) throw new OAuthError("provider_unavailable");
   const origin = oauthOrigin();
   if (provider === "apple" && !origin.startsWith("https://")) throw new OAuthError("provider_unavailable");
   return { clientId, secret, callback: `${origin}/api/auth/oauth/${provider}/callback` };
@@ -92,6 +94,8 @@ export async function exchangeProviderCode(provider: OAuthProvider, code: string
   if (!response.ok) throw new OAuthError("provider_failed");
   const value: unknown = await response.json();
   if (!value || typeof value !== "object" || !("id_token" in value) || typeof value.id_token !== "string" || value.id_token.length > 16_384) throw new OAuthError("invalid_identity");
-  // Access/refresh tokens are deliberately discarded, never persisted or returned.
-  return verifyOAuthIdToken(value.id_token, provider, config.clientId, nonce);
+  const identity = await verifyOAuthIdToken(value.id_token, provider, config.clientId, nonce);
+  const refreshToken = provider === "apple" && "refresh_token" in value && typeof value.refresh_token === "string" && value.refresh_token.length <= 8192 ? value.refresh_token : undefined;
+  if (provider === "apple" && !refreshToken) throw new OAuthError("invalid_identity");
+  return { ...identity, refreshToken, clientId: config.clientId };
 }

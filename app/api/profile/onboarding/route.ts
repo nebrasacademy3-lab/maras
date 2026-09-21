@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users } from "@/db/schema";
@@ -7,6 +8,7 @@ import { jsonError } from "@/lib/api";
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول", 401);
   if (!await checkRateLimit("onboarding-complete", `user:${user.id}`, 10, 60 * 60)) return jsonError("محاولات كثيرة. حاول لاحقًا.", 429);
   const now = new Date().toISOString();

@@ -7,7 +7,7 @@ import { pureSource } from "./helpers/pure-source.mjs";
 const names = ["favorites", "courseAccess", "lessonProgress", "orders", "invoices", "courseRequests",
   "notificationReads", "notificationsDb", "supportTickets", "supportReplies", "users", "authSessions",
   "courseRequestFiles", "supportReplyFiles", "lessonNotes", "storeCourseGrants", "courseReviews",
-  "passwordResetTokens", "pushDevices", "supervisorAssignments", "auditLogs"];
+  "passwordResetTokens", "pushDevices", "supervisorAssignments", "auditLogs", "oauthIdentities", "oauthExchanges", "appleAccountTokens", "accountMfaChallenges", "accountMfaRecoveryCodes", "adminMfaFactors", "authDevices", "emailChangeRequests", "emailVerificationCodes", "aiArtifacts", "aiConversations", "aiEntitlements", "aiFileJobs", "aiFiles", "aiMessages", "aiQuizAttempts", "aiQuizzes", "instructorDocuments", "instructorProfiles", "studyUploadSessions"];
 const tables = Object.fromEntries(names.map(name => [name,
   new Proxy({ _name: name }, { get: (target, key) => key === "_name" ? target._name : { table: name, key } }),
 ]));
@@ -62,6 +62,7 @@ function database(initial) {
   };
   return db;
 }
+const studentWorkspace=await pureSource("lib/student-workspace-policy.ts");
 const oldEmail = "reused@example.test";
 const changed = { id: 1, email: "changed@example.test", role: "student", status: "active", passwordHash: "fixture" };
 const reused = { id: 2, email: oldEmail, role: "student", status: "active", passwordHash: "fixture" };
@@ -75,7 +76,7 @@ function request(method = "GET", payload) {
 }
 async function handler(path, user, db, dependencies = {}) {
   return pureSource(path, {
-    ...tables, ...primitives, ...requestBody, jsonError, cleanText, getDb: () => db,
+    ...tables, ...primitives, ...requestBody, ...studentWorkspace, jsonError, cleanText, getDb: () => db,
     getSessionUser: async () => user, isMobileRequest: () => true, checkRateLimit: async () => true,
     mobileNoStoreHeaders: { "cache-control": "no-store" }, getCourseCatalog: async slug => slug ? { slug } : null,
     ...dependencies,
@@ -165,10 +166,17 @@ function accountFixture() {
   seed.courseRequestFiles = [1, 2, 3].map(id => ({ id, requestId: id, objectKey: `requests/${id}` }));
   return database(seed);
 }
+class EmailCodeError extends Error { constructor(message="Invalid code"){ super(message);this.status=400;this.code="EMAIL_CODE_INVALID"; } }
 async function accountHandler(user, db, removed, dependencies = {}) {
+  const privateData = await pureSource("lib/account-deletion-data.ts", {...tables,...primitives});
+  let queued=[];
   return handler("app/api/mobile/account/route.ts", user, db, {
     verifyPassword: async value => value === "correct", requestSessionToken: () => `token-${user.id}`,
-    hashOpaqueToken: async value => value, deleteObject: async key => { removed.push(key); }, ...dependencies,
+    hashOpaqueToken: async value => value, ...privateData, EmailCodeError,
+    enqueueStorageCleanupTx: async (_tx,targets) => { queued=targets; return targets.map((_,i)=>String(i)); },
+    processStorageCleanupBatch: async () => { removed.push(...queued.map(row=>row.key)); }, processAppleRevocations: async () => ({}),
+    consumeEmailCode: async (id,purpose,code,_request,work)=>{assert.equal(purpose,"delete_account");if(code!=="123456")throw new EmailCodeError();return work(db,db.rows.users.find(row=>row.id===id),new Date().toISOString());},
+    ...dependencies,
   });
 }
 for (const user of [changed, reused]) {
@@ -200,3 +208,21 @@ test("password rejection or a revoked session cannot delete any account records 
     assert.deepEqual(removed, []);
   }
 });
+
+test("passwordless deletion requires a dedicated email code and cleans only the owner's OAuth, AI, MFA and private identity data",async()=>{
+  const db=accountFixture(),removed=[];db.rows.users[0].passwordHash=null;
+  for(const name of ["oauthIdentities","accountMfaRecoveryCodes","adminMfaFactors","emailChangeRequests","oauthExchanges","instructorDocuments","aiFiles","aiMessages","aiConversations"])db.rows[name]=[1,2].map(userId=>({id:userId,userId,provider:"apple",objectKey:name+"/"+userId,storageProvider:"local"}));
+  db.rows.appleAccountTokens=[{userId:1,ciphertext:"encrypted",status:"active"}];
+  const route=await accountHandler(db.rows.users[0],db,removed);
+  assert.equal((await route.GET(request())).status,200);
+  assert.equal((await (await route.GET(request())).json()).method,"email_code");
+  assert.equal((await route.DELETE(request("DELETE",{confirmation:"حذف حسابي"}))).status,401);
+  assert.equal((await route.DELETE(request("DELETE",{confirmation:"حذف حسابي",code:"000000"}))).status,400);
+  const response=await route.DELETE(request("DELETE",{confirmation:"حذف حسابي",code:"123456"}));assert.equal(response.status,200);
+  assert.equal((await response.json()).appleManualRevocationRequired,false);assert.equal(db.rows.appleAccountTokens[0].status,"pending");
+  for(const name of ["oauthIdentities","accountMfaRecoveryCodes","adminMfaFactors","emailChangeRequests","oauthExchanges","instructorDocuments","aiFiles","aiMessages","aiConversations"])assert.deepEqual(db.rows[name].map(row=>row.userId),[2]);
+  assert.ok(removed.includes("aiFiles/1"));assert.ok(removed.includes("instructorDocuments/1"));
+});
+test("legacy Apple account without retained tokens still deletes and receives manual-revocation guidance",async()=>{const db=accountFixture(),removed=[];db.rows.oauthIdentities=[{id:1,userId:1,provider:"apple"}];const route=await accountHandler(changed,db,removed);const response=await route.DELETE(request("DELETE",{confirmation:"حذف حسابي",password:"correct"}));assert.equal(response.status,200);assert.equal((await response.json()).appleManualRevocationRequired,true);});
+
+test("instructor accounts cannot read or write student-only mobile services",async()=>{for(const path of ["app/api/mobile/dashboard/route.ts","app/api/mobile/favorites/route.ts","app/api/mobile/notes/route.ts"]){const db=database({}),route=await handler(path,{...changed,role:"instructor"},db);for(const method of ["GET","POST","PATCH","DELETE"].filter(method=>route[method])){const response=await route[method](request(method,method==="GET"?undefined:{}));assert.equal(response.status,403,path+method);assert.equal(db.writes.length,0);}}});

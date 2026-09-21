@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiConversations, aiFiles } from "@/db/schema";
@@ -15,6 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   return observeRequest(request, "ai.files.action", async requestId => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-file-action", `user:${user.id}`, 60, 60 * 60)) return jsonError("طلبات معالجة كثيرة. حاول لاحقًا.", 429);
     const fileId = Number((await params).id);

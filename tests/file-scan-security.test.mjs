@@ -93,3 +93,14 @@ test("scan retry delay backs off with a bounded ceiling", async () => {
   assert.equal(queue.scanRetryDelayMs(2), 120_000);
   assert.equal(queue.scanRetryDelayMs(100), 6 * 60 * 60_000);
 });
+
+
+test("in-memory private uploads use authenticated digest-bound scan without storage reads", async () => {
+ let fetched = 0;
+ const service = await fileSecurity({ getObject: async () => assert.fail("private plaintext must never be read from storage"), fetch: async (_url, init) => { fetched++; assert.deepEqual(Buffer.from(init.body), bytes); assert.equal(init.headers["x-content-sha256"], hash(bytes)); return Response.json(cleanPayload(hash(bytes))); } });
+ assert.equal((await service.scanBuffer(bytes)).status, "clean");
+ assert.equal((await service.scanBuffer(Buffer.alloc(0))).status, "pending");
+ assert.equal(fetched, 1);
+ const unavailable = await fileSecurity({ process: { env: {} }, fetch: async () => assert.fail("scanner must fail closed") });
+ assert.equal((await unavailable.scanBuffer(bytes)).status, "pending");
+});

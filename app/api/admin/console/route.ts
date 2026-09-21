@@ -174,6 +174,7 @@ export async function GET(request: Request) {
   const registeredDeviceRows = needs("devices") && can("students.devices.view") && studentRows.length ? await db.select({ id: authDevices.id, userId: authDevices.userId, deviceLabel: authDevices.deviceLabel, platform: authDevices.platform, firstSeenAt: authDevices.firstSeenAt, lastSeenAt: authDevices.lastSeenAt }).from(authDevices).where(and(inArray(authDevices.userId, studentRows.map(student => student.id)), isNull(authDevices.revokedAt))) : [];
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...ADMIN_SETTING_DEFAULTS } as Record<string, string>;
   for (const row of settingRows) if (row.key in SETTING_META) settings[row.key] = row.value;
+  if (!owner) { delete settings.instructor_identity_legal_basis; delete settings.instructor_identity_retention_days; }
   const [managedInstitutionRows, managedCourseRows, totals, waitlistRows, activeAiKeys] = await Promise.all([
     needs("institutions") && can("catalog.view") ? db.select().from(catalogInstitutions).where(scopedInstitutionSql(scopeId, catalogInstitutions.slug)) : [],
     needs("courses") && can("catalog.view") ? db.select().from(catalogCourses).where(scopedCourseSql(scopeId, catalogCourses.slug)) : [],
@@ -308,6 +309,7 @@ export async function POST(request: Request) {
     const [target] = await db.select({ role: users.role, isPlatformOwner: users.isPlatformOwner }).from(users).where(eq(users.id, id));
     if (!target) return jsonError("الحساب غير موجود", 404);
     if (target.isPlatformOwner) return jsonError("حساب المدير الأعلى محمي؛ تستخدم إعدادات حسابه الشخصية", 403);
+    if (target.role === "instructor") return jsonError("تدار حسابات الشارحين من قسم فريق مراس لحفظ العقود والصلاحيات", 403);
     if ((target.role !== "student" || action === "updateUser" && payload.role !== "student") && !authorization.user?.isPlatformOwner) return jsonError("إدارة المشرفين متاحة للمدير الأعلى فقط", 403);
     if (action === "updateUser" && payload.role === "admin") return jsonError("أضف مشرفًا بصلاحيات محددة بدل إنشاء مدير أعلى آخر", 400);
   }
@@ -899,16 +901,24 @@ export async function POST(request: Request) {
   }
 
   if (action === "saveSettings") {
+    const privateInstructorKeys = ["instructor_identity_legal_basis", "instructor_identity_retention_days"];
+    const requestedSettings = payload.values && typeof payload.values === "object" ? payload.values : {};
+    if (privateInstructorKeys.some(key => Object.hasOwn(requestedSettings, key)) && !authorization.user?.isPlatformOwner) return jsonError("سياسة وثائق الهوية للمدير الأعلى فقط", 403);
+    if (privateInstructorKeys.some(key => Object.hasOwn(requestedSettings, key)) && authorization.user) {
+      try { await requireAdminStepUp(request, authorization.user); } catch (error) { if (error instanceof AdminMfaError) return jsonError(error.message, error.status, error.code); throw error; }
+    }
     const values = payload.values && typeof payload.values === "object" ? payload.values as Record<string, unknown> : {};
     const allowed = [...Object.keys(PUBLIC_SETTING_DEFAULTS), ...Object.keys(ADMIN_SETTING_DEFAULTS)] as SettingKey[];
     const entries = Object.entries(values)
       .filter(([key]) => allowed.includes(key as SettingKey))
-      .map(([key, value]) => [key as SettingKey, cleanText(value, key === "announcement" || key.endsWith("description") ? 500 : 300)] as const);
+      .map(([key, value]) => [key as SettingKey, cleanText(value, key === "instructor_identity_legal_basis" ? 2000 : key === "announcement" || key.endsWith("description") ? 500 : 300)] as const);
     if (!entries.length) return jsonError("لا توجد إعدادات صالحة");
     const submittedSettings = Object.fromEntries(entries);
     if (Object.hasOwn(submittedSettings, "first_platform_claim_enabled") && !["true", "false"].includes(submittedSettings.first_platform_claim_enabled)) return jsonError("حالة عبارة الأولوية غير صالحة");
     if (Object.hasOwn(submittedSettings, "payment_methods_marketing_enabled") && !["true", "false"].includes(submittedSettings.payment_methods_marketing_enabled)) return jsonError("حالة إظهار خيارات الدفع غير صالحة");
     for (const [key, value] of entries) {
+      if (key === "instructor_identity_legal_basis" && value && value.length < 20) return jsonError("أدخل مرجع السند النظامي وتفاصيله بوضوح");
+      if (key === "instructor_identity_retention_days" && value && (!/^\d+$/.test(value) || Number(value) < 1 || Number(value) > 365)) return jsonError("مدة حفظ الهوية يجب أن تكون عدد أيام من 1 إلى 365");
       if (isSocialSettingKey(key) && key !== "whatsapp_number" && value && !normalizeSocialUrl(key, value)) return jsonError(`${SETTING_META[key].label}: أدخل رابط HTTPS صحيحًا من موقع الشبكة نفسها، دون بيانات دخول.`);
       if ((key.startsWith("social_") || key === "ios_app_url" || key === "android_app_url" || key.endsWith("_verify_url") || key === "first_platform_claim_evidence_url") && value && !safeUrl(value)) return jsonError(`رابط ${SETTING_META[key].label} يجب أن يبدأ بـ https`);
       if (key === "support_email" && value && !validEmail(value)) return jsonError("بريد الدعم غير صالح");

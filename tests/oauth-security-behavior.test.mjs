@@ -14,7 +14,7 @@ async function isolatedModule(path, dependencies) {
     return await import("data:text/javascript;base64," + Buffer.from(ts.transpileModule(code, { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText).toString("base64"));
   } finally { delete globalThis[key]; }
 }
-const environment = { NODE_ENV: "production", APP_URL: "https://meras.example", GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "test-server-secret", APPLE_CLIENT_ID: "test-apple", APPLE_TEAM_ID: "test-team", APPLE_KEY_ID: "test-kid", APPLE_PRIVATE_KEY: "test-private-key" };
+const environment = { NODE_ENV: "production", APP_URL: "https://meras.example", GOOGLE_CLIENT_ID: "test-client", GOOGLE_CLIENT_SECRET: "test-server-secret", APPLE_CLIENT_ID: "test-apple", APPLE_TEAM_ID: "test-team", APPLE_KEY_ID: "test-kid", APPLE_PRIVATE_KEY: "test-private-key", OAUTH_TOKEN_ENCRYPTION_KEY: "ab".repeat(32) };
 const provider = await isolatedModule("../lib/oauth-provider.ts", { createHash, randomBytes, timingSafeEqual, createRemoteJWKSet, importPKCS8, jwtVerify, SignJWT, process: { env: environment } });
 const signing = await generateKeyPair("RS256");
 const jwk = { ...await exportJWK(signing.publicKey), kid: "unit-test-key", alg: "RS256", use: "sig" };

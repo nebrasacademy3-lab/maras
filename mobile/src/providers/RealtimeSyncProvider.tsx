@@ -8,10 +8,10 @@ type SyncPayload = { ok: true; channels?: Record<string, string>; version?: stri
 
 const CHANNEL_KEYS: Record<string, readonly (readonly unknown[])[]> = {
   catalog: [["catalog"], ["dashboard"], ["learning-tracks"], ["admin-learning-tracks"], ["lesson-study-resources"], ["public-partners"], ["admin-course-roster"]],
-  settings: [["settings"], ["dashboard"], ["public-information"]],
+  settings: [["settings"], ["dashboard"], ["public-information"], ["published-legal"]],
   announcements: [["announcements"]],
-  account: [["dashboard"], ["cart"], ["favorites"], ["referrals"], ["ai-status"], ["ai-conversations"], ["learning-track-interests"], ["account-mfa"], ["lesson-study-resources"], ["store-catalog"], ["store-history"]],
-  commerce: [["dashboard"], ["cart"], ["referrals"], ["store-catalog"], ["store-history"], ["admin-course-roster"]],
+  account: [["dashboard"], ["cart"], ["favorites"], ["referrals"], ["ai-status"], ["ai-conversations"], ["learning-track-interests"], ["account-mfa"], ["lesson-study-resources"], ["store-history"]],
+  commerce: [["dashboard"], ["cart"], ["referrals"], ["store-history"], ["admin-course-roster"]],
   support: [["support"], ["dashboard"], ["notifications"]],
   notifications: [["notifications"], ["dashboard"]],
   requests: [["dashboard"], ["supervisor-requests"]],

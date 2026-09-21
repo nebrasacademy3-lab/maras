@@ -112,6 +112,15 @@ async function scanBytes(bytes: Buffer, signal: AbortSignal): Promise<FileScanRe
   } catch (error) { return pending(connectionError(error, signal.aborted)); }
 }
 
+/** Scan private in-memory bytes before encryption/storage. No plaintext object is staged. */
+export async function scanBuffer(bytes: Buffer, callerSignal?: AbortSignal): Promise<FileScanResult> {
+ const configurationError = scannerConfigurationError();
+ if (configurationError) return { ...pending(configurationError), provider: "unconfigured" };
+ if (!bytes.length || bytes.length > MAX_SCAN_BYTES) return pending("file_exceeds_scan_limit");
+ const timeout = AbortSignal.timeout(SCAN_TIMEOUT_MS);
+ return scanBytes(bytes, callerSignal ? AbortSignal.any([callerSignal, timeout]) : timeout);
+}
+
 /** A real authenticated scan of fixed harmless bytes; no student attachment is sent. */
 export async function checkScannerConnection() {
   const configurationError = scannerConfigurationError();

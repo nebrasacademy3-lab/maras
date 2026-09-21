@@ -7,6 +7,7 @@ import { courseSeoDescription, seoDescription, seoSegment } from "@/lib/seo";
 export type SeoPage = { path: string; title: string; description: string; kind: string; image?: string };
 export type SeoOverride = { title: string; description: string };
 export const SEO_STATIC_PAGES: SeoPage[] = [
+  { path: "/join-instructors", title: "انضم إلى فريق مراس كشارح", description: "قدّم طلب الانضمام إلى فريق مراس العلم للشرح والتعليم. تعرّف على متطلبات التقديم ومراجعة الخبرة ونظام الساعات أو المادة وعقد العمل.", kind: "عام" },
   { path: "/", title: "شروحات المقررات الجامعية في السعودية", description: "استكشف شروحات المقررات حسب الجامعة والتخصص، وشاهد المعاينات المجانية المتاحة، وواصل تعلمك وملفاتك من حساب واحد في مراس العلم.", kind: "عام" },
   { path: "/universities", title: "دليل الجامعات والكليات السعودية وشروحات المواد", description: "تصفح الجامعات والكليات السعودية والتخصصات، ثم اكتشف شروحات المقررات المتوفرة لطلاب كل جامعة على مراس العلم.", kind: "دليل" },
   { path: "/courses", title: "شروحات المواد الجامعية", description: "تصفح المواد الجامعية في مراس العلم حسب الجامعة والتخصص، واستعرض خطة الدروس والأسعار والمعاينات المجانية المتاحة قبل الاشتراك.", kind: "دليل" },

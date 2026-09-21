@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { studyReadAccess } from "@/lib/study-output-access";
 import { isNativeAppRequest } from "@/lib/mobile-api";
 import { and, desc, eq } from "drizzle-orm";
@@ -11,6 +12,7 @@ import { observeRequest } from "@/lib/observability";
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   return observeRequest(request, "ai.quiz.read", async () => {
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-quiz-read", `user:${user.id}`, 120, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     const { id: rawId } = await params;

@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { getDb } from "@/db";
 import { and, desc, eq } from "drizzle-orm";
@@ -27,6 +28,7 @@ export async function POST(request: Request) {
   if (!course || !lesson) return jsonError("الدرس غير موجود", 404);
 
   if (!lesson.free) {
+    if (viewer?.role === "instructor") return studentWorkspaceRequirementResponse(viewer)!;
     let mode;
     try { mode = await getContentViewMode(); }
     catch { return jsonError("تعذر التحقق من سياسة المشاهدة حاليًا. حاول مجددًا بعد قليل.", 503); }

@@ -22,12 +22,12 @@ const contentSecurityPolicy = [
 
 // Explicit private namespaces avoid changing public catalog/media cache behavior.
 const privatePageRoots = [
-  "admin", "supervisor", "dashboard", "complete-profile", "verify-email", "onboarding",
+  "admin", "supervisor", "instructor", "dashboard", "complete-profile", "verify-email", "onboarding",
   "login", "register", "forgot-password", "reset-password", "cart", "checkout", "invoices",
   "favorites", "notifications", "referrals", "learn", "meras-ai", "study-tools", "request-course",
 ];
 const privateApiRoots = [
-  "auth", "admin", "supervisor", "profile", "cart", "checkout", "coupons", "favorites", "progress",
+  "auth", "admin", "supervisor", "instructor", "profile", "cart", "checkout", "coupons", "favorites", "progress",
   "invoices", "referrals", "ai", "course-requests", "course-resources", "support",
 ];
 const privateMobileRoots = ["auth", "account", "dashboard", "favorites", "notes", "notifications", "push"];
@@ -99,6 +99,7 @@ const nextConfig: NextConfig = {
         source,
         headers: [{ key: "Cross-Origin-Resource-Policy", value: "cross-origin" }, { key: "Access-Control-Allow-Origin", value: "*" }],
       })),
+      { source: "/instructor/:path*", headers: [{ key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=(), fullscreen=(self), display-capture=(), picture-in-picture=()" }] },
       ...privatePageRoots.map((root) => ({ source: `/${root}/:path*`, headers: privateResponseHeaders })),
       ...privateApiRoots.map((root) => ({ source: `/api/${root}/:path*`, headers: privateResponseHeaders })),
       ...privateMobileRoots.map((root) => ({ source: `/api/mobile/${root}/:path*`, headers: privateResponseHeaders })),

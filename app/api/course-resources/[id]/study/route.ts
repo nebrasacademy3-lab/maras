@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiFiles } from "@/db/schema";
@@ -11,6 +12,7 @@ import { isNativeAppRequest } from "@/lib/mobile-api";
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول لاستخدام ملف الدرس", 401);
   if (!await checkRateLimit("ai-source-link", `user:${user.id}`, 60, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
   const resourceId = Number((await params).id);

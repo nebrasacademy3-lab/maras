@@ -9,7 +9,7 @@ export { DeviceLimitError } from "@/lib/auth-devices";
 export const SESSION_COOKIE = "meras_session";
 const PASSWORD_ITERATIONS = 210_000;
 
-export type UserRole = "student" | "supervisor" | "admin";
+export type UserRole = "student" | "instructor" | "supervisor" | "admin";
 
 export const BROWSER_DEVICE_COOKIE = "meras_browser_device";
 
@@ -117,7 +117,7 @@ export async function verifyPassword(password: string, stored: string | null) {
 
 function effectiveRole(email: string, storedRole: string): UserRole {
   void email;
-  return storedRole === "admin" || storedRole === "supervisor" ? storedRole : "student";
+  return storedRole === "admin" || storedRole === "supervisor" || storedRole === "instructor" ? storedRole : "student";
 }
 
 function parseCookie(cookieHeader: string | null, name: string) {
@@ -170,7 +170,7 @@ export async function getSessionUserFromHeaders(requestHeaders: Headers): Promis
       eq(users.status, "active"),
     )).limit(1);
     if (!row || row.requiresMfa && !row.mfaVerifiedAt) return null;
-    if (row.user.role === "student") {
+    if (row.user.role === "student" || row.user.role === "instructor") {
       if (!row.deviceId) return null;
       const [enrollment] = await db.select({ id: authDevices.id }).from(authDevices).where(and(eq(authDevices.userId, row.user.id), eq(authDevices.deviceId, row.deviceId), isNull(authDevices.revokedAt))).limit(1);
       if (!enrollment) return null;
@@ -218,7 +218,7 @@ export async function createSession(userId: number, request: Request, remember =
 
     // Durable slots are checked before replacing a session. Logout, expiry and
     // password changes never delete enrollment or free an approved device slot.
-    if (account.role === "student") await enrollStudentDeviceTx(tx, userId, device, now);
+    if (account.role === "student" || account.role === "instructor") await enrollStudentDeviceTx(tx, userId, device, now);
     await tx.update(authSessions).set({ revokedAt: now }).where(and(eq(authSessions.userId, userId), eq(authSessions.deviceId, device.deviceId), isNull(authSessions.revokedAt)));
 
     await tx.insert(authSessions).values({

@@ -284,8 +284,8 @@ html:not(.dark) .university-logo img { mix-blend-mode: multiply; filter: none; }
 .program-courses-title { display: flex; align-items: center; gap: 6px; margin: 15px 0 10px; font-size: calc(12px * var(--font-scale, 1)); }
 .program-courses-title svg { color: var(--primary); }
 .program-course-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-.program-course-chips a { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--text-soft); background: var(--surface-2); font-size: calc(10px * var(--font-scale, 1)); transition: .2s; }
-.program-course-chips a:hover { border-color: var(--primary); color: var(--primary); transform: translateY(-1px); }
+.program-course-chips :is(a, button) { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; border: 1px solid var(--line); border-radius: 9px; color: var(--text-soft); background: var(--surface-2); font-size: calc(10px * var(--font-scale, 1)); transition: .2s; }
+.program-course-chips :is(a, button):hover { border-color: var(--primary); color: var(--primary); transform: translateY(-1px); }
 .program-card-body footer { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-top: 14px; padding-top: 13px; border-top: 1px dashed var(--line); }
 .program-card-body footer p { max-width: 420px; margin: 0; color: var(--muted); font-size: calc(10px * var(--font-scale, 1)); line-height: 1.7; }
 .program-card-body footer .button { flex: 0 0 auto; min-height: 37px; font-size: calc(11px * var(--font-scale, 1)); }

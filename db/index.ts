@@ -2,7 +2,9 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
 import * as coreSchema from "./schema";
 import * as geminiSchema from "./gemini-schema";
-const schema = { ...coreSchema, ...geminiSchema };
+import * as instructorSchema from "./instructor-schema";
+import * as oauthPrivacySchema from "./oauth-privacy-schema";
+const schema = { ...coreSchema, ...geminiSchema, ...instructorSchema, ...oauthPrivacySchema };
 
 let pool: Pool | null = null;
 let database: ReturnType<typeof drizzle<typeof schema>> | null = null;

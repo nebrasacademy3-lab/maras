@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { controlStudyJob, type StudyJobControl } from "@/lib/study-job-control";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, eq } from "drizzle-orm";
@@ -12,6 +13,7 @@ import { isNativeAppRequest } from "@/lib/mobile-api";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول لمتابعة الطلب", 401);
   if (!await checkRateLimit("ai-job-read", `user:${user.id}`, 40, 60)) return jsonError("طلبات متابعة كثيرة. حاول بعد قليل.", 429);
   const { id } = await params;
@@ -27,6 +29,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول لإدارة الطلب", 401);
   if (!await checkRateLimit("ai-job-control", `user:${user.id}`, 30, 60)) return jsonError("طلبات تحكم كثيرة. حاول بعد قليل.", 429);
   let body: Record<string, unknown>;

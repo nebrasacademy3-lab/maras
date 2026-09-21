@@ -1,7 +1,7 @@
 import { nativeToast, requestNativeAdminMfa } from "@/src/lib/interaction-events";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
-import { resolveStoreMode } from "@/src/lib/store-commerce";
+import { resolveStoreMode, subscriptionAccessMessage } from "@/src/lib/store-commerce";
 
 const defaultApiUrl = "https://marasalelm.com";
 const configured = String(Constants.expoConfig?.extra?.apiUrl || defaultApiUrl).replace(/\/$/, "");
@@ -18,8 +18,8 @@ export const STORE_MODE = resolveStoreMode({
   readerPreview: Constants.expoConfig?.extra?.readerPreview === true,
 });
 export const DIRECT_COMMERCE_ENABLED = STORE_MODE === "direct";
-export const NATIVE_PURCHASES_ENABLED = STORE_MODE === "iap";
-export const STORE_COMMERCE_ENABLED = DIRECT_COMMERCE_ENABLED || NATIVE_PURCHASES_ENABLED;
+export const STORE_COMMERCE_ENABLED = DIRECT_COMMERCE_ENABLED;
+export const SUBSCRIPTION_ACCESS_MESSAGE = subscriptionAccessMessage(Platform.OS, new URL(API_URL).hostname);
 
 // OkHttp (Android) only accepts ASCII values in HTTP headers. Device names may
 // contain Arabic/emoji and the UI label intentionally contains a middle dot, so
@@ -88,8 +88,8 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
 }
 async function apiOnce<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   const url = apiRequestUrl(path);
-  if (!DIRECT_COMMERCE_ENABLED && url.pathname === "/api/checkout") {
-    throw new ApiError("استخدم شراء التطبيق من المتجر في هذه النسخة.", 403);
+  if (!DIRECT_COMMERCE_ENABLED && ["/api/checkout", "/api/ai/subscription/checkout"].includes(url.pathname.replace(/\/+$/, ""))) {
+    throw new ApiError("هذه النسخة مخصصة لاستخدام الاشتراكات المفعلة في حسابك ولا تنفذ عمليات شراء.", 403);
   }
   const { timeoutMs = 15_000, ...requestInit } = init;
   const headers = new Headers(requestInit.headers);

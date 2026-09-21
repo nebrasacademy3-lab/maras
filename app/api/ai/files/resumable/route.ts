@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { getDb } from "@/db";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
 import { aiError, aiJson } from "@/lib/ai-api";
@@ -10,9 +11,10 @@ async function handle(request: Request) {
   try {
     if (!sameOriginRequest(request)) return aiJson({ error: "مصدر الطلب غير مصرح." }, { status: 403 });
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return aiJson({ error: "سجّل الدخول لرفع الملف." }, { status: 401 });
     if (request.headers.get("x-meras-acting-user") !== String(user.id)) return aiJson({ error: "تغيّر الحساب أثناء الرفع." }, { status: 409 });
-    const reauthorize = async () => (await getSessionUser(request))?.id || 0;
+    const reauthorize = async () => { const current = await getSessionUser(request); return current?.role === "instructor" ? 0 : current?.id || 0; };
     const url = new URL(request.url), id = url.searchParams.get("id") || "";
     if (!await checkRateLimit("study-upload-parts", `user:${user.id}`, 180, 60)) return aiJson({ error: "أبطئ الطلبات وأعد المحاولة بعد قليل." }, { status: 429, headers: { "retry-after": "30" } });
     if (request.method === "GET") return aiJson(id ? await studyUploadStatus(getDb(), user, id, reauthorize) : { ownerId: user.id, ...await studyUploadLimits(user) });

@@ -14,7 +14,13 @@ import { RESUMABLE_CHUNK_BYTES, ResumableUploadError, resumablePartKey, uploadPa
 type Database = ReturnType<typeof getDb>;
 type Transaction = Parameters<Parameters<Database["transaction"]>[0]>[0];
 type Session = typeof uploads.$inferSelect;
-export type ReauthorizeUpload = (courseSlug: string) => Promise<number>;
+export type ReauthorizeUpload = (courseSlug: string, tx?: Transaction, lessonId?: string) => Promise<number>;
+// Server-owned adapters keep instructor drafts out of the published curriculum.
+export type ResumableVideoTarget = {
+ assertLesson(tx: Transaction, ownerId: number, data: UploadManifest): Promise<void>;
+ linkAsset(tx: Transaction, ownerId: number, data: UploadManifest, assetId: number, durationSeconds: number): Promise<void>;
+ assertReplacement(tx: Transaction, ownerId: number, data: UploadManifest, assetId: number): Promise<void>;
+};
 function assertLocation(row: Session): StorageProvider {
   if (row.provider !== "local" && row.provider !== "s3") throw new ResumableUploadError("مزود التخزين غير صالح", 409);
   if (row.locationFingerprint !== storageLocationFingerprint(row.provider)) throw new ResumableUploadError("تغيّر موقع التخزين؛ تحتاج العملية مراجعة", 409);
@@ -34,20 +40,25 @@ function received(row: Session): number[] {
 function receipt(row: Session) { return { id: row.id, status: row.status, received: received(row), chunkBytes: RESUMABLE_CHUNK_BYTES, sizeBytes: row.sizeBytes, expiresAt: row.expiresAt.toISOString(), asset: row.assetId ? { id: row.assetId } : undefined }; }
 async function ownedSession(tx: Transaction, ownerId: number, id: string, reauthorize: ReauthorizeUpload) {
   validateUploadId(id);
-  const [row] = await tx.select().from(uploads).where(and(eq(uploads.id, id), eq(uploads.ownerId, ownerId))).for("update");
-  if (!row) throw new ResumableUploadError("جلسة الرفع غير موجودة", 404);
-  if (await reauthorize(row.courseSlug) !== row.ownerId) throw new ResumableUploadError("تغيّر الحساب أثناء الرفع", 403);
+  const condition = and(eq(uploads.id, id), eq(uploads.ownerId, ownerId));
+  const [candidate] = await tx.select().from(uploads).where(condition).limit(1);
+  if (!candidate) throw new ResumableUploadError("جلسة الرفع غير موجودة", 404);
+  // Target authorization may acquire an instructor lock; keep it before upload row locks.
+  if (await reauthorize(candidate.courseSlug, tx, candidate.lessonId) !== candidate.ownerId) throw new ResumableUploadError("تغيّر الحساب أثناء الرفع", 403);
+  const [row] = await tx.select().from(uploads).where(condition).for("update");
+  if (!row || row.courseSlug !== candidate.courseSlug || row.lessonId !== candidate.lessonId) throw new ResumableUploadError("تغيّرت جلسة الرفع", 409);
   if (row.status !== "completed" && (row.status !== "open" || row.expiresAt.getTime() <= Date.now())) throw new ResumableUploadError("انتهت صلاحية جلسة الرفع", 410);
   assertLocation(row); manifest(row); received(row);
   return row;
 }
 
-export async function startResumableVideo(db: Database, ownerId: number, input: Record<string, unknown>, reauthorize: ReauthorizeUpload) {
+export async function startResumableVideo(db: Database, ownerId: number, input: Record<string, unknown>, reauthorize: ReauthorizeUpload, target?: ResumableVideoTarget) {
   const data = validateUploadManifest(input);
-  if (!Number.isSafeInteger(ownerId) || ownerId < 1 || await reauthorize(data.courseSlug) !== ownerId) throw new ResumableUploadError("غير مصرح", 403);
+  if (!Number.isSafeInteger(ownerId) || ownerId < 1 || await reauthorize(data.courseSlug, undefined, data.lessonId) !== ownerId) throw new ResumableUploadError("غير مصرح", 403);
   return db.transaction(async tx => {
     // Shared admission lock bounds active staging space across all servers.
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext('meras-resumable-video-admission'))`);
+    if (target) await target.assertLesson(tx, ownerId, data);
     const [prior] = await tx.select().from(uploads).where(and(eq(uploads.ownerId, ownerId), eq(uploads.requestKey, data.requestKey))).for("update");
     if (prior) {
       if (JSON.stringify(manifest(prior)) !== JSON.stringify(data)) throw new ResumableUploadError("معرّف العملية مستخدم لملف آخر", 409);
@@ -61,8 +72,10 @@ export async function startResumableVideo(db: Database, ownerId: number, input: 
       FROM resumable_video_uploads u WHERE status IN ('open', 'blocked') OR EXISTS (SELECT 1 FROM storage_cleanup_jobs j
       WHERE j.source = 'resumable-staging' AND j.object_key = 'private/resumable/' || u.id AND j.status <> 'completed')`);
     if (Number(counts.rows[0].total) >= 16 || Number(counts.rows[0].owned) >= 2) throw new ResumableUploadError("أكمل عمليات الرفع المفتوحة أو ألغها قبل بدء ملف جديد", 429);
-    const [lesson] = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.id, data.lessonId), eq(lessonsDb.courseSlug, data.courseSlug))).limit(1);
-    if (!lesson) throw new ResumableUploadError("الدرس غير موجود في المادة", 404);
+    if (!target) {
+      const [lesson] = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.id, data.lessonId), eq(lessonsDb.courseSlug, data.courseSlug))).limit(1);
+      if (!lesson) throw new ResumableUploadError("الدرس غير موجود في المادة", 404);
+    }
     const id = randomUUID(), provider = activeStorageProvider();
     const [row] = await tx.insert(uploads).values({ id, requestKey: data.requestKey, ownerId, courseSlug: data.courseSlug, lessonId: data.lessonId,
       objectKey: normalizeStorageKey(`private/video-source/${data.courseSlug}/${data.lessonId}/${id}.upload`),
@@ -115,7 +128,7 @@ async function* assembledParts(row: Session, signal: AbortSignal) {
   }
 }
 
-export async function completeResumableVideo(db: Database, ownerId: number, id: string, reauthorize: ReauthorizeUpload, callerSignal?: AbortSignal, durationSeconds = 0) {
+export async function completeResumableVideo(db: Database, ownerId: number, id: string, reauthorize: ReauthorizeUpload, callerSignal?: AbortSignal, durationSeconds = 0, target?: ResumableVideoTarget) {
   if (!Number.isSafeInteger(durationSeconds) || durationSeconds < 0 || durationSeconds > 14_400) throw new ResumableUploadError("مدة الفيديو غير صالحة");
   const signal = AbortSignal.any([...(callerSignal ? [callerSignal] : []), AbortSignal.timeout(120_000)]);
   let cleanupIds: string[] = [];
@@ -136,19 +149,26 @@ export async function completeResumableVideo(db: Database, ownerId: number, id: 
     }
     if (!admitted) throw new ResumableUploadError("تجهيز فيديوهات أخرى جارٍ؛ استأنف اعتماد الفيديو بعد قليل", 429);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`video-upload:${row.courseSlug}:${row.lessonId}`}))`);
-    const [lesson] = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.id, row.lessonId), eq(lessonsDb.courseSlug, row.courseSlug))).for("update");
-    if (!lesson) throw new ResumableUploadError("حُذف الدرس؛ لن يعتمد الفيديو", 409);
+    if (target) await target.assertLesson(tx, ownerId, data);
+    else {
+      const [lesson] = await tx.select({ id: lessonsDb.id }).from(lessonsDb).where(and(eq(lessonsDb.id, row.lessonId), eq(lessonsDb.courseSlug, row.courseSlug))).for("update");
+      if (!lesson) throw new ResumableUploadError("حُذف الدرس؛ لن يعتمد الفيديو", 409);
+    }
     const first = await getObject(resumablePartKey(row.id, 0, data.hashes[0]), { offset: 0, length: Math.min(64, row.sizeBytes) }, provider, signal);
     if (!first || !validResumableVideoHeader(row.contentType, new Uint8Array(await new Response(first.body).arrayBuffer()))) throw new ResumableUploadError("محتوى الفيديو لا يطابق نوعه", 422);
     await putObject(row.objectKey, Readable.toWeb(Readable.from(assembledParts(row, signal))) as ReadableStream<Uint8Array>, row.contentType, provider, { signal, maxBytes: row.sizeBytes });
-    if (await reauthorize(row.courseSlug) !== ownerId) throw new ResumableUploadError("انتهى التفويض أثناء الرفع", 403);
+    if (await reauthorize(row.courseSlug, tx, row.lessonId) !== ownerId) throw new ResumableUploadError("انتهى التفويض أثناء الرفع", 403);
     const previous = await tx.select().from(videoAssets).where(and(eq(videoAssets.courseSlug, row.courseSlug), eq(videoAssets.lessonId, row.lessonId))).for("update");
     const cleanup: CleanupTarget[] = [{ key: `private/resumable/${row.id}`, provider, source: "resumable-staging", recursive: true }];
-    for (const asset of previous) collectVideoCleanup(asset, cleanup);
+    for (const asset of previous) {
+      if (target) await target.assertReplacement(tx, ownerId, data, asset.id);
+      collectVideoCleanup(asset, cleanup);
+    }
     const now = new Date().toISOString();
     const [asset] = await tx.insert(videoAssets).values({ courseSlug: row.courseSlug, lessonId: row.lessonId, objectKey: row.objectKey, storageProvider: provider,
       contentType: row.contentType, sizeBytes: row.sizeBytes, durationSeconds: durationSeconds || null, status: "ready", processingStatus: "queued", processingProgress: 0, createdAt: now, updatedAt: now }).returning({ id: videoAssets.id });
-    await tx.update(lessonsDb).set({ videoAssetId: asset.id, durationSeconds, updatedAt: now }).where(eq(lessonsDb.id, row.lessonId));
+    if (target) await target.linkAsset(tx, ownerId, data, asset.id, durationSeconds);
+    else await tx.update(lessonsDb).set({ videoAssetId: asset.id, durationSeconds, updatedAt: now }).where(eq(lessonsDb.id, row.lessonId));
     if (previous.length) await tx.delete(videoAssets).where(inArray(videoAssets.id, previous.map(item => item.id)));
     // Processing admission is atomic too; a crash cannot leave the asset without a job.
     await tx.insert(videoProcessingJobs).values({ assetId: asset.id, status: "queued", nextAttemptAt: now });

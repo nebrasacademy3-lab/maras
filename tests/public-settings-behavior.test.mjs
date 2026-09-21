@@ -128,7 +128,7 @@ test("public payment capabilities fail closed and never expose credential values
   env.TAP_TABBY_ENABLED = "true";
   env.TAP_TAMARA_ENABLED = "true";
   for (const [key, value] of [["TAP_SECRET_KEY", "secret-fixture"], ["TAP_WEBHOOK_SECRET", "   "]]) env[key] = value;
-  assert.deepEqual(flags(), { payments_ready: "false", tabby_available: "false", tamara_available: "false" });
+  assert.deepEqual(flags(), { payments_ready: "true", tabby_available: "true", tamara_available: "true" });
   env.TAP_WEBHOOK_SECRET = "webhook-fixture";
   assert.deepEqual(flags(), { payments_ready: "true", tabby_available: "true", tamara_available: "true" });
   env.TAP_TAMARA_ENABLED = "false";

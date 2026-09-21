@@ -20,11 +20,12 @@ const links: NavLink[] = [
   { href: "/courses", label: "المواد", icon: BookOpen },
   { href: "/how-it-works", label: "كيف تعمل مراس؟", icon: LifeBuoy },
   { href: "/faq", label: "الأسئلة الشائعة", icon: CircleHelp },
+  { href: "/join-instructors", label: "انضم كشارح", icon: GraduationCap },
 ];
 
-type HeaderUser = { id?:number; fullName?: string | null };
+type HeaderUser = { id?:number; fullName?: string | null; role?: string };
 
-export function SiteHeader({ appMode = false, userName = "طالب مراس" }: { appMode?: boolean; userName?: string }) {
+export function SiteHeader({ appMode = false, userName = "طالب مراس", userRole }: { appMode?: boolean; userName?: string; userRole?: string }) {
   const pathname = usePathname();
   const headerRef = useRef<HTMLElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
@@ -55,12 +56,14 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
   },[]);
   useEffect(()=>{const timer=setTimeout(()=>void refreshAccount(),0);return()=>{clearTimeout(timer);accountRequest.current?.abort();};},[pathname,refreshAccount]);
   const signedIn=appMode||Boolean(account);
-  useEffect(()=>{resetCommerce();if(signedIn)void ensureCommerceLoaded();},[signedIn,account?.id,userName]);
+  const instructorMode=userRole === "instructor" || account?.role === "instructor" || pathname === "/instructor";
+  const commerceEnabled=signedIn && !instructorMode && account?.role === "student";
+  useEffect(()=>{resetCommerce();if(commerceEnabled)void ensureCommerceLoaded();},[commerceEnabled,account?.id,userName]);
   useEffect(()=>{const timer=setTimeout(()=>{if(signedIn)void refreshNotifications();else setUnreadNotifications(0);},0);return()=>{clearTimeout(timer);notificationRequest.current?.abort();};},[pathname,signedIn,account?.id,refreshNotifications]);
   useEffect(()=>{
     pageActive.current=true;
     const pause=()=>{pageActive.current=false;accountRequest.current?.abort();notificationRequest.current?.abort();resetCommerce();};
-    const restore=(event:PageTransitionEvent)=>{if(!event.persisted)return;pageActive.current=true;void refreshAccount().then(current=>{if(pageActive.current&&current){void ensureCommerceLoaded();void refreshNotifications();}});};
+    const restore=(event:PageTransitionEvent)=>{if(!event.persisted)return;pageActive.current=true;void refreshAccount().then(current=>{if(pageActive.current&&current){if(current.role === "student")void ensureCommerceLoaded();void refreshNotifications();}});};
     window.addEventListener("pagehide",pause);window.addEventListener("pageshow",restore);
     return()=>{pause();window.removeEventListener("pagehide",pause);window.removeEventListener("pageshow",restore);};
   },[refreshAccount,refreshNotifications]);
@@ -77,7 +80,7 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
     const changed = payload.changed || [];
     if (!changed.length || changed.includes("account")) void refreshAccount();
     if (signedIn && (!changed.length || changed.includes("notifications"))) void refreshNotifications();
-    if (signedIn && changed.some((channel) => channel === "account" || channel === "commerce")) { resetCommerce(); void ensureCommerceLoaded(); }
+    if (commerceEnabled && changed.some((channel) => channel === "account" || channel === "commerce")) { resetCommerce(); void ensureCommerceLoaded(); }
   });
 
   useEffect(() => {
@@ -113,7 +116,11 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
   }, []);
 
   const displayName = appMode ? userName : account?.fullName || userName;
-  const accountLinks: NavLink[] = [
+  const accountLinks: NavLink[] = instructorMode ? [
+    { href: "/instructor", label: "مساحة الشارح", icon: LayoutDashboard },
+    { href: "/notifications", label: "الإشعارات", icon: Bell },
+    { href: "/support", label: "الدعم", icon: LifeBuoy },
+  ] : [
     { href: "/dashboard", label: "لوحتي", icon: LayoutDashboard },
     { href: "/dashboard?view=courses", label: "موادي", icon: BookOpen },
     { href: "/courses", label: "استكشف المواد", icon: GraduationCap },
@@ -137,17 +144,17 @@ export function SiteHeader({ appMode = false, userName = "طالب مراس" }: 
     <header data-nosnippet ref={headerRef} className={`site-header ${signedIn ? "site-header-app" : ""}`}>
       <div className="container header-inner">
         <BrandLogo compact />
-        <nav className="desktop-nav" aria-label={signedIn ? "تنقل حساب الطالب" : "التنقل الرئيسي"}>{activeLinks.filter((link) => !link.mobileOnly).map((link) => <SiteNavLink key={link.href} href={link.href}><link.icon size={15} aria-hidden="true" /><span>{link.label}</span></SiteNavLink>)}</nav>
+        <nav className="desktop-nav" aria-label={signedIn ? instructorMode ? "تنقل حساب الشارح" : "تنقل حساب الطالب" : "التنقل الرئيسي"}>{activeLinks.filter((link) => !link.mobileOnly).map((link) => <SiteNavLink key={link.href} href={link.href}><link.icon size={15} aria-hidden="true" /><span>{link.label}</span></SiteNavLink>)}</nav>
         <div className="header-actions">
           <button className="icon-button" onClick={() => setSearchOpen(true)} aria-label="البحث"><Search size={19} /></button>
           <ThemeToggle compact />
-          {signedIn && <><Link href="/cart" className="icon-button commerce-icon-button" aria-label={`السلة${cartSlugs.length ? `، ${cartSlugs.length} مواد` : ""}`}><ShoppingBag size={19} />{cartSlugs.length > 0 && <i>{cartSlugs.length > 99 ? "99+" : cartSlugs.length}</i>}</Link><Link href="/favorites" className="icon-button commerce-icon-button" aria-label={`المفضلة${favoriteSlugs.length ? `، ${favoriteSlugs.length} مواد` : ""}`}><Heart size={19} fill={favoriteSlugs.length ? "currentColor" : "none"} />{favoriteSlugs.length > 0 && <i>{favoriteSlugs.length > 99 ? "99+" : favoriteSlugs.length}</i>}</Link><Link href="/notifications" className="icon-button notification-button" aria-label="الإشعارات"><Bell size={19} />{unreadNotifications > 0 && <i>{unreadNotifications > 99 ? "99+" : unreadNotifications}</i>}</Link></>}
-          {!signedIn ? <><Link href="/login" className="button button-ghost desktop-only">تسجيل الدخول</Link><Link href="/register" className="button button-primary desktop-only">إنشاء حساب</Link></> : <details className="account-utilities-menu desktop-only"><summary className="user-chip" aria-label={`قائمة حساب ${displayName}`}><span>{displayName.split(" ")[0]}</span><i>{displayName[0] || <UserRound size={16} />}</i></summary><div onClick={() => headerRef.current?.querySelectorAll("details[open]").forEach((item) => item.removeAttribute("open"))}><Link href="/dashboard?view=account"><UserRound size={16} />حسابي</Link><Link href="/study-tools"><Bot size={16} />أدوات مراس</Link><Link href="/referrals"><Gift size={16} />الإحالات والهدايا</Link><button type="button" onClick={signOut}><LogOut size={16} />تسجيل الخروج</button></div></details>}
+          {signedIn && <>{!instructorMode && <><Link href="/cart" className="icon-button commerce-icon-button" aria-label={`السلة${cartSlugs.length ? `، ${cartSlugs.length} مواد` : ""}`}><ShoppingBag size={19} />{cartSlugs.length > 0 && <i>{cartSlugs.length > 99 ? "99+" : cartSlugs.length}</i>}</Link><Link href="/favorites" className="icon-button commerce-icon-button" aria-label={`المفضلة${favoriteSlugs.length ? `، ${favoriteSlugs.length} مواد` : ""}`}><Heart size={19} fill={favoriteSlugs.length ? "currentColor" : "none"} />{favoriteSlugs.length > 0 && <i>{favoriteSlugs.length > 99 ? "99+" : favoriteSlugs.length}</i>}</Link></>}<Link href="/notifications" className="icon-button notification-button" aria-label="الإشعارات"><Bell size={19} />{unreadNotifications > 0 && <i>{unreadNotifications > 99 ? "99+" : unreadNotifications}</i>}</Link></>}
+          {!signedIn ? <><Link href="/login" className="button button-ghost desktop-only">تسجيل الدخول</Link><Link href="/register" className="button button-primary desktop-only">إنشاء حساب</Link></> : <details className="account-utilities-menu desktop-only"><summary className="user-chip" aria-label={`قائمة حساب ${displayName}`}><span>{displayName.split(" ")[0]}</span><i>{displayName[0] || <UserRound size={16} />}</i></summary><div onClick={() => headerRef.current?.querySelectorAll("details[open]").forEach((item) => item.removeAttribute("open"))}><Link href={instructorMode ? "/instructor" : "/dashboard?view=account"}><UserRound size={16} />حسابي</Link>{!instructorMode && <><Link href="/study-tools"><Bot size={16} />أدوات مراس</Link><Link href="/referrals"><Gift size={16} />الإحالات والهدايا</Link></>}<button type="button" onClick={signOut}><LogOut size={16} />تسجيل الخروج</button></div></details>}
           <button ref={menuButtonRef} type="button" aria-controls="site-mobile-navigation" className="icon-button mobile-menu-button" onClick={() => setMenuOpen((open) => !open)} aria-label="القائمة" aria-expanded={menuOpen}>{menuOpen ? <X size={21} /> : <Menu size={21} />}</button>
         </div>
       </div>
       {menuOpen && <nav id="site-mobile-navigation" aria-label="قائمة التنقل" className={`mobile-nav container ${signedIn ? "mobile-nav-account" : ""}`}>
-        {signedIn && <div className="mobile-nav-user"><div className="mobile-nav-avatar">{displayName[0] || <UserRound size={17} />}</div><div><strong>{displayName}</strong><small>حساب طالب مراس</small></div><Link href="/dashboard?view=account" onClick={() => setMenuOpen(false)} aria-label="فتح الحساب"><UserRound size={16} /></Link></div>}
+        {signedIn && <div className="mobile-nav-user"><div className="mobile-nav-avatar">{displayName[0] || <UserRound size={17} />}</div><div><strong>{displayName}</strong><small>{instructorMode ? "حساب شارح مراس" : "حساب طالب مراس"}</small></div><Link href={instructorMode ? "/instructor" : "/dashboard?view=account"} onClick={() => setMenuOpen(false)} aria-label="فتح الحساب"><UserRound size={16} /></Link></div>}
         <div className="mobile-nav-links">{activeLinks.map((link) => <SiteNavLink key={link.href} href={link.href} className="mobile-nav-link" onClick={() => setMenuOpen(false)}><span className="mobile-nav-icon"><link.icon size={17} /></span><span>{link.label}</span>{link.href === "/cart" && cartSlugs.length > 0 && <b>{cartSlugs.length > 99 ? "99+" : cartSlugs.length}</b>}{link.href === "/favorites" && favoriteSlugs.length > 0 && <b>{favoriteSlugs.length > 99 ? "99+" : favoriteSlugs.length}</b>}{link.href === "/notifications" && unreadNotifications > 0 && <b>{unreadNotifications > 99 ? "99+" : unreadNotifications}</b>}<i>‹</i></SiteNavLink>)}</div>
         {!signedIn && <div className="mobile-auth"><Link href="/login" className="button button-ghost" onClick={() => setMenuOpen(false)}>تسجيل الدخول</Link><Link href="/register" className="button button-primary" onClick={() => setMenuOpen(false)}>إنشاء حساب</Link></div>}
         {signedIn && <button className="mobile-logout" onClick={signOut}><LogOut size={16} aria-hidden="true" /><span>تسجيل الخروج</span></button>}

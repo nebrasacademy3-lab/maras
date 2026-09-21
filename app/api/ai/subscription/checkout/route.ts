@@ -1,3 +1,5 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
+import { tapChargeCreationResult } from "@/lib/tap-payments";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiSubscriptionOrders } from "@/db/schema";
@@ -9,8 +11,7 @@ import { observeRequest } from "@/lib/observability";
 import { purchaseRequirementResponse } from "@/lib/account-readiness";
 import { readBoundedJsonObject } from "@/lib/request-body";
 
-type TapChargeResponse = { id?: string; transaction?: { url?: string }; errors?: Array<{ description?: string }> };
-const OPEN_STATUSES = ["pending", "initiated", "in_progress", "verification_pending"];
+const OPEN_STATUSES = ["pending", "initiated", "in_progress", "authorized", "verification_pending", "payment_review"];
 const CHECKOUT_MINUTES = 30;
 
 function orderNumber() {
@@ -19,6 +20,7 @@ function orderNumber() {
 }
 
 function replay(row: typeof aiSubscriptionOrders.$inferSelect) {
+  if (["verification_pending", "payment_review"].includes(row.status)) return Response.json({ ok: true, pending: true, orderNumber: row.orderNumber, status: row.status }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
   const fresh = Date.parse(row.createdAt) > Date.now() - CHECKOUT_MINUTES * 60_000;
   if (!fresh) return jsonError("انتهت محاولة الدفع السابقة. ابدأ محاولة جديدة.", 409);
   if (row.checkoutUrl && ["initiated", "in_progress", "pending"].includes(row.status)) return Response.json({ ok: true, replayed: true, orderNumber: row.orderNumber, amount: row.amount, currency: row.currency, checkoutUrl: row.checkoutUrl, mode: "live" }, { headers: { "cache-control": "no-store" } });
@@ -28,6 +30,7 @@ function replay(row: typeof aiSubscriptionOrders.$inferSelect) {
 export async function GET(request: Request) {
   return observeRequest(request, "ai.subscription.status", async () => {
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لمتابعة الاشتراك", 401);
     const requested = cleanText(new URL(request.url).searchParams.get("order"), 120);
     if (!requested) return jsonError("رقم الطلب مطلوب");
@@ -41,6 +44,7 @@ export async function POST(request: Request) {
   return observeRequest(request, "ai.subscription.checkout", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول قبل الاشتراك", 401);
     const blocked = purchaseRequirementResponse(user);
     if (blocked) return blocked;
@@ -51,7 +55,7 @@ export async function POST(request: Request) {
     const checkoutKey = `u${user.id}:meras-ai:${/^[A-Za-z0-9_-]{12,90}$/.test(supplied) ? supplied : crypto.randomUUID()}`;
     const price = await getAiMonthlyPrice();
     const amountMinor = toMinorUnits(price);
-    if (amountMinor < 100) return jsonError("سعر الاشتراك غير صالح في إعدادات الإدارة", 503);
+    if (!Number.isSafeInteger(amountMinor) || amountMinor < 100) return jsonError("سعر الاشتراك غير صالح في إعدادات الإدارة", 503);
     const amount = fromMinorUnits(amountMinor);
     const tapSecretKey = process.env.TAP_SECRET_KEY?.trim();
     if (!tapSecretKey) return jsonError("بوابة الدفع قيد الإعداد. لم تُنشأ مطالبة مالية.", 503);
@@ -61,7 +65,7 @@ export async function POST(request: Request) {
       await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-subscription:${user.id}`}))`);
       const [sameKey] = await tx.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.checkoutKey, checkoutKey)).limit(1);
       if (sameKey) return { kind: "existing" as const, row: sameKey };
-      const [recent] = await tx.select().from(aiSubscriptionOrders).where(and(eq(aiSubscriptionOrders.userId, user.id), inArray(aiSubscriptionOrders.status, OPEN_STATUSES), sql`${aiSubscriptionOrders.createdAt}::timestamptz >= NOW() - INTERVAL '30 minutes'`)).orderBy(desc(aiSubscriptionOrders.createdAt)).limit(1);
+      const [recent] = await tx.select().from(aiSubscriptionOrders).where(and(eq(aiSubscriptionOrders.userId, user.id), inArray(aiSubscriptionOrders.status, OPEN_STATUSES), sql`(${aiSubscriptionOrders.status} IN ('verification_pending', 'payment_review') OR ${aiSubscriptionOrders.createdAt}::timestamptz >= NOW() - INTERVAL '30 minutes')`)).orderBy(desc(aiSubscriptionOrders.createdAt)).limit(1);
       if (recent) return { kind: "existing" as const, row: recent };
       const number = orderNumber();
       const [row] = await tx.insert(aiSubscriptionOrders).values({ orderNumber: number, userId: user.id, customerEmail: user.email, customerName: user.fullName, customerPhone: user.phone, amount, amountMinor, currency: "SAR", status: "pending", checkoutKey, createdAt: now, updatedAt: now }).returning();
@@ -87,25 +91,31 @@ export async function POST(request: Request) {
           description: "اشتراك أدوات مراس الشهري",
           transaction: { expiry: { period: CHECKOUT_MINUTES, type: "MINUTE" } },
           metadata: { product: "meras-ai", ai_order_number: row.orderNumber, order_number: row.orderNumber, user_id: String(user.id) },
-          reference: { transaction: row.orderNumber, order: row.orderNumber },
+          reference: { transaction: row.orderNumber, order: row.orderNumber, idempotent: row.orderNumber },
           customer: { first_name: nameParts[0] || user.fullName, last_name: nameParts.slice(1).join(" ") || "طالب مراس", email: user.email, phone: { country_code: "966", number: localPhone } },
           source: { id: "src_all" },
           post: { url: `${siteOrigin}/api/webhooks/tap` },
           redirect: { url: `${siteOrigin}/study-tools/subscribe?payment=return&order=${encodeURIComponent(row.orderNumber)}` },
         }),
-        signal: AbortSignal.timeout(15_000),
+        redirect: "error",
+      signal: AbortSignal.timeout(15_000),
       });
     } catch {
       await db.update(aiSubscriptionOrders).set({ status: "verification_pending", updatedAt: new Date().toISOString() }).where(and(eq(aiSubscriptionOrders.id, row.id), eq(aiSubscriptionOrders.status, "pending")));
       return Response.json({ ok: true, pending: true, orderNumber: row.orderNumber, status: "verification_pending" }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
     }
-    let charge: TapChargeResponse;
-    try { charge = await response.json() as TapChargeResponse; } catch { charge = {}; }
-    if (!response.ok || !charge.id || !charge.transaction?.url) {
-      await db.update(aiSubscriptionOrders).set({ status: "failed", updatedAt: new Date().toISOString() }).where(and(eq(aiSubscriptionOrders.id, row.id), eq(aiSubscriptionOrders.status, "pending")));
-      return jsonError(charge.errors?.[0]?.description || "تعذر بدء عملية الدفع. حاول مرة أخرى.", 502);
+    let charge: unknown;
+    try { charge = await response.json(); } catch { charge = null; }
+    const result = tapChargeCreationResult(response, charge);
+    if (result.kind === "pending") {
+      await db.update(aiSubscriptionOrders).set({ status: "verification_pending", ...(result.chargeId ? { tapChargeId: result.chargeId } : {}), updatedAt: new Date().toISOString() }).where(and(eq(aiSubscriptionOrders.id, row.id), eq(aiSubscriptionOrders.status, "pending")));
+      return Response.json({ ok: true, pending: true, orderNumber: row.orderNumber, status: "verification_pending" }, { status: 202, headers: { "cache-control": "no-store", "retry-after": "5" } });
     }
-    await db.update(aiSubscriptionOrders).set({ tapChargeId: charge.id, checkoutUrl: charge.transaction.url, status: sql`CASE WHEN ${aiSubscriptionOrders.status} = 'pending' THEN 'initiated' ELSE ${aiSubscriptionOrders.status} END`, updatedAt: new Date().toISOString() }).where(eq(aiSubscriptionOrders.id, row.id));
-    return Response.json({ ok: true, mode: "live", orderNumber: row.orderNumber, amount, currency: "SAR", checkoutUrl: charge.transaction.url }, { status: 201, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
+    if (result.kind === "failed") {
+      await db.update(aiSubscriptionOrders).set({ status: "failed", updatedAt: new Date().toISOString() }).where(and(eq(aiSubscriptionOrders.id, row.id), eq(aiSubscriptionOrders.status, "pending")));
+      return jsonError("تعذر بدء عملية الدفع. حاول مرة أخرى.", 502);
+    }
+    await db.update(aiSubscriptionOrders).set({ tapChargeId: result.chargeId, checkoutUrl: result.checkoutUrl, status: sql`CASE WHEN ${aiSubscriptionOrders.status} = 'pending' THEN 'initiated' ELSE ${aiSubscriptionOrders.status} END`, updatedAt: new Date().toISOString() }).where(eq(aiSubscriptionOrders.id, row.id));
+    return Response.json({ ok: true, mode: "live", orderNumber: row.orderNumber, amount, currency: "SAR", checkoutUrl: result.checkoutUrl }, { status: 201, headers: { "cache-control": "no-store", "x-content-type-options": "nosniff" } });
   });
 }

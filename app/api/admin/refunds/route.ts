@@ -198,6 +198,7 @@ export async function POST(request: Request) {
       method: "POST",
       headers: { authorization: `Bearer ${tapSecret}`, "content-type": "application/json", accept: "application/json" },
       body: JSON.stringify({ charge_id: tapChargeId, amount: approvedRefund.amountMinor / 100, currency: approvedRefund.currency, reason: "requested_by_customer", description: approvedRefund.reason, reference: { merchant: approvedRefund.requestNumber, idempotent: approvedRefund.requestNumber }, metadata: { refund_request: approvedRefund.requestNumber, order_number: approvedRefund.orderNumber }, post: { url: `${requestOrigin(request)}/api/webhooks/tap` } }),
+      redirect: "error",
       signal: AbortSignal.timeout(15_000),
     });
   } catch {

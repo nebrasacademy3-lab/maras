@@ -28,7 +28,7 @@ jobs:
       CI: '1'
       EXPO_NO_TELEMETRY: '1'
       EXPO_PUBLIC_API_URL: https://maras-qa.example
-      EXPO_PUBLIC_STORE_MODE: iap
+      EXPO_PUBLIC_STORE_MODE: reader
       EAS_BUILD_PROFILE: production
     steps:
       - name: Checkout exact source
@@ -43,13 +43,15 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - name: Install locked native dependencies
         run: npm ci --no-audit --no-fund
+      - name: Validate reader release configuration before compatibility advice
+        run: npx expo config --type prebuild --json > "$RUNNER_TEMP/expo-config-${{ matrix.platform }}.json"
       - name: Report Expo patch compatibility
         id: expo-compat
         continue-on-error: true
         run: npx expo install --check
-      - name: Surface Expo patch advisory
+      - name: Surface Expo compatibility advisory
         if: steps.expo-compat.outcome == 'failure'
-        run: echo "::warning::Expo recommends newer patch releases than this reviewed lockfile; native prebuild/export remain blocking checks."
+        run: echo "::warning::Expo compatibility check failed; inspect its actual output. Native configuration and export remain blocking checks."
       - name: Typecheck application
         run: npm run typecheck
       - name: Generate native project without signing or installing pods

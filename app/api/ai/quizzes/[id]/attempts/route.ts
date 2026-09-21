@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { readBoundedJsonObject, RequestBodyTooLargeError } from "@/lib/request-body";
 import { gradeStudyQuiz } from "@/lib/study-quiz-grading";
 import { studyReadAccess } from "@/lib/study-output-access";
@@ -14,6 +15,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   return observeRequest(request, "ai.quiz.attempt", async () => {
     if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
     const user = await getSessionUser(request);
+    if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-quiz-attempt", `user:${user.id}`, 60, 60)) return jsonError("محاولات كثيرة. انتظر قليلًا.", 429);
     const { id: rawId } = await params;

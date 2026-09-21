@@ -1,35 +1,12 @@
-import { randomUUID } from "node:crypto";
+// Historical store records and entitlement reconciliation remain for existing purchasers.
+// New purchases, catalog creation and provider network synchronization are retired.
 import type { PoolClient } from "pg";
 import { getPool } from "@/db";
-import { getCoursesCatalog } from "@/lib/catalog-store";
-import { listActiveCourseBundles } from "@/lib/course-bundles";
-import { fetchProviderProduct, fetchVerifiedPurchases, revenuecatConfig } from "@/lib/revenuecat";
 import { nextStorePeriod, StoreError, storeTransactionKey, type VerifiedStorePurchase } from "@/lib/store-contracts";
 
 type StoreUser = { id: number; email: string };
 export type StoreProductRow = { product_key:string; ios_product_id:string|null; android_product_id:string|null; kind:"course"|"bundle"|"ai"; target_slug:string|null; title:string; course_slugs_json:string; duration_days:number|null; status:string; created_at:string; updated_at:string };
 type TransactionRow = {id:string; user_id:number; status:string; kind:string; title:string; duration_days:number|null; course_slugs_json:string; purchased_at:string};
-export async function storeAccount(userId:number) {
-  const id="maras_"+randomUUID();
-  const {rows}=await getPool().query("INSERT INTO store_purchase_accounts(user_id,revenuecat_user_id,created_at) VALUES($1,$2,$3) ON CONFLICT(user_id) DO UPDATE SET user_id=EXCLUDED.user_id RETURNING revenuecat_user_id",[userId,id,new Date().toISOString()]);
-  return rows[0].revenuecat_user_id as string;
-}
-export async function storeCatalog(userId:number,filter:{kind?:string;slug?:string;courseSlugs?:string[];history?:boolean}={}) {
-  const [accountId,products,courses,bundles]=await Promise.all([storeAccount(userId),getPool().query<StoreProductRow>("SELECT * FROM store_products WHERE status='active' AND ($1='' OR kind=$1) AND ($2='' OR target_slug=$2) ORDER BY title",[filter.kind||"",filter.slug||""]),getCoursesCatalog(),listActiveCourseBundles()]);
-  const courseMap=new Map(courses.filter(c=>c.availableForPurchase).map(c=>[c.slug,c]));
-  const bundleMap=new Map(bundles.map(b=>[b.slug,b]));
-  let configured=true; try{revenuecatConfig();}catch{configured=false;}
-  const visible=products.rows.filter(p=>{
-    if(filter.history)return false;
-    const slugs=JSON.parse(p.course_slugs_json) as string[];
-    if(filter.courseSlugs && (p.kind==="ai" || p.kind==="bundle" && (slugs.length!==filter.courseSlugs.length || slugs.some(s=>!filter.courseSlugs!.includes(s))) || p.kind==="course" && !filter.courseSlugs.includes(p.target_slug||"")))return false;
-    if(p.kind==="ai")return true;
-    if(p.kind==="course")return !!courseMap.get(p.target_slug||"");
-    const bundle=bundleMap.get(p.target_slug||"");
-    return !!bundle && JSON.stringify([...slugs].sort())===JSON.stringify([...bundle.courseSlugs].sort());
-  });
-  return {accountId,configured,products:visible.map(p=>({key:p.product_key,kind:p.kind,targetSlug:p.target_slug,title:p.title,iosProductId:p.ios_product_id,androidProductId:p.android_product_id,durationDays:p.duration_days,courseSlugs:JSON.parse(p.course_slugs_json) as string[]}))};
-}
 async function audit(client:PoolClient,userId:number,action:string,id:string,details:unknown) {
   await client.query("INSERT INTO audit_logs(actor_email,action,entity_type,entity_id,after_json,created_at) VALUES($1,$2,'store_purchase',$3,$4,$5)",["revenuecat:user:"+userId,action,id,JSON.stringify(details),new Date().toISOString()]);
 }
@@ -81,40 +58,6 @@ export async function applyVerifiedStorePurchase(client:PoolClient,user:StoreUse
   await audit(client,user.id,active?"store-purchase-verified":"store-purchase-refunded",id,{status:purchase.status,previousStatus:before?.status||null});
   await client.query("INSERT INTO notifications(target_user_id,title,body,action_url,dedupe_key,push_enabled,created_at) VALUES($1,$2,$3,$4,$5,true,$6) ON CONFLICT(dedupe_key) DO NOTHING",[user.id,active?"تم تفعيل مشتريات التطبيق":"تم تحديث استرداد المتجر",snapshot.title, snapshot.kind==="ai"?"/study-tools":"/dashboard","store:"+id+":"+purchase.status,now]);
   return true;
-}
-export async function syncStorePurchases(user:StoreUser) {
-  const accountId=await storeAccount(user.id);
-  const client=await getPool().connect();
-  try {
-    await client.query("BEGIN");
-    await client.query("SET LOCAL lock_timeout='5s'");
-    await client.query("SELECT pg_advisory_xact_lock(hashtext($1))",["store-account:"+user.id]);
-    const purchases=await fetchVerifiedPurchases(accountId);
-    const products=(await client.query<StoreProductRow>("SELECT * FROM store_products")).rows;
-    const providerProducts=new Map<string,string>();
-    let changed=0;
-    const unresolved:Array<{productId:string;code:string}>=[];
-    for(const purchase of purchases) {
-      const known=(await client.query<{product_key:string}>("SELECT product_key FROM store_transactions WHERE id=$1",[storeTransactionKey(purchase)])).rows[0];
-      let product=known?products.find(p=>p.product_key===known.product_key):undefined;
-      if(!product){
-        try{let identifier=providerProducts.get(purchase.productId);if(!identifier){identifier=await fetchProviderProduct(purchase.productId);providerProducts.set(purchase.productId,identifier);}
-        product=products.find(p=>(purchase.store==="app_store"?p.ios_product_id:p.android_product_id)===identifier);
-        if(!product){unresolved.push({productId:purchase.productId,code:"STORE_PRODUCT_UNMAPPED"});continue;}
-        }catch(error){if(error instanceof StoreError){unresolved.push({productId:purchase.productId,code:error.code});continue;}throw error;}
-      }
-      if(await applyVerifiedStorePurchase(client,user,purchase,product))changed++;
-    }
-    if(changed && purchases.some(p=>p.status==="refunded")) await reflowFutureStorePeriods(client,user);
-    // Refresh only store identity anchors for older display clients. Authorization uses independent grants.
-    await client.query(`UPDATE course_access ca SET
-      starts_at=COALESCE((SELECT MIN(g.starts_at) FROM store_course_grants g WHERE g.user_id=ca.user_id AND g.course_slug=ca.course_slug AND g.status='active'),ca.starts_at),
-      expires_at=CASE WHEN EXISTS(SELECT 1 FROM store_course_grants g WHERE g.user_id=ca.user_id AND g.course_slug=ca.course_slug AND g.status='active' AND g.expires_at IS NULL) THEN NULL
-      ELSE COALESCE((SELECT MAX(g.expires_at) FROM store_course_grants g WHERE g.user_id=ca.user_id AND g.course_slug=ca.course_slug AND g.status='active'),ca.starts_at) END,
-      updated_at=$2 WHERE ca.user_id=$1 AND ca.source='revenuecat'`,[user.id,new Date().toISOString()]);
-    await client.query("COMMIT");
-    return {changed,verified:purchases.length-unresolved.length,unresolved:unresolved.length};
-  } catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }
 export async function storeHistory(userId:number,page=1) {
   const limit=30;

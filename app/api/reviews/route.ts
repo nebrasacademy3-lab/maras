@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, inArray, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -27,6 +28,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول لكتابة تقييم", 401);
   if (!await checkRateLimit("review", `user:${user.id}`, 8, 60 * 60)) return jsonError("محاولات كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;

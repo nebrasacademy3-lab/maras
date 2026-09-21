@@ -6,7 +6,7 @@ import { emailVerificationCodes, users } from "@/db/schema";
 import { checkRateLimit, clientIp } from "@/lib/auth";
 import { EmailDeliveryError, emailDeliveryConfigured, sendTransactionalEmail } from "@/lib/transactional-email";
 
-export type EmailCodePurpose = "verify_email" | "change_password";
+export type EmailCodePurpose = "verify_email" | "change_password" | "delete_account";
 type UserRow = typeof users.$inferSelect;
 type Transaction = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
 type CodeIdentity = { userId: number; email: string; purpose: EmailCodePurpose };
@@ -85,9 +85,9 @@ export async function requestEmailCode(userId: number, purpose: EmailCodePurpose
   try {
     await sendTransactionalEmail({
       to: issued.user.email,
-      security: { kind: purpose === "verify_email" ? "verify-email" : "change-password", code },
-      subject: purpose === "verify_email" ? "رمز تأكيد بريدك — مراس العلم" : "رمز تغيير كلمة المرور — مراس العلم",
-      text: `مرحبًا ${issued.user.fullName}،\n\nرمز ${purpose === "verify_email" ? "تأكيد بريدك الإلكتروني" : "تغيير كلمة مرورك"} في مراس العلم:\n\n${code}\n\nصالح لمدة 10 دقائق ولمرة واحدة فقط. لا تشارك هذا الرمز مع أي شخص.\n${purpose === "verify_email" ? "تأكيد البريد مرة واحدة للحساب، وليس قبل كل عملية شراء." : "إذا لم تطلب تغيير كلمة المرور، تجاهل الرسالة وراجع أمان حسابك."}`,
+      ...(purpose === "delete_account" ? {} : { security: { kind: purpose === "verify_email" ? "verify-email" as const : "change-password" as const, code } }),
+      subject: purpose === "verify_email" ? "رمز تأكيد بريدك — مراس العلم" : purpose === "delete_account" ? "تأكيد حذف حسابك — مراس العلم" : "رمز تغيير كلمة المرور — مراس العلم",
+      text: `مرحبًا ${issued.user.fullName}،\n\nرمز ${purpose === "verify_email" ? "تأكيد بريدك الإلكتروني" : purpose === "delete_account" ? "حذف حسابك نهائيًا" : "تغيير كلمة مرورك"} في مراس العلم:\n\n${code}\n\nصالح لمدة 10 دقائق ولمرة واحدة فقط. لا تشارك هذا الرمز مع أي شخص.\n${purpose === "verify_email" ? "تأكيد البريد مرة واحدة للحساب، وليس قبل كل عملية شراء." : purpose === "delete_account" ? "إدخال هذا الرمز في شاشة حذف الحساب يزيل حسابك وبياناته الشخصية. إذا لم تطلب الحذف فلا تشارك الرمز وراجع أمان حسابك." : "إذا لم تطلب تغيير كلمة المرور، تجاهل الرسالة وراجع أمان حسابك."}`,
       idempotencyKey: `email-code-${issued.id}`,
     });
     await db.update(emailVerificationCodes).set({ sentAt: new Date().toISOString() }).where(and(eq(emailVerificationCodes.id, issued.id), isNull(emailVerificationCodes.usedAt)));
@@ -107,6 +107,7 @@ export async function consumeEmailCode<T>(userId: number, purpose: EmailCodePurp
   const code = normalizeEmailCode(supplied);
   if (!await checkRateLimit(`email-code-verify:${purpose}`, `user:${userId}`, 15, 15 * 60) || !await checkRateLimit("email-code-verify-ip", clientIp(request), 100, 15 * 60)) throw new EmailCodeError("محاولات كثيرة. حاول لاحقًا.", "EMAIL_CODE_RATE_LIMIT", 429);
   const result = await getDb().transaction(async tx => {
+    if (purpose === "delete_account") await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"instructor:" + userId}))`);
     await tx.execute(sql`SELECT pg_advisory_xact_lock(${userId})`);
     const [user] = await tx.select().from(users).where(and(eq(users.id, userId), eq(users.status, "active"))).limit(1);
     if (!user) return { ok: false as const };

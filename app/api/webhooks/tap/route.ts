@@ -47,11 +47,12 @@ type TapRefund = TapCharge & {
 function orderState(status: string) {
   if (status === "CAPTURED") return "paid";
   if (["ABANDONED", "CANCELLED"].includes(status)) return "cancelled";
-  if (["DECLINED", "FAILED", "RESTRICTED"].includes(status)) return "failed";
+  if (["DECLINED", "FAILED", "RESTRICTED", "TIMEDOUT"].includes(status)) return "failed";
   if (["VOID", "VOIDED"].includes(status)) return "voided";
   if (["REFUND", "REFUNDED", "FULLY_REFUNDED"].includes(status)) return "refunded";
   if (["PARTIALLY_REFUNDED", "PARTIAL_REFUND"].includes(status)) return "partially_refunded";
-  return status.toLowerCase() || "pending";
+  if (["INITIATED", "IN_PROGRESS", "AUTHORIZED"].includes(status)) return status.toLowerCase();
+  return "verification_pending";
 }
 
 function amountDecimals(currency: string) {
@@ -88,6 +89,8 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
   try {
     verifiedResponse = await fetch(`https://api.tap.company/v2/refunds/${encodeURIComponent(refundId)}`, {
       headers: { authorization: `Bearer ${tapSecretKey}`, accept: "application/json" },
+      cache: "no-store",
+      redirect: "error",
       signal: AbortSignal.timeout(10_000),
     });
   } catch {
@@ -293,10 +296,12 @@ async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string,
   let newlyPaid = false;
   let effectiveStatus = nextStatus;
   let entitlementExpiresAt = order.entitlementExpiresAt;
+  let chargeConflict = false;
   await db.transaction(async (tx) => {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${`ai-order:${order.orderNumber}`}))`);
     const [current] = await tx.select().from(aiSubscriptionOrders).where(eq(aiSubscriptionOrders.id, order.id)).limit(1);
     if (!current) return;
+    if (current.tapChargeId && current.tapChargeId !== chargeId) { chargeConflict = true; return; }
     if (isStaleChargeStatus(current.status, nextStatus)) {
       effectiveStatus = current.status;
       entitlementExpiresAt = current.entitlementExpiresAt;
@@ -328,13 +333,15 @@ async function handleAiSubscriptionCharge(verified: TapCharge, chargeId: string,
     }
     if (current.status !== "paid" && current.status !== "refunded") await tx.update(aiSubscriptionOrders).set({ status: nextStatus, tapChargeId: chargeId, updatedAt: now }).where(eq(aiSubscriptionOrders.id, current.id));
   });
+  if (chargeConflict) return jsonError("طلب الاشتراك مرتبط بعملية Tap مختلفة", 409);
   if (newlyPaid) await createAndSendNotification({ values: { targetUserId: order.userId, userEmail: null, audience: "student", title: "تم تفعيل اشتراك أدوات مراس", body: "أصبح اشتراك أدوات مراس بلس متاحًا في حسابك لمدة شهر.", actionUrl: "/study-tools", actionLabel: "ابدأ الآن", template: "ai_entitlement", dedupeKey: `ai-order:${order.orderNumber}:paid` }, target: { userId: order.userId }, data: { route: "/study-tools" } });
   return Response.json({ ok: true, received: true, matched: true, kind: "ai_subscription", status: effectiveStatus, entitlementExpiresAt });
 }
 
 export async function POST(request: Request) {
   const tapSecretKey = process.env.TAP_SECRET_KEY?.trim();
-  const webhookSecret = process.env.TAP_WEBHOOK_SECRET?.trim() || tapSecretKey;
+  // Tap documents the signing key as the Secret API Key used to create the charge.
+  const webhookSecret = tapSecretKey;
   if (!tapSecretKey || !webhookSecret) return jsonError("Tap webhook غير مفعّل", 503);
   const contentLength = Number(request.headers.get("content-length") || 0);
   if (Number.isFinite(contentLength) && contentLength > 256 * 1024) return jsonError("حمولة Tap كبيرة جدًا", 413);
@@ -358,6 +365,8 @@ export async function POST(request: Request) {
   try {
     verifiedResponse = await fetch(`https://api.tap.company/v2/charges/${encodeURIComponent(chargeId)}`, {
       headers: { authorization: `Bearer ${tapSecretKey}`, accept: "application/json" },
+      cache: "no-store",
+      redirect: "error",
       signal: AbortSignal.timeout(10_000),
     });
   } catch {
@@ -422,6 +431,7 @@ export async function POST(request: Request) {
     await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${order.orderNumber}))`);
     const [current] = await tx.select().from(orders).where(eq(orders.id, order.id)).limit(1);
     if (!current) return;
+    if (current.tapChargeId && current.tapChargeId !== chargeId) { transitionError = "الطلب مرتبط بعملية Tap مختلفة"; return; }
 
     if (isStaleChargeStatus(current.status, nextStatus)) {
       effectiveStatus = current.status;

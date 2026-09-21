@@ -35,7 +35,7 @@ async function boundedJson(response) {
 function ciHeaders(env) {
   const headers = { accept: "application/vnd.github+json", "x-github-api-version": "2022-11-28", "user-agent": "maras-release-gate/1.1", "cache-control": "no-cache" };
   const token = env.DEPLOY_GITHUB_TOKEN?.trim() || "";
-  if (token && (token.length > 4096 || /[^\x21-\x7e]/.test(token))) throw new Error("Invalid deployment CI credential; deployment blocked");
+  if (token && (token.length > 4096 || /[^\x21-\x7e]/.test(token))) throw new Error("Invalid deployment CI credential; invalid format; deployment blocked");
   if (token) headers.authorization = `Bearer ${token}`;
   return headers;
 }
@@ -85,6 +85,7 @@ export async function requireSuccessfulCi({ env = process.env, fetcher = fetch, 
       await response.body?.cancel();
       const delay = transientDelay(response, attempt, now());
       if (delay !== null && await retry(attempt, delay, "http", response.status)) continue;
+      if (response.status === 401 || response.status === 404) throw new Error(`GitHub CI access denied or repository unavailable (HTTP ${response.status}). Configure DEPLOY_GITHUB_TOKEN with Actions:read access to this repository; deployment blocked`);
       throw new Error(`GitHub CI metadata is unavailable or rate-limited (HTTP ${response.status}); deployment blocked`);
     }
     const status = evaluateCiRuns(await boundedJson(response), commit);

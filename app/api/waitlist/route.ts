@@ -1,3 +1,4 @@
+import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -13,6 +14,7 @@ async function courseFromPayload(payload: Record<string, unknown>) {
 
 export async function GET(request: Request) {
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول لإدارة تنبيهات الإطلاق", 401);
   const courseSlug = cleanText(new URL(request.url).searchParams.get("courseSlug"), 120).replace(/[^A-Za-z0-9_-]/g, "");
   if (!courseSlug) return jsonError("المادة مطلوبة");
@@ -23,6 +25,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول ليصلك إشعار عند إطلاق المادة", 401);
   if (!await checkRateLimit("waitlist-write", `user:${user.id}`, 20, 60)) return jsonError("محاولات كثيرة. حاول بعد دقيقة.", 429);
   let payload: Record<string, unknown>;
@@ -42,6 +45,7 @@ export async function POST(request: Request) {
 export async function DELETE(request: Request) {
   if (!sameOriginRequest(request)) return jsonError("تعذر التحقق من مصدر الطلب", 403);
   const user = await getSessionUser(request);
+  if (user?.role === "instructor") return studentWorkspaceRequirementResponse(user)!;
   if (!user) return jsonError("سجّل الدخول أولًا", 401);
   let payload: Record<string, unknown>;
   try { payload = await readBoundedJsonObject(request, 32 * 1024); } catch { return jsonError("الطلب غير صالح"); }
