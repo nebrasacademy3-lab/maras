@@ -10,7 +10,7 @@ const nativeRequest = (id, extra = {}) => new Request("https://test/api/mobile/a
 const identityA = "installation-aaaaaaaaaaaaaaaaaaaa";
 const identityB = "installation-bbbbbbbbbbbbbbbbbbbb";
 const identityC = "installation-cccccccccccccccccccc";
-async function authFor(db) { return isolated("../lib/auth.ts", { ...tables, eq, and, gt, isNull, sql, getDb: () => db, verifyLoginMfaTx: async () => false, enrollStudentDeviceTx: devices.enrollStudentDeviceTx }); }
+async function authFor(db) { return isolated("../lib/auth.ts", { ...tables, eq, and, gt, isNull, sql, getDb: () => db, verifyLoginMfaTx: async () => false, trustedClientIp: () => "unknown", enrollStudentDeviceTx: devices.enrollStudentDeviceTx }); }
 function studentDb() { return database({ users: [{ id: 7, role: "student", status: "active", email: "student@example.test" }] }); }
 
 test("logout, expired sessions and password-reset-style revocation never free either student device", async () => {

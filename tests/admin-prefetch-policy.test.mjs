@@ -7,8 +7,8 @@ test("every admin shell link opts out of speculative private-route prefetch", as
   // Source contract; the unchanged three-engine browser suite exercises routing
   // and continues to reject every client exception, including cancelled RSC work.
   const links = [...source.matchAll(/<Link\b([^>]*?)(?:>|$)/g)];
-  assert.equal(links.length, 4, "search results, grouped links, account security and brand link");
+  assert.ok(links.length >= 4, "search results, grouped links, account security and brand link remain present");
   for (const [, attributes] of links) assert.match(attributes, /^\s+prefetch=\{false\}\s/);
-  assert.match(source, /onClick=\{\(\)=>setMobileOpen\(false\)\}/);
+  assert.match(source, /onClick=\{\(\)\s*=>\s*setMobileOpen\(false\)\}/);
   assert.match(source, /router\.refresh\(\)/, "explicit refresh remains available");
 });

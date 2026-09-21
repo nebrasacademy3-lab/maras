@@ -3,6 +3,8 @@ import type { SessionUser } from "@/lib/auth";
 /** A verified address remains verified; checkout never issues another email code. */
 export function accountNext(user: Pick<SessionUser, "emailVerified" | "profileCompleted" | "onboardingCompleted"> & { role?: SessionUser["role"] }, native = false) {
   if (!user.emailVerified) return "/verify-email";
+  if (user.role === "admin") return "/admin";
+  if (user.role === "supervisor") return "/supervisor";
   if (user.role === "instructor") return "/instructor";
   if (!user.profileCompleted) return "/complete-profile";
   if (!user.onboardingCompleted) return "/onboarding";

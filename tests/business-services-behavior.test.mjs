@@ -8,7 +8,7 @@ const state = await isolated("../lib/payment-state.ts");
 const order = { id: 1, orderNumber: "MR-test", userId: 9, customerEmail: "owner@example.test", customerName: "Owner", courseSlug: "physics", total: 100, totalMinor: 10000, subtotal: 100, discount: 0, currency: "SAR", tapChargeId: "chg_test", status: "paid", paidAt: "2026-01-01T00:00:00.000Z" };
 const aiOrder = { id: 1, userId: 9, orderNumber: "AI-one", customerEmail: "owner@example.test", amountMinor: 10000, currency: "SAR", tapChargeId: "chg_ai", status: "pending" };
 async function webhook(db, extra = {}) {
-  return isolated("../app/api/webhooks/tap/route.ts", { ...tables, ...api, ...refunds, ...state, getDb: () => db, eq, ne, and, sql, createAndSendNotification: async () => {}, sendPushNotification: async () => ({ accepted: 0, attempted: 0, providerErrors: [] }), qualifyReferralForPaidOrderTx: async () => {}, reconcileReferralQualificationAfterRefundTx: async () => {}, ...extra }, "export { handleAiSubscriptionCharge, handleRefundWebhook }; ");
+  return isolated("../lib/tap-webhook.ts", { ...tables, ...api, ...refunds, ...state, getDb: () => db, eq, ne, and, sql, createAndSendNotification: async () => {}, sendPushNotification: async () => ({ accepted: 0, attempted: 0, providerErrors: [] }), qualifyReferralForPaidOrderTx: async () => {}, reconcileReferralQualificationAfterRefundTx: async () => {}, ...extra }, "export { handleAiSubscriptionCharge, handleRefundWebhook }; ");
 }
 
 test("course-request downloads and file lists reject unrelated supervisors as well as students", async () => {
@@ -83,7 +83,7 @@ test("course charge callbacks cannot erase partial refunds and reject sub-halala
     const db = database({ users: [{ id: 9, email: order.customerEmail, status: "active" }], orders: [{ ...order, status: scenario.current }] });
     let fulfills = 0;
     const verified = { id: "chg_test", status: scenario.incoming, amount: scenario.amount, currency: "SAR", metadata: { order_number: "MR-test" } };
-    const source = await isolated("../app/api/webhooks/tap/route.ts", { ...tables, ...api, ...refunds, ...state, getDb: () => db, eq, ne, and, sql, createHmac, timingSafeEqual, readBoundedJsonObject: request => request.json(), process: { env: { TAP_SECRET_KEY: "fixture-secret" } }, fetch: async () => Response.json(verified), fulfillPaidOrderTx: async () => { fulfills++; return { notice: null }; } }, "export { hashValue };");
+    const source = await isolated("../lib/tap-webhook.ts", { ...tables, ...api, ...refunds, ...state, getDb: () => db, eq, ne, and, sql, createHmac, timingSafeEqual, readBoundedJsonObject: request => request.json(), process: { env: { TAP_SECRET_KEY: "fixture-secret" } }, fetch: async () => Response.json(verified), fulfillPaidOrderTx: async () => { fulfills++; return { notice: null }; } }, "export { hashValue };");
     const request = new Request("https://test/api/webhooks/tap", { method: "POST", headers: { hashstring: source.hashValue(verified, "fixture-secret") }, body: JSON.stringify(verified) });
     const result = await source.POST(request);
     assert.equal(result.status, scenario.status);

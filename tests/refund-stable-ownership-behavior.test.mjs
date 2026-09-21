@@ -90,7 +90,7 @@ test("refund audit failure rolls back the order status and access revocation", a
 });
 
 test("both managed refunds and charge webhooks use the same locked revocation implementation", async () => {
-  for (const path of ["lib/refunds.ts", "app/api/webhooks/tap/route.ts"]) {
+  for (const path of ["lib/refunds.ts", "lib/tap-webhook.ts"]) {
     const source = await readFile(new URL("../" + path, import.meta.url), "utf8");
     assert.match(source, /import \{ revokeRefundedOrderAccessTx \} from "@\/lib\/refunded-order-access"/);
     assert.match(source, /await revokeRefundedOrderAccessTx\(tx, current, now\)/);

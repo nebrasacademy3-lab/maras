@@ -10,7 +10,7 @@ const charge = { id: "chg_fixture", object: "charge", amount: 100, currency: "SA
 async function handler(extra = {}) {
  const db = database();
  let retrievals = 0;
- const route = await isolated("../app/api/webhooks/tap/route.ts", { ...tables, ...api, ...refunds, ...state, eq, ne, and, sql, getDb: () => db, createHmac, timingSafeEqual, readBoundedJsonObject: request => request.json(), process: { env: { TAP_SECRET_KEY: "sk_synthetic", TAP_WEBHOOK_SECRET: "obsolete-unrelated-key" } }, fetch: async (_url, options) => { retrievals++; assert.equal(options.redirect, "error"); assert.equal(options.cache, "no-store"); return Response.json(charge); }, ...extra }, "export { hashValue, orderState, handleAiSubscriptionCharge }; ");
+ const route = await isolated("../lib/tap-webhook.ts", { ...tables, ...api, ...refunds, ...state, eq, ne, and, sql, getDb: () => db, createHmac, timingSafeEqual, readBoundedJsonObject: request => request.json(), process: { env: { TAP_SECRET_KEY: "sk_synthetic", TAP_WEBHOOK_SECRET: "obsolete-unrelated-key" } }, fetch: async (_url, options) => { retrievals++; assert.equal(options.redirect, "error"); assert.equal(options.cache, "no-store"); return Response.json(charge); }, ...extra }, "export { hashValue, orderState, handleAiSubscriptionCharge }; ");
  return { ...route, db, retrievals: () => retrievals };
 }
 function signedRequest(body, hash) { return new Request("https://example.test/api/webhooks/tap", { method: "POST", headers: { hashstring: hash }, body: JSON.stringify(body) }); }
@@ -68,5 +68,69 @@ test("retired store webhook and mobile purchasing cannot call provider or modify
   assert.equal(result.status, 410);
   assert.equal((await result.json()).code, "STORE_PURCHASES_RETIRED");
   assert.equal(authenticated, true);
+ }
+});
+
+
+test("scheduled retrieval records provider verification without claiming a webhook signature", async () => {
+ const route = await handler();
+ const response = await route.retrieveAndApplyTapCharge("chg_fixture", "sk_synthetic", false, { kind: "course", orderNumber: "ORDER-fixture" });
+ assert.equal(response.status, 200);
+ assert.equal(route.db.rows.paymentEvents[0].signatureVerified, false);
+ assert.equal(route.db.rows.paymentEvents[0].eventType, "charge_reconciliation");
+});
+
+test("reconciliation cannot apply a charge belonging to another local order or product", async () => {
+ for (const expected of [{ kind: "course", orderNumber: "WRONG" }, { kind: "ai", orderNumber: "ORDER-fixture" }]) {
+  const route = await handler();
+  assert.equal((await route.retrieveAndApplyTapCharge("chg_fixture", "sk_synthetic", false, expected)).status, 409);
+  assert.equal(route.db.rows.paymentEvents.length, 0);
+  assert.equal(route.db.writes.length, 0);
+ }
+});
+
+test("invalid charge identifiers and malformed provider objects fail before financial writes", async () => {
+ const route = await handler();
+ for (const id of ["", "../charges", "re_refund", "chg_" + "x".repeat(151)]) assert.equal((await route.retrieveAndApplyTapCharge(id, "sk_synthetic")).status, 400);
+ assert.equal(route.retrievals(), 0);
+ for (const payload of [null, [], {}, { id: "chg_other" }]) {
+  const malformed = await handler({ fetch: async () => Response.json(payload) });
+  assert.equal((await malformed.retrieveAndApplyTapCharge("chg_fixture", "sk_synthetic")).status, 409);
+  assert.equal(malformed.db.writes.length, 0);
+ }
+});
+
+
+test("a missed AI callback is recovered once and subsequent callbacks do not add another month", async () => {
+ const db = database({ aiSubscriptionOrders: [{ id: 1, userId: 1, orderNumber: "AI-fixture", tapChargeId: "chg_fixture", status: "verification_pending", amountMinor: 10000, currency: "SAR", customerEmail: "student@example.test" }] });
+ const verified = { ...charge, metadata: { product: "meras-ai", ai_order_number: "AI-fixture" }, reference: { ...charge.reference, order: "AI-fixture" }, customer: { email: "student@example.test" } };
+ const route = await handler({ getDb: () => db, fetch: async () => Response.json(verified), createAndSendNotification: async () => {} });
+ const first = await route.retrieveAndApplyTapCharge("chg_fixture", "sk_synthetic", false, { kind: "ai", orderNumber: "AI-fixture" });
+ assert.equal(first.status, 200);
+ assert.equal(db.rows.aiSubscriptionOrders[0].status, "paid");
+ assert.equal(db.rows.aiEntitlements.length, 1);
+ const expiry = db.rows.aiEntitlements[0].expiresAt;
+ const callback = await route.POST(signedRequest(verified, route.hashValue(verified, "sk_synthetic")));
+ assert.equal(callback.status, 200);
+ assert.equal(db.rows.aiEntitlements.length, 1);
+ assert.equal(db.rows.aiEntitlements[0].expiresAt, expiry);
+});
+
+
+test("a finance hold that arrives during provider retrieval cannot be overridden by reconciliation", async () => {
+ for (const kind of ["course", "ai"]) {
+  const table = kind === "course" ? "orders" : "aiSubscriptionOrders";
+  const row = { id: 1, userId: 1, orderNumber: "ORDER-fixture", tapChargeId: "chg_fixture", status: "verification_pending", amountMinor: 10000, totalMinor: 10000, currency: "SAR", customerEmail: "student@example.test", courseSlug: "math" };
+  const db = database({ [table]: [row] });
+  const verified = { ...charge, metadata: kind === "ai" ? { product: "meras-ai", ai_order_number: "ORDER-fixture" } : {}, customer: { email: "student@example.test" } };
+  const transaction = db.transaction;
+  db.transaction = async callback => { db.rows[table][0].status = "payment_review"; return transaction(callback); };
+  const route = await handler({ getDb: () => db, fetch: async () => Response.json(verified), fulfillPaidOrderTx: async () => { throw Error("finance hold must not be fulfilled"); } });
+  const response = await route.retrieveAndApplyTapCharge("chg_fixture", "sk_synthetic", false, { kind, orderNumber: row.orderNumber });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).status, "payment_review");
+  assert.equal(db.rows[table][0].status, "payment_review");
+  assert.equal(db.rows.aiEntitlements.length, 0);
+  assert.equal(db.rows.courseAccess.length, 0);
  }
 });

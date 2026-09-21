@@ -1,0 +1,36 @@
+{
+  "checkedAt": "2026-09-21T20:33:28.131Z",
+  "expectedNewDiscovery": false,
+  "checks": [
+    {
+      "path": "/api/health",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/robots.txt",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/sitemap.xml",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/llms.txt",
+      "status": 200,
+      "passed": true
+    },
+    {
+      "path": "/api/admin/staff",
+      "status": 403,
+      "passed": true
+    }
+  ]
+}

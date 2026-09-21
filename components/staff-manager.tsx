@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { ShieldCheck, UsersRound, Plus, RefreshCw, Monitor, X, Search } from "lucide-react";
+import { ShieldCheck, UsersRound, Plus, RefreshCw, Monitor, X, Search, Trash2 } from "lucide-react";
 import { adminFetch } from "@/lib/admin-client";
 import { confirmAction, promptAction, notify } from "@/lib/interaction-events";
 import type { StaffMember, StaffResponse } from "@/lib/staff-contracts";
@@ -20,9 +20,9 @@ export function StaffManager() {
     finally { if (!signal?.aborted) setLoading(false); }
   }, [query, page]);
   useEffect(() => { const controller = new AbortController(); const timer = setTimeout(() => void load(controller.signal), 250); return () => { clearTimeout(timer); controller.abort(); }; }, [load]);
-  async function action(payload: Record<string, unknown>) {
+  async function action(payload: Record<string, unknown>, endpoint = "/api/admin/staff") {
     if (busy) return false; setBusy(true); setError("");
-    try { const response = await adminFetch("/api/admin/staff", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر تنفيذ العملية"); await load(); return true; }
+    try { const response = await adminFetch(endpoint, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "تعذر تنفيذ العملية"); await load(); return true; }
     catch (e) { setError(e instanceof Error ? e.message : "تعذر التنفيذ"); return false; }
     finally { setBusy(false); }
   }
@@ -32,6 +32,17 @@ export function StaffManager() {
     if (!await confirmAction({ title: label, message: `${member.fullName}\nسيُسجّل الإجراء باسم المدير الأعلى. لا تُعرض أو تُستعاد أسرار التحقق.`, destructive: kind !== "activate", confirmLabel: "متابعة" })) return;
     const reason = await promptAction("سبب الإجراء (أربعة أحرف على الأقل)"); if (!reason || reason.trim().length < 4) { if (reason !== null) notify("اكتب سببًا واضحًا للإجراء", "error"); return; }
     await action({ action: kind, id: member.id, expectedUpdatedAt: member.updatedAt, sessionId, reason });
+  }
+  async function remove(member: StaffMember) {
+    if (busy || member.isPlatformOwner) return;
+    if (!await confirmAction({ title: "حذف حساب المشرف", message: `${member.fullName}\n${member.email}\nسيُحذف الحساب وتُنهى جلساته وصلاحياته. الحسابات المرتبطة بسجل مالي أو حقوق محفوظة لا تُحذف؛ يمكنك إيقافها بدلًا من ذلك.`, destructive: true, confirmLabel: "متابعة الحذف" })) return;
+    const confirmation = await promptAction("اكتب كلمة حذف لتأكيد حذف حساب المشرف نهائيًا");
+    if (confirmation === null) return;
+    if (confirmation.trim() !== "حذف") { notify("لم تُحذف أي بيانات؛ كلمة التأكيد غير مطابقة", "error"); return; }
+    if (await action({ action: "deleteEntity", entityType: "user", entityId: String(member.id), confirmation: "حذف" }, "/api/admin/console")) {
+      if (draft?.id === member.id) setDraft(null);
+      notify("تم حذف حساب المشرف وتسجيل العملية", "success");
+    }
   }
   function edit(member: StaffMember) { setDraft({ id: member.id, fullName: member.fullName, email: member.email, phone: member.phone || "", password: "", permissions: [...member.permissions], expectedUpdatedAt: member.updatedAt }); setFilter(""); }
   return <section className={styles.root} aria-busy={busy}>
@@ -49,7 +60,7 @@ export function StaffManager() {
     <div className={styles.members}>{data?.staff.map(member => <article key={member.id} className={styles.member}>
       <header><span className={styles.avatar}>{member.isPlatformOwner ? <ShieldCheck/> : <UsersRound/>}</span><div><h3>{member.fullName}</h3><p dir="ltr">{member.email}</p></div><span className={styles.badge}>{member.isPlatformOwner ? "المدير الأعلى · محمي" : member.status === "active" ? "مشرف نشط" : "مشرف متوقف"}</span></header>
       <div className={styles.stats}><span>MFA: <b>{member.mfaEnabled ? "مفعّل" : "غير مفعّل"}</b></span><span><Monitor size={15}/> {member.sessions.length}{member.sessionsMayBeTruncated ? "+" : ""} جلسات نشطة</span><span>{member.isPlatformOwner ? "كل الصلاحيات" : `${member.permissions.length} صلاحيات محددة`}</span></div>
-      {!member.isPlatformOwner && <><div className={styles.actions}><button disabled={busy} onClick={() => edit(member)}>تعديل الصلاحيات</button><button disabled={busy} onClick={() => void manage(member, member.status === "active" ? "suspend" : "activate")}>{member.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب"}</button><button disabled={busy} onClick={() => void manage(member, "revokeSession", "all")}>إنهاء كل الجلسات</button>{member.mfaEnabled && <button disabled={busy} onClick={() => void manage(member, "resetMfa")}>إعادة ضبط MFA</button>}</div><details><summary>تفاصيل الأجهزة والجلسات</summary>{member.sessions.length ? member.sessions.map(session => <div key={session.id} className={styles.session}><div><strong>{session.deviceLabel || session.platform || "جهاز"}</strong><small>آخر نشاط: {new Date(session.lastSeenAt).toLocaleString("ar-SA")}</small><small>{session.platform}</small></div><button disabled={busy} onClick={() => void manage(member, "revokeSession", session.id)}>إنهاء الجلسة</button></div>) : <p>لا توجد جلسات نشطة.</p>}</details></>}
+      {!member.isPlatformOwner && <><div className={styles.actions}><button disabled={busy} onClick={() => edit(member)}>تعديل الصلاحيات</button><button disabled={busy} onClick={() => void manage(member, member.status === "active" ? "suspend" : "activate")}>{member.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب"}</button><button disabled={busy} onClick={() => void manage(member, "revokeSession", "all")}>إنهاء كل الجلسات</button>{member.mfaEnabled && <button disabled={busy} onClick={() => void manage(member, "resetMfa")}>إعادة ضبط MFA</button>}<button type="button" className={styles.deleteButton} disabled={busy} onClick={() => void remove(member)}><Trash2 size={15}/> حذف الحساب</button></div><details><summary>تفاصيل الأجهزة والجلسات</summary>{member.sessions.length ? member.sessions.map(session => <div key={session.id} className={styles.session}><div><strong>{session.deviceLabel || session.platform || "جهاز"}</strong><small>آخر نشاط: {new Date(session.lastSeenAt).toLocaleString("ar-SA")}</small><small>{session.platform}</small></div><button disabled={busy} onClick={() => void manage(member, "revokeSession", session.id)}>إنهاء الجلسة</button></div>) : <p>لا توجد جلسات نشطة.</p>}</details></>}
     </article>)}</div>
     {data && !data.staff.length && <p className={styles.empty}>لا توجد حسابات مطابقة للبحث.</p>}
     {data && data.total > data.pageSize && <footer className={styles.toolbar}><button disabled={page <= 1 || loading} onClick={() => setPage(page - 1)}>السابق</button><span>صفحة {page}</span><button disabled={page * data.pageSize >= data.total || loading} onClick={() => setPage(page + 1)}>التالي</button></footer>}

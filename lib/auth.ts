@@ -1,4 +1,5 @@
 import {adminActorMatches} from "@/lib/admin-actor";
+import { trustedClientIp } from "@/lib/client-ip";
 import { verifyLoginMfaTx, type LoginMfaProof } from "@/lib/account-mfa";
 import { and, eq, gt, isNull, sql } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -258,7 +259,7 @@ export async function revokeSession(request: Request) {
 }
 
 export function clientIp(request: Request) {
-  return (request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0] || "unknown").trim().slice(0, 80);
+  return trustedClientIp(request);
 }
 
 export function validPassword(password: string) {
@@ -294,7 +295,7 @@ async function rateLimitKey(scope: string, identity: string) {
   return sha256(`${scope}:${identity.trim().toLowerCase()}`);
 }
 
-export async function checkRateLimit(scope: string, identity: string, limit: number, windowSeconds: number) {
+export async function consumeRateLimit(scope: string, identity: string, limit: number, windowSeconds: number) {
   const db = getDb();
   const key = await rateLimitKey(scope, identity);
   const now = Date.now();
@@ -307,8 +308,14 @@ export async function checkRateLimit(scope: string, identity: string, limit: num
       windowExpiresAt: sql`CASE WHEN ${authRateLimits.windowExpiresAt} <= ${nowIso} THEN ${expiryIso} ELSE ${authRateLimits.windowExpiresAt} END`,
       updatedAt: nowIso,
     },
-  }).returning({ attempts: authRateLimits.attempts });
-  return Boolean(row && row.attempts <= limit);
+  }).returning({ attempts: authRateLimits.attempts, windowExpiresAt: authRateLimits.windowExpiresAt });
+  const allowed = Boolean(row && row.attempts <= limit);
+  const remaining = row ? Math.ceil((Date.parse(row.windowExpiresAt) - now) / 1000) : windowSeconds;
+  return { allowed, retryAfterSeconds: allowed ? 0 : Math.max(1, Number.isFinite(remaining) ? remaining : windowSeconds) };
+}
+
+export async function checkRateLimit(scope: string, identity: string, limit: number, windowSeconds: number) {
+  return (await consumeRateLimit(scope, identity, limit, windowSeconds)).allowed;
 }
 
 export async function clearRateLimit(scope: string, identity: string) {

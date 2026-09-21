@@ -117,3 +117,16 @@ test("return paths reject authority tricks, backslashes/control bytes and API de
   }
   assert.equal(readiness.safeAccountReturnTo("/courses/course?tab=lessons#lesson-1"), "/courses/course?tab=lessons#lesson-1");
 });
+
+
+test("verified staff enter their own workspace after login or MFA without student onboarding", () => {
+  for (const native of [false, true]) {
+    for (const [role, path] of [["admin", "/admin"], ["supervisor", "/supervisor"], ["instructor", "/instructor"]]) {
+      const staff = { ...complete, role, profileCompleted: false, onboardingCompleted: false };
+      assert.equal(readiness.accountNext(staff, native), path);
+      assert.equal(readiness.accountNext({ ...staff, emailVerified: false }, native), "/verify-email");
+    }
+  }
+  assert.equal(readiness.accountNext({ ...complete, role: "admin", academicLevel: null }), "/admin");
+  assert.equal(readiness.purchaseRequirement({ ...complete, role: "admin", academicLevel: null }).code, "PROFILE_INCOMPLETE");
+});

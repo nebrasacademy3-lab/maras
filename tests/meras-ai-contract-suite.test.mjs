@@ -115,7 +115,7 @@ test("AI checkout uses server price and idempotency", () => {
 });
 
 test("Tap state machine cannot resurrect refunded AI access", () => {
-  const webhook = source("app/api/webhooks/tap/route.ts");
+  const webhook = source("lib/tap-webhook.ts");
   assert.match(webhook, /handleAiSubscriptionCharge/);
   assert.match(webhook, /metadata\?\.product[\s\S]{0,120}["']meras-ai["']/);
   assert.match(webhook, /amountMatches/);

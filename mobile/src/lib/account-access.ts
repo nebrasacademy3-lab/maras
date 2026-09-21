@@ -4,7 +4,7 @@ import { safeInternalPath } from "@/src/lib/notification-routing";
 export function accountRequirement(user: SessionUser | null) {
   if (!user) return "/(auth)/login";
   if (!user.emailVerified) return "/verify-email";
-  if (user.role === "instructor") return null;
+  if (["admin", "supervisor", "instructor"].includes(user.role)) return null;
   if (!user.profileCompleted) return "/complete-profile";
   return null;
 }
@@ -14,6 +14,8 @@ export function authDestination(user: SessionUser, next?: string, returnTo?: str
   const target = safeInternalPath(returnTo);
   const suffix = target ? `?return_to=${encodeURIComponent(target)}` : "";
   if (requirement) return `${requirement}${suffix}`;
+  if (user.role === "admin") return "/admin";
+  if (user.role === "supervisor") return "/supervisor";
   if (user.role === "instructor") return "/instructor";
   if (!user.onboardingCompleted || next === "/onboarding") return `/onboarding${suffix}`;
   if (target && !/^\/(?:\(auth\)|verify-email|complete-profile|oauth|onboarding)(?:\/|\?|$)/.test(target)) return target;

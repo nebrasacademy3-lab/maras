@@ -98,3 +98,19 @@
   .body { padding-top: 2rem; }
   .step:not(:last-child)::after { inset-inline-start: 35px; }
 }
+
+/* Six public destinations remain visible and usable without horizontal scrolling. */
+.pageNav { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.pageNav a { padding-inline: .9rem; font-size: .86rem; }
+.pageNav a > svg { flex-shrink: 0; }
+.pageNav .navArrow { display: none; }
+@media (max-width: 1100px) and (min-width: 521px) {
+  .pageNav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .pageNav a:nth-child(-n+3) { border-bottom: 1px solid var(--line); }
+  .pageNav a:nth-child(3n) { border-inline-end: 0; }
+}
+@media (max-width: 520px) {
+  .pageNav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .pageNav a:nth-child(2n) { border-inline-end: 0; }
+  .pageNav a:nth-last-child(-n+2) { border-bottom: 0; }
+}

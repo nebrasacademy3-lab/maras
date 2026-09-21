@@ -23,6 +23,9 @@ export function database(initial = {}) {
     if (!clause) return true;
     if (clause.kind === "or") return clause.clauses.some(item => matches(row, item));
     if (clause.kind === "and") return clause.clauses.every(item => matches(row, item));
+    if (clause.kind === "lte") return row[clause.column.key] <= clause.value;
+    if (clause.kind === "inArray") return clause.value.includes(row[clause.column.key]);
+    if (clause.kind === "isNotNull") return row[clause.column.key] != null;
     if (clause.kind === "eq") return row[clause.column.key] === clause.value;
     if (clause.kind === "isNull") return row[clause.column.key] == null;
     if (clause.kind === "gt") return row[clause.column.key] > clause.value;

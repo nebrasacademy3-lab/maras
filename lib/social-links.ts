@@ -30,6 +30,8 @@ export function normalizeSocialUrl(key: SocialSettingKey, value: unknown): strin
     const url = new URL(value.trim());
     if (url.protocol !== "https:" || url.username || url.password || url.port) return "";
     if (!channel.hosts.some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`))) return "";
+    // A network homepage does not identify a platform account or contact destination.
+    if (!url.pathname.split("/").some(Boolean)) return "";
     return url.href;
   } catch { return ""; }
 }
@@ -40,13 +42,21 @@ export function normalizeWhatsappNumber(value: unknown): string {
   if (!/^\+?[0-9 ()-]+$/.test(latin)) return "";
   const digits = latin.replace(/\D/g, "").replace(/^00/, "");
   const international = /^05\d{8}$/.test(digits) ? `966${digits.slice(1)}` : digits;
+  // Saudi numbers contain a nine-digit national number after the country code.
+  if (international.startsWith("966") && international.length !== 12) return "";
   return /^[1-9]\d{8,14}$/.test(international) ? international : "";
 }
 
 export function publicWhatsappUrl(settings: SocialSettingsInput): string {
   const number = normalizeWhatsappNumber(settings.whatsapp_number);
   if (number) return `https://wa.me/${number}?text=${encodeURIComponent(settings.whatsapp_message || "")}`;
-  return normalizeSocialUrl("whatsapp_number", settings.whatsapp_url);
+  const fallback = normalizeSocialUrl("whatsapp_number", settings.whatsapp_url);
+  if (!fallback) return "";
+  const url = new URL(fallback);
+  const host = url.hostname.replace(/^www\./, "");
+  if (host === "wa.me" && /^\d+$/.test(url.pathname.slice(1)) && !normalizeWhatsappNumber(url.pathname.slice(1))) return "";
+  if (url.pathname === "/send" && !normalizeWhatsappNumber(url.searchParams.get("phone"))) return "";
+  return fallback;
 }
 
 /** One ordered, normalized list consumed by web, mobile's public API and email. */

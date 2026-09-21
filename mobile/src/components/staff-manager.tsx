@@ -6,7 +6,7 @@ import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton, Card, Field } from "@/src/components/ui";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { api, jsonBody } from "@/src/lib/api";
-import { MerasAlert } from "@/src/lib/interaction-events";
+import { MerasAlert, nativeToast, promptNative } from "@/src/lib/interaction-events";
 import type { StaffMember, StaffResponse } from "@/src/lib/staff-contracts";
 type Draft = { id?: number; fullName: string; email: string; phone: string; password: string; permissions: string[]; expectedUpdatedAt?: string };
 const blank = (): Draft => ({ fullName: "", email: "", phone: "", password: "", permissions: [] });
@@ -17,9 +17,9 @@ export function StaffManager() {
   const [busy, setBusy] = useState(false); const [error, setError] = useState(""); const [reason, setReason] = useState("");
   const [expanded, setExpanded] = useState<number | null>(null);
   const query = useQuery({ queryKey: ["admin-staff", search, page], queryFn: ({ signal }) => api<StaffResponse>(`/api/admin/staff?q=${encodeURIComponent(search)}&page=${page}`, { signal }), retry: 1 });
-  async function action(payload: Record<string, unknown>) {
+  async function action(payload: Record<string, unknown>, endpoint = "/api/admin/staff") {
     if (busy) return false; setBusy(true); setError("");
-    try { await api("/api/admin/staff", { method: "POST", body: jsonBody(payload) }); await query.refetch(); return true; }
+    try { await api(endpoint, { method: "POST", body: jsonBody(payload) }); await query.refetch(); return true; }
     catch (e) { setError(e instanceof Error ? e.message : "تعذر التنفيذ"); return false; }
     finally { setBusy(false); }
   }
@@ -28,6 +28,21 @@ export function StaffManager() {
     if (reason.trim().length < 4) { setError("اكتب سبب الإجراء أولًا (أربعة أحرف على الأقل)"); return; }
     const label = kind === "resetMfa" ? "إعادة ضبط MFA" : kind === "revokeSession" ? "إنهاء الجلسات المحددة" : kind === "activate" ? "تفعيل الحساب" : "إيقاف الحساب";
     MerasAlert.alert(label, `${member.fullName}\n${reason}\nسيُسجّل هذا الإجراء باسم المدير الأعلى.`, [{ text: "إلغاء", style: "cancel" }, { text: "تأكيد", style: kind === "activate" ? "default" : "destructive", onPress: () => { void action({ action: kind, id: member.id, sessionId, reason, expectedUpdatedAt: member.updatedAt }); } }]);
+  }
+  function remove(member: StaffMember) {
+    if (busy || member.isPlatformOwner) return;
+    MerasAlert.alert("حذف حساب المشرف", `${member.fullName}\n${member.email}\nسيُحذف الحساب وتُنهى جلساته وصلاحياته. الحسابات المرتبطة بسجل مالي أو حقوق محفوظة لا تُحذف؛ يمكنك إيقافها بدلًا من ذلك.`, [
+      { text: "إلغاء", style: "cancel" },
+      { text: "متابعة الحذف", style: "destructive", onPress: () => { void (async () => {
+        const confirmation = await promptNative("تأكيد حذف المشرف", "اكتب كلمة حذف لتأكيد حذف الحساب نهائيًا");
+        if (confirmation === null) return;
+        if (confirmation.trim() !== "حذف") { setError("لم تُحذف أي بيانات؛ كلمة التأكيد غير مطابقة"); return; }
+        if (await action({ action: "deleteEntity", entityType: "user", entityId: String(member.id), confirmation: "حذف" }, "/api/admin/console")) {
+          if (draft?.id === member.id) setDraft(null);
+          nativeToast("تم حذف حساب المشرف وتسجيل العملية", "success");
+        }
+      })(); } },
+    ]);
   }
   const text = { color: colors.text, textAlign: "right" as const, fontSize: 15, lineHeight: 26 };
   return <View style={{ gap: 16 }}>
@@ -42,6 +57,7 @@ export function StaffManager() {
     <Field label="سبب الإيقاف أو إنهاء الجلسة أو إعادة ضبط MFA" value={reason} onChangeText={setReason} multiline maxLength={600} placeholder="يُحفظ في سجل التدقيق"/>
     {query.data?.staff.map(member => <Card key={member.id} style={{ gap: 12 }}><View style={{ flexDirection: "row-reverse", alignItems: "center", gap: 12 }}><Ionicons name={member.isPlatformOwner ? "shield-checkmark" : "person-outline"} size={28} color={colors.primary}/><View style={{ flex: 1 }}><Text style={{ ...text, fontWeight: "800", fontSize: 19 }}>{member.fullName}</Text><Text selectable style={{ color: colors.textSoft, writingDirection: "ltr", fontSize: 13 }}>{member.email}</Text></View></View><Text style={text}>{member.isPlatformOwner ? "المدير الأعلى · حساب محمي" : member.status === "active" ? "مشرف نشط" : "مشرف متوقف"}</Text><Text style={{ ...text, color: colors.textSoft }}>MFA: {member.mfaEnabled ? "مفعّل" : "غير مفعّل"} · {member.sessions.length}{member.sessionsMayBeTruncated ? "+" : ""} جلسات نشطة</Text>
       {!member.isPlatformOwner && <><AppButton title="تعديل الصلاحيات" disabled={busy} variant="soft" onPress={() => { setDraft({ id: member.id, fullName: member.fullName, email: member.email, phone: member.phone || "", password: "", permissions: [...member.permissions], expectedUpdatedAt: member.updatedAt }); setPermissionQuery(""); }}/><AppButton title={member.status === "active" ? "إيقاف الحساب" : "تفعيل الحساب"} variant="soft" disabled={busy} onPress={() => manage(member, member.status === "active" ? "suspend" : "activate")}/><AppButton title="إنهاء كل الجلسات" variant="soft" disabled={busy} onPress={() => manage(member, "revokeSession", "all")}/>{member.mfaEnabled && <AppButton title="إعادة ضبط MFA" variant="soft" disabled={busy} onPress={() => manage(member, "resetMfa")}/>}<AppButton title={expanded === member.id ? "إخفاء الأجهزة" : "الأجهزة والجلسات"} variant="soft" onPress={() => setExpanded(expanded === member.id ? null : member.id)}/>{expanded === member.id && (member.sessions.length ? member.sessions.map(session => <View key={session.id} style={{ borderTopWidth: 1, borderColor: colors.border, paddingTop: 12, gap: 8 }}><Text style={text}>{session.deviceLabel || session.platform || "جهاز"}</Text><Text style={{ ...text, color: colors.textSoft }}>آخر نشاط: {new Date(session.lastSeenAt).toLocaleString("ar-SA")}</Text><AppButton title="إنهاء هذه الجلسة" variant="soft" disabled={busy} onPress={() => manage(member, "revokeSession", session.id)}/></View>) : <Text style={text}>لا توجد جلسات نشطة.</Text>)}</>}
+      {!member.isPlatformOwner && <AppButton title="حذف حساب المشرف" variant="danger" disabled={busy} onPress={() => remove(member)}/>}
     </Card>)}
     {query.data && query.data.total > query.data.pageSize && <Card style={{ gap: 10 }}><Text style={text}>صفحة {page}</Text><AppButton title="السابق" disabled={page === 1 || query.isFetching} variant="soft" onPress={() => setPage(page - 1)}/><AppButton title="التالي" disabled={page * query.data.pageSize >= query.data.total || query.isFetching} variant="soft" onPress={() => setPage(page + 1)}/></Card>}
   </View>;

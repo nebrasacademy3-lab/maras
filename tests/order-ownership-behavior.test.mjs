@@ -75,7 +75,7 @@ test("order consumers use IDs while provider matching and invoice details retain
   const source = path => readFile(new URL("../" + path, import.meta.url), "utf8");
   const emailChange = await source("lib/email-change.ts");
   assert.doesNotMatch(emailChange, /UPDATE "(?:orders|invoices|ai_subscription_orders|notifications)"/);
-  const callback = await source("app/api/webhooks/tap/route.ts");
+  const callback = await source("lib/tap-webhook.ts");
   assert.match(callback, /verified\.customer\.email\.toLowerCase\(\) === order\.customerEmail\.toLowerCase\(\)/);
   assert.match(callback, /lockOrderOwnerTx\(tx, current\)/);
   for (const path of ["app/api/mobile/dashboard/route.ts", "app/dashboard/page.tsx", "lib/assistant-context.ts"]) {
