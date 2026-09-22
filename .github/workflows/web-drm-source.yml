@@ -1,0 +1,28 @@
+name: Web DRM source
+on:
+  push:
+    branches: [audit/web-drm-source-20260922]
+    paths: [.github/workflows/web-drm-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 895ca900562725c7d3d3ad8b41fd1f91b595c276
+          persist-credentials: false
+      - name: Export exact committed source without credentials or runtime data
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 895ca900562725c7d3d3ad8b41fd1f91b595c276
+          git archive --format=tar.gz HEAD > "$RUNNER_TEMP/web-drm-source.tar.gz"
+          sha256sum "$RUNNER_TEMP/web-drm-source.tar.gz"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: web-drm-source
+          path: ${{ runner.temp }}/web-drm-source.tar.gz
+          retention-days: 1
+          if-no-files-found: error
