@@ -17,8 +17,8 @@ const input = {
 };
 try {
   const bytes = await new Promise((resolve, reject) => {
-    // Same production renderer, scrubbed environment and sandbox; QA bypass absent.
-    const child = spawn(process.execPath, ["--max-old-space-size=192", join(root, "scripts/study-pdf-renderer.mjs"), "contract"], {
+    // Same production contract renderer and OS limits; no QA bypass.
+    const child = spawn(process.execPath, ["--max-old-space-size=192", join(root, "scripts/contract-pdf-renderer.mjs"), "contract"], {
       cwd: directory, detached: process.platform !== "win32", stdio: ["pipe", "pipe", "pipe"],
       env: { NODE_ENV: "production", PATH: "/usr/local/bin:/usr/bin:/bin", HOME: directory, TMPDIR: directory, LANG: "C.UTF-8", MARAS_PDF_CHROMIUM: process.env.STUDY_PDF_CHROMIUM_PATH || "/usr/bin/chromium" },
     });
@@ -38,7 +38,7 @@ try {
     });
     child.stdin.end(JSON.stringify(input));
   });
-  console.info(JSON.stringify({ event: "PDF_RUNTIME_READY", bytes, sandbox: true, synthetic: true }));
+  console.info(JSON.stringify({ event: "PDF_RUNTIME_READY", bytes, renderer: "weasyprint", network: "denied", synthetic: true }));
 } catch (error) {
   console.error(JSON.stringify({ event: "PDF_RUNTIME_FAILED", code: /^PDF_[A-Z_]+$/.test(error.message) ? error.message : "PDF_RENDER_UNAVAILABLE", synthetic: true }));
   process.exitCode = 1;
