@@ -1,0 +1,35 @@
+name: Lesson source inspection
+on:
+  push:
+    branches: [audit/lesson-source-20260922]
+    paths: [.github/workflows/lesson-source-inspection.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4697a9ed51146f09e3f90f42f8090634f22ac588
+          persist-credentials: false
+      - name: Export exact tracked source
+        run: git archive --format=tar.gz --output="$RUNNER_TEMP/lesson-source.tar.gz" HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lesson-source
+          path: ${{ runner.temp }}/lesson-source.tar.gz
+          retention-days: 1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - name: Install exact tooling without production configuration
+        run: npm ci --no-audit --no-fund && npm ci --prefix mobile --no-audit --no-fund
+      - name: Export dependency files only
+        run: tar -czf "$RUNNER_TEMP/lesson-dependencies.tar.gz" node_modules mobile/node_modules
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lesson-dependencies
+          path: ${{ runner.temp }}/lesson-dependencies.tar.gz
+          retention-days: 1
