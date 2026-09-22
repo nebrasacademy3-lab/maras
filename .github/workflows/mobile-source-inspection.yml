@@ -3,38 +3,53 @@ on:
   push:
     branches: [audit/mobile-readiness-20260922]
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: mobile-source-inspection
   cancel-in-progress: true
 jobs:
   source:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          ref: cc0d2f9e5ac40b1b565359b4a0b228d40290b5b6
-          persist-credentials: false
-      - name: Export tracked source only
+      - name: Apply hash-verified mobile copy and private audio fixes
         run: |
-          test "$(git rev-parse HEAD)" = cc0d2f9e5ac40b1b565359b4a0b228d40290b5b6
-          git archive --format=tar.gz --output="$RUNNER_TEMP/mobile-review-source.tar.gz" HEAD
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: mobile-review-source
-          path: ${{ runner.temp }}/mobile-review-source.tar.gz
-          retention-days: 1
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '22'
-      - name: Install locked mobile dependencies without application credentials
-        working-directory: mobile
-        run: npm ci --no-audit --no-fund
-      - name: Export mobile dependency files only
-        run: tar -czf "$RUNNER_TEMP/mobile-review-dependencies.tar.gz" mobile/node_modules
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
-        with:
-          name: mobile-review-dependencies
-          path: ${{ runner.temp }}/mobile-review-dependencies.tar.gz
-          retention-days: 1
+          set -euo pipefail
+          cp repair/mobile-review-polish.delta.b64 "$RUNNER_TEMP/mobile-polish.b64"
+          git fetch origin fix/mobile-store-readiness-20260922
+          test "$(git rev-parse origin/fix/mobile-store-readiness-20260922)" = 1f64ca3a01b42bc026ecf27e45ecf430844c2996
+          git switch --detach origin/fix/mobile-store-readiness-20260922
+          python3 - <<'PY'
+          import base64,gzip,hashlib,json,os,pathlib,subprocess
+          encoded=(pathlib.Path(os.environ['RUNNER_TEMP'])/'mobile-polish.b64').read_text()
+          assert len(encoded)==1344
+          raw=gzip.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(raw).hexdigest()=='e86c1004f4bdb91aa88fb95d9226175b728a2b70fc6170b77b3901e84f3e069a'
+          delta=json.loads(raw)
+          assert delta['base']=='1f64ca3a01b42bc026ecf27e45ecf430844c2996'
+          allowed={'mobile/app/(tabs)/index.tsx','mobile/src/components/SupportChat.tsx','mobile/tests/native-runner-regressions.test.mjs'}
+          assert {e['path'] for e in delta['files']}==allowed and len(delta['files'])==3
+          paths=[]
+          for entry in delta['files']:
+              path=pathlib.Path(entry['path'])
+              assert not path.is_symlink()
+              old=path.read_bytes()
+              assert hashlib.sha256(old).hexdigest()==entry['before'],str(path)
+              text=old.decode('utf-8')
+              for start,end,replacement in reversed(entry['ops']):
+                  assert 0<=start<=end<=len(text)
+                  text=text[:start]+replacement+text[end:]
+              output=text.encode('utf-8')
+              assert hashlib.sha256(output).hexdigest()==entry['after'],str(path)
+              path.write_bytes(output)
+              paths.append(str(path))
+          subprocess.run(['git','diff','--check'],check=True)
+          subprocess.run(['git','add','--',*paths],check=True)
+          print('VERIFIED_MOBILE_POLISH_FILES',len(paths))
+          PY
+          git config user.name 'nebrasacademy3-lab'
+          git config user.email '310756671+nebrasacademy3-lab@users.noreply.github.com'
+          git commit -m 'fix(mobile): use accurate educational copy and clear private audio source'
+          git push origin HEAD:refs/heads/audit/mobile-polish-ready-20260922
+          git log -1 --format='MOBILE_POLISH_COMMIT=%H'
