@@ -1,28 +1,60 @@
 /** Read-only, bounded audit of the public Discrete Structures preview. Never logs signed URLs/tokens. */
 import assert from "node:assert/strict";
-const origin="https://marasalelm.com", courseSlug="discrete-structures";
+const origin="https://marasalelm.com";
+const courseSlug="discrete-structures";
+const ua="Maras-Owner-Preview-Security-Audit/1.0";
+const strip=url=>{const u=new URL(url,origin);return u.origin+u.pathname;};
+const header=(r,n)=>r.headers.get(n)||null;
+async function boundedText(response,limit=512*1024){
+  if(!response.body)return "";
+  const reader=response.body.getReader();let size=0,chunks=[];
+  try{
+    for(;;){
+      const {done,value}=await reader.read();
+      if(done)break;
+      size+=value.byteLength;
+      if(size>limit){await reader.cancel();throw new Error("response bound exceeded");}
+      chunks.push(value);
+    }
+  } finally { reader.releaseLock(); }
+  return Buffer.concat(chunks).toString("utf8");
+}
+function firstMedia(text){return text.split(/\r?\n/).map(x=>x.trim()).find(x=>x&&!x.startsWith("#"))||null;}
+
 const catalogResponse=await fetch(origin+"/api/mobile/catalog",{headers:{"user-agent":ua},signal:AbortSignal.timeout(15000)});
+assert.equal(catalogResponse.status,200,"public catalog should load");
 const catalog=await catalogResponse.json();
 const course=(catalog.courses||[]).find(item=>item.slug===courseSlug);
 assert.ok(course,"public catalog must contain target course");
 const previewLesson=(course.units||[]).flatMap(unit=>unit.lessons||[]).find(item=>item.free===true);
 assert.ok(previewLesson?.id,"public catalog must expose the configured free preview");
 const lessonId=String(previewLesson.id);
+
 const session=await fetch(origin+"/api/video/session",{method:"POST",redirect:"manual",headers:{
   "user-agent":ua,"content-type":"application/json","origin":origin,"referer":origin+"/courses/"+courseSlug,
   "sec-fetch-site":"same-origin","sec-fetch-mode":"cors","x-meras-platform":"web"
 },body:JSON.stringify({courseSlug,lessonId}),signal:AbortSignal.timeout(15000)});
 const sessionText=await boundedText(session,128*1024);
 let body={};try{body=JSON.parse(sessionText)}catch{}
-assert.equal(session.status,200,"public preview session should be available");
-for(const key of ["sourceUrl","hlsUrl","streamUrl"]){if(body[key]){const u=new URL(body[key],origin);assert.equal(u.origin,origin);assert.ok(u.pathname.startsWith("/api/video/"+lessonId));}}
+if(session.status!==200){
+  console.log(JSON.stringify({catalogStatus:catalogResponse.status,lessonId:"<redacted-id>",sessionStatus:session.status,sessionCode:body.code||null,sessionError:body.error||null},null,2));
+  throw new Error("public preview session unavailable");
+}
+for(const key of ["sourceUrl","hlsUrl","streamUrl"]){
+  if(body[key]){
+    const u=new URL(body[key],origin);
+    assert.equal(u.origin,origin);
+    assert.ok(u.pathname.startsWith("/api/video/"));
+  }
+}
 const ttlSeconds=body.expiresAt?Math.max(0,Math.round((Date.parse(body.expiresAt)-Date.now())/1000)):null;
 const result={checkedAt:new Date().toISOString(),deployedEndpoint:origin+"/courses/"+courseSlug,session:{
   status:session.status,cacheControl:header(session,"cache-control"),referrerPolicy:header(session,"referrer-policy"),
-  setCookie:header(session,"set-cookie")?header(session,"set-cookie").split(";").map(x=>x.trim()).filter(x=>/^(?:[^=]+=|httponly$|secure$|samesite=|max-age=)/i.test(x)).map(x=>x.replace(/^[^=]+=.*/,"<cookie>=<redacted>")):null,
+  setCookie:header(session,"set-cookie")?"present":"absent",
   adaptive:Boolean(body.adaptive),encryptedFlag:Boolean(body.encrypted),ttlSeconds,
   sourcePath:body.sourceUrl?strip(body.sourceUrl):null,hlsPath:body.hlsUrl?strip(body.hlsUrl):null,streamPath:body.streamUrl?strip(body.streamUrl):null
 }};
+
 if(body.sourceUrl){
   const source=new URL(body.sourceUrl,origin);
   const direct=await fetch(source,{method:"GET",redirect:"manual",headers:{"user-agent":ua,"range":"bytes=0-1023"},signal:AbortSignal.timeout(15000)});
@@ -31,6 +63,7 @@ if(body.sourceUrl){
     acceptRanges:header(direct,"accept-ranges"),contentRange:header(direct,"content-range"),cacheControl:header(direct,"cache-control"),
     corp:header(direct,"cross-origin-resource-policy"),acao:header(direct,"access-control-allow-origin")};
 }
+
 if(body.hlsUrl){
   const masterUrl=new URL(body.hlsUrl,origin);
   const master=await fetch(masterUrl,{headers:{"user-agent":ua},signal:AbortSignal.timeout(15000)});
