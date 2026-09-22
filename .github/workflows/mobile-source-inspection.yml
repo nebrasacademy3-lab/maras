@@ -3,53 +3,50 @@ on:
   push:
     branches: [audit/mobile-readiness-20260922]
 permissions:
-  contents: write
+  contents: read
 concurrency:
   group: mobile-source-inspection
   cancel-in-progress: true
 jobs:
   source:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
+    env:
+      CI: '1'
+      EXPO_NO_TELEMETRY: '1'
+      REVIEW_HEAD: d21c3d3c3ba2c503f027a9169fcbf885501f58d4
+      EXPO_PUBLIC_STORE_MODE: reader
+      EXPO_PUBLIC_READER_PREVIEW: 'true'
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Apply hash-verified mobile copy and private audio fixes
+        with:
+          persist-credentials: false
+      - name: Preserve isolated browser harness
+        run: cp repair/reader-browser-check.mjs "$RUNNER_TEMP/reader-browser-check.mjs"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: d21c3d3c3ba2c503f027a9169fcbf885501f58d4
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install exact browser and mobile dependencies
         run: |
-          set -euo pipefail
-          cp repair/mobile-review-polish.delta.b64 "$RUNNER_TEMP/mobile-polish.b64"
-          git fetch origin fix/mobile-store-readiness-20260922
-          test "$(git rev-parse origin/fix/mobile-store-readiness-20260922)" = 1f64ca3a01b42bc026ecf27e45ecf430844c2996
-          git switch --detach origin/fix/mobile-store-readiness-20260922
-          python3 - <<'PY'
-          import base64,gzip,hashlib,json,os,pathlib,subprocess
-          encoded=(pathlib.Path(os.environ['RUNNER_TEMP'])/'mobile-polish.b64').read_text()
-          assert len(encoded)==1344
-          raw=gzip.decompress(base64.b64decode(encoded,validate=True))
-          assert hashlib.sha256(raw).hexdigest()=='e86c1004f4bdb91aa88fb95d9226175b728a2b70fc6170b77b3901e84f3e069a'
-          delta=json.loads(raw)
-          assert delta['base']=='1f64ca3a01b42bc026ecf27e45ecf430844c2996'
-          allowed={'mobile/app/(tabs)/index.tsx','mobile/src/components/SupportChat.tsx','mobile/tests/native-runner-regressions.test.mjs'}
-          assert {e['path'] for e in delta['files']}==allowed and len(delta['files'])==3
-          paths=[]
-          for entry in delta['files']:
-              path=pathlib.Path(entry['path'])
-              assert not path.is_symlink()
-              old=path.read_bytes()
-              assert hashlib.sha256(old).hexdigest()==entry['before'],str(path)
-              text=old.decode('utf-8')
-              for start,end,replacement in reversed(entry['ops']):
-                  assert 0<=start<=end<=len(text)
-                  text=text[:start]+replacement+text[end:]
-              output=text.encode('utf-8')
-              assert hashlib.sha256(output).hexdigest()==entry['after'],str(path)
-              path.write_bytes(output)
-              paths.append(str(path))
-          subprocess.run(['git','diff','--check'],check=True)
-          subprocess.run(['git','add','--',*paths],check=True)
-          print('VERIFIED_MOBILE_POLISH_FILES',len(paths))
-          PY
-          git config user.name 'nebrasacademy3-lab'
-          git config user.email '310756671+nebrasacademy3-lab@users.noreply.github.com'
-          git commit -m 'fix(mobile): use accurate educational copy and clear private audio source'
-          git push origin HEAD:refs/heads/audit/mobile-polish-ready-20260922
-          git log -1 --format='MOBILE_POLISH_COMMIT=%H'
+          npm ci --no-audit --no-fund
+          cd mobile && npm ci --no-audit --no-fund
+      - name: Install isolated Chromium
+        run: npx playwright install --with-deps chromium
+      - name: Export exact reader preview
+        working-directory: mobile
+        run: npx expo export --platform web --output-dir "$RUNNER_TEMP/reader-web"
+      - name: Verify phone and tablet widths with large text and both themes
+        run: |
+          cp "$RUNNER_TEMP/reader-browser-check.mjs" scripts/qa-reader-temporary.mjs
+          node scripts/qa-reader-temporary.mjs
+      - name: Keep only synthetic screenshots and status evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reader-browser-acceptance
+          path: ${{ runner.temp }}/reader-browser-evidence
+          retention-days: 7
