@@ -131,7 +131,9 @@ test("Tap state machine cannot resurrect refunded AI access", () => {
 });
 
 test("student and admin web pages implement the stable contract", () => {
-  const student = `${source("app/meras-ai/page.tsx")}\n${source("components/meras-ai-workspace.tsx")}\n${source("components/ai-subscription-checkout.tsx")}`;
+  const student = `${source("app/meras-ai/page.tsx")}\n${source("components/meras-ai-workspace.tsx")}\n${source("components/study-file-tools.tsx")}\n${source("lib/study-upload-web.ts")}
+${source("lib/study-upload-client.ts")}
+${source("lib/ai-job-client.ts")}\n${source("components/ai-subscription-checkout.tsx")}`;
   const admin = `${source("app/admin/ai/page.tsx")}\n${source("components/admin-ai-center.tsx")}`;
   assert.match(student, /\/api\/ai\/status/);
   assert.match(student, /\/api\/ai\/conversations/);
@@ -152,7 +154,7 @@ test("mobile exposes AI status history actions quiz and deep links", () => {
   assert.match(combined, /\/api\/ai\/conversations/);
   assert.match(combined, /\/api\/ai\/files/);
   for (const action of ["summary", "translation", "quiz"]) assert.match(combined, new RegExp(action));
-  assert.match(combined, /\/meras-ai\/subscribe|meras-ai.*subscribe|deepLinks\.subscribe/i);
+  assert.match(combined, /SUBSCRIPTION_ACCESS_MESSAGE/); // Native reader never steers to a purchase URL.
   assert.match(combined, /deepLink|actionUrl|route/i);
 });
 

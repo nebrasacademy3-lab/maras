@@ -15,12 +15,14 @@ test("content viewing policy is enforced again for every protected stream reques
   ]);
   assert.match(session, /if \(!lesson\.free\)[\s\S]*getContentViewMode/);
   assert.match(session, /const tokenEmail = lesson\.free \? "preview" : email/);
-  assert.match(stream, /authorizeVideoRequest\(request, lessonId, courseSlug/);
+  assert.match(stream, /authorizeVideoRequest\(request,/);
   assert.match(streamAccess, /if \(!lesson\.freePreview\)[\s\S]*getContentViewMode/);
   assert.match(streamAccess, /if \(grant\.email === "preview"\)/);
   assert.match(streamAccess, /getSessionUser\(request\)/);
-  assert.match(stream, /Cross-Origin-Resource-Policy", "cross-origin/);
-  assert.match(stream, /Referrer-Policy", "no-referrer/);
+  const hls = await read("app/api/video/[lessonId]/hls/[...path]/route.ts");
+  assert.match(hls, /"cross-origin-resource-policy": "cross-origin"/);
+  assert.match(hls, /"referrer-policy": "no-referrer"/);
+  assert.doesNotMatch(stream, /getObject/);
   assert.match(streamAccess, /videoAssetId: lessonsDb\.videoAssetId/);
   assert.match(streamAccess, /lesson\.videoAssetId[\s\S]*eq\(videoAssets\.id, lesson\.videoAssetId\)/);
   assert.match(session, /isNativeAppRequest\(request\)/);

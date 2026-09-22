@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { router } from "expo-router";
+import { router, type Href } from "expo-router";
 import React from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { StyleSheet, View } from "react-native";
@@ -8,6 +8,8 @@ import { BrandLogo, BrandMark } from "@/src/components/Brand";
 import { AppButton, FadeIn, Screen } from "@/src/components/ui";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
+
+import { useAuth } from "@/src/providers/AuthProvider";
 
 const benefits = [
   { icon: "school-outline" as const, title: "جامعات وتخصصات", text: "فهرس منظم" },
@@ -17,6 +19,7 @@ const benefits = [
 
 export default function Welcome() {
   const { colors } = useTheme();
+  const { user } = useAuth();
   const { direction, rowDirection } = useLanguage();
   return <Screen showFooter={false}>
     <LinearGradient colors={["#04143D", "#0D58D7", "#7640EC"]} start={{ x: .1, y: 0 }} end={{ x: .9, y: 1 }} style={styles.hero}>
@@ -30,6 +33,7 @@ export default function Welcome() {
       <View style={styles.actionCopy}><Text style={[styles.actionTitle, { color: colors.text }]}>ابدأ بطريقتك</Text><Text style={[styles.actionText, { color: colors.textSoft }]}>سجّل دخولك أو استكشف المنصة كضيف، ويمكنك إنشاء حساب عندما تكون جاهزًا.</Text></View>
       <AppButton title="تسجيل الدخول" icon="log-in-outline" onPress={() => router.push("/(auth)/login")} />
       <AppButton title="إنشاء حساب طالب" icon="person-add-outline" variant="soft" onPress={() => router.push("/(auth)/register")} />
+      {!user && <AppButton title="انضم لفريق مراس كشارح" icon="school-outline" variant="ghost" onPress={() => router.push("/instructor" as Href)} />}
       <AppButton title="تصفح المنصة كضيف" icon="compass-outline" variant="ghost" onPress={() => router.replace("/(tabs)")} />
       <Text style={[styles.legal, { color: colors.textSoft }]}>بالمتابعة أنت توافق على شروط الاستخدام وسياسة الخصوصية.</Text>
     </FadeIn>

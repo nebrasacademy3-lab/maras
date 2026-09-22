@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { router, type Href } from "expo-router";
+import { router } from "expo-router";
 import React from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { Pressable, StyleSheet, View } from "react-native";
@@ -40,7 +40,7 @@ export function AppHeader({ title, subtitle, back = false, home = false, unread 
         {button("الإشعارات", "notifications-outline", () => router.push("/notifications"), unread)}
       </View>
     </View>
-    {(!user || user.role === "student" || user.role === "instructor") ? <Pressable accessibilityRole="button" onPress={() => router.push("/instructor" as Href)} style={({ pressed }) => ({ minHeight: 44, borderRadius: 14, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface, paddingHorizontal: 14, justifyContent: "center", opacity: pressed ? .7 : 1 })}><Text style={{ color: colors.primary, fontSize: 13, fontWeight: "800", textAlign: isRTL ? "right" : "left" }}>{user?.role === "instructor" ? "مساحة الشارح" : "انضم لفريق مراس كشارح"}</Text></Pressable> : null}
+
     <View testID="app-header-title" style={styles.copy}><Text style={[styles.title, { color: colors.text }]}>{title || "مراس العلم"}</Text>{subtitle && <Text style={[styles.subtitle, { color: colors.textSoft }]}>{subtitle}</Text>}</View>
   </View>;
 }

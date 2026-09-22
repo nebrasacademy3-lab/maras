@@ -183,7 +183,8 @@ test("system links map native pages, preserve cold OAuth safety and reject check
 });
 
 test("AI response surfaces include an in-app report control", () => {
-  for (const path of ["app/assistant.tsx", "app/ai/conversation/[id].tsx", "app/ai/quiz/[id].tsx", "src/components/study-file-tools.tsx"]) assert.match(read(path), /AiReportButton/);
+  assert.match(read("app/ai/quiz/[id].tsx"), /InlineQuiz/);
+  for (const path of ["app/assistant.tsx", "app/ai/conversation/[id].tsx", "src/components/inline-quiz.tsx", "src/components/lesson-ai-tools.tsx", "src/components/study-file-tools.tsx"]) assert.match(read(path), /AiReportButton/);
 });
 function reportButton({ reason = "This response is misleading", changed = false, failure = false } = {}) {
   const sent = [], toasts = []; let revision = 1;

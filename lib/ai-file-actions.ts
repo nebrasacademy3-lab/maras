@@ -1,3 +1,4 @@
+import { quizDifficulty } from "@/lib/lesson-experience";
 import { summaryOptions } from "@/lib/study-summary-policy";
 import "server-only";
 import { createHash } from "node:crypto";
@@ -15,11 +16,11 @@ import { GeminiProviderError } from "@/lib/gemini-errors";
 import { DocumentFormatError } from "@/lib/document-archive";
 
 export type FileAction = "summary" | "translation" | "quiz";
-export type FileActionOptions = { language: string; targetLanguage: string; questionCount: number; summaryDetail?: string };
+export type FileActionOptions = { language: string; targetLanguage: string; questionCount: number; summaryDetail?: string; difficulty?: string };
 export function fileActionOptions(input: Record<string, unknown>): FileActionOptions {
   const language = (value: unknown) => typeof value === "string" ? value.replace(/[<>\u0000-\u001f]/g, "").trim().slice(0, 60) || "العربية" : "العربية";
   const count = Number(input.questionCount);
-  return { language: language(input.language), targetLanguage: language(input.targetLanguage), questionCount: Number.isFinite(count) ? Math.max(5, Math.min(20, Math.floor(count))) : 10, summaryDetail: typeof input.summaryDetail === "string" ? input.summaryDetail : "balanced" };
+  return { difficulty: quizDifficulty(input.difficulty), language: language(input.language), targetLanguage: language(input.targetLanguage), questionCount: Number.isFinite(count) ? Math.max(5, Math.min(20, Math.floor(count))) : 10, summaryDetail: typeof input.summaryDetail === "string" ? input.summaryDetail : "balanced" };
 }
 
 export type Generation = { kind: "quiz"; title: string; questions: StoredQuizQuestion[]; language: string; model: string } | { kind: "summary" | "translation"; title: string; text: string; model: string };
@@ -27,7 +28,7 @@ export type Generation = { kind: "quiz"; title: string; questions: StoredQuizQue
 export function fileActionCacheKey(input: { scope: string; version: string; name: string; action: FileAction; options: FileActionOptions; config: { model: string; instructions: string; maxOutputTokens: number; temperature: number } }) {
   // User uploads NEVER share a cache namespace with another user. Official sources may share after authorization.
   const language = (value: string) => /^(?:ar|arabic|العربية)$/i.test(value.trim()) ? "ar" : /^(?:en|english|الإنجليزية|الانجليزية)$/i.test(value.trim()) ? "en" : value.trim().toLowerCase();
-  const options = input.action === "summary" ? summaryOptions(input.options.language, input.options.summaryDetail) : input.action === "translation" ? { targetLanguage: language(input.options.targetLanguage) } : { language: language(input.options.language), questionCount: input.options.questionCount };
+  const options = input.action === "summary" ? summaryOptions(input.options.language, input.options.summaryDetail) : input.action === "translation" ? { targetLanguage: language(input.options.targetLanguage) } : { language: language(input.options.language), questionCount: input.options.questionCount, difficulty: quizDifficulty(input.options.difficulty), bilingual: true };
   return createHash("sha256").update(JSON.stringify({ v: 4, ...input, options })).digest("hex");
 }
 

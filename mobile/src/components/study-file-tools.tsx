@@ -1,10 +1,12 @@
+import { QUIZ_DIFFICULTIES } from "@/src/lib/lesson-experience";
+import { StudyRichText } from "./study-rich-text";
 import { AiReportButton } from "@/src/components/AiReportButton";
 import { normalizeStudyProgress, studyProgressLabel, type StudyProgress } from "@/src/lib/study-progress";
 import { SUMMARY_LANGUAGES, SUMMARY_DETAILS } from "@/src/lib/study-summary-policy";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import * as DocumentPicker from "expo-document-picker";
-import { router } from "expo-router";
+import { InlineQuiz } from "./inline-quiz";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
@@ -49,6 +51,7 @@ export function StudyFileTools({ action, resources, scope = "workspace" }: { act
   const { user } = useAuth(), { colors } = useTheme();
   const [file, setFile] = useState<StudyFile | null>(null), [resourceId, setResourceId] = useState(resources?.[0]?.id || 0);
   const [language, setLanguage] = useState("العربية"), [questionCount, setQuestionCount] = useState(10);
+  const [difficulty, setDifficulty] = useState("medium");
   const [summaryDetail, setSummaryDetail] = useState("balanced");
   const [result, setResult] = useState<StudyResult | null>(null), [busy, setBusy] = useState(false), [phase, setPhase] = useState(""), [error, setError] = useState("");
   const [progress,setProgress]=useState<StudyProgress|null>(null), [controlBusy,setControlBusy]=useState(false), [confirmCancel,setConfirmCancel]=useState(false);
@@ -92,7 +95,7 @@ export function StudyFileTools({ action, resources, scope = "workspace" }: { act
     try {
       const source = resources ? (await api<{ file: StudyFile }>(`/api/course-resources/${resourceId}/study`, { method: "POST", signal: abort.signal })).file : file;
       if (!source) throw new Error("اختر ملفًا أولًا.");
-      const value = await requestStudyAction<StudyResult>(source.id, { action, targetLanguage: language, language, questionCount, summaryDetail }, { signal: abort.signal, onStatus: setPhase, onProgress:setProgress, onJob: async id => { setPendingId(id); await savedStudyJob(jobScope, id); } });
+      const value = await requestStudyAction<StudyResult>(source.id, { action, targetLanguage: language, language, questionCount, summaryDetail, difficulty }, { signal: abort.signal, onStatus: setPhase, onProgress:setProgress, onJob: async id => { setPendingId(id); await savedStudyJob(jobScope, id); } });
       if (!abort.signal.aborted) await finish(value);
     } catch (reason) { await failed(reason, abort.signal); }
     finally { if (!abort.signal.aborted) setBusy(false); }
@@ -116,6 +119,7 @@ export function StudyFileTools({ action, resources, scope = "workspace" }: { act
     <Text style={{ color: colors.text, fontSize: 22, fontWeight: "800" }}>{names[action]}</Text>
     {resources ? <View style={{ gap: 9 }}><Text style={{ color: colors.textSoft }}>ملف الدرس المعتمد</Text>{resources.map(resource => <Pressable key={resource.id} accessibilityRole="radio" accessibilityState={{ checked: resourceId === resource.id, disabled: busy }} disabled={busy || Boolean(pendingId)} onPress={() => { setResourceId(resource.id); setResult(null); }} style={{ padding: 14, borderRadius: 13, borderWidth: 1, borderColor: resourceId === resource.id ? colors.primary : colors.border, backgroundColor: colors.surfaceAlt, flexDirection: "row", gap: 10 }}><Ionicons name={resourceId === resource.id ? "radio-button-on" : "radio-button-off"} size={20} color={colors.primary}/><Text style={{ color: colors.text, flex: 1 }}>{resource.title}{!resource.lessonId ? " · مشترك للمادة" : ""}</Text></Pressable>)}</View> : <><AppButton title={file?.originalName || "اختيار ملف المحاضرة"} variant="soft" icon="cloud-upload-outline" disabled={busy || Boolean(pendingId)} onPress={() => void upload()}/><Text selectable style={{ color: colors.textSoft, lineHeight: 23 }}>Word · PowerPoint · PDF · صور ونصوص. نستخرج نصوص DOCX وPPTX؛ استخدم PDF للمخططات والصور داخل الملف.</Text></>}
     {action === "summary" && <><Text style={{ color: colors.textSoft }}>لغة الملخص</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{SUMMARY_LANGUAGES.map(option => <AppButton key={option.value} title={option.label} full={false} disabled={busy || Boolean(pendingId)} variant={(language === "العربية" ? "ar" : language) === option.value ? "primary" : "soft"} onPress={() => setLanguage(option.value)}/>)}</View><Text style={{ color: colors.textSoft }}>مستوى التفصيل · لا يغيّر نطاق التغطية</Text><View style={{ flexDirection: "row", flexWrap: "wrap", gap: 8 }}>{SUMMARY_DETAILS.map(option => <AppButton key={option.value} title={option.label} full={false} disabled={busy || Boolean(pendingId)} variant={summaryDetail === option.value ? "primary" : "soft"} onPress={() => setSummaryDetail(option.value)}/>)}</View></>}
+    {action === "quiz" && <View style={{ gap: 8 }}><Text style={{ color: colors.textSoft }}>مستوى الصعوبة</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{QUIZ_DIFFICULTIES.map(option => <AppButton key={option.value} full={false} title={option.label} disabled={busy || Boolean(pendingId)} variant={difficulty === option.value ? "primary" : "soft"} onPress={() => setDifficulty(option.value)}/>)}</View></View>}
     {action !== "summary" && <Field label={action === "quiz" ? "لغة الاختبار" : "اللغة المطلوبة"} value={language} maxLength={60} editable={!busy && !pendingId} onChangeText={setLanguage}/>}
     {action === "quiz" && <View style={{ gap: 9 }}><Text style={{ color: colors.textSoft }}>عدد الأسئلة</Text><View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>{[5, 10, 15, 20].map(count => <AppButton key={count} title={String(count)} full={false} disabled={busy || Boolean(pendingId)} variant={count === questionCount ? "primary" : "soft"} onPress={() => setQuestionCount(count)}/>)}</View></View>}
     <AppButton title={busy ? "جارٍ المعالجة" : names[action]} loading={busy} disabled={Boolean(pendingId) || (resources ? !resourceId : !file) || !language.trim()} onPress={() => void run()}/>
@@ -129,8 +133,8 @@ export function StudyFileTools({ action, resources, scope = "workspace" }: { act
     {error ? <Text selectable accessibilityRole="alert" style={{ color: colors.danger, lineHeight: 24 }}>{error}</Text> : null}
     {pendingId && !busy && <AppButton title="متابعة الطلب المحفوظ" variant="soft" onPress={() => { const abort = new AbortController(); abortRef.current = abort; void resume(pendingId, abort.signal); }}/ >}
     {result?.cached && <Text style={{ color: colors.textSoft }}>نتيجة محفوظة لنفس المصدر والإعدادات، دون طلب توليد جديد.</Text>}
-    {result?.artifact && <View style={{ gap: 16 }}><Text style={{ color: colors.text, fontSize: 19, fontWeight: "800" }}>{result.artifact.title}</Text><StudyArtifactDownload id={result.artifact.id}/><Text selectable style={{ color: colors.text, fontSize: 16, lineHeight: 29 }}>{result.artifact.content}</Text></View>}
-    {result?.quiz && <View style={{ gap: 10 }}><Text style={{ color: colors.text }}>{result.quiz.title}</Text><AppButton title="بدء الاختبار بالبطاقات" icon="play-outline" onPress={() => router.push({ pathname: "/ai/quiz/[id]", params: { id: String(result.quiz!.id) } })}/></View>}
+    {result?.artifact && <View style={{ gap: 16 }}><Text style={{ color: colors.text, fontSize: 19, fontWeight: "800" }}>{result.artifact.title}</Text><StudyArtifactDownload id={result.artifact.id}/><StudyRichText content={result.artifact.content}/></View>}
+    {result?.quiz && <InlineQuiz key={result.quiz.id} id={result.quiz.id}/>}
     <Text style={{ color: colors.textSoft, fontSize: 12, lineHeight: 21 }}>إعداد وتنسيق مراس العلم. المحتوى مساعدة دراسية؛ راجعه مع مرجع المقرر. حقوق المصدر لأصحابه.</Text>
   </Card>;
 }
