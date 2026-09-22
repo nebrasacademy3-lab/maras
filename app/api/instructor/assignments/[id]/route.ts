@@ -1,14 +1,14 @@
 import { getDb } from "@/db";
 import { checkRateLimit, getSessionUser } from "@/lib/auth";
-import { instructorActor, instructorOwner, InstructorError } from "@/lib/instructor-security";
+import { instructorActor, instructorAdmin, InstructorError } from "@/lib/instructor-security";
 import { instructorApiError, instructorWriteRequest, INSTRUCTOR_PRIVATE_HEADERS } from "@/lib/instructor-onboarding";
 import { authorizedInstructorAssignment, editInstructorAssignment, instructorAssignmentDetail, instructorAssignmentId } from "@/lib/instructor-assignments";
 import { readBoundedJsonObject } from "@/lib/request-body";
 type Context = { params: Promise<{ id: string }> };
 export async function GET(request: Request, context: Context) {
  try {
-  const session = await getSessionUser(request), admin = session?.role === "admin" && session.isPlatformOwner;
-  const user = admin ? await instructorOwner(request) : await instructorActor(request);
+  const session = await getSessionUser(request), admin = (session?.role === "admin" && session.isPlatformOwner === true) || session?.role === "supervisor";
+  const user = admin ? await instructorAdmin(request) : await instructorActor(request);
   if (!await checkRateLimit("instructor-assignment-read", String(user.id), 90, 60)) throw new InstructorError("طلبات كثيرة", 429);
   const db = getDb(), assignment = await authorizedInstructorAssignment(db, instructorAssignmentId((await context.params).id), admin ? null : user.id, { requireActive: !admin });
   return Response.json({ ok: true, ...await instructorAssignmentDetail(db, assignment) }, { headers: INSTRUCTOR_PRIVATE_HEADERS });

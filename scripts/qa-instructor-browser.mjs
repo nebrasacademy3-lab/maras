@@ -88,6 +88,33 @@ try {
   const roleDenied = await student.request.get(origin + "/api/instructor/contracts", { maxRedirects: 0 });
   assert.equal(roleDenied.status(), 403); await roleDenied.dispose();
   pass("real HTTP boundaries deny anonymous, student-role and cross-instructor contract access");
+  for (const [role, actor] of [["viewer", fixtures.instructorTeamViewer], ["manager", fixtures.instructorTeamManager]]) {
+    assert.ok(actor?.token && actor.stepUp, "Fresh team capability fixtures required");
+    const team = await context(actor.token);
+    await team.addCookies([{ ...cookie(actor.stepUp), name: "meras_admin_stepup", path: "/api/admin" }]);
+    const teamPage = await team.newPage();
+    await teamPage.goto(origin + "/admin/instructors", { waitUntil: "domcontentloaded" });
+    await teamPage.getByRole("heading", { name: "فريق مراس — الشارحون", exact: true }).waitFor();
+    await teamPage.getByLabel("البحث بالاسم أو البريد").fill(fixtures.instructor.email);
+    await teamPage.getByRole("button", { name: "بحث", exact: true }).click();
+    const instructorRow = teamPage.getByRole("row").filter({ hasText: fixtures.instructor.email });
+    await instructorRow.getByRole("button", { name: "فتح الملف", exact: true }).click();
+    await teamPage.getByRole("heading", { name: "تفاصيل التقديم", exact: true }).waitFor();
+    assert.equal(await teamPage.getByRole("button", { name: "إيقاف الحساب والجلسات", exact: true }).count(), role === "manager" ? 1 : 0);
+    await teamPage.getByRole("button", { name: "عقود العمل", exact: true }).click();
+    await teamPage.getByRole("heading", { name: "عقود العمل", exact: true }).waitFor();
+    assert.equal(await teamPage.getByRole("button", { name: "عقد جديد", exact: true }).count(), role === "manager" ? 1 : 0);
+    const catalogResponse = teamPage.waitForResponse(response => new URL(response.url()).pathname === "/api/admin/instructors/courses");
+    await teamPage.getByRole("button", { name: "تكليفات المواد", exact: true }).click();
+    assert.equal((await catalogResponse).status(), 200, "team course picker must not require catalog/data.all grants");
+    await teamPage.getByRole("heading", { name: "تكليفات المواد", exact: true }).waitFor();
+    await teamPage.getByText("جارٍ تحميل المواد…", { exact: true }).waitFor({ state: "hidden" });
+    assert.equal(await teamPage.getByRole("button", { name: "إسناد مادة", exact: true }).count(), role === "manager" ? 1 : 0);
+    for (const width of [390, 1440]) { await teamPage.setViewportSize({ width, height: width < 500 ? 844 : 1000 }); await fits(teamPage); }
+    await teamPage.screenshot({ path: `${dir}/workspace-team-${role}.png`, fullPage: false });
+    assert.equal((await team.request.get(origin + "/api/admin/staff")).status(), 403);
+    pass(`delegated ${role} team UI renders at phone/desktop widths with only authorized actions and no staff access`);
+  }
   assert.equal(pageErrors.length, 0, "Instructor browser journey raised a JavaScript exception");
   writeFileSync(`${dir}/report.json`, JSON.stringify({ ok: true, checkedAt: new Date().toISOString(), source: process.env.GITHUB_SHA || null, syntheticOnly: true, checks }, null, 2));
 } finally {

@@ -1,6 +1,7 @@
 // Isolated server-owned renderer. No database, storage, provider or application
 // credential is inherited. Input is data, never JavaScript/HTML supplied by a user.
 import { spawn } from "node:child_process";
+import { dropPdfRootPrivileges } from "./pdf-runtime-user.mjs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -23,6 +24,7 @@ const stop = async () => { if (done) return; done = true; await close(); process
 process.on("SIGTERM", stop); process.on("SIGINT", stop);
 const deadline = setTimeout(stop, 40_000);
 try {
+  await dropPdfRootPrivileges(process.env.TMPDIR);
   let size = 0; const parts = [];
   for await (const part of process.stdin) { size += part.length; if (size > 650_000) throw new StudyPdfError("PDF_INPUT_INVALID"); parts.push(part); }
   const input = JSON.parse(Buffer.concat(parts).toString("utf8"));
@@ -54,7 +56,13 @@ try {
   const endpoint = await new Promise((resolve, reject) => {
     let diagnostic = "";
     const timer = setTimeout(() => reject(new StudyPdfError("PDF_RENDER_TIMEOUT")), 15_000);
-    const fail = () => { clearTimeout(timer); reject(new StudyPdfError("PDF_RENDER_UNAVAILABLE")); };
+    const fail = () => {
+      clearTimeout(timer);
+      // Only fixed codes leave this process; browser stderr may contain private paths.
+      const code = /Running as root without --no-sandbox/.test(diagnostic) ? "PDF_ROOT_USER_UNSUPPORTED"
+        : /No usable sandbox|Failed to move to new namespace|Operation not permitted/.test(diagnostic) ? "PDF_SANDBOX_UNAVAILABLE" : "PDF_RENDER_UNAVAILABLE";
+      reject(new StudyPdfError(code));
+    };
     child.once("error", fail); child.once("exit", fail);
     child.stderr.on("data", data => {
       diagnostic = (diagnostic + data.toString("utf8")).slice(-8192);

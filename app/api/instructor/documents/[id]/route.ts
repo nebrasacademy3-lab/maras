@@ -7,7 +7,7 @@ import { checkRateLimit, clientIp, getSessionUser } from "@/lib/auth";
 import { readBoundedJsonObject } from "@/lib/request-body";
 import { readScanBytes } from "@/lib/file-security";
 import { getObject, deleteObject } from "@/lib/storage";
-import { decryptInstructorData, InstructorError, instructorActor, instructorOwner } from "@/lib/instructor-security";
+import { decryptInstructorData, InstructorError, instructorActor, instructorAdmin } from "@/lib/instructor-security";
 import { instructorApiError, instructorDocumentContext, instructorRevision, instructorWriteRequest, INSTRUCTOR_FILE_LIMIT, INSTRUCTOR_PRIVATE_HEADERS, lockInstructorProfile } from "@/lib/instructor-onboarding";
 type Context = { params: Promise<{ id: string }> };
 function documentId(value: string) { if (!/^[1-9]\d{0,9}$/.test(value) || !Number.isSafeInteger(Number(value))) throw new InstructorError("المستند غير موجود", 404); return Number(value); }
@@ -15,8 +15,8 @@ export async function GET(request: Request, context: Context) {
  try {
   const id = documentId((await context.params).id);
   const session = await getSessionUser(request);
-  const administrator = session?.role === "admin" && session.isPlatformOwner === true;
-  const user = administrator ? await instructorOwner(request, true) : await instructorActor(request);
+  const administrator = (session?.role === "admin" && session.isPlatformOwner === true) || session?.role === "supervisor";
+  const user = administrator ? await instructorAdmin(request, true) : await instructorActor(request);
   if (!await checkRateLimit("instructor-document-read", String(user.id), 30, 300)) throw new InstructorError("طلبات كثيرة. حاول لاحقًا", 429);
   const db = getDb();
   const [document] = await db.select().from(instructorDocuments).where(administrator ? eq(instructorDocuments.id, id) : and(eq(instructorDocuments.id, id), eq(instructorDocuments.userId, user.id))).limit(1);

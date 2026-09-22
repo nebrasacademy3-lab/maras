@@ -54,7 +54,7 @@ jobs:
       - name: Build production web
         run: npm run build
       - name: Install bounded PDF source tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils util-linux
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends poppler-utils util-linux weasyprint libseccomp2
       - name: Run contracts and smoke tests
         run: |
           set +e
@@ -94,7 +94,7 @@ jobs:
       - name: Install isolated browser engines
         run: node node_modules/playwright/cli.js install --with-deps chromium firefox webkit
       - name: Install multilingual PDF validation tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-core poppler-utils
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-core poppler-utils weasyprint libseccomp2
       - name: Install private-media test tooling
         run: |
           if ! command -v ffmpeg >/dev/null || ! command -v ffprobe >/dev/null; then
@@ -219,7 +219,7 @@ jobs:
       - name: Install isolated Chromium
         run: node node_modules/playwright/cli.js install --with-deps chromium
       - name: Install bounded multilingual PDF tools
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-core poppler-utils util-linux
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends fonts-noto-core poppler-utils weasyprint libseccomp2 util-linux
       - name: Verify private instructor and account lifecycle
         run: node scripts/qa-platform-readiness-ci.mjs
       - name: Keep fresh non-secret acceptance evidence
@@ -236,3 +236,18 @@ jobs:
           include-hidden-files: true
           if-no-files-found: warn
           retention-days: 7
+
+  contract-runtime:
+    name: Contract PDF production container isolation
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Build the real production image without credentials
+        run: docker build --target runtime -t maras-contract-runtime .
+      - name: Verify root-overridden hosting and default non-root hosting
+        run: |
+          docker run --rm --network none --user 0 --tmpfs /tmp:rw,nosuid,size=256m maras-contract-runtime node scripts/pdf-runtime-check.mjs
+          docker run --rm --network none --user 1000 --tmpfs /tmp:rw,nosuid,size=256m maras-contract-runtime node scripts/pdf-runtime-check.mjs

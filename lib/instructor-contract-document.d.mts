@@ -7,3 +7,5 @@ export type InstructorContractPdfInput = {
 };
 export function validateInstructorContractPdf(input: unknown): InstructorContractPdfInput;
 export function buildInstructorContractDocument(input: InstructorContractPdfInput, assets: { logo: string }): { html: string; header: string; footer: string };
+
+export function buildInstructorContractPagedDocument(input: InstructorContractPdfInput, assets: { logo: string }): string;

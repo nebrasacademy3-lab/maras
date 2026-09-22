@@ -58,6 +58,12 @@ if [[ "${AUTO_SEED_CATALOG:-true}" == "true" ]]; then
   fi
 fi
 
+# Render server-owned synthetic input before accepting traffic. Failure is visible
+# without blocking unrelated learning services or touching real contract records.
+if ! node scripts/pdf-runtime-check.mjs; then
+  echo '[warning] PDF renderer startup check failed; inspect the sanitized PDF_RUNTIME_FAILED code.' >&2
+fi
+
 echo "Starting supervised Meras web and enabled processing workers on ${HOSTNAME}:${PORT:-3000}"
 # tini is installed by the production Dockerfile; -s also works when a hosting
 # launcher occupies PID 1. Local environments without tini still supervise exits.

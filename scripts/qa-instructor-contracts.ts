@@ -59,7 +59,42 @@ try{
  await db.update(s.authSessions).set({mfaVerifiedAt:now}).where(eq(s.authSessions.tokenHash,createHash("sha256").update(ownerFixture.token).digest("hex")));
  const step=mfa.issueVerifiedAdminStepUp(owner,request('/admin',ownerFixture.token),factor.id);
  assert.equal((await adminRoute.GET(request('/api/admin/instructors?userId='+alice.row.id,ownerFixture.token,undefined,step.token))).status,200);
- pass('sensitive administration requires the platform owner and session-bound additional authentication');
+ pass('sensitive administration requires session-bound additional authentication');
+ // Delegation is exercised with real session-bound grants, not a mocked role.
+ const adminPdfRoute=await import('../app/api/admin/instructors/contracts/[id]/download/route');
+ const adminContractsRoute=await import('../app/api/admin/instructors/contracts/route');
+ const coursePickerRoute=await import('../app/api/admin/instructors/courses/route');
+ const adminPdf=await adminPdfRoute.GET(request('/api/admin/instructors/contracts/'+contract.id+'/download',ownerFixture.token,undefined,step.token),context(contract.id));
+ assert.equal(adminPdf.status,200);assert.match(Buffer.from(await adminPdf.arrayBuffer()).subarray(0,8).toString(),/^%PDF-/);
+ pass('the administrator download endpoint returns the same signed private PDF with valid step-up');
+ async function delegated(label:string,permission:string){
+  const [row]=await db.insert(s.users).values({email:`qa-instructor-${nonce}-${label}@example.test`,fullName:'مشرف فريق اختبار '+label,passwordHash:await auth.hashPassword(randomBytes(18).toString('hex')+'Qa1!'),role:'supervisor',emailVerifiedAt:now}).returning();
+  await db.insert(s.staffPermissions).values({userId:row.id,permission,grantedBy:owner!.id});
+  const session=await auth.createSession(row.id,request('/api/auth/login'));
+  const user=await auth.getSessionUser(request('/admin',session.token));assert.ok(user);
+  const [mfaFactor]=await db.insert(s.adminMfaFactors).values({userId:row.id,type:'totp',label:'Team capability QA',secretEncrypted:mfa.encryptAdminMfaSecret('JBSWY3DPEHPK3PXP'),verifiedAt:now,counter:0}).returning();
+  await db.update(s.authSessions).set({mfaVerifiedAt:now}).where(eq(s.authSessions.tokenHash,createHash('sha256').update(session.token).digest('hex')));
+  const proof=mfa.issueVerifiedAdminStepUp(user,request('/admin',session.token),mfaFactor.id);
+  return {id:row.id,token:session.token,stepUp:proof.token};
+ }
+ const viewer=await delegated('viewer','instructors.view'),manager=await delegated('manager','instructors.manage');
+ assert.equal((await adminRoute.GET(request('/api/admin/instructors',viewer.token))).status,200);
+ assert.equal((await adminContractsRoute.GET(request('/api/admin/instructors/contracts?userId='+alice.row.id,viewer.token))).status,428);
+ assert.equal((await adminContractsRoute.GET(request('/api/admin/instructors/contracts?userId='+alice.row.id,viewer.token,undefined,viewer.stepUp))).status,200);
+ assert.equal((await coursePickerRoute.GET(request('/api/admin/instructors/courses',viewer.token))).status,200);
+ assert.equal((await adminContractsRoute.POST(request('/api/admin/instructors/contracts',viewer.token,payload,viewer.stepUp))).status,403);
+ assert.equal((await adminRoute.POST(request('/api/admin/instructors',viewer.token,{action:'suspend',userId:alice.row.id,expectedRevision:1,reason:'Read-only must not write'},viewer.stepUp))).status,403);
+ const viewerPdf=await adminPdfRoute.GET(request('/api/admin/instructors/contracts/'+contract.id+'/download',viewer.token,undefined,viewer.stepUp),context(contract.id));
+ assert.equal(viewerPdf.status,200);assert.match(Buffer.from(await viewerPdf.arrayBuffer()).subarray(0,8).toString(),/^%PDF-/);
+ assert.equal((await adminContractsRoute.POST(request('/api/admin/instructors/contracts',manager.token,payload))).status,428);
+ assert.equal((await adminContractsRoute.POST(request('/api/admin/instructors/contracts',manager.token,payload,manager.stepUp))).status,200);
+ for(const actor of [viewer,manager])for(const path of ['/api/admin/staff','/api/admin/finance','/api/admin/course-resources'])assert.equal(await auth.getSessionUser(request(path,actor.token)),null);
+ await db.delete(s.staffPermissions).where(eq(s.staffPermissions.userId,viewer.id));
+ assert.equal((await adminRoute.GET(request('/api/admin/instructors',viewer.token))).status,403);
+ await db.insert(s.staffPermissions).values({userId:viewer.id,permission:'instructors.view',grantedBy:owner.id});
+ fixtures.instructorTeamViewer=viewer;fixtures.instructorTeamManager=manager;
+ pass('real delegated viewer reads and downloads with MFA but cannot write; manager saves drafts only with MFA, revocation is immediate, unrelated staff/finance/catalog remain denied');
+
  const key=`instructors/${bob.row.id}/documents/${randomUUID()}.enc`;
  await storage.putObject(key,new Response('synthetic-expired-ciphertext').body!,'application/octet-stream','local');
  const [doc]=await db.insert(i.instructorDocuments).values({userId:bob.row.id,kind:'passport',objectKey:key,storageProvider:'local',originalName:'synthetic-expired.pdf',contentType:'application/pdf',sizeBytes:20,sha256:'a'.repeat(64),scanStatus:'clean',expiresAt:'2001-01-01T00:00:00.000Z',identityLegalBasis:'Synthetic isolated retention test only'}).returning();

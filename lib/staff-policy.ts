@@ -1,6 +1,7 @@
 /** Shared finite capability vocabulary. Never accept a client-supplied role as authority. */
 export const ADMIN_PERMISSIONS = {
   DATA_ALL: "data.all",
+  INSTRUCTORS_VIEW: "instructors.view", INSTRUCTORS_MANAGE: "instructors.manage",
   CATALOG_VIEW: "catalog.view", CATALOG_MANAGE: "catalog.manage",
   STUDENTS_VIEW: "students.view", STUDENTS_MANAGE: "students.manage",
   DEVICES_VIEW: "students.devices.view", DEVICES_MANAGE: "students.devices.manage",
@@ -16,6 +17,8 @@ export type AdminPermission = typeof ADMIN_PERMISSIONS[keyof typeof ADMIN_PERMIS
 export const OWNER_ONLY = new Set<string>(["staff.manage", "audit.view"]);
 export const PERMISSION_LABELS: Record<AdminPermission, string> = {
   "data.all": "نطاق جميع بيانات المنصة — لا يمنح أي إجراء دون صلاحيته",
+  "instructors.view": "عرض فريق مراس الشارحون — الملفات والمستندات والعقود والتكليفات",
+  "instructors.manage": "تعديل فريق مراس الشارحون — المراجعة والعقود والتكليفات والأجهزة (يشمل العرض)",
   "catalog.view": "عرض المواد والجهات والتخصصات", "catalog.manage": "إدارة المواد والدروس والملفات",
   "students.view": "عرض الطلاب", "students.manage": "تعديل بيانات الطلاب", "students.devices.view": "عرض أجهزة الطلاب", "students.devices.manage": "إدارة أجهزة الطلاب والجلسات وسياسة العودة", "subscriptions.manage": "إدارة الاشتراكات",
   "requests.manage": "طلبات المواد", "support.manage": "الدعم والتذاكر", "settings.manage": "إعدادات المنصة", "seo.manage": "الظهور والاكتشاف",
@@ -39,7 +42,7 @@ export function requiredRoutePermissions(path: string, method = "GET"): string[]
   if (["/api/admin/me", "/api/admin/console", "/api/admin/security/mfa"].includes(path)) return [];
   if (path === "/api/admin/logos") return ["catalog.manage", "data.all"];
   if (path === "/api/admin/videos/direct" || path === "/api/admin/videos/resumable") return ["catalog.manage"];
-  if (/^\/api\/admin\/instructors(\/|$)/.test(path)) return ["staff.manage"];
+  if (/^\/api\/admin\/instructors(\/|$)/.test(path)) return [read ? "instructors.view" : "instructors.manage"];
   if (path === "/api/admin/staff") return ["staff.manage"];
   if (/^\/api\/admin\/(finance|refunds|settlements|purchases)(\/|$)/.test(path)) return [read ? "finance.view" : "finance.manage", ...global];
   if (/^\/api\/admin\/students\/[^/]+\/devices$/.test(path)) return [read ? "students.devices.view" : "students.devices.manage"];
@@ -85,6 +88,6 @@ export function adminPagePermissions(path: string): string[] | null {
   if (path === "/admin" || path === "/admin/security") return [];
   if (path.startsWith("/admin/students/")) return ["students.view"];
   if (path === "/admin/courses" || path.startsWith("/admin/courses/")) return ["catalog.view", "students.view"];
-  const map: Record<string, string[]> = { "/admin/partners": ["content.manage"], "/admin/files": ["operations.manage", "data.all"], "/admin/purchases": ["finance.view", "data.all"], "/admin/finance": ["finance.view", "data.all"], "/admin/operations": ["operations.manage", "data.all"], "/admin/ai": ["ai.manage", "data.all"], "/admin/referrals": ["referrals.manage", "data.all"], "/admin/seo": ["seo.manage"], "/admin/course-resources": ["catalog.view"], "/admin/bundles": ["catalog.view", "data.all"], "/admin/learning-tracks": ["roadmap.manage", "data.all"], "/admin/staff": ["staff.manage"], "/admin/instructors": ["staff.manage"], "/admin/content": ["content.manage"] };
+  const map: Record<string, string[]> = { "/admin/partners": ["content.manage"], "/admin/files": ["operations.manage", "data.all"], "/admin/purchases": ["finance.view", "data.all"], "/admin/finance": ["finance.view", "data.all"], "/admin/operations": ["operations.manage", "data.all"], "/admin/ai": ["ai.manage", "data.all"], "/admin/referrals": ["referrals.manage", "data.all"], "/admin/seo": ["seo.manage"], "/admin/course-resources": ["catalog.view"], "/admin/bundles": ["catalog.view", "data.all"], "/admin/learning-tracks": ["roadmap.manage", "data.all"], "/admin/staff": ["staff.manage"], "/admin/instructors": ["instructors.view"], "/admin/content": ["content.manage"] };
   return map[path] || null;
 }

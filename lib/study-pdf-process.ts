@@ -29,7 +29,7 @@ async function renderPdfProcess(input: StudyPdfInput | InstructorContractPdfInpu
   if (!isAbsolute(executable) || /[\u0000-\u001f]/.test(executable)) { await rm(directory, { recursive: true, force: true }); throw new StudyPdfError("PDF_RENDER_UNAVAILABLE"); }
   try {
     return await new Promise<Buffer>((resolveResult, reject) => {
-      const child = spawn(process.execPath, ["--max-old-space-size=192", resolve("scripts/study-pdf-renderer.mjs"), kind], { cwd: directory, env: pdfChildEnvironment(directory, isolatedPdfQaAllowed(), executable), stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
+      const child = spawn(process.execPath, ["--max-old-space-size=192", resolve(kind === "contract" ? "scripts/contract-pdf-renderer.mjs" : "scripts/study-pdf-renderer.mjs"), kind], { cwd: directory, env: pdfChildEnvironment(directory, isolatedPdfQaAllowed(), executable), stdio: ["pipe", "pipe", "pipe"], detached: process.platform !== "win32" });
       const chunks: Buffer[] = []; let length = 0, stderr = "", failure: Error | null = null, browserPid: number | null = null;
       const kill = () => {
         // Chromium inherits this renderer process group, including during launch.

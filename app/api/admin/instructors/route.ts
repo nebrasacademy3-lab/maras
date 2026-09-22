@@ -2,7 +2,7 @@ import { and, count, desc, eq, gt, ilike, isNull, or, sql } from "drizzle-orm";
 import { getDb } from "@/db";
 import { users, auditLogs, authDevices, authSessions, notificationsDb, pushDevices } from "@/db/schema";
 import { instructorProfiles, instructorDocuments, instructorContracts } from "@/db/instructor-schema";
-import { instructorOwner, InstructorError, decryptInstructorData, instructorIdentityCollectionPolicy } from "@/lib/instructor-security";
+import { instructorAdmin, InstructorError, decryptInstructorData, instructorIdentityCollectionPolicy } from "@/lib/instructor-security";
 import { instructorApiError, instructorRevision, INSTRUCTOR_PRIVATE_HEADERS } from "@/lib/instructor-onboarding";
 import { checkRateLimit, clientIp, sameOriginRequest } from "@/lib/auth";
 import { cleanText, jsonError } from "@/lib/api";
@@ -11,10 +11,10 @@ import { manageRegisteredDeviceTx, DeviceManagementError } from "@/lib/auth-devi
 import { parseDeviceCommand } from "@/lib/device-access-policy";
 export const dynamic="force-dynamic";
 export async function GET(request:Request){
- try{const owner=await instructorOwner(request);if(!await checkRateLimit("instructor-admin-read",String(owner.id),90,60))return jsonError("طلبات كثيرة",429);
+ try{const owner=await instructorAdmin(request);if(!await checkRateLimit("instructor-admin-read",String(owner.id),90,60))return jsonError("طلبات كثيرة",429);
   const params=new URL(request.url).searchParams,userId=Number(params.get("userId")),db=getDb();
   if(userId){
-   await instructorOwner(request,true);
+   await instructorAdmin(request,true);
    if(!Number.isSafeInteger(userId)||userId<1)throw new InstructorError("الشارح غير موجود",404);
    const [result]=await db.select({user:users,profile:instructorProfiles}).from(instructorProfiles).innerJoin(users,eq(users.id,instructorProfiles.userId)).where(eq(users.id,userId));
    if(!result)throw new InstructorError("الشارح غير موجود",404);
@@ -34,7 +34,7 @@ export async function GET(request:Request){
  }catch(error){if(error instanceof DeviceManagementError)return jsonError(error.message,error.status,error.code);return instructorApiError(error);}
 }
 export async function POST(request:Request){
- try{if(!sameOriginRequest(request))return jsonError("تعذر التحقق من مصدر الطلب",403);const owner=await instructorOwner(request,true);
+ try{if(!sameOriginRequest(request))return jsonError("تعذر التحقق من مصدر الطلب",403);const owner=await instructorAdmin(request,true);
   if(!await checkRateLimit("instructor-admin-write",String(owner.id),30,60))return jsonError("طلبات كثيرة",429);
   const body=await readBoundedJsonObject(request,16384),userId=Number(body.userId),expectedRevision=instructorRevision(body.expectedRevision),action=cleanText(body.action,25),reason=cleanText(body.reason,1500);
   if(!Number.isSafeInteger(userId)||userId<1||!["approve","reject","request_changes","suspend","resume","device"].includes(action)||reason.length<5)throw new InstructorError("حدد الشارح والإجراء واكتب سبباً واضحاً");
