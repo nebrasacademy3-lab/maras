@@ -1,6 +1,23 @@
 /** Read-only, bounded audit of the public Discrete Structures preview. Never logs signed URLs/tokens. */
 import assert from "node:assert/strict";
-const origin="https://marasalelm.com", courseSlug="discrete-structures", lessonId="d-1";
+const origin="https://marasalelm.com", courseSlug="discrete-structures";
+const coursePage=await fetch(origin+"/courses/"+courseSlug,{headers:{"user-agent":"Maras-Owner-Preview-Security-Audit/1.0"},signal:AbortSignal.timeout(15000)});
+const courseHtml=await coursePage.text();
+const title="كيف تدرس المادة وخريطة المحتوى";
+const pos=courseHtml.indexOf(title);
+const nearby=pos>=0?courseHtml.slice(Math.max(0,pos-6000),pos+6000):courseHtml.slice(0,12000);
+const candidates=[...new Set([
+  ...[...nearby.matchAll(/(?:lessonId|lesson-id|lesson_id)[^A-Za-z0-9_-]{0,12}([A-Za-z0-9_-]{1,120})/g)].map(m=>m[1]),
+  ...[...nearby.matchAll(/(?:\"id\"|id)[^A-Za-z0-9_-]{0,8}([A-Za-z0-9_-]{1,120})/g)].map(m=>m[1]),
+  ...[...nearby.matchAll(/\b(?:d-\d+|[0-9a-f]{8}-[0-9a-f-]{27,36})\b/gi)].map(m=>m[0])
+])].filter(x=>x&&x!==courseSlug).slice(0,30);
+let lessonId=null;
+for(const candidate of candidates){
+  const probe=await fetch(origin+"/api/video/session",{method:"POST",headers:{"user-agent":"Maras-Owner-Preview-Security-Audit/1.0","content-type":"application/json","origin":origin,"referer":origin+"/courses/"+courseSlug,"sec-fetch-site":"same-origin","sec-fetch-mode":"cors","x-meras-platform":"web"},body:JSON.stringify({courseSlug,lessonId:candidate}),signal:AbortSignal.timeout(15000)});
+  if(probe.status===200){lessonId=candidate;await probe.body?.cancel();break;}
+  await probe.body?.cancel();
+}
+if(!lessonId){console.log(JSON.stringify({courseStatus:coursePage.status,titleFound:pos>=0,candidates},null,2));throw new Error("Could not resolve public preview lesson id from public page");}
 const ua="Maras-Owner-Preview-Security-Audit/1.0";
 const strip=url=>{const u=new URL(url,origin);return u.origin+u.pathname;};
 const header=(r,n)=>r.headers.get(n)||null;
