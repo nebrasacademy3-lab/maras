@@ -40,7 +40,7 @@ function authHeaders(id: number): Record<string, string> { return Object.fromEnt
 function AudioAttachment({ file, mine }: { file: SupportFile; mine: boolean }) {
   const { colors } = useTheme();
   const { token } = useAuth();
-  const source = useMemo(() => ({ uri: absoluteUrl(`/api/support/files/${file.id}?inline=1`), headers: authHeaders(file.id) }), [file.id, token]);
+  const source = useMemo(() => token ? ({ uri: absoluteUrl(`/api/support/files/${file.id}?inline=1`), headers: authHeaders(file.id) }) : null, [file.id, token]);
   const player = useAudioPlayer(source);
   const status = useAudioPlayerStatus(player);
   const current = Math.max(0, Math.round(status.currentTime || 0));

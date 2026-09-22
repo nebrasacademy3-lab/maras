@@ -37,3 +37,14 @@ test('native acceptance verifies rendered content and blocks checkout, not just 
   assert.match(source,/wait_screen startup/);assert.match(source,/wait_screen courses/);assert.match(source,/wait_screen blocked-checkout/);
   assert.match(source,/uiautomator dump/);assert.match(source,/checkout_link_blocked/);
 });
+
+test('native home does not repeat an unverified official-first marketing claim', () => {
+  const home = readFileSync(new URL('../app/(tabs)/index.tsx', import.meta.url), 'utf8');
+  assert.doesNotMatch(home, /أول منصة سعودية رسمية/);
+  assert.match(home, /DIRECT_COMMERCE_ENABLED && platform\?\.first_platform_claim_text/);
+  assert.match(home, /مساحة لتعلّم منظّم/);
+});
+test('private support audio has no request source after the account token is cleared', () => {
+  const support = readFileSync(new URL('../src/components/SupportChat.tsx', import.meta.url), 'utf8');
+  assert.match(support, /useMemo\(\(\) => token \? \([\s\S]*?\) : null, \[file\.id, token\]\)/);
+});
