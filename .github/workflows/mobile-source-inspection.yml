@@ -3,59 +3,38 @@ on:
   push:
     branches: [audit/mobile-readiness-20260922]
 permissions:
-  contents: write
+  contents: read
 concurrency:
-  group: mobile-repair-materialization
+  group: mobile-source-inspection
   cancel-in-progress: true
 jobs:
   source:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 8
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Preserve reviewed payload
-        run: cp repair/support-downloads.delta.b64 "$RUNNER_TEMP/support-repair.b64"
-      - name: Apply only hash-verified attachment corrections
+        with:
+          ref: cc0d2f9e5ac40b1b565359b4a0b228d40290b5b6
+          persist-credentials: false
+      - name: Export tracked source only
         run: |
-          set -euo pipefail
-          git fetch origin fix/mobile-store-readiness-20260922
-          test "$(git rev-parse origin/fix/mobile-store-readiness-20260922)" = 1017c744b15f4cb76ca8fd1be7b35118eda0235d
-          git switch --detach origin/fix/mobile-store-readiness-20260922
-          python3 - <<'PY'
-          import base64,gzip,hashlib,json,os,pathlib,subprocess
-          encoded=(pathlib.Path(os.environ['RUNNER_TEMP'])/'support-repair.b64').read_text()
-          assert len(encoded)==4620
-          raw=gzip.decompress(base64.b64decode(encoded,validate=True))
-          assert hashlib.sha256(raw).hexdigest()=='cfd60d40bb23cda9cff46b64d7b3b0731b85757bf8544cfb1731a8530ff2295e'
-          delta=json.loads(raw)
-          assert delta['base']=='1017c744b15f4cb76ca8fd1be7b35118eda0235d'
-          assert len(delta['files'])==4
-          paths=[]
-          for entry in delta['files']:
-              path=pathlib.Path(entry['path'])
-              assert not path.is_absolute() and '..' not in path.parts and not path.is_symlink()
-              assert path.parts[0] in {'mobile','proxy.ts'}
-              if entry['before'] is None:
-                  assert not path.exists()
-                  old=b''
-              else:
-                  old=path.read_bytes()
-                  assert hashlib.sha256(old).hexdigest()==entry['before'],str(path)
-              text=old.decode('utf-8')
-              for start,end,replacement in reversed(entry['ops']):
-                  assert 0<=start<=end<=len(text)
-                  text=text[:start]+replacement+text[end:]
-              output=text.encode('utf-8')
-              assert hashlib.sha256(output).hexdigest()==entry['after'],str(path)
-              path.parent.mkdir(parents=True,exist_ok=True)
-              path.write_bytes(output)
-              paths.append(str(path))
-          subprocess.run(['git','diff','--check'],check=True)
-          subprocess.run(['git','add','--',*paths],check=True)
-          print('VERIFIED_SUPPORT_REPAIR_FILES',len(paths))
-          PY
-          git config user.name 'nebrasacademy3-lab'
-          git config user.email '310756671+nebrasacademy3-lab@users.noreply.github.com'
-          git commit -m 'fix(mobile): use bounded session-safe transport for support attachments'
-          git push origin HEAD:refs/heads/audit/mobile-support-ready-20260922
-          git log -1 --format='SUPPORT_REPAIR_COMMIT=%H'
+          test "$(git rev-parse HEAD)" = cc0d2f9e5ac40b1b565359b4a0b228d40290b5b6
+          git archive --format=tar.gz --output="$RUNNER_TEMP/mobile-review-source.tar.gz" HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-review-source
+          path: ${{ runner.temp }}/mobile-review-source.tar.gz
+          retention-days: 1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+      - name: Install locked mobile dependencies without application credentials
+        working-directory: mobile
+        run: npm ci --no-audit --no-fund
+      - name: Export mobile dependency files only
+        run: tar -czf "$RUNNER_TEMP/mobile-review-dependencies.tar.gz" mobile/node_modules
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: mobile-review-dependencies
+          path: ${{ runner.temp }}/mobile-review-dependencies.tar.gz
+          retention-days: 1
