@@ -1,0 +1,117 @@
+name: Native application acceptance
+on:
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/mobile-native-acceptance.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: native-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  CI: '1'
+  EXPO_NO_TELEMETRY: '1'
+  EAS_BUILD_PROFILE: production
+  EXPO_PUBLIC_STORE_MODE: reader
+  # Public guest reads only. No account credentials, payments or provider keys.
+  EXPO_PUBLIC_API_URL: https://marasalelm.com
+jobs:
+  android:
+    name: Android release compilation, 16 KB and emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Install locked dependencies and generate native project
+        run: |
+          npm ci --no-audit --no-fund
+          npx expo install --check
+          npx expo prebuild --platform android --no-install
+      - name: Prepare emulator and Android SDK
+        run: |
+          java -version
+          sudo chmod 666 /dev/kvm
+          sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'system-images;android-36;google_apis;x86_64' 'emulator' > "$RUNNER_TEMP/android-sdk.log"
+      - name: Compile native release APK and Android App Bundle
+        working-directory: mobile/android
+        run: ./gradlew :app:assembleRelease :app:bundleRelease --no-daemon --max-workers=2 -PreactNativeArchitectures=x86_64,arm64-v8a -Dorg.gradle.jvmargs='-Xmx4g -XX:MaxMetaspaceSize=1g'
+      - name: Inspect real package security and memory page alignment
+        run: |
+          mkdir -p "$RUNNER_TEMP/native-android"
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          python3 scripts/check-android-package.py "$apk" > "$RUNNER_TEMP/native-android/elf-alignment.json"
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -c -P 16 -v 4 "$apk" > "$RUNNER_TEMP/native-android/zip-alignment.txt"
+          "$ANDROID_HOME/build-tools/36.0.0/aapt" dump badging "$apk" > "$RUNNER_TEMP/native-android/badging.txt"
+          python3 - <<'PY'
+          import os, pathlib, re
+          text = (pathlib.Path(os.environ['RUNNER_TEMP']) / 'native-android/badging.txt').read_text()
+          assert int(re.search(r"targetSdkVersion:'(\d+)'", text)[1]) >= 36
+          assert 'application-debuggable' not in text
+          assert 'com.android.vending.BILLING' not in text
+          for permission in ['READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE']:
+              assert 'android.permission.' + permission not in text
+          PY
+      - name: Install and exercise guest startup on an isolated emulator
+        run: bash scripts/android-startup-check.sh
+      - name: Preserve bounded native evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-android-acceptance
+          path: ${{ runner.temp }}/native-android
+          retention-days: 7
+      - name: Record signing boundary
+        run: echo 'Release native code compiled and tested with the generated QA signing key. A Play-signed production AAB still requires the owner’s EAS/Play credentials.' >> "$GITHUB_STEP_SUMMARY"
+  ios:
+    name: iOS release compilation and simulator
+    runs-on: macos-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: mobile
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - name: Validate toolchain, locked dependencies and native project
+        run: |
+          xcodebuild -version
+          xcodebuild -version | python3 -c 'import re,sys; assert int(re.search(r"Xcode (\d+)",sys.stdin.read())[1]) >= 26'
+          npm ci --no-audit --no-fund
+          npx expo install --check
+          npx expo prebuild --platform ios --no-install
+          cd ios && pod install
+      - name: Build unsigned iOS simulator release
+        run: |
+          workspace=$(find ios -maxdepth 1 -type d -name '*.xcworkspace' -print -quit)
+          project=$(find ios -maxdepth 1 -type d -name '*.xcodeproj' -print -quit)
+          test -n "$workspace" && test -n "$project"
+          scheme=$(basename "$project" .xcodeproj)
+          set -o pipefail
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/meras-ios" CODE_SIGNING_ALLOWED=NO -quiet
+      - name: Install and exercise guest startup on simulator
+        run: bash scripts/ios-startup-check.sh
+      - name: Preserve bounded native evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: native-ios-acceptance
+          path: ${{ runner.temp }}/native-ios
+          retention-days: 7
+      - name: Record signing boundary
+        run: echo 'An unsigned simulator release is not an App Store IPA. Distribution signing, APNs and App Store Connect metadata require the owner’s verified accounts.' >> "$GITHUB_STEP_SUMMARY"
