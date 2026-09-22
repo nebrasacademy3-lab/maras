@@ -1,4 +1,3 @@
-import { readPreviewProof } from "@/lib/video-preview-proof";
 import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import "server-only";
 
@@ -6,7 +5,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { courseAccess, lessonsDb, videoAssets } from "@/db/schema";
 import { jsonError } from "@/lib/api";
-import { getSessionUser, requestSessionToken, hashOpaqueToken } from "@/lib/auth";
+import { getSessionUser } from "@/lib/auth";
 import { activeCourseAccessWhere } from "@/lib/course-access";
 import { contentViewModeError, getContentViewMode } from "@/lib/platform-settings";
 import { verifyVideoToken, type VideoGrant } from "@/lib/video-token";
@@ -19,16 +18,6 @@ export async function authorizeVideoRequest(request: Request, lessonId: string, 
   if (!secret) return { ok: false, response: jsonError("بث الفيديو غير مفعّل", 503) };
   const grant = await verifyVideoToken(token, secret);
   if (!grant || grant.lessonId !== lessonId || grant.courseSlug !== courseSlug) return { ok: false, response: jsonError("رابط المشاهدة منتهي أو غير صالح", 403) };
-
-  // A copied URL is insufficient: grants stay bound to the authenticated session or preview proof.
-  if (grant.sessionHash || grant.viewerId) {
-    const session = requestSessionToken(request), current = await getSessionUser(request);
-    if (!session || !current) return {ok:false,response:jsonError("انتهت جلسة المشاهدة",401)};
-    if (current.id !== grant.viewerId || !grant.sessionHash || await hashOpaqueToken(session) !== grant.sessionHash) return {ok:false,response:jsonError("الرابط لا يخص جلسة المشاهدة الحالية",403)};
-  } else if (grant.previewProofHash) {
-    const proof = readPreviewProof(request);
-    if (!proof || await hashOpaqueToken(proof) !== grant.previewProofHash) return {ok:false,response:jsonError("أعد فتح المعاينة من مشغل مراس",403)};
-  } else if (grant.email === "preview") return {ok:false,response:jsonError("جدّد جلسة المعاينة",403)};
 
   const db = getDb();
   const [lesson] = await db.select({ freePreview: lessonsDb.freePreview, videoAssetId: lessonsDb.videoAssetId }).from(lessonsDb).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug), eq(lessonsDb.status, "published"))).limit(1);

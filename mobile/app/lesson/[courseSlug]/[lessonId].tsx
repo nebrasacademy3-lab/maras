@@ -6,7 +6,6 @@ import * as ScreenCapture from "expo-screen-capture";
 import { StatusBar } from "expo-status-bar";
 import { router, useLocalSearchParams } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
-import { replaceLessonVideo } from "@/src/lib/lesson-video-transport";
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Animated, AppState, BackHandler, Platform, Pressable, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
@@ -20,15 +19,11 @@ import { useLanguage } from "@/src/providers/LanguageProvider";
 import type { Catalog } from "@/src/types";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { createCaptureLease, inlinePlayerHeight, playerBackAction, playerStageLayout } from "@/src/lib/player-layout";
-import { LessonAiTools } from "@/src/components/lesson-ai-tools";
-import { LessonCourseFiles } from "@/src/components/lesson-course-files";
-import { BrandMark } from "@/src/components/Brand";
-import { createPlayerGestures } from "@/src/lib/player-gestures";
-import { LESSON_TABS, boundedSeek, playbackQualitySources, type PlaybackSession, type LessonTab } from "@/src/lib/lesson-experience";
+import { LessonStudyTools } from "@/src/components/study-file-tools";
 import { playbackSnapshot, progressFromSnapshot } from "@/src/lib/playback-progress";
 
 const rates = [0.5, 0.75, 1, 1.25, 1.5, 2];
-
+const qualities = ["تلقائي", "الأصلية"] as const;
 
 type Origin = "learn" | "course";
 type VideoNote = { id: number; lessonId: string; body: string; timestampSeconds: number; createdAt: string; updatedAt: string };
@@ -37,7 +32,6 @@ type PreparedPlayback = {
   courseSlug: string;
   lessonId: string;
   resumeAt: number;
-  playWhenReady?: boolean;
   source: {
     uri: string;
     headers: Record<string, string>;
@@ -59,11 +53,6 @@ export default function LessonPlayer() {
   const captureReady = captureState === "ready";
   const origin: Origin = from === "course" ? "course" : "learn";
 
-  const lessonScope = `${courseSlug}:${lessonId}:${user?.id}`;
-  const [workspace, setWorkspace] = useState<{ scope: string; tab: LessonTab; visited: Set<LessonTab> }>({ scope: lessonScope, tab: "overview", visited: new Set() });
-  const tab = workspace.scope === lessonScope ? workspace.tab : "overview";
-  const visited = workspace.scope === lessonScope ? workspace.visited : new Set<LessonTab>();
-  function selectLessonTab(next: LessonTab) { setWorkspace(current => ({ scope: lessonScope, tab: next, visited: new Set([...(current.scope === lessonScope ? current.visited : []), next]) })); }
   const [course, setCourse] = useState<Catalog["courses"][number] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -77,14 +66,8 @@ export default function LessonPlayer() {
   const [volume, setVolume] = useState(1);
   const [muted, setMuted] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [subtitleTracks,setSubtitleTracks]=useState<import("expo-video").SubtitleTrack[]>([]);
-  const [subtitleId,setSubtitleId]=useState<string|null>(null);
-  const [quality, setQuality] = useState("تلقائي");
-  const qualityRef=useRef("تلقائي"),rateRef=useRef(1);
-  const [qualitySources,setQualitySources]=useState<Record<string,string>>({});
-  const [sessionData,setSessionData]=useState<PlaybackSession|null>(null);
-  const [gestureHint,setGestureHint]=useState("");
-  const hintTimer=useRef<ReturnType<typeof setTimeout>|null>(null),gestureWidth=useRef(320);
+  const [captions, setCaptions] = useState(false);
+  const [quality, setQuality] = useState<(typeof qualities)[number]>("تلقائي");
   const [retryKey, setRetryKey] = useState(0);
   const [fullscreen, setFullscreen] = useState(false);
   const [manualRotation, setManualRotation] = useState(false);
@@ -103,8 +86,6 @@ export default function LessonPlayer() {
     instance.audioMixingMode = "doNotMix";
     instance.timeUpdateEventInterval = 0.5;
   });
-  const gestures=useMemo(()=>createPlayerGestures({rate:()=>rateRef.current,playing:()=>{try{return player.playing;}catch{return false;}},setRate:value=>{try{player.playbackRate=value;}catch{/* disposed */}},seek:delta=>{try{player.currentTime=boundedSeek(player.currentTime,delta,player.duration);}catch{/* disposed */}},hint:text=>{setGestureHint(text);if(hintTimer.current)clearTimeout(hintTimer.current);if(text&&!text.startsWith("2×"))hintTimer.current=setTimeout(()=>setGestureHint(""),1000);}}),[player]);
-  useEffect(()=>()=>{gestures.cancel();if(hintTimer.current)clearTimeout(hintTimer.current);},[gestures]);
   const { isPlaying } = useEvent(player, "playingChange", { isPlaying: player.playing });
   const statusEvent = useEvent(player, "statusChange", { status: player.status });
   const playbackError = statusEvent.status === "error"
@@ -133,7 +114,7 @@ export default function LessonPlayer() {
     setFullscreen(false);
     releaseVideo();
     router.dismissTo(returnHref as never);
-  }, [releaseVideo, returnHref, setFullscreen]);
+  }, [releaseVideo, returnHref]);
 
   useEffect(() => {
     if (Platform.OS !== "android") return;
@@ -154,13 +135,13 @@ export default function LessonPlayer() {
   useEffect(() => {
     const subscription = AppState.addEventListener("change", (state) => {
       setPrivateOverlay(state !== "active");
-      if (state !== "active") { gestures.cancel(); try { player.pause(); } catch { /* Released while leaving the screen. */ } }
+      if (state !== "active") { try { player.pause(); } catch { /* Released while leaving the screen. */ } }
     });
     return () => {
       subscription.remove();
       releaseVideo();
     };
-  }, [player, releaseVideo, gestures]);
+  }, [player, releaseVideo]);
 
   useEffect(() => {
     if (Platform.OS === "web") return;
@@ -206,7 +187,7 @@ export default function LessonPlayer() {
         if (!selectedLesson) throw new Error("الدرس غير موجود");
         if (cancelled) return;
         const [session, progress, noteResult] = await Promise.all([
-          api<PlaybackSession>("/api/video/session", {
+          api<{ streamUrl: string; expiresAt: string; adaptive?: boolean }>("/api/video/session", {
             method: "POST",
             body: jsonBody({ courseSlug, lessonId }),
           }),
@@ -222,10 +203,6 @@ export default function LessonPlayer() {
         const token = getApiToken();
         const headers: Record<string, string> = { Accept: "video/*" };
         if (token) headers.Authorization = `Bearer ${token}`;
-        if (session.playbackProof) headers["x-meras-playback-proof"] = session.playbackProof;
-        setSessionData(session);
-        setQualitySources(playbackQualitySources(session));
-        qualityRef.current="تلقائي";setQuality("تلقائي");
 
         const saved = progress.progress.find((item) => item.lessonId === lessonId);
         const resumeAt = saved?.watchedSeconds && Number.isFinite(saved.watchedSeconds) ? Math.max(0, saved.watchedSeconds) : 0;
@@ -251,7 +228,7 @@ export default function LessonPlayer() {
       }
     })();
     return () => { cancelled = true; };
-  }, [courseSlug, lessonId, player, retryKey, user?.id]);
+  }, [courseSlug, lessonId, player, retryKey]);
 
   useEffect(() => {
     if (loading || !preparedPlayback || !captureReady) return;
@@ -262,9 +239,8 @@ export default function LessonPlayer() {
     let statusSubscription: { remove: () => void } | null = null;
     const sourceSubscription = player.addListener("sourceLoad", (event) => {
       const loadedUri = typeof event.videoSource === "string" ? event.videoSource : typeof event.videoSource === "object" ? event.videoSource?.uri : undefined;
-      if (cancelled || Platform.OS !== "web" && loadedUri !== preparedPlayback.source.uri) return;
+      if (cancelled || loadedUri !== preparedPlayback.source.uri) return;
       sourceLoaded = true;
-      setSubtitleTracks(event.availableSubtitleTracks);
       progress.snapshot = playbackSnapshot(preparedPlayback.resumeAt, event.duration);
       progress.ready = true;
       setDuration(progress.snapshot.duration);
@@ -280,15 +256,12 @@ export default function LessonPlayer() {
       statusSubscription?.remove();
       statusSubscription = null;
       if (preparedPlayback.resumeAt > 0) {
-        player.currentTime = Math.min(preparedPlayback.resumeAt, player.duration || preparedPlayback.resumeAt);
+        player.currentTime = preparedPlayback.resumeAt;
         setTime(preparedPlayback.resumeAt);
       }
-      player.playbackRate=rateRef.current;
       // Native playback can start immediately; browsers retain their visible play control when autoplay is blocked.
-      if ((preparedPlayback.playWhenReady === true || preparedPlayback.playWhenReady !== false && Platform.OS !== "web") && AppState.currentState === "active") player.play();
+      if (Platform.OS !== "web" && AppState.currentState === "active") player.play();
     };
-    const transportAbort = new AbortController();
-    let disposeTransport: (() => void) | null = null;
     const frame = requestAnimationFrame(() => {
       if (cancelled) return;
       statusSubscription = player.addListener("statusChange", (event) => {
@@ -300,10 +273,8 @@ export default function LessonPlayer() {
         }
       });
       acceptingStatus = true;
-      const replacement = replaceLessonVideo(player, videoRef.current, preparedPlayback.source, transportAbort.signal, setError);
-      void replacement.then(dispose => {
-        if(cancelled){dispose();return;}
-        disposeTransport=dispose;
+      const replacement = player.replaceAsync(preparedPlayback.source);
+      void replacement.then(() => {
         if (cancelled) return;
         if (player.status === "readyToPlay") applyResumeAndPlay();
       }).catch((reason) => {
@@ -312,7 +283,6 @@ export default function LessonPlayer() {
     });
     return () => {
       cancelled = true;
-      transportAbort.abort(); disposeTransport?.();
       cancelAnimationFrame(frame);
       statusSubscription?.remove();
       sourceSubscription.remove();
@@ -338,40 +308,12 @@ export default function LessonPlayer() {
     return () => { clearInterval(timer); background.remove(); void save(); };
   }, [courseSlug, lessonId, loading, preparedPlayback, progress, user?.id]);
 
-  useEffect(()=>{
-    if(!sessionData?.expiresAt||loading||!courseSlug||!lessonId)return;
-    const controller=new AbortController();let working=false;
-    const refresh=async()=>{
-      if(working||controller.signal.aborted)return;working=true;
-      try{
-        const next=await api<PlaybackSession>("/api/video/session",{method:"POST",body:jsonBody({courseSlug,lessonId}),signal:controller.signal});
-        if(controller.signal.aborted)return;
-        const sources=playbackQualitySources(next),label=sources[qualityRef.current]?qualityRef.current:Object.keys(sources)[0]!;
-        const token=getApiToken(),headers:Record<string,string>={Accept:"video/*"};if(token)headers.Authorization=`Bearer ${token}`;if(next.playbackProof)headers["x-meras-playback-proof"]=next.playbackProof;
-        const resumeAt=player.currentTime,playWhenReady=player.playing;
-        gestures.cancel();setQualitySources(sources);qualityRef.current=label;setQuality(label);setSessionData(next);
-        setPreparedPlayback(previous=>previous?.lessonId===lessonId?{...previous,key:`${courseSlug}:${lessonId}:${Date.now()}`,resumeAt,playWhenReady,source:{...previous.source,uri:apiRequestUrl(sources[label]!).toString(),headers,contentType:"hls",useCaching:false}}:previous);
-      }catch(reason){if(!controller.signal.aborted)setError(reason instanceof Error?reason.message:"تعذر تجديد جلسة المشاهدة");}finally{working=false;}
-    };
-    const timer=setTimeout(()=>void refresh(),Math.max(1000,Date.parse(sessionData.expiresAt)-Date.now()-60000));
-    const subscription=AppState.addEventListener("change",state=>{if(state==="active"&&Date.parse(sessionData.expiresAt)-Date.now()<60000)void refresh();});
-    return()=>{controller.abort();clearTimeout(timer);subscription.remove();};
-  },[sessionData?.expiresAt,loading,courseSlug,lessonId,player,gestures]);
-
-  const changeQuality=(label:string)=>{
-    const uri=qualitySources[label];if(!uri||label===quality)return;
-    gestures.cancel();const resumeAt=player.currentTime,playWhenReady=player.playing;
-    qualityRef.current=label;setQuality(label);setSettingsOpen(false);
-    setPreparedPlayback(previous=>previous?{...previous,key:`${previous.key}:${label}`,resumeAt,playWhenReady,source:{...previous.source,uri:apiRequestUrl(uri).toString(),contentType:"hls",useCaching:false}}:previous);
-  };
-
   const seek = (seconds: number) => {
-    player.currentTime = boundedSeek(player.currentTime,seconds,player.duration);
+    player.currentTime = Math.max(0, Math.min(player.duration || 0, player.currentTime + seconds));
   };
 
   const changeRate = (value: number) => {
-    gestures.cancel();
-    setRate(value);rateRef.current=value;
+    setRate(value);
     player.playbackRate = value;
   };
 
@@ -470,8 +412,6 @@ export default function LessonPlayer() {
           {...(Platform.OS === "android" ? { surfaceType: "textureView" as const } : {})}
         />
 
-        <Pressable accessible={false} importantForAccessibility="no" style={[StyleSheet.absoluteFill,{zIndex:1}]} onLayout={event=>{gestureWidth.current=event.nativeEvent.layout.width;}} delayLongPress={400} onLongPress={()=>gestures.hold()} onPressOut={()=>gestures.release()} onTouchCancel={()=>gestures.cancel()} onPress={event=>gestures.tap(event.nativeEvent.locationX,gestureWidth.current)}/>
-        {gestureHint&&<View pointerEvents="none" style={{position:"absolute",top:"18%",left:"20%",right:"20%",zIndex:10,backgroundColor:"#07142fdd",borderRadius:18,padding:10}}><Text style={{color:"white",textAlign:"center"}}>{gestureHint}</Text></View>}
         <View pointerEvents="none" style={styles.topShade} />
         <View pointerEvents="none" style={styles.bottomShade} />
         <View pointerEvents="none" style={styles.titleOverlay}>
@@ -489,11 +429,11 @@ export default function LessonPlayer() {
             ],
           }]}
         >
-          <BrandMark size={48}/><Text style={styles.watermarkText}>مراس العلم</Text>
-          {sessionData?.branding?.whatsapp&&<Text style={styles.watermarkMeta}>+{sessionData.branding.whatsapp}</Text>}
+          <Text style={styles.watermarkText}>{user?.fullName || "طالب مراس"}</Text>
+          <Text style={styles.watermarkMeta}>{user?.phone || user?.email || "معاينة"}</Text>
         </Animated.View>
 
-        <View pointerEvents="none" style={{position:"absolute",right:16,top:14,zIndex:2,opacity:.45,alignItems:"center"}}><BrandMark size={32}/>{sessionData?.branding?.whatsapp&&<Text style={styles.watermarkMeta}>+{sessionData.branding.whatsapp}</Text>}</View>
+        {captions && isPlaying ? <View pointerEvents="none" style={styles.caption}><Text style={styles.captionText}>لا يوجد ملف ترجمة مرفوع لهذا الدرس بعد.</Text></View> : null}
 
         {showPlayerLoading ? <View pointerEvents="none" style={styles.playerState}><Ionicons name="hourglass-outline" size={30} color="#FFFFFF" /><Text style={styles.playerStateTitle}>جارٍ تحميل الفيديو...</Text></View> : null}
         {playbackError ? <View style={styles.playerState}><Ionicons name="alert-circle-outline" size={32} color="#FFFFFF" /><Text style={styles.playerStateTitle}>تعذّر تشغيل الفيديو</Text><Text style={styles.playerStateText}>{playbackError}</Text><Pressable style={styles.retryButton} onPress={() => setRetryKey((value) => value + 1)}><Ionicons name="refresh" size={16} color="#FFFFFF" /><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable></View> : null}
@@ -538,7 +478,7 @@ export default function LessonPlayer() {
               <Text style={styles.timeText}>{formatTime(time)} / {formatTime(duration)}</Text>
             </View>
             <View style={[styles.controlsSide, { flexDirection: rowDirection }]}>
-              {subtitleTracks.length>0&&<PlayerButton icon="text" active={Boolean(subtitleId)} onPress={()=>{const track=subtitleId?null:subtitleTracks[0]||null;player.subtitleTrack=track;setSubtitleId(track?.id||null);}}/>}
+              <PlayerButton icon="text" active={captions} onPress={() => setCaptions((value) => !value)} />
               <Pressable style={styles.labelButton} onPress={() => setSettingsOpen((value) => !value)}><Text style={styles.labelButtonText}>{rate}×</Text></Pressable>
               <PlayerButton icon="settings-outline" active={settingsOpen} onPress={() => setSettingsOpen((value) => !value)} />
               {fullscreen ? <PlayerButton icon="phone-landscape-outline" active={manualRotation} onPress={() => setManualRotation((value) => !value)} /> : null}
@@ -554,7 +494,7 @@ export default function LessonPlayer() {
             <Text style={styles.settingsLabel}>السرعة</Text>
             <View style={[styles.chips, { flexDirection: rowDirection, justifyContent: startAlignment }]}>{rates.map((value) => <Pressable key={value} onPress={() => changeRate(value)} style={[styles.chip, rate === value && styles.chipActive]}><Text style={styles.chipText}>{value}×</Text></Pressable>)}</View>
             <Text style={styles.settingsLabel}>الجودة</Text>
-            <View style={[styles.chips, { flexDirection: rowDirection, justifyContent: startAlignment }]}>{Object.keys(qualitySources).map((value) => <Pressable accessibilityRole="radio" accessibilityState={{checked:quality===value}} key={value} onPress={() => changeQuality(value)} style={[styles.chip, quality === value && styles.chipActive]}><Text style={styles.chipText}>{value}</Text></Pressable>)}</View>
+            <View style={[styles.chips, { flexDirection: rowDirection, justifyContent: startAlignment }]}>{qualities.map((value) => <Pressable key={value} onPress={() => setQuality(value)} style={[styles.chip, quality === value && styles.chipActive]}><Text style={styles.chipText}>{value}</Text></Pressable>)}</View>
             <Text style={styles.settingsHelp}>يُعرض الفيديو بالحجم الأصلي داخل الإطار بدون قص أو تقريب.</Text>
             <Text style={styles.settingsLabel}>الصوت</Text>
             <Slider style={styles.volumeSlider} minimumValue={0} maximumValue={1} step={0.05} value={muted ? 0 : volume} onValueChange={changeVolume} minimumTrackTintColor="#4D82FF" maximumTrackTintColor="rgba(255,255,255,.25)" thumbTintColor="#FFFFFF" />
@@ -571,18 +511,15 @@ export default function LessonPlayer() {
         </View>
         <Text style={[styles.lessonTitle, { color: colors.text }]}>{lesson.title}</Text>
         <Text style={[styles.protection, { color: colors.textSoft }]}><Ionicons name="shield-checkmark-outline" size={14} color={colors.success} /> بث محمي · عرض كامل بدون قص · حفظ تقدم تلقائي</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8,paddingVertical:8}} accessibilityRole="tablist">{LESSON_TABS.map(item=><Pressable key={item.id} accessibilityRole="tab" accessibilityState={{selected:tab===item.id}} accessibilityLabel={item.label} onPress={()=>selectLessonTab(item.id)} style={{minHeight:48,flexDirection:"row",alignItems:"center",gap:8,padding:12,borderRadius:13,borderWidth:1,borderColor:tab===item.id?colors.primary:colors.border,backgroundColor:tab===item.id?colors.surfaceAlt:colors.surface}}><Ionicons name={item.icon} size={20} color={tab===item.id?colors.primary:colors.textSoft}/><Text style={{color:tab===item.id?colors.primary:colors.text,fontWeight:"700"}}>{item.label}</Text></Pressable>)}</ScrollView>
-        {tab==="overview"&&<Card style={{gap:12}}><Text accessibilityRole="header" style={{color:colors.text,fontSize:22,fontWeight:"800"}}>عن هذا الدرس</Text><Text selectable style={{color:colors.textSoft,lineHeight:27}}>{lesson.description?.trim() || "تابع الشرح، وسجّل ملاحظاتك عند اللحظة المهمة، ثم اختبر فهمك واسأل المعلم الذكي من ملف الدرس."}</Text><Text style={{color:colors.primary}}>مدة الدرس: {lesson.duration || formatTime(duration)}</Text><Text style={{color:colors.textSoft}}>اختر ملفات المادة للمراجع، أو ملاحظاتي للعودة إلى وقت محدد في الفيديو.</Text></Card>}
-        {tab==="files"&&<LessonCourseFiles key={`${user?.id}:${courseSlug}:${lessonId}`} courseSlug={courseSlug} lessonId={lessonId}/>}
-        {(["quiz","tutor"] as const).map(mode=>visited.has(mode)&&<View key={`${user?.id}:${lessonId}:${mode}`} style={tab!==mode?{display:"none"}:undefined} accessibilityElementsHidden={tab!==mode} importantForAccessibility={tab!==mode?"no-hide-descendants":"auto"}><LessonAiTools courseSlug={courseSlug} lessonId={lessonId} mode={mode}/></View>)}
-        {tab==="notes"&&<Card style={styles.notes}>
+        <LessonStudyTools key={`${courseSlug}.${lessonId}`} courseSlug={courseSlug} lessonId={lessonId}/>
+        <Card style={styles.notes}>
           <Text style={[styles.notesTitle, { color: colors.text }]}>ملاحظات مرتبطة بالفيديو</Text>
           <Text style={[styles.noteTimeHint, { color: colors.primary }]}>اللحظة الحالية: {formatTime(time)}</Text>
-          <TextInput multiline maxLength={4000} value={note} onChangeText={setNote} placeholder="اكتب ملاحظتك عند هذه اللحظة..." placeholderTextColor={colors.textSoft} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} />
+          <TextInput multiline value={note} onChangeText={setNote} placeholder="اكتب ملاحظتك عند هذه اللحظة..." placeholderTextColor={colors.textSoft} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} />
           <AppButton title="حفظ عند هذه اللحظة" variant="soft" icon="bookmark-outline" onPress={saveNote} />
           {noteMessage ? <Text style={[styles.noteMessage, { color: noteMessage.startsWith("تم") ? colors.success : colors.danger }]}>{noteMessage}</Text> : null}
           <View style={styles.savedNotes}>{videoNotes.map((item) => <View key={item.id} style={[styles.savedNote, { borderColor: colors.border, backgroundColor: colors.surfaceAlt, flexDirection: rowDirection }]}><Pressable style={[styles.savedNoteOpen, { flexDirection: rowDirection }]} onPress={() => openNote(item)}><Text style={styles.savedNoteTime}>{formatTime(item.timestampSeconds)}</Text><Text numberOfLines={2} style={[styles.savedNoteBody, { color: colors.text }]}>{item.body}</Text></Pressable><Pressable accessibilityLabel={t("حذف الملاحظة")} style={styles.savedNoteDelete} onPress={() => void deleteNote(item)}><Ionicons name="trash-outline" size={17} color={colors.danger} /></Pressable></View>)}{videoNotes.length === 0 ? <Text style={[styles.notesEmpty, { color: colors.textSoft }]}>أوقف الفيديو عند الموضع المطلوب واحفظ أول ملاحظة؛ ستظهر هنا ويمكنك الضغط عليها للعودة لنفس الثانية.</Text> : null}</View>
-        </Card>}
+        </Card>
       </View></LessonDetails>
     </LessonSurface>
   );
@@ -680,13 +617,13 @@ const styles = StyleSheet.create({
   titleOverlay: { position: "absolute", top: 11, left: 13, right: 13, alignItems: "flex-start" },
   overlayTitle: { maxWidth: "76%", color: "#FFFFFF", fontSize: 11, fontWeight: "900", writingDirection: "rtl" },
   overlaySub: { color: "rgba(255,255,255,.62)", fontSize: 8, marginTop: 3 },
-  watermark: { zIndex:2, position: "absolute", alignSelf: "center", top: "38%", opacity: 0.28, alignItems: "center" },
+  watermark: { position: "absolute", alignSelf: "center", top: "38%", opacity: 0.28, alignItems: "center" },
   watermarkText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
   watermarkMeta: { color: "#FFFFFF", fontSize: 8, marginTop: 2 },
   caption: { position: "absolute", left: "12%", right: "12%", bottom: 73, alignItems: "center" },
   captionText: { color: "#FFFFFF", backgroundColor: "rgba(0,0,0,.78)", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 7, textAlign: "center", fontSize: 10 },
-  centerPlay: { zIndex: 8, position: "absolute", top: "50%", left: "50%", width: 64, height: 64, marginLeft: -32, marginTop: -32, borderRadius: 32, backgroundColor: "rgba(8,20,48,.70)", borderWidth: 1, borderColor: "rgba(255,255,255,.22)", alignItems: "center", justifyContent: "center", paddingLeft: 3 },
-  controls: { zIndex: 8, position: "absolute", left: 9, right: 9, bottom: 7 },
+  centerPlay: { position: "absolute", top: "50%", left: "50%", width: 64, height: 64, marginLeft: -32, marginTop: -32, borderRadius: 32, backgroundColor: "rgba(8,20,48,.70)", borderWidth: 1, borderColor: "rgba(255,255,255,.22)", alignItems: "center", justifyContent: "center", paddingLeft: 3 },
+  controls: { position: "absolute", left: 9, right: 9, bottom: 7 },
   slider: { width: "100%", height: 24 },
   controlsRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", rowGap: 2 },
   controlsMain: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 2 },

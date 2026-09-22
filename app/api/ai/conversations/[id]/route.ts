@@ -4,10 +4,10 @@ import { studyReadAccess } from "@/lib/study-output-access";
 import { isNativeAppRequest } from "@/lib/mobile-api";
 import { and, asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { aiArtifacts, aiConversations, aiFiles, aiMessages, aiQuizzes } from "@/db/schema";
+import { aiArtifacts, aiConversations, aiFiles, aiMessages } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
 import { checkRateLimit, getSessionUser, sameOriginRequest } from "@/lib/auth";
-import { aiJson, artifactPayload, conversationPayload, filePayload, messagePayload, quizPayload } from "@/lib/ai-api";
+import { aiJson, artifactPayload, conversationPayload, filePayload, messagePayload } from "@/lib/ai-api";
 import { observeRequest } from "@/lib/observability";
 
 function idFrom(params: Promise<{ id: string }>) {
@@ -25,14 +25,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     const access = await studyReadAccess(user.id, isNativeAppRequest(request) ? "app" : "web");
     const [conversation] = await getDb().select().from(aiConversations).where(and(eq(aiConversations.id, id), eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"), access.conversation)).limit(1);
     if (!conversation) return jsonError("المحادثة غير موجودة", 404);
-    if (conversation.kind.startsWith("lesson_tutor:")) return jsonError("افتح المعلم الذكي من الدرس للتحقق من المرجع الحالي", 403);
-    const [messages, files, artifacts, quizzes] = await Promise.all([
+    const [messages, files, artifacts] = await Promise.all([
       getDb().select().from(aiMessages).where(and(eq(aiMessages.conversationId, id), eq(aiMessages.userId, user.id))).orderBy(asc(aiMessages.createdAt)).limit(500),
       getDb().select().from(aiFiles).where(and(eq(aiFiles.conversationId, id), eq(aiFiles.userId, user.id))).orderBy(asc(aiFiles.createdAt)).limit(100),
-      getDb().select().from(aiArtifacts).where(and(eq(aiArtifacts.conversationId, id), eq(aiArtifacts.userId, user.id), access.artifact)).orderBy(asc(aiArtifacts.createdAt)).limit(100),
-      getDb().select().from(aiQuizzes).where(and(eq(aiQuizzes.conversationId, id), eq(aiQuizzes.userId, user.id), access.quiz)).orderBy(asc(aiQuizzes.createdAt)).limit(100),
+      getDb().select().from(aiArtifacts).where(and(eq(aiArtifacts.conversationId, id), eq(aiArtifacts.userId, user.id))).orderBy(asc(aiArtifacts.createdAt)).limit(100),
     ]);
-    return aiJson({ ok: true, conversation: conversationPayload(conversation, messages.at(-1)?.content || ""), messages: messages.map(messagePayload), files: files.map(filePayload), artifacts: artifacts.map(artifactPayload), quizzes: quizzes.map(row => quizPayload(row)) });
+    return aiJson({ ok: true, conversation: conversationPayload(conversation, messages.at(-1)?.content || ""), messages: messages.map(messagePayload), files: files.map(filePayload), artifacts: artifacts.map(artifactPayload) });
   });
 }
 

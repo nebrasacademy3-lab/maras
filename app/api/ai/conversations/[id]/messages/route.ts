@@ -31,7 +31,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     const access = await studyReadAccess(user.id, isNativeAppRequest(request) ? "app" : "web");
     const [conversation] = await getDb().select().from(aiConversations).where(and(eq(aiConversations.id, conversationId), eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"), access.conversation)).limit(1);
     if (!conversation) return jsonError("المحادثة غير موجودة", 404);
-    if (conversation.kind.startsWith("lesson_tutor:")) return jsonError("افتح المعلم الذكي من الدرس لاستمرار التحقق من مرجعه.", 403);
     const historyRows = await getDb().select().from(aiMessages).where(and(eq(aiMessages.conversationId, conversationId), eq(aiMessages.userId, user.id))).orderBy(desc(aiMessages.createdAt)).limit(18);
     let reservation: Awaited<ReturnType<typeof beginAiUsage>> | null = null;
     let providerStarted = false;

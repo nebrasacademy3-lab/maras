@@ -413,6 +413,3 @@ img { max-width: 100%; }
 .lesson-toolbar>button,.lesson-navigation strong,.lesson-tabs button{font-size:14px}
 .lesson-overview h2{font-size:21px}.lesson-overview h3{font-size:18px}.lesson-overview li{font-size:14px}
 @media(max-width:700px){.lesson-sidebar{box-shadow:var(--shadow-lg)}.learning-layout{height:calc(100dvh - 64px)}}
-
-/* Lesson workspace: exactly five accessible destinations across narrow/wide layouts. */
-.lesson-tabs{display:flex;overflow-x:auto;gap:8px;scrollbar-width:thin;overscroll-behavior-x:contain;padding-block:8px}.lesson-tabs button{display:flex;align-items:center;justify-content:center;gap:8px;flex:1 0 max-content;min-height:48px;border-radius:12px;padding:12px 16px;white-space:nowrap}.lesson-tabs button.active{background:var(--surface-3);color:var(--primary)}.lesson-tab-content{min-width:0}.lesson-tabs :focus-visible{outline:3px solid var(--primary);outline-offset:-3px}

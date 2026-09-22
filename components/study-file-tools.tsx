@@ -1,12 +1,10 @@
 "use client";
-import { QUIZ_DIFFICULTIES } from "@/lib/lesson-experience";
-import { StudyRichText } from "./study-rich-text";
 import { normalizeStudyProgress, studyProgressLabel, type StudyProgress } from "@/lib/study-progress";
 import { uploadStudyFile } from "@/lib/study-upload-web";
 import { SUMMARY_LANGUAGES, SUMMARY_DETAILS } from "@/lib/study-summary-policy";
 import { StudyArtifactDownload } from "./study-artifact-download";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { BookOpenCheck, BrainCircuit, FileUp, Languages, LoaderCircle, Sparkles } from "lucide-react";
+import { BookOpenCheck, BrainCircuit, FileUp, Languages, LoaderCircle, MessageCircle, Sparkles } from "lucide-react";
 import type { AiArtifactPayload, AiFilePayload, AiQuizPayload } from "@/lib/ai-contracts";
 import { controlStudyJob, observeStudyJob, requestStudyAction, studyJson, StudyRequestError } from "@/lib/ai-job-client";
 import { AiQuizRunner } from "./ai-quiz-runner";
@@ -20,11 +18,12 @@ function rememberedJob(key: string, value?: string | null) {
   return null;
 }
 const names = { summary: "تلخيص الملف", translation: "ترجمة الملف", quiz: "اختبار من الملف" };
-export function StudyToolCards({ onSelect }: { onSelect: (action: StudyAction | "chat") => void; includeChat?: boolean }) {
+export function StudyToolCards({ onSelect, includeChat = false }: { onSelect: (action: StudyAction | "chat") => void; includeChat?: boolean }) {
   const cards = [
     { key: "summary" as const, icon: BookOpenCheck, title: "ملخص منظم", text: "الأفكار الأساسية والمصطلحات في ملف PDF يحمل هوية مراس." },
     { key: "translation" as const, icon: Languages, title: "ترجمة أكاديمية", text: "ترجمة النص والمصطلحات، مع ملف جاهز للحفظ والمراجعة." },
     { key: "quiz" as const, icon: BrainCircuit, title: "اختبر فهمك", text: "سؤال في كل بطاقة، نتيجة فورية وشرح، وإعادة دون توليد جديد." },
+    ...(includeChat ? [{ key: "chat" as const, icon: MessageCircle, title: "اسأل مراس", text: "محادثة دراسية وسجل محفوظ لأسئلتك ونتائج أدواتك." }] : []),
   ];
   return <div className={styles.toolCards}>{cards.map(card => <button key={card.key} type="button" className={styles.toolCard} onClick={() => onSelect(card.key)}><span className={styles.toolIcon}><card.icon size={27}/></span><h3>{card.title}</h3><p>{card.text}</p><span className={styles.cardCta}>فتح الأداة ←</span></button>)}</div>;
 }
@@ -33,7 +32,6 @@ export function StudyFileTools({ action, resources, storageScope = "workspace", 
   const [file, setFile] = useState<AiFilePayload | null>(null);
   const [resourceId, setResourceId] = useState(resources?.[0]?.id || 0);
   const [language, setLanguage] = useState("العربية");
-  const [difficulty, setDifficulty] = useState("medium");
   const [summaryDetail, setSummaryDetail] = useState("balanced");
   const [questionCount, setQuestionCount] = useState(10);
   const [result, setResult] = useState<StudyActionResult | null>(null);
@@ -83,7 +81,7 @@ export function StudyFileTools({ action, resources, storageScope = "workspace", 
         source = response.file;
       }
       if (!source) throw new Error("اختر ملفًا أولًا.");
-      const value = await requestStudyAction<StudyActionResult>(source.id, { action, targetLanguage: language, language, questionCount, summaryDetail, difficulty }, { signal: abort.signal, onStatus: setPhase, onProgress: setProgress, onJob: id => { rememberedJob(storageKey, id); setPendingId(id); } });
+      const value = await requestStudyAction<StudyActionResult>(source.id, { action, targetLanguage: language, language, questionCount, summaryDetail }, { signal: abort.signal, onStatus: setPhase, onProgress: setProgress, onJob: id => { rememberedJob(storageKey, id); setPendingId(id); } });
       if (abort.signal.aborted) return;
       setResult(value); rememberedJob(storageKey, null); setPendingId(null);
     } catch (reason) { if (reason instanceof StudyRequestError && reason.terminal) { rememberedJob(storageKey, null); setPendingId(null); } if (!abort.signal.aborted) setError(reason instanceof Error ? reason.message : "تعذر إكمال المعالجة"); }
@@ -111,7 +109,6 @@ export function StudyFileTools({ action, resources, storageScope = "workspace", 
       {action === "summary" && <><label className={styles.field}>لغة الملخص<select value={language === "العربية" ? "ar" : language} disabled={busy || Boolean(pendingId)} onChange={event => setLanguage(event.target.value)}>{SUMMARY_LANGUAGES.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label><label className={styles.field}>مستوى التفصيل<select value={summaryDetail} disabled={busy || Boolean(pendingId)} onChange={event => setSummaryDetail(event.target.value)}>{SUMMARY_DETAILS.map(option => <option key={option.value} value={option.value}>{option.label}</option>)}</select><small>تغيير التفصيل لا يستبعد محاور المصدر أو الحقائق الحاسمة.</small></label></>}
       {action !== "summary" && <label className={styles.field}>{action === "quiz" ? "لغة الاختبار" : "اللغة المطلوبة"}<input value={language} maxLength={60} disabled={busy || Boolean(pendingId)} onChange={event => setLanguage(event.target.value)}/></label>}
       {action === "quiz" && <label className={styles.field}>عدد الأسئلة<select value={questionCount} disabled={busy || Boolean(pendingId)} onChange={event => setQuestionCount(Number(event.target.value))}>{[5, 10, 15, 20].map(count => <option key={count} value={count}>{count} أسئلة</option>)}</select></label>}
-      {action === "quiz" && <label className={styles.field}>مستوى الصعوبة<select value={difficulty} disabled={busy || Boolean(pendingId)} onChange={event => setDifficulty(event.target.value)}>{QUIZ_DIFFICULTIES.map(option => <option key={option.value} value={option.value}>{option.label} · {option.description}</option>)}</select></label>}
     </div>
     <p className={styles.hint}>نستخرج النص من DOCX وPPTX. للمخططات والصور داخل المستند استخدم PDF. النتائج مساعدة دراسية وتحتاج مراجعتك.</p>
     <button type="button" className={styles.primary} disabled={busy || Boolean(pendingId) || (resources ? !resourceId : !file) || !language.trim()} onClick={() => void run()}>{busy ? <LoaderCircle className={styles.spin} size={18}/> : <Sparkles size={18}/>} {busy ? phase === "upload" ? "جارٍ رفع الملف…" : phase === "processing" ? "جارٍ إعداد النتيجة…" : phase === "reconnecting" ? "إعادة الاتصال بالطلب المحفوظ…" : phase.startsWith("رفع الأجزاء:") || phase.includes("الملف") ? phase : "طلبك محفوظ في قائمة المعالجة…" : names[action]}</button>
@@ -124,7 +121,7 @@ export function StudyFileTools({ action, resources, storageScope = "workspace", 
     </div>}
     {error && <div className={styles.error} role="alert"><p>{error}</p>{pendingId && <button type="button" className={styles.secondary} onClick={() => { const id = rememberedJob(storageKey); if (id) { const abort = new AbortController(); controller.current = abort; void resume(id, abort.signal); } }}>متابعة الطلب المحفوظ</button>}</div>}
     {result?.cached && <p className={styles.hint}>استخدمنا نتيجة محفوظة لنفس الملف والإعدادات دون طلب توليد جديد.</p>}
-    {result?.artifact && <article className={styles.artifact}><header className={styles.panelHeader}><h3>{result.artifact.title}</h3><StudyArtifactDownload id={result.artifact.id}/></header><details><summary>قراءة النتيجة هنا</summary><StudyRichText content={result.artifact.content}/></details><p className={styles.hint}>إعداد وتنسيق: مراس العلم · حقوق محتوى المصدر لأصحابه.</p></article>}
+    {result?.artifact && <article className={styles.artifact}><header className={styles.panelHeader}><h3>{result.artifact.title}</h3><StudyArtifactDownload id={result.artifact.id}/></header><details><summary>قراءة النتيجة هنا</summary><div className={styles.artifactText} dir="auto">{result.artifact.content}</div></details><p className={styles.hint}>إعداد وتنسيق: مراس العلم · حقوق محتوى المصدر لأصحابه.</p></article>}
     {result?.quiz && <AiQuizRunner key={result.quiz.id} quiz={result.quiz} onClose={() => { setResult(null); onBack?.(); }}/ >}
   </section>;
 }

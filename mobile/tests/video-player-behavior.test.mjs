@@ -59,7 +59,7 @@ test("cleanup of the previous lesson cannot release the current lease", async ()
   await Promise.all([previous.ready, current.ready]);
   assert.notEqual(previous.key, current.key);
   await previous.release();
-  assert.equal(active.has(previous.key), true, "the original native guard remains until its last consumer releases");
+  assert.equal(active.has(current.key), true);
   assert.equal(active.size, 1);
   await current.release();
   assert.equal(active.size, 0);
@@ -150,20 +150,4 @@ test("unsupported or failed top-layer activation returns inline without locking 
     assert.equal(host.document.body.style.getPropertyValue("overflow"), "");
     assert.equal(host.document.documentElement.style.getPropertyValue("overflow"), "auto");
   }
-});
-
-
-test("overlapping lesson screens call non-reentrant native protection exactly once", async () => {
-  let protects=0,allows=0;
-  const adapter={prevent:async()=>{protects++;if(protects>1&&allows===0)throw new Error("native layer would be corrupted");},allow:async()=>{allows++;}};
-  const first=createCaptureLease(adapter),second=createCaptureLease(adapter),third=createCaptureLease(adapter);
-  await Promise.all([first.ready,second.ready,third.ready]);assert.equal(protects,1);
-  await second.release();await first.release();assert.equal(allows,0);
-  await third.release();assert.equal(allows,1);
-  const next=createCaptureLease(adapter);await next.ready;assert.equal(protects,2);await next.release();assert.equal(allows,2);
-});
-test("failed native release blocks new playback rather than repeating a potentially unsafe protection call",async()=>{
-  let protects=0;const adapter={prevent:async()=>{protects++;},allow:async()=>{throw new Error("native release failed");}};
-  const first=createCaptureLease(adapter);await first.ready;await assert.rejects(first.release(),/release failed/);
-  const next=createCaptureLease(adapter);await assert.rejects(next.ready);await next.release();assert.equal(protects,1);
 });

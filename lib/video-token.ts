@@ -3,10 +3,6 @@ export type VideoGrant = {
   lessonId: string;
   email: string;
   client?: "app" | "web";
-  viewerId?: number;
-  sessionHash?: string;
-  previewProofHash?: string;
-  secureHls?: boolean;
   expiresAt: number;
 };
 
@@ -44,10 +40,6 @@ export async function verifyVideoToken(token: string, secret: string): Promise<V
       || typeof grant.lessonId !== "string" || !grant.lessonId || grant.lessonId.length > 120
       || typeof grant.email !== "string" || !grant.email || grant.email.length > 180
       || (grant.client !== undefined && grant.client !== "app" && grant.client !== "web")
-      || (grant.viewerId !== undefined && (!Number.isSafeInteger(grant.viewerId) || grant.viewerId < 1))
-      || (grant.sessionHash !== undefined && !/^[a-f0-9]{64}$/.test(grant.sessionHash))
-      || (grant.previewProofHash !== undefined && !/^[a-f0-9]{64}$/.test(grant.previewProofHash))
-      || (grant.secureHls !== undefined && grant.secureHls !== true)
       || !Number.isSafeInteger(grant.expiresAt) || grant.expiresAt <= Date.now()) return null;
     return grant;
   } catch {

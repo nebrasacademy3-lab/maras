@@ -2,13 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { AlertCircle, BookOpen, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Download, FileCheck2, FileText, LoaderCircle, Menu, MessageSquareText, NotebookPen, PanelLeftClose, PlayCircle, RefreshCw, Save, Search, ShieldCheck, Trash2 } from "lucide-react";
+import { AlertCircle, BookOpen, Check, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, Download, FileCheck2, FileText, HelpCircle, LoaderCircle, Menu, MessageSquareText, NotebookPen, PanelLeftClose, PlayCircle, RefreshCw, Save, Search, ShieldCheck, Sparkles, Trash2 } from "lucide-react";
 import type { Course } from "@/lib/data";
 import { SecureVideoPlayer, type VideoSeekRequest } from "./secure-video-player";
 import { BrandLogo } from "./brand-logo";
 import { ThemeToggle } from "./theme-provider";
-import { LessonAiTools } from "./lesson-ai-tools";
-import { LESSON_TABS, type LessonTab } from "@/lib/lesson-experience";
+import { LessonStudyTools } from "./study-file-tools";
 import resourceStyles from "./learning-room-resources.module.css";
 
 type VideoNote = { id: number; lessonId: string; body: string; timestampSeconds: number; createdAt: string; updatedAt: string };
@@ -50,9 +49,7 @@ export function LearningRoom({ course, studentLabel, userId }: { course: Course;
   const [completionMessage, setCompletionMessage] = useState("");
   const resumeHandled = useRef(false);
   const [sidebar, setSidebar] = useState(false);
-  const [tab, setTab] = useState<LessonTab>("overview");
-  const [visited, setVisited] = useState<Set<LessonTab>>(new Set());
-  const selectTab = (value: LessonTab) => { setTab(value); setVisited(current => new Set([...current, value])); };
+  const [tab, setTab] = useState("overview");
   const [noteDraft, setNoteDraft] = useState("");
   const [notes, setNotes] = useState<VideoNote[]>([]);
   const [notesLoading, setNotesLoading] = useState(false);
@@ -177,7 +174,6 @@ export function LearningRoom({ course, studentLabel, userId }: { course: Course;
     void saveCompletion(activeLesson.id, willComplete);
   };
   const chooseLesson = (lesson: typeof activeLesson) => {
-    setTab("overview"); setVisited(new Set());
     setActiveLesson(lesson);
     if (window.matchMedia("(max-width: 700px)").matches) setSidebar(false);
     const resumeAt = watched[lesson.id] || 0;
@@ -271,11 +267,14 @@ export function LearningRoom({ course, studentLabel, userId }: { course: Course;
         <div className="lesson-toolbar"><div><span>الوحدة {course.units.findIndex((unit) => unit.lessons.some((lesson) => lesson.id === activeLesson.id)) + 1}{watched[activeLesson.id] > 5 && !completed.has(activeLesson.id) ? ` · توقفت عند ${formatNoteTime(watched[activeLesson.id])}` : ""}</span><h1>{activeLesson.title}</h1></div><button onClick={markCompleted} disabled={!progressLoaded} className={completed.has(activeLesson.id) ? "completed" : ""}>{completed.has(activeLesson.id) ? <CheckCircle2 size={18} /> : <span />}{completed.has(activeLesson.id) ? "مكتمل" : "تحديد كمكتمل"}</button></div>
         {completionMessage && <p className="notes-feedback">{completionMessage}</p>}
         <div className="lesson-navigation"><button disabled={currentIndex === 0} onClick={() => go(-1)}><ChevronRight size={17} /><span><small>السابق</small><strong>{allLessons[currentIndex - 1]?.title || "—"}</strong></span></button><button disabled={currentIndex === allLessons.length - 1} onClick={() => go(1)}><span><small>التالي</small><strong>{allLessons[currentIndex + 1]?.title || "—"}</strong></span><ChevronLeft size={17} /></button></div>
-        <div className="lesson-tabs" role="tablist" aria-label="أدوات الدرس">{LESSON_TABS.map((item, index) => {
-          const Icon = [BookOpen, NotebookPen, FileText, CheckCircle2, MessageSquareText][index];
-          return <button key={item.id} id={`lesson-tab-${item.id}`} role="tab" aria-selected={tab===item.id} aria-controls={`lesson-panel-${item.id}`} tabIndex={tab===item.id?0:-1} className={tab===item.id ? "active" : ""} onClick={()=>selectTab(item.id)} onKeyDown={event=>{const step=event.key==="ArrowLeft"?1:event.key==="ArrowRight"?-1:0;if(step){event.preventDefault();const next=LESSON_TABS[(index+step+LESSON_TABS.length)%LESSON_TABS.length];selectTab(next.id);document.getElementById(`lesson-tab-${next.id}`)?.focus();}}}><Icon size={18}/>{item.label}</button>;
-        })}</div>
-        <div className="lesson-tab-content" role="tabpanel" id={`lesson-panel-${tab}`} aria-labelledby={`lesson-tab-${tab}`} tabIndex={0}>
+        <LessonStudyTools key={`${userId}:${activeLesson.id}`} userId={userId} courseSlug={course.slug} lessonId={activeLesson.id}/>
+        <div className="lesson-tabs">
+          <button className={tab === "overview" ? "active" : ""} onClick={() => setTab("overview")}><BookOpen size={16} /> نظرة عامة</button>
+          <button className={tab === "notes" ? "active" : ""} onClick={() => setTab("notes")}><NotebookPen size={16} /> ملاحظاتي</button>
+          <button className={tab === "files" ? "active" : ""} onClick={() => setTab("files")}><FileText size={16} /> ملفات المادة</button>
+          <button className={tab === "qa" ? "active" : ""} onClick={() => setTab("qa")}><MessageSquareText size={16} /> الأسئلة</button>
+        </div>
+        <div className="lesson-tab-content">
           {tab === "overview" && (() => { const unit = course.units.find((item) => item.lessons.some((lesson) => lesson.id === activeLesson.id)); const description = activeLesson.description?.trim(); const unitDescription = unit?.description?.trim(); return <div className="lesson-overview"><h2>عن هذا الدرس</h2>{description ? <p>{description}</p> : <p>لم يُضف وصف لهذا الدرس بعد. تابع الفيديو، وسجّل ملاحظاتك المرتبطة باللحظة من تبويب «ملاحظاتي».</p>}{unitDescription && <><h3>عن الوحدة: {unit?.title}</h3><p>{unitDescription}</p></>}<h3>معلومات الدرس</h3><ul><li><CheckCircle2 size={16} /> المدة: {activeLesson.duration || "تُحسب من الفيديو"}</li><li><CheckCircle2 size={16} /> الترتيب: الدرس {currentIndex + 1} من {allLessons.length}</li><li><CheckCircle2 size={16} /> {completed.has(activeLesson.id) ? "أكملت هذا الدرس" : watched[activeLesson.id] > 5 ? `شاهدت حتى ${formatNoteTime(watched[activeLesson.id])}` : "لم تبدأ هذا الدرس بعد"}</li></ul></div>; })()}
           {tab === "notes" && <div className="notes-box"><div><NotebookPen size={18} /><span><strong>ملاحظات مرتبطة بالفيديو</strong><small>تُحفظ في حسابك وتفتح نفس الدقيقة والثانية على كل أجهزتك</small></span></div><div className="video-note-compose"><textarea value={noteDraft} onChange={(event) => setNoteDraft(event.target.value)} placeholder="اكتب ما تريد تذكره عند هذه اللحظة..." maxLength={4000} /><div><span>اللحظة الحالية: {formatNoteTime(playerTime)}</span><button className="button button-primary" type="button" onClick={() => void saveNote()}><Save size={15} /> حفظ عند هذه اللحظة</button></div></div>{noteMessage && <p className="notes-feedback">{noteMessage}</p>}{notesLoading ? <p className="notes-empty">جارٍ تحميل الملاحظات...</p> : notes.length ? <div className="video-notes-list">{notes.map((note) => <article className="video-note-item" key={note.id}><button type="button" onClick={() => openNote(note)}><time>{formatNoteTime(note.timestampSeconds)}</time><p>{note.body}</p></button><button type="button" className="video-note-delete" onClick={() => void removeNote(note)} aria-label="حذف الملاحظة"><Trash2 size={15} /></button></article>)}</div> : <p className="notes-empty">لا توجد ملاحظات بعد. أوقف الفيديو عند اللحظة المطلوبة ثم احفظ ملاحظتك.</p>}</div>}
           {tab === "files" && <section className={resourceStyles.panel} dir="rtl" aria-live="polite" aria-busy={resourceStatus === "loading"}>
@@ -287,7 +286,7 @@ export function LearningRoom({ course, studentLabel, userId }: { course: Course;
             </article>)}</div> : <div className={resourceStyles.empty}><FileText size={30} /><h3>لا توجد ملفات متاحة حاليًا</h3><p>ستظهر هنا الملخصات والمراجع والتمارين فور اعتمادها للمادة.</p><button type="button" onClick={() => setResourceReloadKey((value) => value + 1)}><RefreshCw size={15} /> التحقق مجددًا</button></div>}
             {resourceMessage ? <p className={resourceStyles.feedback}>{resourceMessage}</p> : null}
           </section>}
-          {(["quiz", "tutor"] as const).map(mode => visited.has(mode) && <div key={`${userId}:${activeLesson.id}:${mode}`} hidden={tab!==mode}><LessonAiTools userId={userId} courseSlug={course.slug} lessonId={activeLesson.id} mode={mode}/></div>)}
+          {tab === "qa" && <div className="qa-box"><HelpCircle size={30} /><h3>عندك سؤال عن هذا الدرس؟</h3><p>افتح مساعد مراس ليشرح لك طريق الدعم أو يوجّه سؤالك.</p><button className="button button-primary" onClick={()=>window.dispatchEvent(new Event("meras:assistant"))}><Sparkles size={16} /> اسأل مساعد مراس</button></div>}
         </div>
       </section>
     </div>

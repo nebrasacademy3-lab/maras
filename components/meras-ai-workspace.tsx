@@ -1,27 +1,236 @@
 "use client";
-import Link from "next/link";
-import { useEffect, useState } from "react";
-import { Sparkles } from "lucide-react";
-import { studyJson } from "@/lib/ai-job-client";
-import type { AiArtifactPayload, AiConversationSummary, AiQuizPayload, AiEntitlementStatus, AiUsageStatus } from "@/lib/ai-contracts";
-import { StudyFileTools, StudyToolCards, type StudyAction } from "./study-file-tools";
+
 import { StudyArtifactDownload } from "./study-artifact-download";
-import { StudyRichText } from "./study-rich-text";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import {
+  BookOpenCheck, BrainCircuit, Check, CheckCircle2, CircleAlert,
+  Crown, FileText, FileUp, Gauge, History, Languages, LoaderCircle, Menu,
+  MessageSquarePlus, Paperclip, Send, Sparkles, X,
+} from "lucide-react";
+import type {
+  AiArtifactPayload, AiConversationSummary, AiFilePayload, AiMessagePayload,
+  AiQuizPayload, AiUsageStatus,
+} from "@/lib/ai-contracts";
+import { requestStudyAction } from "@/lib/ai-job-client";
+import { StudyFileTools, StudyToolCards, type StudyAction } from "./study-file-tools";
 import { AiQuizRunner } from "./ai-quiz-runner";
-import styles from "./study-tools.module.css";
+import toolStyles from "./study-tools.module.css";
+import styles from "./meras-ai-workspace.module.css";
+
+type StatusPayload = {
+  entitlement: { tier: "free" | "subscriber"; source: string; monthlyPrice: number; currency: string; expiresAt?: string | null };
+  services: Record<"chat" | "summary" | "translation" | "quiz", AiUsageStatus>;
+  supportedFiles: { mimeType: string; extensions: readonly string[]; maxBytes: number }[];
+  documentGuidance: { recommendedMimeType: string; message: string };
+};
+
+type ConversationDetail = {
+  conversation: AiConversationSummary;
+  messages: AiMessagePayload[];
+  files: AiFilePayload[];
+  artifacts: AiArtifactPayload[];
+};
+
+type Notice = { tone: "ok" | "error"; text: string };
+const serviceLabel = { chat: "المحادثة", summary: "التلخيص", translation: "الترجمة", quiz: "الاختبارات" } as const;
+
+async function responseJson<T>(response: Response): Promise<T> {
+  const payload = await response.json().catch(() => ({})) as T & { error?: string };
+  if (!response.ok) throw new Error(payload.error || "تعذر إكمال الطلب");
+  return payload;
+}
+
+function sizeLabel(bytes: number) {
+  return bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toFixed(1)} م.ب` : `${Math.ceil(bytes / 1024)} ك.ب`;
+}
+
+function ConversationWorkspace({ studentName, initialConversationId, initialQuizId, initialService = null }: { studentName: string; initialConversationId: number | null; initialQuizId: number | null; initialService?: "summary" | "translation" | "quiz" | null }) {
+  const [status, setStatus] = useState<StatusPayload | null>(null);
+  const [conversations, setConversations] = useState<AiConversationSummary[]>([]);
+  const [activeId, setActiveId] = useState<number | null>(initialConversationId);
+  const [messages, setMessages] = useState<AiMessagePayload[]>([]);
+  const [files, setFiles] = useState<AiFilePayload[]>([]);
+  const [artifacts, setArtifacts] = useState<AiArtifactPayload[]>([]);
+  const [quiz, setQuiz] = useState<AiQuizPayload | null>(null);
+  const [text, setText] = useState("");
+  const [targetLanguage, setTargetLanguage] = useState("العربية");
+  const [questionCount, setQuestionCount] = useState(10);
+  const [busy, setBusy] = useState("");
+  const [notice, setNotice] = useState<Notice | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+
+  const loadShell = useCallback(async () => {
+    const [statusPayload, conversationPayload] = await Promise.all([
+      responseJson<{ status?: never } & StatusPayload & { ok: true }>(await fetch("/api/ai/status", { cache: "no-store", credentials: "same-origin" })),
+      responseJson<{ conversations: AiConversationSummary[] }>(await fetch("/api/ai/conversations", { cache: "no-store", credentials: "same-origin" })),
+    ]);
+    setStatus(statusPayload);
+    setConversations(conversationPayload.conversations || []);
+  }, []);
+
+  const openConversation = useCallback(async (id: number) => {
+    setBusy("conversation"); setNotice(null);
+    try {
+      const payload = await responseJson<ConversationDetail>(await fetch(`/api/ai/conversations/${id}`, { cache: "no-store", credentials: "same-origin" }));
+      setActiveId(id); setMessages(payload.messages || []); setFiles(payload.files || []); setArtifacts(payload.artifacts || []); setQuiz(null); setSidebarOpen(false);
+      window.history.replaceState(null, "", `/study-tools?conversation=${id}`);
+    } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر فتح المحادثة" }); }
+    finally { setBusy(""); }
+  }, []);
+
+  const openQuiz = useCallback(async (id: number) => {
+    setBusy("quiz"); setNotice(null);
+    try {
+      const payload = await responseJson<{ quiz: AiQuizPayload }>(await fetch(`/api/ai/quizzes/${id}`, { cache: "no-store", credentials: "same-origin" }));
+      setQuiz(payload.quiz); setActiveId(payload.quiz.conversationId);
+      window.history.replaceState(null, "", `/study-tools?quiz=${id}`);
+    } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر فتح الاختبار" }); }
+    finally { setBusy(""); }
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const timer = window.setTimeout(() => {
+      void loadShell().then(() => {
+        if (!active) return;
+        if (initialQuizId) return openQuiz(initialQuizId);
+        if (initialConversationId) return openConversation(initialConversationId);
+      }).catch((error) => active && setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر تحميل أدوات مراس" }));
+    }, 0);
+    return () => { active = false; window.clearTimeout(timer); };
+  }, [initialConversationId, initialQuizId, loadShell, openConversation, openQuiz]);
+
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }); }, [messages, busy]);
+
+  const newConversation = async () => {
+    setBusy("new"); setNotice(null);
+    try {
+      const payload = await responseJson<{ conversation: AiConversationSummary }>(await fetch("/api/ai/conversations", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }));
+      setConversations((current) => [payload.conversation, ...current]);
+      setActiveId(payload.conversation.id); setMessages([]); setFiles([]); setArtifacts([]); setQuiz(null); setSidebarOpen(false);
+      window.history.replaceState(null, "", `/study-tools?conversation=${payload.conversation.id}`);
+    } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر إنشاء المحادثة" }); }
+    finally { setBusy(""); }
+  };
+
+  const ensureConversation = async () => {
+    if (activeId) return activeId;
+    const payload = await responseJson<{ conversation: AiConversationSummary }>(await fetch("/api/ai/conversations", { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }));
+    setConversations((current) => [payload.conversation, ...current]); setActiveId(payload.conversation.id);
+    return payload.conversation.id;
+  };
+
+  const send = async () => {
+    const question = text.trim();
+    if (question.length < 2 || busy) return;
+    setBusy("chat"); setText(""); setNotice(null);
+    try {
+      const id = await ensureConversation();
+      const optimistic: AiMessagePayload = { id: -Date.now(), conversationId: id, role: "user", service: "chat", content: question, fileId: null, model: null, createdAt: new Date().toISOString() };
+      setMessages((current) => [...current, optimistic]);
+      const payload = await responseJson<{ userMessage: AiMessagePayload; message: AiMessagePayload; conversation: AiConversationSummary; usage: AiUsageStatus }>(await fetch(`/api/ai/conversations/${id}/messages`, { method: "POST", credentials: "same-origin", headers: { "content-type": "application/json" }, body: JSON.stringify({ text: question, requestId: crypto.randomUUID() }) }));
+      setMessages((current) => [...current.filter((message) => message.id !== optimistic.id), payload.userMessage, payload.message]);
+      setConversations((current) => [payload.conversation, ...current.filter((conversation) => conversation.id !== id)]);
+      setStatus((current) => current ? { ...current, services: { ...current.services, chat: payload.usage } } : current);
+    } catch (error) {
+      setMessages((current) => current.filter((message) => message.id >= 0));
+      setText(question); setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر إرسال الرسالة" });
+    } finally { setBusy(""); }
+  };
+
+  const upload = async (selected: File | undefined) => {
+    if (!selected || busy) return;
+    setBusy("upload"); setNotice(null);
+    try {
+      const id = await ensureConversation();
+      const body = new FormData(); body.append("file", selected); body.append("conversationId", String(id));
+      const payload = await responseJson<{ file: AiFilePayload }>(await fetch("/api/ai/files", { method: "POST", credentials: "same-origin", body }));
+      setFiles((current) => [payload.file, ...current]); setNotice({ tone: "ok", text: "تم رفع الملف بأمان. اختر العملية التي تريدها." });
+    } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر رفع الملف" }); }
+    finally { setBusy(""); if (fileInput.current) fileInput.current.value = ""; }
+  };
+
+  const runAction = async (file: AiFilePayload, action: "summary" | "translation" | "quiz") => {
+    if (busy) return;
+    setBusy(`${action}:${file.id}`); setNotice(null); setQuiz(null);
+    try {
+      const payload = await requestStudyAction<{ artifact?: AiArtifactPayload; quiz?: AiQuizPayload; message: AiMessagePayload; usage: AiUsageStatus }>(file.id, { action, conversationId: activeId, targetLanguage, language: "العربية", questionCount }, { onStatus: phase => setNotice({ tone: "ok", text: phase === "processing" ? "جارٍ إعداد النتيجة…" : "طلبك محفوظ في قائمة المعالجة. لا حاجة لإرساله مجددًا." }) });
+      setMessages((current) => [...current, payload.message]);
+      if (payload.artifact) setArtifacts((current) => [payload.artifact!, ...current]);
+      if (payload.quiz) { setQuiz(payload.quiz); window.history.replaceState(null, "", `/study-tools?quiz=${payload.quiz.id}`); }
+      setStatus((current) => current ? { ...current, services: { ...current.services, [action]: payload.usage } } : current);
+      await loadShell();
+    } catch (error) { setNotice({ tone: "error", text: error instanceof Error ? error.message : "تعذر معالجة الملف" }); }
+    finally { setBusy(""); }
+  };
+
+  const usageCards = useMemo(() => status ? Object.values(status.services) : [], [status]);
+  const displayMessages = messages.filter((message) => message.service !== "summary" && message.service !== "translation");
+
+  return <div className={styles.page} dir="rtl">
+    <div className={styles.ambientOne}/><div className={styles.ambientTwo}/>
+    <section className={styles.shell}>
+      <aside className={`${styles.sidebar} ${sidebarOpen ? styles.sidebarOpen : ""}`}>
+        <div className={styles.sideBrand}><span><Sparkles size={19}/></span><div><b>أدوات مراس</b><small>مساحة تعلمك</small></div><button className={styles.closeSide} onClick={()=>setSidebarOpen(false)} aria-label="إغلاق"><X size={19}/></button></div>
+        <button className={styles.newChat} type="button" onClick={()=>void newConversation()} disabled={Boolean(busy)}><MessageSquarePlus size={18}/> محادثة جديدة</button>
+        <div className={styles.historyTitle}><History size={15}/><span>السجل</span></div>
+        <nav className={styles.history} aria-label="سجل محادثات أدوات مراس">
+          {conversations.map((conversation) => <button key={conversation.id} className={activeId === conversation.id ? styles.activeConversation : ""} onClick={()=>void openConversation(conversation.id)}><span>{conversation.title}</span><small>{conversation.preview || "ابدأ بالسؤال أو أرفق ملفًا"}</small></button>)}
+          {!conversations.length ? <div className={styles.emptyHistory}><History size={22}/><span>ستظهر محادثاتك هنا</span></div> : null}
+        </nav>
+        <div className={styles.privacy}><CheckCircle2 size={15}/><span>ملفاتك وسجلك خاصان بحسابك</span></div>
+      </aside>
+      {sidebarOpen ? <button className={styles.overlay} aria-label="إغلاق القائمة" onClick={()=>setSidebarOpen(false)}/> : null}
+
+      <div className={styles.workspace}>
+        <header className={styles.topbar}>
+          <div className={styles.title}><button className={styles.menu} onClick={()=>setSidebarOpen(true)} aria-label="فتح السجل"><Menu size={21}/></button><span><BrainCircuit size={23}/></span><div><h1>مرحبًا {studentName.split(" ")[0]}</h1><p>اسأل، لخّص، ترجم واختبر فهمك</p></div></div>
+          <div className={`${styles.plan} ${status?.entitlement.tier === "subscriber" ? styles.pro : ""}`} title={status?.entitlement.tier === "subscriber" && status.entitlement.expiresAt ? `ينتهي في ${new Date(status.entitlement.expiresAt).toLocaleDateString("ar-SA")}` : undefined}>{status?.entitlement.tier === "subscriber" ? <Crown size={16}/> : <Gauge size={16}/>}<span>{status?.entitlement.tier === "subscriber" ? `أدوات مراس بلس${status.entitlement.expiresAt ? ` · حتى ${new Date(status.entitlement.expiresAt).toLocaleDateString("ar-SA")}` : ""}` : "الخطة المجانية"}</span>{status?.entitlement.tier === "subscriber" && status.entitlement.expiresAt && status.entitlement.source === "paid" ? <Link href="/study-tools/subscribe" className={styles.renewLink}>تجديد</Link> : null}</div>
+        </header>
+
+        <div className={styles.usageStrip}>{usageCards.map((service) => <div key={service.service}><span>{serviceLabel[service.service]}</span><b>{service.remaining}</b><small>متبقٍ من {service.limit}</small><i style={{ "--usage": `${Math.min(100, service.limit ? service.used / service.limit * 100 : 100)}%` } as React.CSSProperties}/></div>)}{status?.entitlement.tier === "free" ? <Link href="/study-tools/subscribe"><Crown size={15}/> ترقية بـ {status.entitlement.monthlyPrice} ر.س</Link> : null}</div>
+
+        {notice ? <div className={`${styles.notice} ${styles[notice.tone]}`}>{notice.tone === "ok" ? <Check size={17}/> : <CircleAlert size={17}/>}<span>{notice.text}</span><button onClick={()=>setNotice(null)} aria-label="إغلاق"><X size={16}/></button></div> : null}
+
+        <div className={styles.content}>
+          <section className={styles.chatPanel}>
+            {quiz ? <AiQuizRunner key={quiz.id} quiz={quiz} onClose={() => setQuiz(null)}/> : <>
+              {!displayMessages.length && !artifacts.length ? <div className={styles.welcome}>
+                <span className={styles.spark}><Sparkles size={31}/></span><small>مساعدك الدراسي من مراس</small><h2>كيف أساعدك اليوم؟</h2><p>اسأل عن فكرة، أو ارفع شرائحك لتحصل على ملخص وترجمة واختبار تفاعلي.</p>
+                <div className={styles.starters}><button onClick={()=>setText("اشرح لي مفهومًا صعبًا بطريقة مبسطة مع مثال")}>اشرح لي ببساطة</button><button onClick={()=>fileInput.current?.click()}>لخّص ملف المحاضرة</button><button onClick={()=>fileInput.current?.click()}>أنشئ اختبارًا من الشرائح</button></div>
+              </div> : null}
+              <div className={styles.messages}>{displayMessages.map((message) => <article key={message.id} className={message.role === "user" ? styles.userMessage : styles.aiMessage}>{message.role === "assistant" ? <span><Sparkles size={16}/></span> : null}<div><small>{message.role === "assistant" ? "أدوات مراس" : "أنت"}</small><p>{message.content}</p></div></article>)}{busy==="chat" ? <article className={styles.aiMessage}><span><Sparkles size={16}/></span><div><small>أدوات مراس</small><p className={styles.thinking}><i/><i/><i/></p></div></article> : null}<div ref={endRef}/></div>
+              {artifacts.length ? <div className={styles.artifacts}><h3><FileText size={17}/> نتائج محفوظة</h3>{artifacts.map((artifact)=><details key={artifact.id}><summary><span>{artifact.kind === "summary" ? <BookOpenCheck size={17}/> : <Languages size={17}/>}<b>{artifact.title}</b></span><small>{new Date(artifact.createdAt).toLocaleDateString("ar-SA")}</small></summary><StudyArtifactDownload id={artifact.id}/><pre>{artifact.content}</pre></details>)}</div> : null}
+            </>}
+          </section>
+
+          <aside className={styles.toolsPanel}>
+            <div className={styles.toolsHeading}><span><Sparkles size={17}/></span><div><b>أدوات الملفات</b><small>{initialService === "summary" ? "ارفع ملفك ثم اضغط «تلخيص»" : initialService === "translation" ? "ارفع الشرائح ثم اضغط «ترجمة»" : initialService === "quiz" ? "ارفع المحاضرة ثم اضغط «اختبار»" : "PDF · Word · PowerPoint · صور · نصوص"}</small></div></div>
+            <input ref={fileInput} hidden type="file" accept=".pdf,.docx,.pptx,.png,.jpg,.jpeg,.txt,.md" onChange={(event)=>void upload(event.target.files?.[0])}/>
+            <button className={styles.uploadButton} onClick={()=>fileInput.current?.click()} disabled={busy==="upload"}>{busy==="upload"?<LoaderCircle className={styles.spin} size={22}/>:<FileUp size={22}/>}<span><b>ارفع ملف المحاضرة</b><small>مع فحص أمني قبل المعالجة</small></span></button>
+            <p className={styles.fileGuidance}><CircleAlert size={14}/>{status?.documentGuidance.message || "يمكن رفع DOCX وPPTX مباشرة لقراءة نصوصهما. للمخططات والصور داخل الشرائح استخدم PDF."}</p>
+            <label className={styles.languageField}>لغة الترجمة<input value={targetLanguage} maxLength={60} onChange={(event)=>setTargetLanguage(event.target.value)} /></label>
+            <label className={styles.questionField}>عدد أسئلة الاختبار<div><input type="range" min="5" max="20" value={questionCount} onChange={(event)=>setQuestionCount(Number(event.target.value))}/><b>{questionCount}</b></div></label>
+            <div className={styles.fileList}>{files.map((file)=><article key={file.id}><header><span><Paperclip size={16}/></span><div><b>{file.originalName}</b><small>{sizeLabel(file.sizeBytes)} · {file.scanStatus === "clean" ? "آمن" : "قيد الفحص"}</small></div></header><div><button className={initialService==="summary"?styles.suggestedAction:""} disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"summary")}><BookOpenCheck size={15}/> تلخيص</button><button className={initialService==="translation"?styles.suggestedAction:""} disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"translation")}><Languages size={15}/> ترجمة</button><button className={initialService==="quiz"?styles.suggestedAction:""} disabled={Boolean(busy)||file.scanStatus==="quarantined"} onClick={()=>void runAction(file,"quiz")}><BrainCircuit size={15}/> اختبار</button></div>{busy.endsWith(`:${file.id}`)?<p><LoaderCircle className={styles.spin} size={15}/> يجري تحليل الملف بدقة…</p>:null}</article>)}</div>
+            {!files.length ? <div className={styles.fileEmpty}><FileText size={25}/><p>ارفع ملفًا لتظهر أدوات التلخيص والترجمة والاختبار.</p></div> : null}
+          </aside>
+        </div>
+
+        {!quiz ? <footer className={styles.composer}><button onClick={()=>fileInput.current?.click()} aria-label="إرفاق ملف"><Paperclip size={20}/></button><textarea rows={1} value={text} onChange={(event)=>setText(event.target.value)} onKeyDown={(event)=>{if(event.key==="Enter"&&!event.shiftKey){event.preventDefault();void send();}}} placeholder="اسأل أدوات مراس…"/><button className={styles.send} disabled={text.trim().length<2||Boolean(busy)} onClick={()=>void send()} aria-label="إرسال">{busy==="chat"?<LoaderCircle className={styles.spin} size={20}/>:<Send size={20}/>}</button></footer> : null}
+      </div>
+    </section>
+  </div>;
+}
+
+
 type WorkspaceProps = { userId: number; studentName: string; initialConversationId: number | null; initialQuizId: number | null; initialService?: StudyAction | null };
 export function MerasAiWorkspace(props: WorkspaceProps) {
-  const [mode,setMode] = useState<StudyAction|null>(props.initialService || null), [history,setHistory] = useState<AiConversationSummary[]>([]), [selected,setSelected] = useState(props.initialConversationId), [quizId,setQuizId] = useState(props.initialQuizId);
-  const [detail,setDetail] = useState<{ artifacts: AiArtifactPayload[]; quizzes: AiQuizPayload[] }|null>(null), [quiz,setQuiz] = useState<AiQuizPayload|null>(null), [error,setError] = useState("");
-  const [status,setStatus] = useState<{entitlement:AiEntitlementStatus;services:Record<string,AiUsageStatus>}|null>(null);
-  useEffect(()=>{const abort=new AbortController();void studyJson<{entitlement:AiEntitlementStatus;services:Record<string,AiUsageStatus>}>("/api/ai/status",{signal:abort.signal}).then(value=>{if(!abort.signal.aborted)setStatus(value);}).catch(reason=>{if(!abort.signal.aborted)setError(reason instanceof Error?reason.message:"تعذر تحميل الحصة");});return()=>abort.abort();},[props.userId,mode]);
-  useEffect(()=>{const abort=new AbortController();void studyJson<{conversations:AiConversationSummary[]}>("/api/ai/conversations",{signal:abort.signal}).then(data=>{if(!abort.signal.aborted)setHistory(data.conversations.filter(row=>!row.kind.startsWith("lesson_tutor:")));}).catch(()=>{});return()=>abort.abort();},[mode,props.userId]);
-  useEffect(()=>{const abort=new AbortController();if(selected)void studyJson<{artifacts:AiArtifactPayload[];quizzes:AiQuizPayload[]}>(`/api/ai/conversations/${selected}`,{signal:abort.signal}).then(data=>{if(!abort.signal.aborted)setDetail(data);}).catch(reason=>{if(!abort.signal.aborted)setError(reason instanceof Error?reason.message:"تعذر استعادة النتائج");});return()=>abort.abort();},[selected]);
-  useEffect(()=>{const abort=new AbortController();if(quizId)void studyJson<{quiz:AiQuizPayload}>(`/api/ai/quizzes/${quizId}`,{signal:abort.signal}).then(data=>{if(!abort.signal.aborted)setQuiz(data.quiz);}).catch(reason=>{if(!abort.signal.aborted)setError(reason instanceof Error?reason.message:"تعذر استعادة الاختبار");});return()=>abort.abort();},[quizId]);
-  function home(){setMode(null);setSelected(null);setDetail(null);setQuizId(null);setQuiz(null);setError("");}
-  return <section className={styles.page} dir="rtl"><header className={styles.hero}><div><span className={styles.eyebrow}><Sparkles size={18}/> أدوات مراس</span><h1>من المحاضرة إلى الفهم</h1><p>تلخيص، ترجمة وإنشاء اختبارات. المعلم الذكي تجدُه داخل درسك، مرتبطًا بمرجعه.</p></div><div className={styles.actions}>{(mode||selected||quizId)&&<button className={styles.secondary} onClick={home}>كل الأدوات</button>}<Link className={styles.secondary} href="/dashboard">لوحة الطالب</Link></div></header>
-    {status&&<section className={styles.panel} aria-label="حصة أدوات مراس"><p>{status.entitlement.active ? "مزايا أدواتك مفعّلة" : "أدواتك الأساسية متاحة حسب الحصة"}</p><div className={styles.actions}>{(["summary","translation","quiz"] as const).map(action=><span key={action}>{({summary:"التلخيص",translation:"الترجمة",quiz:"الاختبارات"})[action]}: {status.services[action]?.enabled ? `${status.services[action].remaining} متبقية` : "متوقفة مؤقتًا"}</span>)}</div>{!status.entitlement.active&&<Link className={styles.secondary} href="/study-tools/subscribe">مزايا الاشتراك</Link>}</section>}
-    {error&&<p role="alert" className={styles.error}>{error}</p>}
-    {quiz?<AiQuizRunner key={quiz.id} quiz={quiz} onClose={home}/>:mode?<StudyFileTools key={`${props.userId}:${mode}`} action={mode} storageScope={`${props.userId}:workspace`} onBack={home}/>:detail?<section className={styles.panel}>{detail.artifacts?.map(item=><article key={item.id}><h2>{item.title}</h2><StudyRichText content={item.content}/><StudyArtifactDownload id={item.id}/></article>)}{detail.quizzes?.map(item=><button key={item.id} className={styles.primary} onClick={()=>setQuizId(item.id)}>{item.title}</button>)}</section>:<><StudyToolCards onSelect={action=>{if(action!=="chat")setMode(action);}}/><section className={styles.panel}><h2>نتائجك السابقة</h2>{history.length?history.map(row=><button key={row.id} className={styles.secondary} onClick={()=>{setSelected(row.id);setError("");}}>{row.title}</button>):<p>تظهر هنا نتائج الملفات بعد تجهيزها.</p>}</section></>}
-  </section>;
+  const [mode, setMode] = useState<StudyAction | "chat" | null>(props.initialConversationId || props.initialQuizId ? "chat" : props.initialService || null);
+  return <div dir="rtl"><section className={toolStyles.page}>
+    <header className={toolStyles.hero}><div><span className={toolStyles.eyebrow}><Sparkles size={18}/> أدوات مراس</span><h1>من المحاضرة إلى الفهم</h1><p>اختر أداتك، وارفع ملفك، ثم راجع نتيجة محفوظة في حسابك.</p></div><div className={toolStyles.actions}>{mode && <button className={toolStyles.secondary} onClick={() => setMode(null)}>كل الأدوات</button>}<Link className={toolStyles.secondary} href="/dashboard">العودة إلى لوحة الطالب</Link></div></header>
+    {!mode ? <StudyToolCards includeChat onSelect={setMode}/> : mode !== "chat" ? <StudyFileTools key={`${props.userId}:${mode}`} storageScope={`${props.userId}:workspace`} action={mode} onBack={() => setMode(null)}/> : null}
+  </section>{mode === "chat" && <ConversationWorkspace {...props}/>}</div>;
 }

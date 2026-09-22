@@ -15,45 +15,10 @@ export function playerBackAction(fullscreen: boolean, settingsOpen: boolean) {
 
 type CaptureAdapter = { prevent: (key: string) => Promise<void>; allow: (key: string) => Promise<void> };
 let captureSequence = 0;
-type CaptureGroup = { users: number; nativeKey: string | null; tail: Promise<void>; blocked: boolean };
-const captureGroups = new WeakMap<CaptureAdapter["prevent"], WeakMap<CaptureAdapter["allow"], CaptureGroup>>();
-/** A single native protection call spans overlapping screens. Some iOS SDKs are
- * not reentrant: calling prevent twice can corrupt the protected layer tree. */
+/** Distinct leases prevent a delayed cleanup from unlocking a newly mounted lesson. */
 export function createCaptureLease(adapter: CaptureAdapter, prefix = "meras-lesson") {
   const key = `${prefix}-${++captureSequence}`;
-  let byAllow = captureGroups.get(adapter.prevent);
-  if (!byAllow) { byAllow = new WeakMap(); captureGroups.set(adapter.prevent, byAllow); }
-  let group = byAllow.get(adapter.allow);
-  if (!group) { group = { users: 0, nativeKey: null, tail: Promise.resolve(), blocked: false }; byAllow.set(adapter.allow, group); }
-  const state = group;
-  const queue = (action: () => Promise<void>) => {
-    const next = state.tail.then(action);
-    state.tail = next.then(() => undefined, () => undefined);
-    return next;
-  };
-  let acquired = false;
-  const ready = queue(async () => {
-    if (state.blocked) throw new Error("تعذر إعادة تهيئة حماية الشاشة. أغلق التطبيق وافتحه مجددًا.");
-    if (!state.users) {
-      try { await adapter.prevent(key); state.nativeKey = key; }
-      catch (error) {
-        // Expo may retain its key after a failed native call. Clear it once.
-        try { await adapter.allow(key); } catch { state.blocked = true; }
-        throw error;
-      }
-    }
-    state.users++; acquired = true;
-  });
-  let released: Promise<void> | null = null;
-  return { key, ready, release: () => {
-    released ||= queue(async () => {
-      if (!acquired) return;
-      acquired = false; state.users--;
-      if (!state.users && state.nativeKey) {
-        try { await adapter.allow(state.nativeKey); state.nativeKey = null; }
-        catch (error) { state.blocked = true; throw error; }
-      }
-    });
-    return released;
-  } };
+  const ready = Promise.resolve().then(() => adapter.prevent(key));
+  let release: Promise<void> | null = null;
+  return { key, ready, release: () => { release ||= ready.catch(() => undefined).then(() => adapter.allow(key)); return release; } };
 }

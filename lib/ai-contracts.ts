@@ -64,8 +64,6 @@ export type AiArtifactPayload = {
 };
 
 export type AiQuizQuestion = {
-  translatedQuestion?: string | null;
-  translatedChoices?: [string, string, string, string] | null;
   id: string;
   type: "single_choice";
   question: string;
@@ -80,7 +78,7 @@ export type AiQuizPayload = {
   language: string;
   questions: AiQuizQuestion[];
   createdAt: string;
-  attempts: { id: number; score: number; total: number; percent: number; createdAt: string }[];
+  attempts: Array<{ id: number; score: number; total: number; percent: number; createdAt: string }>;
 };
 
 export type AiQuizAttemptResult = {
@@ -90,7 +88,7 @@ export type AiQuizAttemptResult = {
   isCorrect: boolean;
   explanation: string;
   translatedExplanation: string | null;
-  scientificTerms: { term: string; translation: string }[];
+  scientificTerms: Array<{ term: string; translation: string }>;
 };
 
 export type AiDeepLinks = {

@@ -1,4 +1,3 @@
-import { sessionMediaKey, mediaSegmentIv, encryptedMediaSize, encryptMediaBody, boundedManifest, manifestWithGrant } from "@/lib/video-hls-security";
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { videoRenditions } from "@/db/schema";
@@ -7,6 +6,16 @@ import { getObject, type StorageProvider } from "@/lib/storage";
 import { authorizeVideoRequest } from "@/lib/video-access";
 
 type RouteContext = { params: Promise<{ lessonId: string; path: string[] }> };
+
+function manifestWithGrant(value: string, courseSlug: string, token: string) {
+  const query = new URLSearchParams({ course: courseSlug, token }).toString();
+  return value.split(/\r?\n/).map((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) return line;
+    if (/^[a-z][a-z0-9+.-]*:/i.test(trimmed) || trimmed.startsWith("/") || trimmed.includes("..")) return "";
+    return `${trimmed}${trimmed.includes("?") ? "&" : "?"}${query}`;
+  }).filter(Boolean).join("\n").concat("\n");
+}
 
 export async function GET(request: Request, context: RouteContext) {
   const params = await context.params;
@@ -19,15 +28,13 @@ export async function GET(request: Request, context: RouteContext) {
   const authorization = await authorizeVideoRequest(request, lessonId, courseSlug, token);
   if (!authorization.ok) return authorization.response;
   const { asset } = authorization;
-  const key = sessionMediaKey(process.env.VIDEO_SIGNING_SECRET!.trim(), asset.id, token);
-  if(path.length===1&&path[0]==="key.bin") return new Response(new Uint8Array(key),{headers:{"content-type":"application/octet-stream","content-length":"16","cache-control":"private, no-store","x-content-type-options":"nosniff","referrer-policy":"no-referrer"}});
   const provider = (asset.storageProvider === "s3" ? "s3" : "local") as StorageProvider;
 
   let objectKey = "";
   let contentType = "application/octet-stream";
   let manifest = false;
   if (path.length === 1 && path[0] === "master.m3u8") {
-    if (asset.processingStatus !== "ready" || !asset.hlsMasterObjectKey) return jsonError("البث المشفر والجودات ما زالت قيد التجهيز؛ أعد المحاولة بعد قليل", 409);
+    if (asset.processingStatus !== "ready" || !asset.hlsMasterObjectKey) return jsonError("الجودة المتكيفة ما زالت قيد التجهيز؛ الفيديو الأصلي متاح للمشاهدة", 409);
     objectKey = asset.hlsMasterObjectKey;
     contentType = "application/vnd.apple.mpegurl";
     manifest = true;
@@ -48,7 +55,7 @@ export async function GET(request: Request, context: RouteContext) {
     }
   }
   if (!objectKey) return jsonError("جزء الفيديو غير موجود", 404);
-  const object = await getObject(objectKey, undefined, provider, request.signal);
+  const object = await getObject(objectKey, undefined, provider);
   if (!object) return jsonError("جزء الفيديو غير موجود في التخزين الخاص", 404);
   const headers = new Headers({
     "content-type": contentType,
@@ -57,17 +64,11 @@ export async function GET(request: Request, context: RouteContext) {
     "x-content-type-options": "nosniff",
     "cross-origin-resource-policy": "cross-origin",
     "referrer-policy": "no-referrer",
-
+    etag: object.etag,
   });
   if (manifest) {
-    try {
-      const text = await boundedManifest(object.body as ReadableStream<Uint8Array>);
-      return new Response(manifestWithGrant(text, courseSlug, token, key, path.length===2?path[0]:undefined), { headers });
-    } catch { return jsonError("تعذر التحقق من قائمة البث",502); }
-  }
-  if(path.length===2&&/^segment-[0-9]{5,7}\.ts$/.test(path[1])) {
-    if(object.size>0)headers.set("content-length",String(encryptedMediaSize(object.size)));
-    return new Response(encryptMediaBody(object.body as ReadableStream<Uint8Array>,key,mediaSegmentIv(key,path[0],path[1])),{headers});
+    const text = await new Response(object.body as BodyInit).text();
+    return new Response(manifestWithGrant(text, courseSlug, token), { headers });
   }
   if (object.size > 0) headers.set("content-length", String(object.size));
   return new Response(object.body as BodyInit, { headers });

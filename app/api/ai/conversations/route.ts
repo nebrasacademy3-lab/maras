@@ -1,7 +1,7 @@
 import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { studyReadAccess } from "@/lib/study-output-access";
 import { isNativeAppRequest } from "@/lib/mobile-api";
-import { and, desc, eq, inArray, notLike } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { getDb } from "@/db";
 import { aiConversations, aiMessages } from "@/db/schema";
 import { cleanText, jsonError } from "@/lib/api";
@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     if (!user) return jsonError("سجّل الدخول لاستخدام أدوات مراس", 401);
     if (!await checkRateLimit("ai-conversations-read", `user:${user.id}`, 120, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
     const access = await studyReadAccess(user.id, isNativeAppRequest(request) ? "app" : "web");
-    const rows = await getDb().select().from(aiConversations).where(and(eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"), notLike(aiConversations.kind, "lesson_tutor:%"), access.conversation)).orderBy(desc(aiConversations.updatedAt)).limit(100);
+    const rows = await getDb().select().from(aiConversations).where(and(eq(aiConversations.userId, user.id), eq(aiConversations.status, "active"), access.conversation)).orderBy(desc(aiConversations.updatedAt)).limit(100);
     const ids = rows.map((row) => row.id);
     const messages = ids.length ? await getDb().select({ conversationId: aiMessages.conversationId, content: aiMessages.content, createdAt: aiMessages.createdAt }).from(aiMessages).where(and(eq(aiMessages.userId, user.id), inArray(aiMessages.conversationId, ids))).orderBy(desc(aiMessages.createdAt)).limit(500) : [];
     const preview = new Map<number, string>();
