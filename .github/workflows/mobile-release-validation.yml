@@ -43,15 +43,10 @@ jobs:
           cache-dependency-path: mobile/package-lock.json
       - name: Install locked native dependencies
         run: npm ci --no-audit --no-fund
-      - name: Validate reader release configuration before compatibility advice
+      - name: Validate reader release configuration
         run: npx expo config --type prebuild --json > "$RUNNER_TEMP/expo-config-${{ matrix.platform }}.json"
-      - name: Report Expo patch compatibility
-        id: expo-compat
-        continue-on-error: true
+      - name: Enforce Expo dependency compatibility
         run: npx expo install --check
-      - name: Surface Expo compatibility advisory
-        if: steps.expo-compat.outcome == 'failure'
-        run: echo "::warning::Expo compatibility check failed; inspect its actual output. Native configuration and export remain blocking checks."
       - name: Typecheck application
         run: npm run typecheck
       - name: Generate native project without signing or installing pods
