@@ -1,0 +1,27 @@
+name: Lesson rich text dependencies
+on:
+  push:
+    branches: [audit/lesson-parity-source-20260922]
+    paths: [.github/workflows/lesson-rich-dependencies.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4697a9ed51146f09e3f90f42f8090634f22ac588
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm install --save-exact react-native-webview@13.16.1 katex@0.18.1 --no-audit --no-fund
+        working-directory: mobile
+      - run: tar -czf "$RUNNER_TEMP/lesson-rich-dependencies.tar.gz" mobile/node_modules mobile/package.json mobile/package-lock.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lesson-rich-dependencies
+          path: ${{ runner.temp }}/lesson-rich-dependencies.tar.gz
+          retention-days: 1
