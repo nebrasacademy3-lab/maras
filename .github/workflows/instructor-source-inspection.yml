@@ -2,39 +2,34 @@ name: Instructor source inspection
 on:
   push:
     branches: [audit/instructor-runtime-20260922]
-    paths:
-      - .github/workflows/instructor-source-inspection.yml
+    paths: [.github/workflows/instructor-source-inspection.yml]
 permissions:
   contents: write
-concurrency:
-  group: instructor-repair-materialization
-  cancel-in-progress: false
 jobs:
   source:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Save hash-bound repair delta
-        run: cat repair/delta-{0,1,2,3,4}.b64 > "$RUNNER_TEMP/instructor-delta.b64"
-      - name: Apply reviewed changes onto the exact source commit
+      - name: Materialize reviewed delta from pinned repair parent
         run: |
           set -euo pipefail
-          git fetch origin main
-          test "$(git rev-parse origin/main)" = b12660eb51dbc458fbb02892d31036b4250fb7e7
-          git switch -c fix/instructor-contract-access-20260922 origin/main
+          cp repair/paged-renderer.delta.b64 "$RUNNER_TEMP/paged-delta.b64"
+          git fetch origin fix/instructor-contract-access-20260922
+          test "$(git rev-parse origin/fix/instructor-contract-access-20260922)" = 532fde32c5b995a788bb1e8de26cce075e2b5881
+          git switch --detach origin/fix/instructor-contract-access-20260922
           python3 - <<'PY'
           import base64, gzip, hashlib, json, os, pathlib, subprocess
-          raw = gzip.decompress(base64.b64decode((pathlib.Path(os.environ['RUNNER_TEMP']) / 'instructor-delta.b64').read_text(), validate=True))
-          assert hashlib.sha256(raw).hexdigest() == 'eeaca202ec0a69de5e5e90f0c80d03705667ae3243e7518fefd7184e09c14a7a'
+          raw = gzip.decompress(base64.b64decode((pathlib.Path(os.environ['RUNNER_TEMP']) / 'paged-delta.b64').read_text(), validate=True))
+          assert hashlib.sha256(raw).hexdigest() == '442fcab743adf0884209f4c9595341c1e86a8d53cfe0d3afdccff36f9a1e0f0a'
           delta = json.loads(raw)
-          assert delta['base'] == 'b12660eb51dbc458fbb02892d31036b4250fb7e7'
-          assert len(delta['files']) == 32
+          assert delta['base'] == '532fde32c5b995a788bb1e8de26cce075e2b5881'
+          assert len(delta['files']) == 9
           paths = []
           for entry in delta['files']:
               path = pathlib.Path(entry['path'])
               assert not path.is_absolute() and '..' not in path.parts
-              assert path.parts[0] in {'app', 'components', 'lib', 'mobile', 'scripts', 'tests'}
+              assert path.parts[0] in {'Dockerfile', '.github', 'lib', 'scripts', 'tests'}
               assert not path.is_symlink()
               if entry['before'] is None:
                   assert not path.exists()
@@ -53,30 +48,10 @@ jobs:
               paths.append(str(path))
           subprocess.run(['git', 'diff', '--check'], check=True)
           subprocess.run(['git', 'add', '--', *paths], check=True)
-          print('VERIFIED_REPAIR_FILES', len(paths))
+          print('VERIFIED_PAGED_REPAIR_FILES', len(paths))
           PY
           git config user.name 'nebrasacademy3-lab'
           git config user.email '310756671+nebrasacademy3-lab@users.noreply.github.com'
-          git commit -m 'fix: restore sandboxed contract PDFs and delegate instructor team access'
-          git push origin HEAD:refs/heads/fix/instructor-contract-access-20260922
-          git log -1 --format='REPAIR_COMMIT=%H'
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: 22
-      - name: Install exact dependencies
-        run: npm ci --no-audit --no-fund
-      - name: Probe root-overridden Docker PDF runtime without production credentials
-        run: |
-          set -euo pipefail
-          probe="$RUNNER_TEMP/pdf-image"
-          mkdir -p "$probe"
-          cp -a scripts lib public node_modules package.json "$probe/"
-          cat > "$probe/Dockerfile" <<'DOCKER'
-          FROM node:22-bookworm-slim
-          WORKDIR /app
-          RUN apt-get update && apt-get install -y --no-install-recommends chromium chromium-sandbox fonts-noto-core && rm -rf /var/lib/apt/lists/*
-          COPY . /app
-          CMD ["node", "scripts/pdf-runtime-check.mjs"]
-          DOCKER
-          docker build -t maras-pdf-isolated-probe "$probe"
-          docker run --rm --network none --user 0 --tmpfs /tmp:rw,nosuid,size=256m maras-pdf-isolated-probe
+          git commit -m 'fix(pdf): render contracts without browser namespace dependencies'
+          git push origin HEAD:refs/heads/audit/paged-contract-ready-20260922
+          git log -1 --format='PAGED_REPAIR_COMMIT=%H'
