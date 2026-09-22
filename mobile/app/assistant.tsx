@@ -1,3 +1,4 @@
+import { AiReportButton } from "@/src/components/AiReportButton";
 import { readerReply } from "@/src/lib/reader-guide";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
@@ -95,6 +96,7 @@ export default function Assistant() {
       <View style={[styles.bubble, mine ? styles.userBubble : styles.assistantBubble, { backgroundColor: mine ? colors.primary : colors.surface, borderColor: mine ? colors.primary : colors.border }]}>
         {!mine && <View style={[styles.assistantLabel, { direction: messageRTL ? "rtl" : "ltr", flexDirection: "row" }]}><BrandMark size={27} /><Text style={{ color: colors.primary, fontSize: 10, fontWeight: "900" }}>{messageRTL ? "مراس" : "Meras"}</Text></View>}
         <Text style={[styles.messageText, { color: mine ? "#FFFFFF" : colors.text, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }]}>{item.text}</Text>
+        {!mine && item.id.startsWith("a-") && <AiReportButton source="assistant" reference={item.id} content={item.text} />}
         {!!item.actions?.length && <View style={styles.actions}>{item.actions.filter(action => resolveAppAction(action.href, { apiUrl: API_URL, directCommerce: DIRECT_COMMERCE_ENABLED })).map((action) => <Pressable key={`${item.id}-${action.href}`} onPress={() => void openAction(action.href)} style={[styles.action, { backgroundColor: mine ? "rgba(255,255,255,.14)" : colors.surfaceAlt, direction: messageRTL ? "rtl" : "ltr", flexDirection: "row" }]}><Ionicons name={messageRTL ? "arrow-back" : "arrow-forward"} size={14} color={mine ? "#FFF" : colors.primary} /><Text numberOfLines={2} style={{ color: mine ? "#FFF" : colors.primary, fontSize: 10, fontWeight: "800", flexShrink: 1, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{action.label}</Text></Pressable>)}</View>}
         {!!item.suggestions?.length && <View style={[styles.suggestions, { direction: messageRTL ? "rtl" : "ltr", justifyContent: "flex-start" }]}>{item.suggestions.map((suggestion) => <Pressable key={`${item.id}-${suggestion}`} onPress={() => void send(suggestion)} style={[styles.suggestion, { borderColor: colors.border, backgroundColor: colors.surfaceAlt }]}><Text style={{ color: colors.textSoft, fontSize: 9, textAlign: messageRTL ? "right" : "left", writingDirection: messageRTL ? "rtl" : "ltr" }}>{suggestion}</Text></Pressable>)}</View>}
       </View>

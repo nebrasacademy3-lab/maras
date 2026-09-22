@@ -1,3 +1,4 @@
+import { AiReportButton } from "@/src/components/AiReportButton";
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { LinearGradient } from "expo-linear-gradient";
@@ -73,6 +74,7 @@ export default function AiQuizScreen() {
         <View style={[styles.answerBox, { backgroundColor: `${colors.success}10` }]}><Text style={[styles.answerLabel, { color: colors.success }]}>الإجابة الصحيحة</Text><Text style={[styles.answerText, { color: colors.text }]}>{optionLetters[result.correctIndex]}. {item.choices[result.correctIndex]}</Text></View>
         {!result.isCorrect && result.selectedIndex != null ? <Text style={[styles.selectedWrong, { color: colors.danger }]}>إجابتك: {optionLetters[result.selectedIndex]}. {item.choices[result.selectedIndex]}</Text> : null}
         <View style={[styles.explanation, { backgroundColor: colors.surfaceAlt }]}><View style={styles.explanationTitle}><Ionicons name="bulb-outline" size={18} color={colors.primary} /><Text style={{ color: colors.primary }}>لماذا؟</Text></View><Text style={[styles.explanationText, { color: colors.text }]}>{result.explanation}</Text>{result.translatedExplanation ? <><Text style={[styles.translationLabel, { color: colors.primary }]}>الشرح المترجم</Text><Text style={[styles.explanationText, { color: colors.text }]}>{result.translatedExplanation}</Text></> : null}</View>
+        <AiReportButton source="quiz" reference={`${id}:${item.id}`} content={item.question + "\n" + result.explanation} />
         {!!result.scientificTerms.length && <View style={styles.terms}>{result.scientificTerms.map((term) => <View key={`${item.id}-${term.term}`} style={[styles.term, { borderColor: colors.border }]}><Text style={[styles.termMain, { color: colors.text }]}>{term.term}</Text><Ionicons name="swap-horizontal" size={13} color={colors.textSoft} /><Text style={[styles.termTranslation, { color: colors.primary }]}>{term.translation}</Text></View>)}</View>}
       </Card>;
     })}</View>
@@ -88,6 +90,7 @@ export default function AiQuizScreen() {
     <Card style={styles.questionCard}>
       <View style={[styles.questionIcon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="help" size={22} color={colors.primary} /></View>
       <Text style={[styles.question, { color: colors.text }]}>{question.question}</Text>
+      <AiReportButton source="quiz" reference={`${id}:${question.id}`} content={question.question} />
       <View style={styles.options}>{question.choices.map((choice, choiceIndex) => {
         const selected = answers[question.id] === choiceIndex;
         return <Pressable key={`${question.id}-${choiceIndex}`} onPress={() => setAnswers((current) => ({ ...current, [question.id]: choiceIndex }))} style={({ pressed }) => [styles.option, { backgroundColor: selected ? `${colors.primary}12` : colors.surface, borderColor: selected ? colors.primary : colors.border, transform: [{ scale: pressed ? .99 : 1 }] }]}>

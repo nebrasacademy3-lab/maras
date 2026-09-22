@@ -7,7 +7,7 @@ import { Share, StyleSheet, View } from "react-native";
 import { AppHeader } from "@/src/components/AppHeader";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton, Card, EmptyState, FadeIn, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
-import { api, jsonBody } from "@/src/lib/api";
+import { api, jsonBody, DIRECT_COMMERCE_ENABLED } from "@/src/lib/api";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useLanguage } from "@/src/providers/LanguageProvider";
 import { safeExternalLink } from "@/src/lib/notification-routing";
@@ -120,6 +120,11 @@ export default function ReferralsScreen() {
   if (query.isError || !query.data) return <Screen><AppHeader title="الإحالات والهدايا" back /><EmptyState icon="cloud-offline-outline" title="تعذر تحميل الإحالات" text={query.error instanceof Error ? query.error.message : "حاول مرة أخرى بعد قليل."} action={<AppButton title="إعادة المحاولة" icon="refresh-outline" onPress={() => void query.refetch()} />} /></Screen>;
 
   const data = query.data;
+  if (!DIRECT_COMMERCE_ENABLED) return <Screen><AppHeader title="هدايا حسابك" subtitle="حالة المكافآت المفعلة مسبقًا" back />
+    <Card><Text style={{ color: colors.text, lineHeight: 24 }}>تظهر هنا حالة الهدايا المرتبطة بحسابك. لا يُتيح التطبيق شراء المحتوى أو استخدام قسائم دفع.</Text></Card>
+    {data.rewards.filter(reward => !/coupon|discount/i.test(reward.type)).length ? data.rewards.filter(reward => !/coupon|discount/i.test(reward.type)).map(reward => <Card key={reward.id} style={{ marginTop: 12 }}><Text style={{ color: colors.text, lineHeight: 24 }}>{/course/i.test(reward.type) ? "هدية تعلم" : "هدية أدوات المذاكرة"}</Text><Text style={{ color: colors.textSoft, lineHeight: 23 }}>{statusLabels[reward.status] || "قيد المراجعة"} · {dateLabel(reward.expiresAt, locale)}</Text></Card>) : <EmptyState icon="gift-outline" title="لا توجد هدايا مفعلة حاليًا" text="المواد والأدوات المفعلة في حسابك تظهر في تعلّمي وأدوات مراس." />}
+    <AppButton title="تعلّمي" variant="soft" onPress={() => router.push("/(tabs)/learn")} />
+  </Screen>;
   const terms = termLines(data.program.terms);
   const percent = Number.isFinite(data.referral.progressPercent) ? Math.min(100, Math.max(0, data.referral.progressPercent)) : 0;
   const enabledTiers = data.tiers.filter((tier) => tier.enabled).sort((a, b) => a.requiredReferrals - b.requiredReferrals);

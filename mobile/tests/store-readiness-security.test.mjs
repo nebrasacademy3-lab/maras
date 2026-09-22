@@ -181,3 +181,32 @@ test("system links map native pages, preserve cold OAuth safety and reject check
   assert.equal(route("merasalelm://oauth/callback?code=private"), "/oauth/callback");
   for (const path of ["https://evil.test/courses/math", "/cart", "https://example.test/cart", "/courses/%252fadmin", "javascript:bad", "//evil.test"]) assert.equal(route(path), "/(tabs)", path);
 });
+
+test("AI response surfaces include an in-app report control", () => {
+  for (const path of ["app/assistant.tsx", "app/ai/conversation/[id].tsx", "app/ai/quiz/[id].tsx", "src/components/study-file-tools.tsx"]) assert.match(read(path), /AiReportButton/);
+});
+function reportButton({ reason = "This response is misleading", changed = false, failure = false } = {}) {
+  const sent = [], toasts = []; let revision = 1;
+  const component = load("src/components/AiReportButton.tsx", {
+    react: {default:{},useRef: value=>({current:value}),useState: initial=>[initial,()=>{}]},
+    "react/jsx-runtime": {jsx:(type,props)=>({type,props})},
+    "@/src/components/ui": {AppButton:"button"},
+    "@/src/lib/api": {api:async (path, options)=>{if(failure)throw new Error('offline');sent.push({path,body:JSON.parse(options.body)});return {ok:true};},ApiError:class extends Error{},jsonBody:JSON.stringify,getApiSessionRevision:()=>revision},
+    "@/src/lib/interaction-events": {promptNative:async()=>{if(changed)revision++;return reason;},nativeToast:(...args)=>toasts.push(args)},
+    "@/src/providers/LanguageProvider": {useLanguage:()=>({isRTL:false})},
+  });
+  const button = component.AiReportButton({source:"assistant",reference:"a-1",content:"x".repeat(3000)});
+  return { sent, toasts, press:async()=>{button.props.onPress();await new Promise(resolve=>setTimeout(resolve,0));} };
+}
+test("report submits only the selected bounded excerpt after explicit user input", async () => {
+  const x=reportButton();await x.press();assert.equal(x.sent.length,1);assert.equal(x.sent[0].path,"/api/content-reports");assert.equal(x.sent[0].body.excerpt.length,2000);assert.equal(x.toasts.at(-1)[1],"success");
+});
+test("cancelled, invalid or changed-account AI reports never send", async () => {
+  for(const options of [{reason:null},{reason:"x"},{reason:"x".repeat(501)},{changed:true}]){const x=reportButton(options);await x.press();assert.equal(x.sent.length,0);}
+});
+test("failed AI reporting never claims successful submission", async () => {
+  const x=reportButton({failure:true});await x.press();assert.equal(x.sent.length,0);assert.equal(x.toasts.at(-1)[1],"error");
+});
+test("native reward view returns before website invitation and coupon marketing", () => {
+  const source=read("app/referrals.tsx");const gate=source.indexOf('if (!DIRECT_COMMERCE_ENABLED) return');assert.ok(gate>0);assert.ok(gate<source.indexOf('const share ='));assert.match(source.slice(gate,source.indexOf('const share =')),/هدايا حسابك/);
+});

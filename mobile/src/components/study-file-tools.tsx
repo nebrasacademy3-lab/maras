@@ -1,3 +1,4 @@
+import { AiReportButton } from "@/src/components/AiReportButton";
 import { normalizeStudyProgress, studyProgressLabel, type StudyProgress } from "@/src/lib/study-progress";
 import { SUMMARY_LANGUAGES, SUMMARY_DETAILS } from "@/src/lib/study-summary-policy";
 import { Ionicons } from "@expo/vector-icons";
@@ -25,7 +26,7 @@ const names = { summary: "تلخيص الملف", translation: "ترجمة ال�
 
 export function StudyArtifactDownload({ id }: { id: number }) {
   const { user } = useAuth();
-  return user ? <StudyPdfControl key={`${user.id}:${id}`} id={id} userId={user.id}/> : null;
+  return user ? <View style={{ gap: 6 }}><StudyPdfControl key={`${user.id}:${id}`} id={id} userId={user.id}/><AiReportButton source="artifact" reference={String(id)} /></View> : null;
 }
 function StudyPdfControl({ id, userId }: { id: number; userId: number }) {
   const { colors } = useTheme();
