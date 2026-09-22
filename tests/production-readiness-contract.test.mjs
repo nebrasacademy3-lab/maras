@@ -59,7 +59,7 @@ test("every API request receives a safe correlation identifier", async () => {
   assert.doesNotMatch(instrumentation, /error\.message/);
 });
 
-test("store builds cannot expose or call Tap checkout while direct builds retain it", async () => {
+test("native builds cannot call Tap checkout under any profile while the website retains it", async () => {
   const [api, cart, course, header, account, eas] = await Promise.all([
     read("mobile/src/lib/api.ts"),
     read("mobile/app/cart.tsx"),
@@ -73,11 +73,13 @@ test("store builds cannot expose or call Tap checkout while direct builds retain
     const reader=await loadMobileApi({platform});
     for (const path of ["/api/checkout","/api/checkout/","/api/ai/subscription/checkout"]) await assert.rejects(()=>reader.api(path,{method:"POST"}),error=>error.status===403);
     assert.equal(reader.requests.length,0);
-    const direct=await loadMobileApi({mode:"direct",platform});await direct.api("/api/checkout",{method:"POST"});assert.equal(direct.requests.length,1);
+    const direct=await loadMobileApi({mode:"direct",platform});await assert.rejects(()=>direct.api("/api/checkout",{method:"POST"}),error=>error.status===403);assert.equal(direct.requests.length,0);
   }
+  const website=await loadMobileApi({platform:"web",mode:"direct"});await website.api("/api/checkout",{method:"POST"});assert.equal(website.requests.length,1);
   for (const surface of [cart, course, header, account]) assert.match(surface, /STORE_COMMERCE_ENABLED/);
   assert.equal(JSON.parse(eas).build.production.env.EXPO_PUBLIC_STORE_MODE, "reader");
   assert.doesNotMatch(api, /NATIVE_PURCHASES_ENABLED/);
   assert.doesNotMatch(course, /StorePurchases/);
-  assert.match(eas, /"production-direct"[\s\S]*"EXPO_PUBLIC_STORE_MODE": "direct"/);
+  assert.equal(JSON.parse(eas).build["production-direct"],undefined);
+  for (const profile of Object.values(JSON.parse(eas).build)) assert.notEqual(profile.env?.EXPO_PUBLIC_STORE_MODE,"direct");
 });

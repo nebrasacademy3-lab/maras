@@ -13,11 +13,11 @@ const flatten = (style) => Array.isArray(style) ? Object.assign({}, ...style.fil
 function nodes(node) { if (!node) return []; if (Array.isArray(node)) return node.flatMap(nodes); return [node, ...nodes(node.props?.children)]; }
 const element = (type, props) => ({ type, props });
 
-for (const platform of ["ios", "android"]) test(`${platform}: only explicitly internal builds show checkout; development does not bypass store policy`, () => {
+for (const platform of ["ios", "android"]) test(`${platform}: all native builds keep purchasing on the website`, () => {
   assert.equal(policy.resolveStoreMode({ platform, executionEnvironment: "storeClient", development: false, configuredMode: "reader" }), "reader");
   assert.equal(policy.resolveStoreMode({ platform, development: true, configuredMode: "reader" }), "reader");
   assert.equal(policy.resolveStoreMode({ platform, development: false, executionEnvironment: "standalone", configuredMode: "reader", readerPreview: true, distribution: "store" }), "reader");
-  assert.equal(policy.resolveStoreMode({ platform, development: false, configuredMode: "direct", distribution: "internal" }), "direct");
+  assert.equal(policy.resolveStoreMode({ platform, development: false, configuredMode: "direct", distribution: "internal" }), "reader");
   assert.equal(policy.resolveStoreMode({ platform, development: false, configuredMode: "direct", distribution: "store" }), "reader");
   assert.equal(policy.resolveStoreMode({ platform, development: false, configuredMode: "direct" }), "reader");
   assert.equal(policy.resolveStoreMode({ platform, development: true, executionEnvironment: "storeClient", configuredMode: "reader", readerPreview: true }), "reader");

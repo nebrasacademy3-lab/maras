@@ -5,7 +5,8 @@ import React from "react";
 import { Pressable, StyleSheet, useWindowDimensions, View } from "react-native";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton, Card, EmptyState, SectionTitle } from "@/src/components/ui";
-import { api, ApiError, jsonBody } from "@/src/lib/api";
+import { api, ApiError, jsonBody, API_URL, DIRECT_COMMERCE_ENABLED } from "@/src/lib/api";
+import { openNotificationRoute, resolveAppAction } from "@/src/lib/notification-routing";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
 import type { LearningTrack } from "@/src/types";
@@ -28,9 +29,12 @@ export function LearningTrackCard({ track, active, compact = false }: { track: L
     mutationFn: async () => api<{ ok: true; active: boolean; message: string }>("/api/learning-tracks/interest", { method: active ? "DELETE" : "POST", body: jsonBody({ slug: track.slug, source: "mobile" }) }),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["learning-track-interests"] }); void queryClient.invalidateQueries({ queryKey: ["learning-tracks"] }); },
   });
+  const destination = track.status !== "coming_soon" && resolveAppAction(track.destination, { apiUrl: API_URL, directCommerce: DIRECT_COMMERCE_ENABLED });
+  const defaultLabel = destination ? "افتح المسار" : active ? "تم تفعيل التنبيه · إلغاء" : "أبلغني عند الإطلاق";
+  const label = DIRECT_COMMERCE_ENABLED && (!active || destination) ? track.ctaLabel || defaultLabel : defaultLabel;
   const press = () => {
     if (!user) { router.push({ pathname: "/(auth)/login", params: { return_to: "/tracks" } }); return; }
-    if (track.status !== "coming_soon" && track.destination && track.destination.startsWith("/")) { router.push(track.destination as never); return; }
+    if (destination) { openNotificationRoute(track.destination); return; }
     toggle.mutate();
   };
   const message = toggle.error instanceof ApiError ? toggle.error.message : "";
@@ -38,7 +42,7 @@ export function LearningTrackCard({ track, active, compact = false }: { track: L
     <View style={styles.head}><View style={[styles.icon, { backgroundColor: colors.surfaceAlt }]}><Ionicons name={iconNames[track.iconKey] || "sparkles-outline"} size={20} color={colors.primary} /></View><Text style={[styles.status, { color: track.status === "coming_soon" ? colors.warning : colors.success }]}>{statusLabels[track.status]}</Text></View><View style={styles.copy}><Text style={[styles.title, { color: colors.text }]}>{track.title}</Text><Text style={[styles.subtitle, { color: colors.textSoft }]}>{track.subtitle}</Text></View>
     {track.description ? <Text style={[styles.description, { color: colors.textSoft }]}>{track.description}</Text> : null}
     <View style={styles.meta}>{track.showInterestCount ? <Text style={[styles.metaText, { color: colors.textSoft }]}>{track.interestCount} مهتم</Text> : null}{track.launchAt ? <Text style={[styles.metaText, { color: colors.textSoft }]}>الموعد المتوقع: {new Date(track.launchAt).toLocaleDateString("ar-SA")}</Text> : null}</View>
-    <AppButton title={track.status !== "coming_soon" && track.destination ? track.ctaLabel || "افتح المسار" : active ? "تم تفعيل التنبيه · إلغاء" : track.ctaLabel || "أبلغني عند الإطلاق"} icon={track.status !== "coming_soon" && track.destination ? "arrow-back-outline" : active ? "notifications-off-outline" : "notifications-outline"} variant={active ? "soft" : "primary"} loading={toggle.isPending} onPress={press} />
+    <AppButton title={label} icon={destination ? "arrow-back-outline" : active ? "notifications-off-outline" : "notifications-outline"} variant={active ? "soft" : "primary"} loading={toggle.isPending} onPress={press} />
     {message ? <Text style={[styles.error, { color: colors.danger }]}>{message}</Text> : null}
   </Card>;
 }
@@ -58,7 +62,7 @@ export function HomeLearningTracks() {
 
 export function LearningTracksList() {
   const { tracks, activeSlugs } = useLearningTracks();
-  if (tracks.isError) return <EmptyState icon="cloud-offline-outline" title="تعذر تحميل المسارات" text={tracks.error instanceof Error ? tracks.error.message : "حاول مرة أخرى بعد قليل."} action={<AppButton title="إعادة المحاولة" icon="refresh-outline" onPress={() => void tracks.refetch()} />} />;
+  if (tracks.isError) return <EmptyState icon="cloud-offline-outline" title="تعذر تحميل المسارات" text={tracks.error instanceof Error ? tracks.error.message : "حاول مرة أخرى بعد قليل."} action={<AppButton title="إعادة المحاولة" onPress={() => void tracks.refetch()} />} />;
   const rows = tracks.data?.tracks || [];
   if (!tracks.isLoading && !rows.length) return <EmptyState icon="map-outline" title="لا توجد مسارات معلنة حاليًا" text="سنعلن هنا عن المسارات الجديدة قبل إطلاقها لتسجّل اهتمامك مبكرًا." />;
   return <View style={styles.list}>{rows.map((track) => <LearningTrackCard key={track.slug} track={track} active={activeSlugs.has(track.slug)} />)}</View>;

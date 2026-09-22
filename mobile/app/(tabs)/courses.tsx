@@ -1,13 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { ScaledText as Text } from "@/src/components/ScaledText";
-import { Pressable, StyleSheet, View } from "react-native";
+import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { router } from "expo-router";
 import { AppHeader } from "@/src/components/AppHeader";
 import { CourseCard } from "@/src/components/CourseCard";
 import { SearchPicker } from "@/src/components/SearchPicker";
-import { LoadingState, Screen, SearchBox } from "@/src/components/ui";
+import { AppButton, LoadingState, Screen, SearchBox } from "@/src/components/ui";
 import { api } from "@/src/lib/api";
 import { useAuth } from "@/src/providers/AuthProvider";
 import { useTheme } from "@/src/providers/ThemeProvider";
@@ -26,6 +26,7 @@ export default function Courses() {
   const { colors } = useTheme();
   const { user } = useAuth();
   const [query, setQuery] = useState("");
+  const deferredQuery = useDeferredValue(query);
   const [scopeOverride, setScopeOverride] = useState<string | null>(null);
   const [universityOverride, setUniversityOverride] = useState<string | null>(null);
   const [specialtyOverride, setSpecialtyOverride] = useState<string | null>(null);
@@ -55,9 +56,9 @@ export default function Courses() {
     const matchesSpecialty = activeSpecialty === ALL_SPECIALTIES
       || course.specialty === activeSpecialty
       || institutionWide && activeUniversity !== ALL_UNIVERSITIES && course.universitySlug === activeUniversity;
-    const needle = query.trim().toLocaleLowerCase("ar");
+    const needle = deferredQuery.trim().toLocaleLowerCase("ar");
     return matchesScope && matchesUniversity && matchesSpecialty && (!needle || `${course.title} ${course.titleEn} ${course.code || ""} ${course.university} ${course.specialty}`.toLocaleLowerCase("ar").includes(needle));
-  }), [activeScope, activeSpecialty, activeUniversity, catalog.data, query, user]);
+  }), [activeScope, activeSpecialty, activeUniversity, catalog.data, deferredQuery, user]);
 
   function showAll() { setScopeOverride("الكل"); setUniversityOverride(ALL_UNIVERSITIES); setSpecialtyOverride(ALL_SPECIALTIES); setQuery(""); }
   function chooseScope(value: string) {
@@ -71,7 +72,15 @@ export default function Courses() {
   function chooseSpecialty(value: string) { setScopeOverride("الكل"); setSpecialtyOverride(value); }
 
   if (catalog.isLoading) return <Screen><LoadingState label="نجهّز كتالوج المواد..." /></Screen>;
-  return <Screen><AppHeader title="المواد والشروحات" subtitle={`${rows.length} مادة ظاهرة`} />
+  if (catalog.isError && !catalog.data) return <Screen><AppHeader title="المواد والشروحات"/><Text>تعذر تحميل المواد. تحقق من اتصالك.</Text><AppButton title="إعادة المحاولة" onPress={() => void catalog.refetch()} /></Screen>;
+  return <Screen scroll={false} showFooter={false}><FlatList
+    data={rows} keyExtractor={course => course.slug}
+    renderItem={({item}) => <CourseCard compact course={item}/>}
+    initialNumToRender={8} maxToRenderPerBatch={8} windowSize={5}
+    keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+    contentContainerStyle={{paddingBottom: 120}}
+    ItemSeparatorComponent={() => <View style={{height:10}}/>}
+    ListHeaderComponent={<><AppHeader title="المواد والشروحات" subtitle={`${rows.length} مادة ظاهرة`} />
     <View style={[styles.hero, { backgroundColor: colors.primary }]}>
       <View style={styles.heroIcon}><Ionicons name="search-outline" size={25} color="#FFF" /></View>
       <View style={styles.heroCopy}><Text style={styles.heroTitle}>مادتك الجامعية، بخطوات أوضح</Text><Text style={styles.heroText}>ابحث بالاسم أو الرمز، ثم اختر جامعتك وتخصصك للوصول إلى الشرح المناسب.</Text></View>
@@ -86,9 +95,9 @@ export default function Courses() {
       <View style={styles.filterSummary}><View style={styles.summaryCopy}><Text style={[styles.summaryTitle, { color: colors.text }]}>{rows.length} نتيجة مطابقة</Text><Text style={[styles.summaryText, { color: colors.textSoft }]} numberOfLines={2}>{activeUniversity === ALL_UNIVERSITIES ? "كل الجامعات" : universityItems.find((item) => item.key === activeUniversity)?.label} · {activeSpecialty}</Text></View><Pressable onPress={showAll} style={[styles.resetButton, { backgroundColor: colors.surfaceAlt }]}><Ionicons name="refresh-outline" size={15} color={colors.primary} /><Text style={{ color: colors.primary, fontSize: 9, fontWeight: "900" }}>إعادة الضبط</Text></Pressable></View>
     </View>
     <View style={styles.resultsHead}><Text style={[styles.resultsTitle, { color: colors.text }]}>النتائج</Text><Text style={[styles.resultsCount, { color: colors.textSoft }]}>{rows.length} مادة</Text></View>
-    <View style={styles.list}>{rows.map((course) => <CourseCard compact key={course.slug} course={course} />)}</View>
-    {!rows.length ? <View style={[styles.empty, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="search-outline" size={28} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.text }]}>لا توجد نتائج</Text><Text style={[styles.emptyText, { color: colors.textSoft }]}>لم تجد المادة؟ أرسل طلبًا وارفع السلايدات أو رابط المادة. نتابع طلب المادة ونحدّث حالته من حسابك.</Text><View style={styles.emptyButtons}><Pressable onPress={()=>router.push("/requests")} style={[styles.emptyAction, { backgroundColor: colors.primary }]}><Ionicons name="cloud-upload-outline" size={16} color="#FFF"/><Text style={styles.emptyActionText}>طلب مادة · متابعة الطلب من حسابك</Text></Pressable><Pressable onPress={showAll} style={[styles.emptyReset,{borderColor:colors.border}]}><Text style={[styles.emptyResetText,{color:colors.primary}]}>عرض كل المواد</Text></Pressable></View></View> : null}
-  </Screen>;
+    </>}
+    ListEmptyComponent={<View style={[styles.empty, { backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="search-outline" size={28} color={colors.primary} /><Text style={[styles.emptyTitle, { color: colors.text }]}>لا توجد نتائج</Text><Text style={[styles.emptyText, { color: colors.textSoft }]}>لم تجد المادة؟ أرسل طلبًا وارفع السلايدات أو رابط المادة. نتابع طلب المادة ونحدّث حالته من حسابك.</Text><View style={styles.emptyButtons}><Pressable onPress={()=>router.push("/requests")} style={[styles.emptyAction, { backgroundColor: colors.primary }]}><Ionicons name="cloud-upload-outline" size={16} color="#FFF"/><Text style={styles.emptyActionText}>طلب مادة · متابعة الطلب من حسابك</Text></Pressable><Pressable onPress={showAll} style={[styles.emptyReset,{borderColor:colors.border}]}><Text style={[styles.emptyResetText,{color:colors.primary}]}>عرض كل المواد</Text></Pressable></View></View>}
+  /></Screen>;
 }
 
 const styles = StyleSheet.create({

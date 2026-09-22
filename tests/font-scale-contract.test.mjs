@@ -13,7 +13,7 @@ const mobileTheme = await read("mobile/src/providers/ThemeProvider.tsx");
 const scaledText = await read("mobile/src/components/ScaledText.tsx");
 const scaledTextInput = await read("mobile/src/components/ScaledTextInput.tsx");
 const mobileUi = await read("mobile/src/components/ui.tsx");
-const mobileSources = await Promise.all((await readFile(join(here, "../mobile/app/assistant.tsx"), "utf8")).split("\n").slice(0, 8));
+const mobileSources = await read("mobile/app/assistant.tsx");
 
 test("web font scale is text-only and never zooms the page", () => {
   assert.match(webCss, /--font-scale/);
@@ -34,5 +34,5 @@ test("mobile font scale is applied through text style only", () => {
   assert.doesNotMatch(scaledTextInput, /transform/);
   assert.doesNotMatch(mobileUi, /scaleStyle|scale:\s*fontScale/);
   assert.match(mobileUi, /ScaledText as Text/);
-  assert.match(mobileSources.join("\n"), /ScaledText as Text/);
+  assert.match(mobileSources, /ScaledText as Text/);
 });

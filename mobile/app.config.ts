@@ -13,6 +13,10 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   if (!/^https:\/\//i.test(apiUrl)) {
     throw new Error("EXPO_PUBLIC_API_URL must be an HTTPS URL");
   }
+  const parsedApi = new URL(apiUrl);
+  if (parsedApi.username || parsedApi.password || parsedApi.search || parsedApi.hash || !["", "/"].includes(parsedApi.pathname)) {
+    throw new Error("EXPO_PUBLIC_API_URL must be an HTTPS origin without credentials, path, query or fragment");
+  }
   const requestedStoreMode = String(process.env.EXPO_PUBLIC_STORE_MODE || "reader").trim().toLowerCase();
   if (!new Set(["reader", "direct"]).has(requestedStoreMode)) {
     throw new Error("EXPO_PUBLIC_STORE_MODE must be reader or direct");
@@ -20,8 +24,8 @@ export default ({ config }: ConfigContext): ExpoConfig => {
 
   const buildProfile = String(process.env.EAS_BUILD_PROFILE || "");
   const storeDistribution = ["development", "preview", "production-direct"].includes(buildProfile) ? "internal" : "store";
-  if (storeDistribution === "store" && requestedStoreMode === "direct") {
-    throw new Error("Store-distributed builds cannot use direct checkout. Use the reader mode.");
+  if (requestedStoreMode !== "reader") {
+    throw new Error("Store-distributed and internal native builds cannot use direct checkout. Use the reader mode.");
   }
 
   const appLinkHost = String(process.env.EXPO_PUBLIC_APP_LINK_HOST || new URL(apiUrl).hostname)
@@ -32,7 +36,14 @@ export default ({ config }: ConfigContext): ExpoConfig => {
   if (!/^[a-z0-9.-]+$/.test(appLinkHost)) {
     throw new Error("EXPO_PUBLIC_APP_LINK_HOST must be a bare hostname such as marasalelm.com");
   }
-  const appLinkPaths = ["/r", "/courses", "/learn", "/referrals", "/notifications", "/study-tools", "/support", "/cart", "/favorites", "/dashboard", "/tracks", "/learning-tracks"];
+  const googleServices = process.env.GOOGLE_SERVICES_JSON || "./google-services.json";
+  if (process.env.GOOGLE_SERVICES_JSON && !existsSync(googleServices)) {
+    throw new Error("GOOGLE_SERVICES_JSON must point to the EAS-managed file secret");
+  }
+  if (process.env.EAS_BUILD === "true" && process.env.EAS_BUILD_PLATFORM === "android" && buildProfile === "production" && !existsSync(googleServices)) {
+    throw new Error("Production Android push requires the GOOGLE_SERVICES_JSON file secret and FCM credentials in EAS");
+  }
+  const appLinkPaths = ["/r", "/courses", "/learn", "/referrals", "/notifications", "/study-tools", "/support", "/favorites", "/dashboard", "/tracks", "/learning-tracks"];
 
   return {
     ...config,
@@ -43,7 +54,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
     // الحساب/الفريق الذي سيملك المشروع
     owner: "os1m1s-team",
 
-    version: "1.0.1",
+    version: "1.0.2",
     scheme: "merasalelm",
     orientation: "default",
     icon: "./assets/icon.png",
@@ -91,14 +102,16 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         },
       ],
 
+      allowBackup: false,
+      blockedPermissions: ["android.permission.SYSTEM_ALERT_WINDOW", "android.permission.READ_MEDIA_IMAGES", "android.permission.READ_MEDIA_VIDEO", "android.permission.READ_EXTERNAL_STORAGE", "android.permission.WRITE_EXTERNAL_STORAGE"],
       permissions: [
         "POST_NOTIFICATIONS",
         "RECORD_AUDIO",
       ],
 
-      ...(existsSync("./google-services.json")
+      ...(existsSync(googleServices)
         ? {
-            googleServicesFile: "./google-services.json",
+            googleServicesFile: googleServices,
           }
         : {}),
     },
@@ -135,6 +148,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
         {
           android: {
             usesCleartextTraffic: false,
+            targetSdkVersion: 36,
           },
         },
       ],

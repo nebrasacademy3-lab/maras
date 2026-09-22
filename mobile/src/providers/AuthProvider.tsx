@@ -35,24 +35,39 @@ async function readPersistedToken() {
   } catch { return null; }
 }
 
-async function persistToken(value: string | null) {
-  setApiToken(value);
+let storageWrite: Promise<unknown> = Promise.resolve();
+function serializeStorage<T>(operation: () => Promise<T>): Promise<T> {
+  const task = storageWrite.then(operation, operation);
+  storageWrite = task.catch(() => undefined);
+  return task;
+}
+async function persistToken(value: string | null, current: () => boolean) {
+  await serializeStorage(async () => {
+  if (!current()) throw new ApiError("تغيّرت محاولة تسجيل الدخول.", 499);
   if (Platform.OS === "web") {
     if (typeof window !== "undefined") {
       if (value) window.localStorage.setItem(TOKEN_KEY, value);
       else window.localStorage.removeItem(TOKEN_KEY);
     }
-    return;
-  }
-  if (value) await SecureStore.setItemAsync(TOKEN_KEY, value, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY });
+  } else if (value) await SecureStore.setItemAsync(TOKEN_KEY, value, { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY });
   else await SecureStore.deleteItemAsync(TOKEN_KEY);
+  // A queued logout clears this write before the next session can use it.
+  if (!current()) {
+    if (Platform.OS === "web") { if (typeof window !== "undefined") window.localStorage.removeItem(TOKEN_KEY); }
+    else await SecureStore.deleteItemAsync(TOKEN_KEY);
+    throw new ApiError("تم إلغاء تسجيل الدخول.", 499);
+  }
+  setApiToken(value);
+  });
 }
 
 async function clearPersistedToken() {
   setApiToken(null);
   try {
+    await serializeStorage(async () => {
     if (Platform.OS === "web") { if (typeof window !== "undefined") window.localStorage.removeItem(TOKEN_KEY); }
     else await SecureStore.deleteItemAsync(TOKEN_KEY);
+    });
     return true;
   } catch { return false; }
 }
@@ -66,8 +81,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     const generation = sessionGeneration.current;
     try {
-      const response = await api<{ ok: true; user: SessionUser }>("/api/auth/me");
+      const response = await api<{ ok: true; user: SessionUser | null }>("/api/auth/me");
       if (generation !== sessionGeneration.current) return null;
+      if (!response.user) {
+        sessionGeneration.current++;
+        setUser(null); setToken(null); queryClient.clear();
+        await clearPersistedToken();
+        return null;
+      }
       setUser(response.user);
       return response.user;
     } catch (reason) {
@@ -94,23 +115,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } finally { setLoading(false); }
     })();
   }, [refresh]);
-  const accept = useCallback(async (initial: AuthResponse | MfaResponse) => {
+  const accept = useCallback(async (initial: AuthResponse | MfaResponse, generation: number) => {
+    if (generation !== sessionGeneration.current) throw new ApiError("تم إلغاء تسجيل الدخول.", 499);
     const response = "mfaRequired" in initial
       ? await verifyNativeLogin<AuthResponse>(code => api<AuthResponse>("/api/mobile/auth/mfa", { method: "POST", body: jsonBody({ challengeToken: initial.challengeToken, code }) }))
       : initial;
-    sessionGeneration.current++;
+    if (generation !== sessionGeneration.current) throw new ApiError("تم إلغاء تسجيل الدخول.", 499);
+    const acceptedGeneration = ++sessionGeneration.current;
     await queryClient.cancelQueries();
     queryClient.clear();
-    await persistToken(response.token); setToken(response.token); setUser(response.user); return response;
+    await persistToken(response.token, () => sessionGeneration.current === acceptedGeneration);
+    if (sessionGeneration.current !== acceptedGeneration) throw new ApiError("تم إلغاء تسجيل الدخول.", 499);
+    setToken(response.token); setUser(response.user); return response;
   }, [queryClient]);
-  const login = useCallback(async (value: Credentials) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse | MfaResponse>("/api/mobile/auth/login", { method: "POST", body: jsonBody(value) })); }, [accept]);
-  const register = useCallback(async (value: Registration) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) })); }, [accept]);
-  const registerInstructor = useCallback(async (value: InstructorRegistration) => { await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/instructor/register", { method: "POST", body: jsonBody(value) })); }, [accept]);
+  const login = useCallback(async (value: Credentials) => { const generation = sessionGeneration.current; await ensureDeviceIdentity(); return accept(await api<AuthResponse | MfaResponse>("/api/mobile/auth/login", { method: "POST", body: jsonBody(value) }), generation); }, [accept]);
+  const register = useCallback(async (value: Registration) => { const generation = sessionGeneration.current; await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/mobile/auth/register", { method: "POST", body: jsonBody(value) }), generation); }, [accept]);
+  const registerInstructor = useCallback(async (value: InstructorRegistration) => { const generation = sessionGeneration.current; await ensureDeviceIdentity(); return accept(await api<AuthResponse>("/api/instructor/register", { method: "POST", body: jsonBody(value) }), generation); }, [accept]);
   const socialLogin = useCallback(async (provider: SocialProvider, referralCode?: string) => {
+    const generation = sessionGeneration.current;
     await ensureDeviceIdentity();
     const exchange = await socialAuthCode(provider, referralCode);
     if (!exchange) return null;
-    return accept(await api<AuthResponse | MfaResponse>("/api/auth/oauth/exchange", { method: "POST", body: jsonBody(exchange) }));
+    return accept(await api<AuthResponse | MfaResponse>("/api/auth/oauth/exchange", { method: "POST", body: jsonBody(exchange) }), generation);
   }, [accept]);
   const logout = useCallback(async () => {
     sessionGeneration.current++;

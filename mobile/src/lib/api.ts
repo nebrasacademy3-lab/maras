@@ -1,4 +1,4 @@
-import { nativeToast, requestNativeAdminMfa } from "@/src/lib/interaction-events";
+import { nativeToast, requestNativeAdminMfa, requestNativeAiConsent } from "@/src/lib/interaction-events";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { resolveStoreMode, subscriptionAccessMessage } from "@/src/lib/store-commerce";
@@ -8,7 +8,11 @@ const configured = String(Constants.expoConfig?.extra?.apiUrl || defaultApiUrl).
 if (!/^https:\/\//i.test(configured)) {
   throw new Error("EXPO_PUBLIC_API_URL must be an HTTPS URL");
 }
-export const API_URL = configured;
+const apiOrigin = new URL(configured);
+if (apiOrigin.username || apiOrigin.password || apiOrigin.search || apiOrigin.hash || !["", "/"].includes(apiOrigin.pathname)) {
+  throw new Error("EXPO_PUBLIC_API_URL must be a clean HTTPS origin");
+}
+export const API_URL = apiOrigin.origin;
 export const STORE_MODE = resolveStoreMode({
   platform: Platform.OS,
   executionEnvironment: Constants.executionEnvironment,
@@ -31,8 +35,43 @@ function safeHeaderText(value: string) {
 
 let sessionToken = "";
 let adminStepUpToken = "";
+let sessionRevision = 0;
+let aiConsentRevision = -1;
+let aiConsent: { revision: number; promise: Promise<boolean> } | null = null;
+function needsAiConsent(path: string, method: string) {
+  return Platform.OS !== "web" && ["POST", "PUT", "PATCH"].includes(method.toUpperCase()) && (path.startsWith("/api/ai/") || path === "/api/assistant");
+}
+async function requireAiConsent(path: string, method: string) {
+  if (!needsAiConsent(path, method)) return;
+  const revision = sessionRevision;
+  if (aiConsentRevision === revision) return;
+  if (!aiConsent || aiConsent.revision !== revision) aiConsent = { revision, promise: requestNativeAiConsent() };
+  const active = aiConsent;
+  try {
+    const allowed = await active.promise;
+    assertApiSession(revision);
+    if (!allowed) throw new ApiError("لم تُرسل بياناتك؛ أُلغيت معالجة الذكاء الاصطناعي.", 499, { code: "AI_CONSENT_REQUIRED" });
+    aiConsentRevision = revision;
+  } finally { if (aiConsent === active) aiConsent = null; }
+}
+const sessionListeners = new Set<() => void>();
+export function getApiSessionRevision() { return sessionRevision; }
+export function onApiSessionChange(listener: () => void) {
+  sessionListeners.add(listener);
+  return () => { sessionListeners.delete(listener); };
+}
+export function assertApiSession(revision: number) {
+  if (revision !== sessionRevision) throw new ApiError("تغيّر الحساب. أعد فتح الصفحة من الحساب الصحيح.", 499, { code: "SESSION_CHANGED" });
+}
 let deviceIdentity: { id: string; label: string; platform: string } | null = null;
-export function setApiToken(token: string | null) { const next = token || ""; if (sessionToken !== next) adminStepUpToken = ""; sessionToken = next; }
+export function setApiToken(token: string | null) {
+  const next = token || "";
+  if (sessionToken === next) return;
+  adminStepUpToken = "";
+  sessionToken = next;
+  sessionRevision++;
+  for (const listener of sessionListeners) listener();
+}
 export function getApiToken() { return sessionToken; }
 export function setAdminStepUpToken(token: string | null) { adminStepUpToken = token || ""; }
 export function setApiDeviceIdentity(value: { id: string; label: string; platform: string } | null) { deviceIdentity = value; }
@@ -66,17 +105,42 @@ export function apiRequestUrl(path: string) {
   return url;
 }
 
+/** Shared by JSON, upload and binary clients; MFA proof is never omitted from private downloads. */
+export function authenticatedRequestHeaders(path: string, initial?: HeadersInit) {
+  const url = apiRequestUrl(path);
+  const headers = new Headers(initial);
+  headers.delete("authorization");
+  headers.delete("x-meras-admin-stepup");
+  headers.set("x-meras-client", "mobile-v1");
+  headers.set("x-meras-platform", Platform.OS);
+  if (deviceIdentity) {
+    headers.set("x-meras-device-id", deviceIdentity.id);
+    headers.set("x-meras-device-label", safeHeaderText(deviceIdentity.label));
+  }
+  if (sessionToken) headers.set("authorization", `Bearer ${sessionToken}`);
+  if (adminStepUpToken && url.pathname.startsWith("/api/admin/")) headers.set("x-meras-admin-stepup", adminStepUpToken);
+  return headers;
+}
+function assertCommerceAllowed(url: URL, method = "GET") {
+  const path = url.pathname.replace(/\/+$/, "");
+  if (!DIRECT_COMMERCE_ENABLED && (["/api/checkout", "/api/ai/subscription/checkout"].includes(path) || path === "/api/cart" && !["GET", "HEAD"].includes(method.toUpperCase()))) {
+    throw new ApiError("هذه النسخة مخصصة لاستخدام الاشتراكات المفعلة في حسابك ولا تنفذ عمليات شراء.", 403, { code: "NATIVE_READER_ONLY" });
+  }
+}
 export type ApiRequestInit = RequestInit & { timeoutMs?: number };
 
 export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   const startedToken = sessionToken;
+  const startedRevision = sessionRevision;
   const pathname = apiRequestUrl(path).pathname;
   const managed = pathname.startsWith("/api/admin/") && !pathname.startsWith("/api/admin/security/");
+  assertCommerceAllowed(apiRequestUrl(path), init.method);
+  if (needsAiConsent(pathname, init.method || "GET")) await requireAiConsent(pathname, init.method || "GET");
   const mutation = managed && !["GET", "HEAD"].includes((init.method || "GET").toUpperCase()) && !pathname.includes("/videos");
   try { const result = await apiOnce<T>(path, init); if (mutation) nativeToast("تم تنفيذ العملية بنجاح", "success"); return result; }
   catch (error) {
     if (managed && !(typeof ReadableStream !== "undefined" && init.body instanceof ReadableStream) && error instanceof ApiError && error.status === 428 && ["MFA_STEP_UP_REQUIRED", "MFA_SETUP_REQUIRED"].includes(error.code || "")) {
-      if (await requestNativeAdminMfa(error.code === "MFA_SETUP_REQUIRED") && sessionToken === startedToken && !init.signal?.aborted) {
+      if (await requestNativeAdminMfa(error.code === "MFA_SETUP_REQUIRED") && sessionToken === startedToken && sessionRevision === startedRevision && !init.signal?.aborted) {
         const result = await apiOnce<T>(path, init);
         nativeToast("تم تنفيذ العملية بنجاح", "success");
         return result;
@@ -88,32 +152,29 @@ export async function api<T>(path: string, init: ApiRequestInit = {}): Promise<T
 }
 async function apiOnce<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
   const url = apiRequestUrl(path);
-  if (!DIRECT_COMMERCE_ENABLED && ["/api/checkout", "/api/ai/subscription/checkout"].includes(url.pathname.replace(/\/+$/, ""))) {
-    throw new ApiError("هذه النسخة مخصصة لاستخدام الاشتراكات المفعلة في حسابك ولا تنفذ عمليات شراء.", 403);
-  }
+  assertCommerceAllowed(url, init.method);
+  const revision = sessionRevision;
+  // Logout must finish revoking the old server session after local state is cleared.
+  const revoking = url.pathname === "/api/mobile/auth/logout";
   const { timeoutMs = 15_000, ...requestInit } = init;
-  const headers = new Headers(requestInit.headers);
+  const headers = authenticatedRequestHeaders(path, requestInit.headers);
   headers.set("accept", "application/json");
-  headers.set("x-meras-client", "mobile-v1");
-  headers.set("x-meras-platform", Platform.OS);
-  if (deviceIdentity) {
-    headers.set("x-meras-device-id", deviceIdentity.id);
-    headers.set("x-meras-device-label", safeHeaderText(deviceIdentity.label));
-    headers.set("x-meras-platform", deviceIdentity.platform);
-  }
-  if (sessionToken) headers.set("authorization", `Bearer ${sessionToken}`);
-  if (adminStepUpToken && url.pathname.startsWith("/api/admin/")) headers.set("x-meras-admin-stepup", adminStepUpToken);
   if (requestInit.body && !(requestInit.body instanceof FormData) && !headers.has("content-type")) headers.set("content-type", "application/json");
   const controller = new AbortController();
-  const safeTimeout = Math.max(1_000, Math.min(15 * 60_000, Math.floor(timeoutMs)));
+  const safeTimeout = Math.max(1_000, Math.min(15 * 60_000, Math.floor(Number.isFinite(timeoutMs) ? timeoutMs : 15_000)));
   const timeout = setTimeout(() => controller.abort(), safeTimeout);
   const externalSignal = requestInit.signal;
   const abort = () => controller.abort();
+  const stopSessionWatch = revoking ? () => {} : onApiSessionChange(abort);
   if (externalSignal?.aborted) abort();
   else externalSignal?.addEventListener("abort", abort, { once: true });
   try {
-    const response = await fetch(url.toString(), { credentials: Platform.OS === "web" ? "include" : "omit", ...requestInit, headers, signal: controller.signal });
+    const response = await fetch(url.toString(), { ...requestInit, credentials: Platform.OS === "web" ? "include" : "omit", redirect: "error", headers, signal: controller.signal });
+    if (!revoking) assertApiSession(revision);
+    if (response.redirected || response.url && new URL(response.url).origin !== url.origin) throw new ApiError("رفض تحويل الطلب إلى عنوان آخر.", 502, { code: "REDIRECT_BLOCKED" });
     const text = await response.text();
+    if (!revoking) assertApiSession(revision);
+    if (controller.signal.aborted) throw new ApiError("تم إلغاء الطلب.", 499);
     let payload: unknown = {};
     try { payload = text ? JSON.parse(text) : {}; } catch { if (response.ok) throw new ApiError("استجابة الخدمة غير مكتملة. حاول مرة أخرى.", 502); }
     if (!response.ok) {
@@ -125,11 +186,13 @@ async function apiOnce<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
     }
     return payload as T;
   } catch (reason) {
+    if (!revoking) assertApiSession(revision);
+    if (externalSignal?.aborted) throw new ApiError("تم إلغاء الطلب.", 499);
     if (reason instanceof ApiError) throw reason;
     if (reason instanceof Error && reason.name === "AbortError") throw new ApiError("انتهت مهلة الاتصال. تحقق من الشبكة وحاول مرة أخرى.", 408);
-    const detail = reason instanceof Error && reason.message ? ` (${reason.message})` : "";
-    throw new ApiError(`تعذر الاتصال بخدمة مراس${detail}. حاول مرة أخرى.`, 0);
+    throw new ApiError("تعذر الاتصال بخدمة مراس. تحقق من الشبكة وحاول مرة أخرى.", 0);
   } finally {
+    stopSessionWatch();
     clearTimeout(timeout);
     externalSignal?.removeEventListener("abort", abort);
   }
@@ -138,26 +201,26 @@ async function apiOnce<T>(path: string, init: ApiRequestInit = {}): Promise<T> {
 export type ApiUploadProgress = { loaded: number; total: number; percent: number; bytesPerSecond: number; remainingSeconds: number | null };
 export type ApiUploadOptions = { timeoutMs?: number; signal?: AbortSignal; onProgress?: (progress: ApiUploadProgress) => void };
 
-export function apiUpload<T>(path: string, body: FormData | Blob, options: ApiUploadOptions = {}): Promise<T> {
+export async function apiUpload<T>(path: string, body: FormData | Blob, options: ApiUploadOptions = {}): Promise<T> {
+  const allowedUrl = apiRequestUrl(path);
+  assertCommerceAllowed(allowedUrl, "POST");
+  const uploadRevision = sessionRevision;
+  await requireAiConsent(allowedUrl.pathname, "POST");
+  assertApiSession(uploadRevision);
   return new Promise((resolve, reject) => {
     const url = apiRequestUrl(path);
+    assertCommerceAllowed(url, "POST");
+    const revision = sessionRevision;
     if (options.signal?.aborted) { reject(new ApiError("تم إلغاء الرفع.", 499)); return; }
     const xhr = new XMLHttpRequest();
     const startedAt = Date.now();
     xhr.open("POST", url.toString(), true);
     xhr.withCredentials = Platform.OS === "web";
     xhr.timeout = Math.max(15_000, Math.min(options.timeoutMs || 15 * 60_000, 30 * 60_000));
-    xhr.setRequestHeader("accept", "application/json");
-    xhr.setRequestHeader("x-meras-client", "mobile-v1");
-    xhr.setRequestHeader("x-meras-platform", Platform.OS);
-    if (deviceIdentity) {
-      xhr.setRequestHeader("x-meras-device-id", deviceIdentity.id);
-      xhr.setRequestHeader("x-meras-device-label", safeHeaderText(deviceIdentity.label));
-      xhr.setRequestHeader("x-meras-platform", deviceIdentity.platform);
-    }
-    if (sessionToken) xhr.setRequestHeader("authorization", `Bearer ${sessionToken}`);
-    if (adminStepUpToken && url.pathname.startsWith("/api/admin/")) xhr.setRequestHeader("x-meras-admin-stepup", adminStepUpToken);
+    const headers = authenticatedRequestHeaders(path, { accept: "application/json" });
+    headers.forEach((value, key) => xhr.setRequestHeader(key, value));
     const abort = () => xhr.abort();
+    const stopSessionWatch = onApiSessionChange(abort);
     options.signal?.addEventListener("abort", abort, { once: true });
     xhr.upload.onprogress = (event) => {
       const total = event.lengthComputable ? event.total : 0;
@@ -171,14 +234,16 @@ export function apiUpload<T>(path: string, body: FormData | Blob, options: ApiUp
         remainingSeconds: total > event.loaded && bytesPerSecond > 0 ? Math.ceil((total - event.loaded) / bytesPerSecond) : null,
       });
     };
-    const cleanup = () => options.signal?.removeEventListener("abort", abort);
+    const cleanup = () => { stopSessionWatch(); options.signal?.removeEventListener("abort", abort); };
     xhr.onerror = () => { cleanup(); reject(new ApiError("تعذر الاتصال بالخادم أثناء الرفع. تحقق من الشبكة وحاول مرة أخرى.", 0)); };
     xhr.ontimeout = () => { cleanup(); reject(new ApiError("استغرق الرفع وقتًا أطول من المتوقع. احتفظ بالتطبيق مفتوحًا ثم أعد المحاولة.", 408)); };
     xhr.onabort = () => { cleanup(); reject(new ApiError("تم إلغاء الرفع.", 499)); };
     xhr.onload = () => {
       cleanup();
+      try { assertApiSession(revision); if (xhr.responseURL) apiRequestUrl(xhr.responseURL); }
+      catch (error) { reject(error); return; }
       let payload: unknown = {};
-      try { payload = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch { payload = {}; }
+      try { payload = xhr.responseText ? JSON.parse(xhr.responseText) : {}; } catch { reject(new ApiError("استجابة الرفع غير مكتملة.", 502)); return; }
       if (xhr.status < 200 || xhr.status >= 300) {
         const message = payload && typeof payload === "object" && "error" in payload ? String((payload as { error: unknown }).error) : "تعذر إكمال الرفع.";
         reject(new ApiError(message, xhr.status));

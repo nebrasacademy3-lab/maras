@@ -251,3 +251,18 @@ test("failed device persistence prevents every password and OAuth authentication
   await assert.rejects(() => runtime.auth.socialLogin("google"), /secure storage/);
   assert.equal(requests, 0);
 });
+
+test("a 200 anonymous identity clears an expired persisted account", async () => {
+  const runtime = authHarness(() => Promise.resolve({ ok: true, user: null }));
+  await runtime.auth.refresh();
+  assert.equal(runtime.states[0], null); assert.equal(runtime.states[1], null);
+  assert.equal(runtime.cleared(), 1); assert.deepEqual(runtime.deleted, ["meras_session_token"]);
+});
+test("login completed after logout cannot restore the old account", async () => {
+  let finish;
+  const runtime = authHarness((_error, path) => path === "/api/mobile/auth/login" ? new Promise(resolve => { finish = resolve; }) : Promise.resolve({ ok: true }));
+  const pending = runtime.auth.login({ identifier: "old@example.test", password: "example-password" });
+  await new Promise(resolve => setTimeout(resolve, 0)); await runtime.auth.logout();
+  finish({ token: "old-session", user: { id: 5 } }); await assert.rejects(pending);
+  assert.equal(runtime.states[0], null); assert.equal(runtime.states[1], null);
+});

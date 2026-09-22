@@ -5,12 +5,14 @@
   },
   "build": {
     "development": {
-      "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_STORE_MODE": "direct",
+        "EXPO_PUBLIC_STORE_MODE": "reader",
         "EXPO_PUBLIC_API_URL": "https://marasalelm.com",
         "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
+      },
+      "android": {
+        "buildType": "apk"
       }
     },
     "preview": {
@@ -19,7 +21,7 @@
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_STORE_MODE": "direct",
+        "EXPO_PUBLIC_STORE_MODE": "reader",
         "EXPO_PUBLIC_API_URL": "https://marasalelm.com",
         "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
       },
@@ -31,15 +33,11 @@
         "EXPO_PUBLIC_STORE_MODE": "reader",
         "EXPO_PUBLIC_API_URL": "https://marasalelm.com",
         "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
-      }
-    },
-    "production-direct": {
-      "distribution": "internal",
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_STORE_MODE": "direct",
-        "EXPO_PUBLIC_API_URL": "https://marasalelm.com",
-        "EXPO_PUBLIC_EAS_PROJECT_ID": "684cf9e9-bf33-40bf-89a7-afba498cf90e"
+      },
+      "distribution": "store",
+      "environment": "production",
+      "android": {
+        "buildType": "app-bundle"
       }
     },
     "staging-reader": {

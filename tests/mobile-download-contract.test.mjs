@@ -6,18 +6,24 @@ const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
 test("protected mobile downloads support Expo Web and privileged request routes", async () => {
-  const [downloads, proxy, packageJson] = await Promise.all([
+  const [downloads, proxy, packageJson, api] = await Promise.all([
     read("mobile/src/lib/downloads.ts"),
     read("proxy.ts"),
     read("mobile/package.json"),
+    read("mobile/src/lib/api.ts"),
   ]);
 
   assert.match(downloads, /Platform\.OS === "web"/);
   assert.match(downloads, /URL\.createObjectURL/);
-  assert.match(downloads, /Sharing\.shareAsync/);
-  assert.match(downloads, /FileSystem\.cacheDirectory \|\| FileSystem\.documentDirectory/);
-  assert.match(downloads, /"x-meras-client": "mobile-v1"/);
-  assert.match(downloads, /"x-meras-platform": Platform\.OS/);
+  assert.match(downloads, /sharing\.shareAsync/);
+  assert.match(downloads, /Paths\.cache/);
+  assert.match(downloads, /writeBytes\(bytes\)/);
+  assert.match(downloads, /file\.delete\(\)/);
+  assert.match(downloads, /authenticatedRequestHeaders\(path/);
+  assert.match(downloads, /assertApiSession\(revision\)/);
+  assert.match(downloads, /requestNativeAdminMfa/);
+  assert.match(api, /"x-meras-client", "mobile-v1"/);
+  assert.match(api, /"x-meras-platform", Platform\.OS/);
   assert.doesNotMatch(downloads, /EncodingType\.Base64/);
   assert.match(proxy, /"\/api\/admin\/"/);
   assert.match(proxy, /"\/api\/supervisor\/"/);

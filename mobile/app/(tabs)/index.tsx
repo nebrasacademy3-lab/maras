@@ -55,7 +55,7 @@ export default function Home() {
         <View pointerEvents="none" style={[styles.orbitOuter, { borderColor: `${colors.onPrimary}22` }]} /><View pointerEvents="none" style={[styles.orbitInner, { borderColor: `${colors.onPrimary}30` }]} />
         <View style={[styles.heroLayout, wide && { flexDirection: rowDirection }]}>
           <View style={styles.heroCopyColumn}>
-            <View style={[styles.kicker, { flexDirection: rowDirection, backgroundColor: `${colors.onPrimary}12`, borderColor: `${colors.onPrimary}40` }]}><View style={[styles.kickerDot, { backgroundColor: colors.onPrimary }]} /><Text style={[styles.kickerText, { color: colors.onPrimary }]}>{platform?.first_platform_claim_text || "أول منصة سعودية رسمية"}</Text></View>
+            <View style={[styles.kicker, { flexDirection: rowDirection, backgroundColor: `${colors.onPrimary}12`, borderColor: `${colors.onPrimary}40` }]}><View style={[styles.kickerDot, { backgroundColor: colors.onPrimary }]} /><Text style={[styles.kickerText, { color: colors.onPrimary }]}>{(DIRECT_COMMERCE_ENABLED && platform?.first_platform_claim_text) || (isRTL ? "مساحة لتعلّم منظّم" : "A space for organized learning")}</Text></View>
             <Text style={[styles.heroTitle, wide && styles.heroTitleWide, width < 380 && { fontSize: 30, lineHeight: 44 }, { color: colors.onPrimary }]}>{first ? "خطوة جديدة،\nوفهم أعمق." : "لكل طموح بداية.\nابدأها بفهم."}</Text>
             <Text style={[styles.heroCopy, { color: colors.onPrimary }]}>{first ? "دروسك وملاحظاتك وتقدمك محفوظة. عُد إلى مسارك في أي وقت، وتعلّم على إيقاعك." : "شرح مواد جامعتك، وأدوات تعينك على الدراسة، ومسارات تفتح لك آفاقًا جديدة. كلها في مراس."}</Text>
             <View style={[styles.heroActions, wide && { flexDirection: rowDirection }]}>
