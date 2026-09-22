@@ -65,7 +65,7 @@ jobs:
           assert int(re.search(r"targetSdkVersion:'(\d+)'", text)[1]) >= 36
           assert 'application-debuggable' not in text
           assert 'com.android.vending.BILLING' not in text
-          for permission in ['READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE']:
+          for permission in ['SYSTEM_ALERT_WINDOW', 'READ_MEDIA_IMAGES', 'READ_MEDIA_VIDEO', 'READ_EXTERNAL_STORAGE', 'WRITE_EXTERNAL_STORAGE']:
               assert 'android.permission.' + permission not in text
           PY
       - name: Install and exercise guest startup on an isolated emulator
