@@ -40,6 +40,13 @@ jobs:
       - name: Prepare emulator and Android SDK
         run: |
           java -version
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          sdkmanager_path=$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager -print -quit)
+          test -n "$sdkmanager_path" && test -x "$sdkmanager_path"
+          tools_dir=$(dirname "$sdkmanager_path")
+          export PATH="$tools_dir:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+          printf '%s\n' "$tools_dir" "$ANDROID_HOME/platform-tools" "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+          printf 'ANDROID_HOME=%s\n' "$ANDROID_HOME" >> "$GITHUB_ENV"
           sudo chmod 666 /dev/kvm
           sdkmanager 'platforms;android-36' 'build-tools;36.0.0' 'system-images;android-36;google_apis;x86_64' 'emulator' > "$RUNNER_TEMP/android-sdk.log"
       - name: Compile native release APK and Android App Bundle
@@ -103,7 +110,7 @@ jobs:
           test -n "$workspace" && test -n "$project"
           scheme=$(basename "$project" .xcodeproj)
           set -o pipefail
-          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/meras-ios" CODE_SIGNING_ALLOWED=NO -quiet
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -derivedDataPath "$RUNNER_TEMP/meras-ios" CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES ARCHS="$(uname -m)" COMPILER_INDEX_STORE_ENABLE=NO -quiet
       - name: Install and exercise guest startup on simulator
         run: bash scripts/ios-startup-check.sh
       - name: Preserve bounded native evidence

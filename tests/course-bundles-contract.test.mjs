@@ -81,7 +81,7 @@ test("checkout trusts only a server bundle quote and persists reconcilable minor
   assert.match(checkout, /kind: "bundle_changed"/);
 });
 
-test("bundle buying is visible in web/direct carts but remains gated from reader builds", async () => {
+test("bundle buying remains on the website and is denied in every native profile", async () => {
   const [webCart, mobileCart, course, mobileApi] = await Promise.all([
     read("components/cart-client.tsx"),
     read("mobile/app/cart.tsx"),
@@ -96,7 +96,8 @@ test("bundle buying is visible in web/direct carts but remains gated from reader
   const reader=await loadMobileApi();
   await assert.rejects(()=>reader.api("/api/checkout",{method:"POST"}),error=>error.status===403);
   assert.equal(reader.requests.length,0);
-  const direct=await loadMobileApi({mode:"direct"});await direct.api("/api/checkout",{method:"POST"});assert.equal(direct.requests.length,1);
+  const nativeDirect=await loadMobileApi({mode:"direct"});await assert.rejects(()=>nativeDirect.api("/api/checkout",{method:"POST"}),error=>error.status===403);assert.equal(nativeDirect.requests.length,0);
+  const website=await loadMobileApi({mode:"direct",platform:"web"});await website.api("/api/checkout",{method:"POST"});assert.equal(website.requests.length,1);
   assert.match(course, /\/api\/waitlist/);
   assert.match(course, /أعلمني عند فتح الاشتراك/);
   assert.match(await read("proxy.ts"), /"\/api\/waitlist"/);

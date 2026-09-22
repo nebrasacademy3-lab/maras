@@ -13,7 +13,7 @@ test("mobile release validation uses the actual reader production configuration"
   assert.match(workflow, /npx expo export/);
 });
 
-test("real Expo config rejects legacy IAP and direct store checkout while allowing reader and internal builds", async () => {
+test("real Expo config rejects direct checkout in store and internal builds while accepting reader", async () => {
   const compiled = ts.transpileModule(read("mobile/app.config.ts"), { compilerOptions: { module: ts.ModuleKind.ESNext, target: ts.ScriptTarget.ES2022 } }).outputText;
   const configure = (await import("data:text/javascript;base64," + Buffer.from(compiled).toString("base64"))).default;
   const names = ["EXPO_PUBLIC_API_URL", "EXPO_PUBLIC_STORE_MODE", "EAS_BUILD_PROFILE"];
@@ -27,8 +27,15 @@ test("real Expo config rejects legacy IAP and direct store checkout while allowi
     assert.throws(() => configure({ config: {} }), /must be reader or direct/);
     process.env.EXPO_PUBLIC_STORE_MODE = "direct";
     assert.throws(() => configure({ config: {} }), /cannot use direct checkout/);
-    process.env.EAS_BUILD_PROFILE = "preview";
-    assert.doesNotThrow(() => configure({ config: {} }));
+    for (const profile of ["development", "preview", "production-direct"]) {
+      process.env.EAS_BUILD_PROFILE = profile;
+      assert.throws(() => configure({ config: {} }), /cannot use direct checkout/);
+    }
+    process.env.EXPO_PUBLIC_STORE_MODE = "reader";
+    for (const profile of ["development", "preview", "production"]) {
+      process.env.EAS_BUILD_PROFILE = profile;
+      assert.doesNotThrow(() => configure({ config: {} }));
+    }
   } finally {
     for (const name of names) { if (saved[name] === undefined) delete process.env[name]; else process.env[name] = saved[name]; }
   }
