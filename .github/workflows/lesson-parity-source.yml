@@ -1,0 +1,33 @@
+name: Lesson parity source
+on:
+  push:
+    branches: [audit/lesson-parity-source-20260922]
+    paths: [.github/workflows/lesson-parity-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: 4697a9ed51146f09e3f90f42f8090634f22ac588
+          persist-credentials: false
+      - run: git archive --format=tar.gz --output="$RUNNER_TEMP/lesson-source.tar.gz" HEAD
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lesson-source
+          path: ${{ runner.temp }}/lesson-source.tar.gz
+          retention-days: 1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22
+      - run: npm ci --no-audit --no-fund
+        working-directory: mobile
+      - run: tar -czf "$RUNNER_TEMP/lesson-mobile-dependencies.tar.gz" mobile/node_modules
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: lesson-mobile-dependencies
+          path: ${{ runner.temp }}/lesson-mobile-dependencies.tar.gz
+          retention-days: 1
