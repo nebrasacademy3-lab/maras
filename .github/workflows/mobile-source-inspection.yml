@@ -13,53 +13,49 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Preserve reviewed hash-bound repair payload
-        run: cat repair/mobile-part-{0,1,2,3,4,5,6}.b64 > "$RUNNER_TEMP/mobile-repair.b64"
-      - name: Materialize only reviewed source files on the pinned parent
+      - name: Preserve reviewed payload
+        run: cp repair/content-report.delta.b64 "$RUNNER_TEMP/content-report.b64"
+      - name: Apply only hash-verified source corrections
         run: |
           set -euo pipefail
-          git fetch origin main
-          test "$(git rev-parse origin/main)" = 12fddaa5e7b8550b224a174cccd8ed095efdee99
-          git switch -c fix/mobile-store-readiness-20260922 origin/main
+          git fetch origin fix/mobile-store-readiness-20260922
+          test "$(git rev-parse origin/fix/mobile-store-readiness-20260922)" = 2eb4f35bd0f9d2c0b4a9b6222b787c0c24f7e67c
+          git switch --detach origin/fix/mobile-store-readiness-20260922
           python3 - <<'PY'
-          import base64, gzip, hashlib, json, os, pathlib, subprocess
-          packed = (pathlib.Path(os.environ['RUNNER_TEMP']) / 'mobile-repair.b64').read_text()
-          # Correct two known transport transcription errors before strict decoding.
-          packed = packed.replace('Xt5rhuiPy', 'Xt5rPy').replace('ftWczNU', 'ftWzNU')
-          assert len(packed) == 43064, len(packed)
-          raw = gzip.decompress(base64.b64decode(packed, validate=True))
-          assert hashlib.sha256(raw).hexdigest() == 'd28f5b7b8e86ba34fdb06cff4a9bd22ad5cf55a1a262958dbc4161f527d72ecb'
-          delta = json.loads(raw)
-          assert delta['base'] == '12fddaa5e7b8550b224a174cccd8ed095efdee99'
-          assert len(delta['files']) == 35
-          paths = []
+          import base64,gzip,hashlib,json,os,pathlib,subprocess
+          encoded=(pathlib.Path(os.environ['RUNNER_TEMP'])/'content-report.b64').read_text()
+          assert len(encoded)==8904
+          raw=gzip.decompress(base64.b64decode(encoded,validate=True))
+          assert hashlib.sha256(raw).hexdigest()=='ca3d4da50a72f46d8de530c4445e778724af75749d43dce01b960aa737ab334e'
+          delta=json.loads(raw)
+          assert delta['base']=='2eb4f35bd0f9d2c0b4a9b6222b787c0c24f7e67c'
+          assert len(delta['files'])==10
+          paths=[]
           for entry in delta['files']:
-              path = pathlib.Path(entry['path'])
+              path=pathlib.Path(entry['path'])
               assert not path.is_absolute() and '..' not in path.parts and not path.is_symlink()
-              assert path.parts[0] in {'.env.example', 'app', 'components', 'lib', 'mobile', 'docs', 'tests'}
+              assert path.parts[0] in {'app','mobile','tests','docs'}
               if entry['before'] is None:
-                  assert not path.exists(), str(path)
-                  old = b''
+                  assert not path.exists()
+                  old=b''
               else:
-                  old = path.read_bytes()
-                  assert hashlib.sha256(old).hexdigest() == entry['before'], str(path)
-              text = old.decode('utf-8')
-              for start, end, replacement in reversed(entry['ops']):
-                  assert 0 <= start <= end <= len(text)
-                  text = text[:start] + replacement + text[end:]
-              output = text.encode('utf-8')
-              assert hashlib.sha256(output).hexdigest() == entry['after'], str(path)
-              path.parent.mkdir(parents=True, exist_ok=True)
+                  old=path.read_bytes()
+                  assert hashlib.sha256(old).hexdigest()==entry['before'],str(path)
+              text=old.decode('utf-8')
+              for start,end,replacement in reversed(entry['ops']):
+                  assert 0<=start<=end<=len(text)
+                  text=text[:start]+replacement+text[end:]
+              output=text.encode('utf-8')
+              assert hashlib.sha256(output).hexdigest()==entry['after'],str(path)
+              path.parent.mkdir(parents=True,exist_ok=True)
               path.write_bytes(output)
-              if entry['executable']:
-                  path.chmod(0o755)
               paths.append(str(path))
-          subprocess.run(['git', 'diff', '--check'], check=True)
-          subprocess.run(['git', 'add', '--', *paths], check=True)
-          print('VERIFIED_MOBILE_REPAIR_FILES', len(paths))
+          subprocess.run(['git','diff','--check'],check=True)
+          subprocess.run(['git','add','--',*paths],check=True)
+          print('VERIFIED_REPORT_REPAIR_FILES',len(paths))
           PY
           git config user.name 'nebrasacademy3-lab'
           git config user.email '310756671+nebrasacademy3-lab@users.noreply.github.com'
-          git commit -m 'fix(mobile): enforce website-only commerce and harden native account boundaries'
-          git push origin HEAD:refs/heads/fix/mobile-store-readiness-20260922
-          git log -1 --format='MOBILE_REPAIR_COMMIT=%H'
+          git commit -m 'fix(mobile): add private in-app AI reporting and remove reader coupon promotion'
+          git push origin HEAD:refs/heads/audit/mobile-reports-ready-20260922
+          git log -1 --format='REPORT_REPAIR_COMMIT=%H'
