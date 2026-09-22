@@ -42,6 +42,7 @@ async function deleteAccount(request: Request) {
   if (!await checkRateLimit("delete-account", `user:${current.id}`, 5, 60 * 60)) return jsonError("محاولات حذف كثيرة. حاول لاحقًا.", 429);
   let payload: Record<string, unknown>;
   try { payload = await readBoundedJsonObject(request); } catch { return jsonError("بيانات الحذف غير صالحة"); }
+  if (payload.userId !== undefined && payload.userId !== current.id) return jsonError("تغيّر الحساب؛ حدّث الصفحة قبل المتابعة.", 409);
   if (payload.confirmation !== "حذف حسابي") return jsonError("اكتب عبارة التأكيد المطلوبة");
   const password = typeof payload.password === "string" ? payload.password : "";
   const db = getDb();

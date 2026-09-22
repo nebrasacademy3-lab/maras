@@ -20,11 +20,11 @@ for (const platform of ["ios", "android"]) test(platform + " release and develop
       }
     }
   }
-  assert.equal(policy.resolveStoreMode({ platform, configuredMode: "direct", development: false, distribution: "internal" }), "direct");
+  assert.equal(policy.resolveStoreMode({ platform, configuredMode: "direct", development: false, distribution: "internal" }), "reader");
   assert.equal(policy.resolveStoreMode({ platform, configuredMode: "direct", development: false }), "reader");
 });
 test("Android consumption-only guidance is text and iOS never offers an external purchase", () => {
-  assert.match(policy.subscriptionAccessMessage("android", "example.test"), /example.test/);
+  assert.doesNotMatch(policy.subscriptionAccessMessage("android", "example.test"), /example.test|عبر موقع|اشترك/);
   assert.doesNotMatch(policy.subscriptionAccessMessage("ios", "example.test"), /example.test|عبر موقع|اشترك/);
 });
 for (const platform of ["ios", "android"]) test(platform + " reader API rejects course and AI checkout before any network request", async () => {
@@ -67,7 +67,8 @@ test("build configuration rejects retired or unsafe commerce modes", () => {
   assert.throws(() => config({ EAS_BUILD_PROFILE: "production", EXPO_PUBLIC_STORE_MODE: "direct" }), /Store-distributed/);
   assert.throws(() => config({ EAS_BUILD_PROFILE: "new-profile", EXPO_PUBLIC_STORE_MODE: "direct" }), /Store-distributed/);
   assert.throws(() => config({ EXPO_PUBLIC_STORE_MODE: "iap" }), /reader or direct/);
-  assert.equal(config({ EAS_BUILD_PROFILE: "preview", EXPO_PUBLIC_STORE_MODE: "direct" }).extra.storeDistribution, "internal");
+  assert.throws(() => config({ EAS_BUILD_PROFILE: "preview", EXPO_PUBLIC_STORE_MODE: "direct" }), /internal native/);
+  assert.equal(config({ EAS_BUILD_PROFILE: "preview" }).extra.storeMode, "reader");
   const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
   assert.equal(manifest.dependencies["react-native-purchases"], undefined);
 });

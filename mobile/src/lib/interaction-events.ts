@@ -31,3 +31,8 @@ export async function promptNative(title: string, message = "", defaultValue = "
   const result = await open({ kind: "prompt", title, message, defaultValue });
   return typeof result === "string" ? result : null;
 }
+
+/** Explicit permission before sending questions/files to the third-party AI provider. */
+export async function requestNativeAiConsent() {
+  return await open({ kind: "alert", title: "خصوصية أدوات الذكاء الاصطناعي", message: "عند استخدام المساعد أو أدوات المذاكرة، تُرسل أسئلتك والنصوص أو الملفات التي تختار معالجتها إلى Google Gemini لتوليد الإجابة. لا ترفع هويات أو بيانات صحية أو معلومات حساسة لا تملك إذن مشاركتها. قد تخطئ الإجابات؛ راجعها مع مصادرك. يمكنك الإلغاء الآن، ومراجعة سياسة الخصوصية من إعدادات الحساب. هل توافق لهذه الجلسة؟", buttons: [{ text: "إلغاء", style: "cancel" }, { text: "أوافق وأتابع" }] }) === true;
+}

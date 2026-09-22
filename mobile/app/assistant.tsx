@@ -1,3 +1,4 @@
+import { readerReply } from "@/src/lib/reader-guide";
 import { Ionicons } from "@expo/vector-icons";
 import * as Linking from "expo-linking";
 import { router } from "expo-router";
@@ -19,11 +20,11 @@ type Message = { id: string; role: "user" | "assistant"; text: string; actions?:
 
 const initialMessage = (isRTL: boolean): Message => isRTL ? {
   id: "welcome-ar", role: "assistant",
-  text: "أهلًا بك، أنا مساعد مراس. اسألني بطريقتك عن الجامعات والتخصصات والمواد والدروس والتسجيل والدفع والمشغل وطلب مادة والدعم.",
+  text: "أهلًا بك، أنا مساعد مراس. اسألني بطريقتك عن الجامعات والتخصصات والمواد والدروس والتسجيل والمشغل وطلب مادة والدعم.",
   suggestions: ["ما لقيت مادتي", "كيف أشاهد درسًا مجانيًا؟", "كيف أتواصل مع الدعم؟"],
 } : {
   id: "welcome-en", role: "assistant",
-  text: "Hello, I’m the Meras assistant. Ask naturally about institutions, majors, courses, lessons, registration, payment, playback, or support.",
+  text: "Hello, I’m the Meras assistant. Ask naturally about institutions, majors, courses, lessons, registration, playback, or support.",
   suggestions: ["Find a course", "How can I watch a free lesson?", "I need support"],
 };
 
@@ -54,11 +55,12 @@ export default function Assistant() {
     setSending(true);
     scrollToBottom();
     try {
-      const reply = await api<Reply>("/api/assistant", {
+      const received = await api<Reply>("/api/assistant", {
         method: "POST",
         body: jsonBody({ question: text, history }),
         timeoutMs: 30_000,
       });
+      const reply = DIRECT_COMMERCE_ENABLED ? received : readerReply(received, text);
       setMessages((rows) => [...rows, {
         id: `a-${Date.now()}-${Math.random()}`,
         role: "assistant",

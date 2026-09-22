@@ -1,8 +1,7 @@
 export type StoreMode = "reader" | "direct";
 
-/** Native checkout requires an explicit internal distribution. Debug mode and
- * Expo Go do not override the storefront policy; stale IAP settings fail closed.
- */
+/** Purchases belong to the website. No native profile, debug flag or remote
+ * setting may turn an installed phone/tablet app into a checkout client. */
 export function resolveStoreMode(options: {
   platform: string;
   executionEnvironment?: string;
@@ -11,17 +10,10 @@ export function resolveStoreMode(options: {
   distribution?: unknown;
   readerPreview?: boolean;
 }): StoreMode {
-  const requested = String(options.configuredMode || "reader").trim().toLowerCase();
-  if (options.readerPreview) return "reader";
-  if (options.platform === "web") return "direct";
-  return requested === "direct" && options.distribution === "internal" ? "direct" : "reader";
+  return options.platform === "web" && !options.readerPreview ? "direct" : "reader";
 }
 
-/** Google allows unlinked purchasing information in consumption-only apps.
- * iOS has no external-purchase CTA without an applicable approved entitlement.
- */
-export function subscriptionAccessMessage(platform: string, websiteHost: string): string {
-  return platform === "android"
-    ? "الاشتراك متاح عبر موقع مراس " + websiteHost + ". بعد الاشتراك، سجّل الدخول بالحساب نفسه لتجد محتواك هنا. لا تتوفر عمليات شراء داخل التطبيق."
-    : "شاهد المواد واستخدم الخدمات المفعلة في حسابك. تظهر اشتراكاتك الحالية تلقائيًا عند تسجيل الدخول بالحساب نفسه.";
+/** The same neutral access guidance is shown to every native user, not just reviewers. */
+export function subscriptionAccessMessage(_platform: string, _websiteHost: string): string {
+  return "شاهد المواد واستخدم الخدمات المفعلة في حسابك. تظهر اشتراكاتك الحالية تلقائيًا عند تسجيل الدخول بالحساب نفسه.";
 }

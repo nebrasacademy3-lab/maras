@@ -1,6 +1,6 @@
 {
   "name": "meras-alelm-mobile",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "main": "expo-router/entry",
   "scripts": {
@@ -13,9 +13,7 @@
     "doctor": "expo-doctor",
     "build:android:test": "eas build --platform android --profile preview",
     "build:android": "eas build --platform android --profile production",
-    "build:ios": "eas build --platform ios --profile production",
-    "build:android:direct": "eas build --platform android --profile production-direct",
-    "build:ios:direct": "eas build --platform ios --profile production-direct"
+    "build:ios": "eas build --platform ios --profile production"
   },
   "dependencies": {
     "@expo/vector-icons": "15.1.1",
