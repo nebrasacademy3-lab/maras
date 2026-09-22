@@ -1,0 +1,59 @@
+name: Materialize reviewed lesson parity
+on:
+  push:
+    branches: [audit/lesson-parity-source-20260922]
+    paths: [.github/workflows/lesson-parity-materialize.yml]
+permissions:
+  contents: write
+jobs:
+  materialize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Apply exact reviewed source
+        run: |
+          set -euo pipefail
+          cat repair/lesson-parity-{0,1,2,3,4}.b64 > "$RUNNER_TEMP/lesson-delta.b64"
+          git fetch origin main
+          test "$(git rev-parse origin/main)" = 4697a9ed51146f09e3f90f42f8090634f22ac588
+          git switch -c feat/lesson-tools-secure-player-20260922 origin/main
+          python3 - <<'PY'
+          import base64, lzma, hashlib, json, pathlib, os, subprocess
+          encoded = (pathlib.Path(os.environ['RUNNER_TEMP']) / 'lesson-delta.b64').read_text()
+          raw = lzma.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(raw).hexdigest() == '10da1e575bd3df190547e5457fa3546eb05b923c84ff76877d0fb29d821c6ce1'
+          delta = json.loads(raw)
+          assert delta['base'] == '4697a9ed51146f09e3f90f42f8090634f22ac588'
+          assert len(delta['files']) == 66
+          paths = []
+          for entry in delta['files']:
+              path = pathlib.Path(entry['path'])
+              assert not path.is_absolute() and '..' not in path.parts
+              assert path.parts[0] in {'app', 'components', 'docs', 'lib', 'mobile', 'scripts', 'tests'}
+              assert not any(p.is_symlink() for p in [path, *path.parents])
+              if entry['before'] is None:
+                  assert not path.exists(), str(path)
+                  old = b''
+              else:
+                  old = path.read_bytes()
+                  assert hashlib.sha256(old).hexdigest() == entry['before'], str(path)
+              lines = old.decode('utf-8').splitlines(keepends=True)
+              for start, end, replacement in reversed(entry['ops']):
+                  assert 0 <= start <= end <= len(lines)
+                  lines[start:end] = [replacement]
+              output = ''.join(lines).encode('utf-8')
+              assert hashlib.sha256(output).hexdigest() == entry['after'], str(path)
+              path.parent.mkdir(parents=True, exist_ok=True)
+              path.write_bytes(output)
+              paths.append(str(path))
+          assert len(set(paths)) == 66
+          subprocess.run(['git', 'diff', '--check'], check=True)
+          subprocess.run(['git', 'add', '--', *paths], check=True)
+          print('VERIFIED_LESSON_FILES', len(paths))
+          PY
+          git config user.name 'nebrasacademy3-lab'
+          git config user.email '310756671+nebrasacademy3-lab@users.noreply.github.com'
+          git commit -m 'feat: unify lesson tools and harden web and native playback'
+          git push origin HEAD:refs/heads/feat/lesson-tools-secure-player-20260922
+          git log -1 --format='LESSON_PARITY_COMMIT=%H'
