@@ -11,7 +11,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Materialize reviewed delta from pinned repair parent
+      - name: Materialize reviewed source from pinned repair parent
         run: |
           set -euo pipefail
           cp repair/paged-renderer.delta.b64 "$RUNNER_TEMP/paged-delta.b64"
@@ -43,12 +43,15 @@ jobs:
                   text = text[:start] + replacement + text[end:]
               output = text.encode('utf-8')
               assert hashlib.sha256(output).hexdigest() == entry['after'], str(path)
+              if path.parts[0] == '.github':
+                  continue
               path.parent.mkdir(parents=True, exist_ok=True)
               path.write_bytes(output)
               paths.append(str(path))
+          assert len(paths) == 8
           subprocess.run(['git', 'diff', '--check'], check=True)
           subprocess.run(['git', 'add', '--', *paths], check=True)
-          print('VERIFIED_PAGED_REPAIR_FILES', len(paths))
+          print('VERIFIED_PAGED_SOURCE_FILES', len(paths))
           PY
           git config user.name 'nebrasacademy3-lab'
           git config user.email '310756671+nebrasacademy3-lab@users.noreply.github.com'
