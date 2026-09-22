@@ -26,7 +26,9 @@ for (const name of chosen) {
       await page.goto(`${origin}/study-tools?conversation=${conversationId}`, { waitUntil: "domcontentloaded" });
       const legacy = page.locator(`a[href="/api/ai/artifacts/${artifactId}/download"]`);
       await legacy.waitFor({ state: "attached" });
-      const details = legacy.locator("xpath=ancestor::details"); await details.locator("summary").click();
+      const details = legacy.locator("xpath=ancestor::*[self::article or self::details][1]");
+      await details.waitFor({ state: "attached" });
+      if (await details.evaluate(element => element.tagName === "DETAILS" && !element.open)) await details.locator("summary").click();
       const button = details.getByRole("button", { name: "تنزيل PDF", exact: true }); await button.waitFor(); return { details, button };
     };
     let { details, button } = await openResult();
