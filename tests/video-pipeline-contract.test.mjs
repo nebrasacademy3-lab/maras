@@ -1,8 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import vm from "node:vm";
-import ts from "typescript";
 
 const root = new URL("..", import.meta.url);
 const read = (relative) => readFile(new URL(relative, root), "utf8");
@@ -39,7 +37,7 @@ test("worker creates HLS renditions without making the original unavailable", as
   assert.match(worker, /runVideoProcessingBatch/);
 });
 
-test("signed HLS delivery rewrites child URLs and keeps source fallback", async () => {
+test("signed HLS delivery rewrites child URLs and never falls back to the private source", async () => {
   const [session, hls, player, nativePlayer] = await Promise.all([read("app/api/video/session/route.ts"), read("app/api/video/[lessonId]/hls/[...path]/route.ts"), read("components/secure-video-player.tsx"), read("mobile/app/lesson/[courseSlug]/[lessonId].tsx")]);
   assert.match(session, /sourceUrl/);
   assert.match(session, /hlsUrl/);
@@ -51,17 +49,12 @@ test("signed HLS delivery rewrites child URLs and keeps source fallback", async 
   assert.match(player, /import\("hls\.js"\)/);
   assert.match(player, /Hls\.isSupported\(\)/);
   assert.match(player, /posterSource/);
-  const tree = ts.createSourceFile("player.tsx", nativePlayer, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
-  let contentType;
-  function find(node) {
-    if (ts.isPropertyAssignment(node) && node.name.getText(tree) === "contentType") contentType = node.initializer.getText(tree);
-    ts.forEachChild(node, find);
-  }
-  find(tree);
-  assert.ok(contentType, "playback source specifies a content type");
-  const exported = {};
-  vm.runInNewContext(ts.transpileModule("exports.choose = (session) => " + contentType, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText, { exports: exported, apiRequestUrl: (path) => new URL(path, "https://example.test") });
-  assert.equal(exported.choose({ adaptive: true, streamUrl: "/api/video/lesson/hls/master.m3u8?token=test" }), "hls");
-  assert.equal(exported.choose({ adaptive: true, streamUrl: "/api/video/lesson?token=test" }), "progressive", "Expo Web can receive the original source even when HLS exists");
-  assert.equal(exported.choose({ adaptive: false, streamUrl: "/api/video/lesson?token=test" }), "progressive");
+  assert.match(session, /const sourceUrl = hlsUrl!/);
+  assert.match(nativePlayer, /replaceLessonVideo/);
+  assert.match(nativePlayer, /contentType:"hls"/);
+  const transport=await read("mobile/src/lib/lesson-video-transport.web.ts");
+  assert.match(transport, /import\("hls\.js"\)/);
+  assert.match(transport, /apiRequestUrl\(url\)/);
+  assert.match(transport, /signal\.addEventListener\("abort",dispose/);
+
 });

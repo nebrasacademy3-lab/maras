@@ -39,7 +39,7 @@ let sessionRevision = 0;
 let aiConsentRevision = -1;
 let aiConsent: { revision: number; promise: Promise<boolean> } | null = null;
 function needsAiConsent(path: string, method: string) {
-  return Platform.OS !== "web" && ["POST", "PUT", "PATCH"].includes(method.toUpperCase()) && (path.startsWith("/api/ai/") || path === "/api/assistant");
+  return Platform.OS !== "web" && ["POST", "PUT", "PATCH"].includes(method.toUpperCase()) && (path.startsWith("/api/ai/") || path === "/api/assistant" || /^\/api\/course-resources\/\d+\/(?:tutor|study)$/.test(path));
 }
 async function requireAiConsent(path: string, method: string) {
   if (!needsAiConsent(path, method)) return;

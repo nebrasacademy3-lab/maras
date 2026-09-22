@@ -1,6 +1,6 @@
 /** Real private-media pipeline/HTTP/playback QA. No production DB, storage or provider keys. */
 import assert from "node:assert/strict";
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID, createHash, createDecipheriv } from "node:crypto";
 import { execFile } from "node:child_process";
 import { request as nodeHttpRequest } from "node:http";
 import { promisify } from "node:util";
@@ -102,19 +102,15 @@ async function verify() {
     const requestHeaders = { ...headers(token, native), ...(native ? {} : { origin }), "content-type": "application/json" };
     const response = await (native ? nativeHttp("/api/video/session", requestHeaders, bodyText) : fetch(origin + "/api/video/session", { method: "POST", headers: requestHeaders, body: bodyText }));
     assert.equal(response.status, 200);
-    const body = await response.json() as { sourceUrl: string; hlsUrl: string; thumbnailUrl: string; streamUrl: string; adaptive: boolean };
+    const body = await response.json() as { sourceUrl: string; hlsUrl: string; thumbnailUrl: string; streamUrl: string; adaptive: boolean; encrypted: boolean; qualities: {label:string}[] };
     for (const path of [body.sourceUrl, body.hlsUrl, body.thumbnailUrl]) assert.ok(path.startsWith(`/api/video/${f.lesson}`));
-    assert.equal(body.adaptive, true); return body;
+    assert.equal(body.adaptive, true); assert.equal(body.encrypted, true); return body;
   }
   const web = await session();
-  const full = await request(web.sourceUrl), bytes = Buffer.from(await full.arrayBuffer());
-  assert.equal(full.status, 200); assert.equal(bytes.length, f.size); assert.equal(digest(bytes), f.digest);
-  const partial = await request(web.sourceUrl, f.user.token, { range: "bytes=8-63" });
-  assert.equal(partial.status, 206); assert.equal(partial.headers.get("content-range"), `bytes 8-63/${f.size}`);
-  assert.deepEqual(Buffer.from(await partial.arrayBuffer()), bytes.subarray(8, 64));
-  const head = await request(web.sourceUrl, f.user.token, {}, "HEAD"); assert.equal(head.status, 200); assert.equal(Number(head.headers.get("content-length")), f.size); assert.equal((await head.arrayBuffer()).byteLength, 0);
-  const invalid = await request(web.sourceUrl, f.user.token, { range: `bytes=${f.size}-` }); assert.equal(invalid.status, 416); await invalid.body?.cancel();
-  pass("protected MP4 bytes, Range, HEAD and invalid-range responses match the actual stored file");
+  const originalUrl = new URL(web.hlsUrl, origin); originalUrl.pathname = `/api/video/${f.lesson}`;
+  for (const method of ["GET","HEAD"]) { const original = await request(originalUrl.pathname + originalUrl.search, f.user.token, {range:"bytes=8-63"}, method); assert.equal(original.status,403); await original.body?.cancel(); }
+  const head = await request(web.hlsUrl, f.user.token, {}, "HEAD"); assert.equal(head.status,200); assert.equal((await head.arrayBuffer()).byteLength,0);
+  pass("original MP4 and range requests are denied, while encrypted HLS HEAD remains usable");
   await denied(web.sourceUrl, 401, ""); await denied(web.sourceUrl, 403, f.other.token);
   await denied(web.hlsUrl, 401, ""); await denied(web.hlsUrl, 403, f.other.token);
   const master = await (await request(web.hlsUrl)).text();
@@ -125,12 +121,20 @@ async function verify() {
   const segmentUrl = new URL(segmentPath, variantUrl); assert.equal(segmentUrl.origin, origin); assert.ok(segmentUrl.searchParams.get("token"));
   const segment = segmentUrl.pathname + segmentUrl.search;
   const response = await request(segment); assert.equal(response.status, 200);
-  const segmentFile = resolve(output, "received-segment.ts"); writeFileSync(segmentFile, Buffer.from(await response.arrayBuffer()));
+  const encrypted = Buffer.from(await response.arrayBuffer());
+  const keyLine = /^#EXT-X-KEY:METHOD=AES-128,URI="([^"]+)",IV=0x([a-f0-9]{32})$/m.exec(variant); assert.ok(keyLine,"segment playlist declares an authorized AES key and explicit IV");
+  const keyUrl = new URL(keyLine[1],variantUrl), keyPath = keyUrl.pathname+keyUrl.search;
+  await denied(keyPath,401,""); await denied(keyPath,403,f.other.token);
+  const keyResponse=await request(keyPath);assert.equal(keyResponse.status,200);assert.match(keyResponse.headers.get("cache-control")||"",/no-store/);
+  const keyBytes=Buffer.from(await keyResponse.arrayBuffer());assert.equal(keyBytes.length,16);
+  const decipher=createDecipheriv("aes-128-cbc",keyBytes,Buffer.from(keyLine[2],"hex"));
+  const clear=Buffer.concat([decipher.update(encrypted),decipher.final()]);assert.notDeepEqual(encrypted,clear);
+  const segmentFile = resolve(output, "received-segment.ts"); writeFileSync(segmentFile, clear);
   const { stdout } = await run("ffprobe", ["-v", "error", "-show_entries", "stream=codec_name", "-of", "json", segmentFile], { timeout: 15000 });
   const codecs = JSON.parse(stdout) as { streams: { codec_name: string }[] };
   assert.ok(codecs.streams.some(stream => stream.codec_name === "h264")); assert.ok(codecs.streams.some(stream => stream.codec_name === "aac"));
   await denied(segment, 401, ""); await denied(segment, 403, f.other.token);
-  pass("signed HLS manifests preserve grants; actual HTTP segment bytes contain decodable H264 and AAC and reject other accounts");
+  pass("encrypted HLS decrypts to real H264/AAC only with the session-authorized key; other accounts cannot fetch segments or keys");
   const browserTested = !process.argv.includes("--http-only");
   if (browserTested) {
   const { chromium } = await import("playwright");
@@ -154,8 +158,8 @@ async function verify() {
     await page.getByRole("button", { name: "الإعدادات", exact: true }).click();
     await page.getByRole("button", { name: "1.5×", exact: true }).click();
     assert.equal(await page.locator("video").evaluate((video: HTMLVideoElement) => video.playbackRate), 1.5);
-    await page.getByRole("button", { name: "الأصلية", exact: true }).click();
-    await page.waitForFunction(() => { const video = document.querySelector("video"); return video && video.readyState >= 2 && video.currentSrc.includes("/api/video/") && !video.currentSrc.includes("/hls/"); });
+    await page.getByRole("button", { name: web.qualities[0].label, exact: true }).click();
+    await page.waitForFunction(() => { const video = document.querySelector("video"); return video && video.readyState >= 2 && video.playbackRate === 1.5 && video.paused; });
     const seek = page.getByRole("slider", { name: "التقدم في الفيديو", exact: true });
     const seekBounds = await seek.boundingBox(); assert.ok(seekBounds);
     await seek.click({ position: { x: seekBounds.width / 2, y: seekBounds.height / 2 } });
@@ -171,7 +175,7 @@ async function verify() {
       await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.equal(clientErrors, 0);
-    pass("Chromium actually decodes HLS, changes speed/quality, seeks, plays the original MP4 and saves completion through the player");
+    pass("Chromium decodes session-encrypted HLS, preserves speed and pause across quality changes, seeks, and saves completion");
   } finally { await browser.close(); }
   }
   const native = await session(true); assert.ok(native.streamUrl === native.hlsUrl, "Native session must choose protected HLS");
@@ -189,10 +193,10 @@ async function verify() {
     else await db.delete(s.platformSettings).where(eq(s.platformSettings.key, "content_view_mode"));
   }
   await db.update(s.courseAccess).set({ revokedAt: now() }).where(and(eq(s.courseAccess.userId, f.user.id), eq(s.courseAccess.courseSlug, f.course)));
-  for (const path of [web.sourceUrl, web.hlsUrl, segment]) await denied(path, 403);
+  for (const path of [web.sourceUrl, web.hlsUrl, segment, keyPath]) await denied(path, 403);
   await auth.revokeSession(new Request(origin, { headers: headers() }));
   await denied(web.sourceUrl, 401);
-  pass("previously issued MP4/HLS/segment grants stop after access or session revocation");
+  pass("previously issued HLS/segment/key grants stop after access or session revocation");
   writeFileSync(resolve(output, "report.json"), JSON.stringify({ passed: checks.length, checks, source: { bytes: f.size, duration: f.duration, sha256: f.digest }, ffmpeg: f.ffmpeg, browser: browserTested ? "Chromium real decoder, not mobile hardware" : "NOT RUN (--http-only); not a full acceptance pass", storage: "isolated local private files", liveProviders: false }, null, 2));
 }
 try {

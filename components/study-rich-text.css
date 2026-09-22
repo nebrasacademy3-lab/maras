@@ -1,0 +1,19 @@
+.study-rich-text *{box-sizing:border-box}
+.study-rich-text{margin:0;padding:2px;font-family:system-ui,-apple-system,'Noto Sans Arabic',Tahoma,sans-serif;font-size:16px;line-height:1.95;overflow-wrap:anywhere}
+.study-rich-text p{margin:.35em 0 .75em}
+.study-rich-text h2,.study-rich-text h3,.study-rich-text h4,.study-rich-text h5,.study-rich-text h6{line-height:1.55;margin:1em 0 .5em}
+.study-rich-text pre,.study-rich-text code{font-family:ui-monospace,monospace;font-size:.92em}
+.study-rich-text pre{white-space:pre;overflow:auto;padding:12px;border:1px solid currentColor;border-radius:12px}
+.study-rich-text code{white-space:pre-wrap}
+.study-rich-text .math{display:inline-block;max-width:100%;overflow-x:auto;vertical-align:middle}
+.study-rich-text .display-math,.study-rich-text .equation{display:block;text-align:center;overflow-x:auto;max-width:100%;margin:.8em 0;padding:.25em}
+.study-rich-text .math-source{white-space:pre-wrap}
+.study-rich-text .table-scroll{max-width:100%;overflow-x:auto}
+.study-rich-text table{border-collapse:collapse;min-width:100%;font-size:.92em}
+.study-rich-text th,.study-rich-text td{border:1px solid #9aa5b5;padding:9px;min-width:110px;vertical-align:top}
+.study-rich-text blockquote{margin:12px 0;padding:8px 16px;border-inline-start:3px solid #6e81ba}
+.study-rich-text hr{border:0;border-top:1px solid #9aa5b5;margin:20px 0}
+.study-rich-text math{font-family:math}
+.study-rich-text math[display=block]{overflow-x:auto;display:block}
+.study-rich-text .katex{max-width:100%}
+.study-rich-text{min-width:0;max-width:100%;color:inherit}

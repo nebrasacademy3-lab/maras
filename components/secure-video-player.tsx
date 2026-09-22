@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check, Gauge, LoaderCircle, Maximize, Minimize, Pause, Play, RefreshCw, RotateCcw, RotateCw, Settings, ShieldCheck, Volume1, Volume2, VolumeX } from "lucide-react";
+import { createPlayerGestures } from "@/lib/player-gestures";
+import { boundedSeek, playbackQualitySources, type PlaybackSession } from "@/lib/lesson-experience";
 import { BrandLockup } from "./brand-logo";
 import { usePlayerFullscreen } from "./use-player-fullscreen";
 import "./secure-video-player.css";
@@ -9,7 +11,7 @@ import "./secure-video-player.css";
 export type VideoSeekRequest = { seconds: number; nonce: number };
 type SessionQuality = { label: string; width: number; height: number; bitrateKbps: number };
 type SessionProcessing = { status: string; progress: number | null; message: string };
-type SessionResponse = { streamUrl?: string; sourceUrl?: string; hlsUrl?: string; thumbnailUrl?: string; adaptive?: boolean; qualities?: SessionQuality[]; expiresAt?: string; processing?: SessionProcessing; error?: string };
+type SessionResponse = { streamUrl?: string; sourceUrl?: string; hlsUrl?: string; thumbnailUrl?: string; adaptive?: boolean; qualities?: SessionQuality[]; expiresAt?: string; processing?: SessionProcessing; branding?: {whatsapp:string}; error?: string };
 type Props = {
   title: string;
   studentLabel?: string;
@@ -29,7 +31,7 @@ const formatTime = (value: number) => {
   return hours > 0 ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}` : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
-export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", preview = false, source, courseSlug, lessonId, seekRequest, onTimeChange }: Props) {
+export function SecureVideoPlayer({ title, preview = false, source, courseSlug, lessonId, seekRequest, onTimeChange }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const shellRef = useRef<HTMLDivElement>(null);
   const hlsEngineRef = useRef<{ destroy: () => void } | null>(null);
@@ -42,6 +44,20 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   const [quality, setQuality] = useState(source ? "الأصلية" : "تلقائي");
   const [settings, setSettings] = useState(false);
   const [watermark, setWatermark] = useState(0);
+  const [platformWhatsapp,setPlatformWhatsapp] = useState("");
+  const [gestureHint,setGestureHint] = useState("");
+  const selectedQuality=useRef("تلقائي");
+  const holdTimer=useRef<ReturnType<typeof setTimeout>|null>(null), hintTimer=useRef<ReturnType<typeof setTimeout>|null>(null);
+  const gestureRef = useRef<ReturnType<typeof createPlayerGestures> | null>(null);
+  useEffect(() => {
+    const gestures = createPlayerGestures({rate:()=>videoRef.current?.playbackRate||1,playing:()=>Boolean(videoRef.current&&!videoRef.current.paused),setRate:value=>{if(videoRef.current)videoRef.current.playbackRate=value;},seek:delta=>{const video=videoRef.current;if(video)video.currentTime=boundedSeek(video.currentTime,delta,video.duration);},hint:text=>{setGestureHint(text);if(hintTimer.current)clearTimeout(hintTimer.current);if(text&&!text.startsWith("2×"))hintTimer.current=setTimeout(()=>setGestureHint(""),1000);}});
+    gestureRef.current = gestures;
+    return () => {
+      if (holdTimer.current) clearTimeout(holdTimer.current);
+      if (hintTimer.current) clearTimeout(hintTimer.current);
+      gestures.cancel(); gestureRef.current = null;
+    };
+  }, []);
   const [hasError, setHasError] = useState(false);
   const [streamSource, setStreamSource] = useState(source || "");
   const [originalSource, setOriginalSource] = useState(source || "");
@@ -65,11 +81,10 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   }, []);
 
   useEffect(() => {
-    if (preview) return;
-    const hide = () => { if (document.hidden) { setPrivacyCovered(true); videoRef.current?.pause(); } else window.setTimeout(() => setPrivacyCovered(false), 180); };
+    const hide = () => { if (document.hidden) { setPrivacyCovered(true); videoRef.current?.pause(); gestureRef.current?.cancel(); } else window.setTimeout(() => setPrivacyCovered(false), 180); };
     document.addEventListener("visibilitychange", hide);
     return () => document.removeEventListener("visibilitychange", hide);
-  }, [preview]);
+  }, []);
 
   useEffect(() => {
     if (source || !courseSlug || !lessonId) return;
@@ -93,17 +108,17 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
         const supportsNativeHls = Boolean(data.hlsUrl && videoRef.current?.canPlayType("application/vnd.apple.mpegurl"));
         const supportsManagedHls = Boolean(data.hlsUrl && typeof window.MediaSource !== "undefined");
         const adaptivePlayback = supportsNativeHls || supportsManagedHls;
-        const sources: Record<string, string> = { "الأصلية": data.sourceUrl || data.streamUrl };
-        if (adaptivePlayback && data.hlsUrl) {
-          sources["تلقائي"] = data.hlsUrl;
-          for (const item of data.qualities || []) sources[item.label] = data.hlsUrl.replace(/\/master\.m3u8(?=\?|$)/, `/${item.label}/index.m3u8`);
-        }
+        if (!adaptivePlayback && data.hlsUrl) throw new Error("هذا المتصفح لا يدعم البث المشفّر. افتح مراس في متصفح حديث.");
+        const sources = playbackQualitySources(data as PlaybackSession);
+        const nextQuality = sources[selectedQuality.current] ? selectedQuality.current : Object.keys(sources)[0];
         setQualitySources(sources);
-        setQuality(adaptivePlayback ? "تلقائي" : "الأصلية");
+        selectedQuality.current = nextQuality;
+        setQuality(nextQuality);
+        setPlatformWhatsapp(data.branding?.whatsapp || "");
         setPosterSource(data.thumbnailUrl || "");
-        setOriginalSource(data.sourceUrl || data.streamUrl);
+        setOriginalSource("");
         setManagedHls(Boolean(supportsManagedHls && !supportsNativeHls));
-        setStreamSource(adaptivePlayback && data.hlsUrl ? data.hlsUrl : data.sourceUrl || data.streamUrl);
+        setStreamSource(sources[nextQuality]);
         setSessionLoading(false);
       } catch (caught) {
         if ((caught as Error).name === "AbortError") return;
@@ -136,16 +151,14 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
     }
     let disposed = false;
     const fallback = () => {
-      if (disposed || !originalSource) return;
-      if (!pendingPlaybackRef.current) pendingPlaybackRef.current = { seconds: video.currentTime || 0, playing: !video.paused };
-      setManagedHls(false);
-      setQuality("الأصلية");
-      setStreamSource(originalSource);
+      if (disposed) return;
+      setHasError(true);
+      setPlaybackMessage("تعذر تشغيل البث المشفّر. أعد المحاولة؛ لن يتحول المشغل إلى رابط الملف الأصلي.");
     };
     void import("hls.js").then(({ default: Hls }) => {
       if (disposed) return;
       if (!Hls.isSupported()) { fallback(); return; }
-      const engine = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 90, maxBufferLength: 45 });
+      const engine = new Hls({ enableWorker: true, lowLatencyMode: false, backBufferLength: 30, maxBufferLength: 30 });
       hlsEngineRef.current = engine;
       engine.on(Hls.Events.ERROR, (_event, data) => { if (data.fatal) fallback(); });
       engine.attachMedia(video);
@@ -175,9 +188,10 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
     try { if (video.paused) await video.play(); else video.pause(); }
     catch { setPlaybackMessage("لم يبدأ التشغيل. اضغط تشغيل مجددًا، وتحقق من اتصالك إذا استمرت المشكلة."); }
   };
-  const jump = (seconds: number) => { if (videoRef.current) videoRef.current.currentTime = Math.max(0, Math.min(videoRef.current.duration || 0, videoRef.current.currentTime + seconds)); };
+  const jump = (seconds: number) => { if (videoRef.current) videoRef.current.currentTime = boundedSeek(videoRef.current.currentTime, seconds, videoRef.current.duration); };
   const changeRate = (value: number) => { setRate(value); if (videoRef.current) videoRef.current.playbackRate = value; };
   const changeQuality = (value: string) => {
+    selectedQuality.current=value;
     const nextSource = qualitySources[value];
     if (!nextSource || nextSource === streamSource) { setQuality(value); return; }
     const video = videoRef.current;
@@ -206,9 +220,9 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
   return (
     <div ref={shellRef} className={`secure-player ${fullscreen ? "is-fullscreen" : ""} ${fallbackFullscreen ? "browser-fullscreen" : ""} ${rotated ? "video-rotated" : ""}`} onContextMenu={(event) => event.preventDefault()} onKeyDown={(event) => {
       if (event.altKey || event.ctrlKey || event.metaKey || (event.target instanceof Element && event.target.closest("button,input,select,textarea,a,[contenteditable]"))) return;
-      if (event.key === " ") { event.preventDefault(); void togglePlay(); }
-      if (event.key === "ArrowRight") { event.preventDefault(); jump(-10); }
-      if (event.key === "ArrowLeft") { event.preventDefault(); jump(10); }
+      if (event.key === " " || event.key.toLowerCase() === "k") { event.preventDefault(); void togglePlay(); }
+      if (event.key === "ArrowRight" || event.key.toLowerCase() === "l") { event.preventDefault(); jump(10); }
+      if (event.key === "ArrowLeft" || event.key.toLowerCase() === "j") { event.preventDefault(); jump(-10); }
       if (event.key.toLowerCase() === "m") toggleMute();
       if (event.key.toLowerCase() === "f") { event.preventDefault(); void fullScreen(); }
       if (event.key.toLowerCase() === "r" && fullscreen) toggleRotation();
@@ -216,10 +230,12 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
       {fullscreen && <button type="button" className="video-exit-fullscreen" onClick={() => void closeFullscreen()} aria-label="تصغير الفيديو"><Minimize size={18} /><span>تصغير</span></button>}
       {(fullscreenMessage || playbackMessage) && <p className="video-action-message" role="status">{fullscreenMessage || playbackMessage}</p>}
       <div className="secure-player-stage">
-      <video ref={videoRef} src={managedHls ? undefined : streamSource || undefined} poster={posterSource || undefined} playsInline preload="auto" disablePictureInPicture disableRemotePlayback controlsList="nodownload noremoteplayback nofullscreen" onPlay={() => { setPlaying(true); setPlaybackMessage(""); }} onPause={() => setPlaying(false)} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; setTime(current); onTimeChange?.(current); if (current - lastSavedRef.current >= 15) { lastSavedRef.current = current; saveProgress(Math.floor(current)); } }} onLoadedMetadata={(event) => { const pending = pendingPlaybackRef.current; if (pending) { event.currentTarget.currentTime = Math.min(event.currentTarget.duration || pending.seconds, pending.seconds); pendingPlaybackRef.current = null; if (pending.playing) void event.currentTarget.play().catch(() => undefined); } event.currentTarget.playbackRate = rate; setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0); setHasError(false); }} onCanPlay={() => setHasError(false)} onEnded={(event) => { setPlaying(false); saveProgress(Math.floor(event.currentTarget.duration), true); }} onError={() => { if (streamSource && !managedHls) setHasError(true); }} />
+      <video ref={videoRef} src={managedHls ? undefined : streamSource || undefined} poster={posterSource || undefined} playsInline preload="metadata" disablePictureInPicture disableRemotePlayback controlsList="nodownload noremoteplayback nofullscreen" onPlay={() => { setPlaying(true); setPlaybackMessage(""); }} onPause={() => setPlaying(false)} onTimeUpdate={(event) => { const current = event.currentTarget.currentTime; setTime(current); onTimeChange?.(current); if (current - lastSavedRef.current >= 15) { lastSavedRef.current = current; saveProgress(Math.floor(current)); } }} onLoadedMetadata={(event) => { const pending = pendingPlaybackRef.current; if (pending) { event.currentTarget.currentTime = Math.min(event.currentTarget.duration || pending.seconds, pending.seconds); pendingPlaybackRef.current = null; if (pending.playing) void event.currentTarget.play().catch(() => undefined); } event.currentTarget.playbackRate = rate; setDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0); setHasError(false); }} onCanPlay={() => setHasError(false)} onEnded={(event) => { setPlaying(false); saveProgress(Math.floor(event.currentTarget.duration), true); }} onError={() => { if (streamSource && !managedHls) setHasError(true); }} />
       <div className="secure-player-bg" />
-      <div className={`video-watermark watermark-${watermark}`}>{preview ? "درس تجريبي مجاني" : studentLabel}</div>
-      <div className="video-brand"><BrandLockup compact /></div>
+      <div className="video-gesture-surface" aria-hidden="true" onPointerDown={event=>{if(event.button!==0)return;event.currentTarget.setPointerCapture(event.pointerId);if(holdTimer.current)clearTimeout(holdTimer.current);holdTimer.current=setTimeout(()=>gestureRef.current?.hold(),400);}} onPointerUp={event=>{if(holdTimer.current)clearTimeout(holdTimer.current);gestureRef.current?.release();const rect=event.currentTarget.getBoundingClientRect();gestureRef.current?.tap(event.clientX-rect.left,rect.width);}} onPointerCancel={()=>{if(holdTimer.current)clearTimeout(holdTimer.current);gestureRef.current?.cancel();}} onLostPointerCapture={()=>{if(holdTimer.current)clearTimeout(holdTimer.current);gestureRef.current?.release();}} />
+      {gestureHint&&<div className="video-gesture-hint" role="status">{gestureHint}</div>}
+      <div className={`video-watermark watermark-${watermark}`} aria-hidden="true"><BrandLockup compact/>{platformWhatsapp&&<span dir="ltr">+{platformWhatsapp}</span>}</div>
+      <div className="video-brand" aria-hidden="true"><BrandLockup compact />{platformWhatsapp&&<span dir="ltr">+{platformWhatsapp}</span>}</div>
       {sessionLoading && <div className="video-error"><LoaderCircle size={30} className="spin" /><strong>جارٍ تجهيز جلسة المشاهدة المحمية</strong><span>الرابط مؤقت ومرتبط بحسابك الحالي.</span></div>}
       {(hasError || sessionError) && !sessionLoading && <div className="video-error">{processing && ["queued", "processing"].includes(processing.status) ? <LoaderCircle size={30} className="spin" /> : <ShieldCheck size={30} />}<strong>{sessionError || "تعذّر تحميل الفيديو"}</strong><span>{processing && ["queued", "processing"].includes(processing.status) ? `${processing.message}${processing.progress ? ` · ${Math.max(1, Math.min(100, processing.progress))}%` : ""}` : sessionError || "تحقق من اتصالك ثم أعد المحاولة. يدعم المشغل طلبات النطاق اللازمة لمتصفحات الجوال."}</span><button type="button" className="video-retry" onClick={retry}><RefreshCw size={15} /> إعادة المحاولة</button></div>}
       {!hasError && !sessionError && !sessionLoading && processing && ["queued", "processing", "retrying"].includes(processing.status) && <div className="video-processing-note" role="status"><LoaderCircle size={14} className="spin" /> {processing.message}{processing.status === "processing" && processing.progress ? ` · ${Math.max(1, Math.min(100, processing.progress))}%` : ""}</div>}
@@ -255,7 +271,7 @@ export function SecureVideoPlayer({ title, studentLabel = "طالب مراس", p
         <fieldset className="player-setting-group"><legend>الجودة</legend><span>
           {Object.keys(qualitySources).map((value) => <button type="button" key={value} aria-pressed={quality === value} className={quality === value ? "active" : ""} onClick={() => changeQuality(value)}>{quality === value && <Check size={11} aria-hidden="true" />}{value}</button>)}
         </span></fieldset>
-        <p><ShieldCheck size={14} /> عند توفر البث المتكيف يختار المشغل أفضل جودة للاتصال تلقائيًا، مع بقاء الفيديو الأصلي خيارًا احتياطيًا.</p>
+        <p><ShieldCheck size={14} /> البث مشفّر ومرتبط بجلسة المشاهدة. يختار الوضع التلقائي الجودة المناسبة لاتصالك، ويمكنك اختيار إحدى الجودات الجاهزة.</p>
       </div>}
       </div>
     </div>
