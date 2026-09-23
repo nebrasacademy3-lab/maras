@@ -16,7 +16,7 @@ export { StudyPdfError } from "@/lib/study-pdf-document.mjs";
 const MAX_SHARED_BYTES = 128 * 1024 * 1024, MAX_USER_EXPORTS = 8;
 const digest = (value: unknown) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 type ReadDatabase = Pick<ReturnType<typeof getDb>, "select">;
-export type PdfActor = { id: number; email: string };
+export type PdfActor = { id: number; email: string; fullName?: string };
 
 export async function loadStudyPdfSource(artifactId: number, user: PdfActor, client: "app" | "web", database: ReadDatabase = getDb(), lock = false) {
   const q = database.select({ artifact: aiArtifacts, file: aiFiles }).from(aiArtifacts).innerJoin(aiFiles, eq(aiArtifacts.fileId, aiFiles.id)).where(and(eq(aiArtifacts.id, artifactId), eq(aiArtifacts.userId, user.id), readableStudyFileCondition(user.id, client))).limit(1);
@@ -27,10 +27,10 @@ export async function loadStudyPdfSource(artifactId: number, user: PdfActor, cli
   return { ...row, sourceName: source.originalName, sourceDigest };
 }
 async function pdfBranding(): Promise<StudyPdfInput["branding"]> {
-  const keys = ["footer_description", "whatsapp_number", "whatsapp_message", ...Object.keys(PUBLIC_SETTING_DEFAULTS).filter(key => key.startsWith("social_"))];
+  const keys = ["footer_description", "whatsapp_number", "whatsapp_message", "ios_app_url", "android_app_url", ...Object.keys(PUBLIC_SETTING_DEFAULTS).filter(key => key.startsWith("social_"))];
   const rows = await getDb().select({ key: platformSettings.key, value: platformSettings.value }).from(platformSettings).where(inArray(platformSettings.key, keys));
   const settings = { ...PUBLIC_SETTING_DEFAULTS, ...Object.fromEntries(rows.map(row => [row.key, row.value])) };
-  return { siteUrl: publicOrigin(), whatsapp: normalizeWhatsappNumber(settings.whatsapp_number), description: settings.footer_description.slice(0, 2000), links: normalizedSocialLinks(settings).map(link => ({ label: link.labelAr, url: link.url })) };
+  return { siteUrl: publicOrigin(), whatsapp: normalizeWhatsappNumber(settings.whatsapp_number), description: settings.footer_description.slice(0, 2000), links: [...normalizedSocialLinks(settings).map(link => ({ label: link.labelAr, url: link.url })), ...[["تطبيق iPhone", settings.ios_app_url], ["تطبيق Android", settings.android_app_url]].flatMap(([label, value]) => { try { const url = new URL(value); return url.protocol === "https:" && !url.username && !url.password && !url.port && /^(?:apps\.apple\.com|play\.google\.com)$/.test(url.hostname) ? [{ label, url: url.href }] : []; } catch { return []; } })] };
 }
 export class PdfPendingError extends AiPlatformError {
   readonly retryAfterSeconds = 2;
@@ -48,11 +48,11 @@ export async function exportStudyPdf(input: { artifactId: number; user: PdfActor
   const initial = await loadStudyPdfSource(input.artifactId, input.user, input.client);
   if (input.exportId) {
     if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(input.exportId)) throw new AiPlatformError("PDF_ID_INVALID", "معرّف تصدير غير صالح.", 400);
-    const [saved] = await getDb().select().from(studyPdfExports).where(and(eq(studyPdfExports.id, input.exportId), eq(studyPdfExports.userId, input.user.id), eq(studyPdfExports.artifactId, input.artifactId), eq(studyPdfExports.sourceDigest, initial.sourceDigest), eq(studyPdfExports.status, "ready"), gt(studyPdfExports.expiresAt, sql`clock_timestamp()`))).limit(1);
+    const [saved] = await getDb().select().from(studyPdfExports).where(and(eq(studyPdfExports.id, input.exportId), eq(studyPdfExports.userId, input.user.id), eq(studyPdfExports.artifactId, input.artifactId), eq(studyPdfExports.sourceDigest, initial.sourceDigest), eq(studyPdfExports.status, "ready"), eq(studyPdfExports.rendererVersion, STUDY_PDF_VERSION), gt(studyPdfExports.expiresAt, sql`clock_timestamp()`))).limit(1);
     if (!saved) throw new AiPlatformError("PDF_NOT_FOUND", "نسخة PDF غير متاحة. يمكنك إنشاء تصدير جديد من النص المحفوظ.", 404);
     return verifyBytes(saved);
   }
-  const document: StudyPdfInput = { title: initial.artifact.title, content: initial.artifact.content, sourceName: initial.sourceName, createdAt: initial.artifact.createdAt, branding: await pdfBranding() };
+  const document: StudyPdfInput = { recipient: (input.user.fullName?.trim() || `عضو مراس ${input.user.id}`).slice(0, 200), title: initial.artifact.title, content: initial.artifact.content, sourceName: initial.sourceName, createdAt: initial.artifact.createdAt, branding: await pdfBranding() };
   const inputDigest = digest({ document: pdfInputDigest(document), source: initial.sourceDigest });
   const owner = randomUUID();
   const reserved = await getDb().transaction(async tx => {

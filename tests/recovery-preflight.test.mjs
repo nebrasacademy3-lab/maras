@@ -23,7 +23,7 @@ test("recovery key cannot be under backup/storage roots or exactly equal a desti
 });
 test("a symlinked key parent cannot disguise a key inside the copied directory", async t => {
   const root = await fixture(t);
-  await symlink(join(root, "uploads"), join(root, "alias"));
+  await symlink(join(root, "uploads"), join(root, "alias"), process.platform === "win32" ? "junction" : "dir");
   await assert.rejects(separateKeyFile(join(root, "alias/key"), [join(root, "uploads")]), /UNSAFE_DIRECTORY/);
 });
 test("CLI refuses co-located key before opening network and never prints credential/path details", async t => {

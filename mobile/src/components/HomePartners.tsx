@@ -42,7 +42,7 @@ export function HomePartners() {
   });
   const partners = (query.data?.partners || []).slice(0, 12);
   if (!partners.length) return null;
-  const cardWidth = Math.min(282, Math.max(216, width * .7));
+  const cardWidth = Math.min(312, Math.max(256, width * .76));
   const hasAccreditation = partners.some((partner) => partner.kind === "accreditation");
   const hasNonAccreditation = partners.some((partner) => partner.kind !== "accreditation");
   const sectionTitle = hasAccreditation
@@ -66,6 +66,7 @@ export function HomePartners() {
           accessibilityRole={target ? "link" : undefined}
           accessibilityLabel={target ? `${actionLabel(partner)}: ${partner.name}` : partner.name}
           disabled={!target}
+          accessibilityState={{ disabled: !target }}
           key={partner.id}
           onPress={() => target ? openNotificationRoute(target) : undefined}
           style={({ pressed }) => [
@@ -76,6 +77,7 @@ export function HomePartners() {
               backgroundColor: colors.surface,
               borderColor: colors.border,
               opacity: pressed ? .78 : 1,
+              boxShadow: "0 8px 24px rgba(13,37,84,.07)",
             },
           ]}
         >
@@ -119,20 +121,20 @@ export function HomePartners() {
 }
 
 const styles = StyleSheet.create({
-  section: { marginTop: 2 },
-  rail: { flexDirection: "row", paddingEnd: 18 },
-  card: { minHeight: 196, borderWidth: 1, borderRadius: 22, padding: 14, marginEnd: 11 },
-  cardHead: { flexDirection: "row", alignItems: "center", gap: 11 },
-  logoTile: { width: 64, height: 64, flexShrink: 0, borderWidth: 1, borderRadius: 18, padding: 7, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", overflow: "hidden" },
+  section: { marginTop: 18 },
+  rail: { flexDirection: "row", paddingEnd: 18, paddingBottom: 8 },
+  card: { minHeight: 226, borderWidth: 1, borderRadius: 23, padding: 17, marginEnd: 11, borderCurve: "continuous" },
+  cardHead: { flexDirection: "row", alignItems: "center", gap: 13 },
+  logoTile: { width: 70, height: 70, flexShrink: 0, borderWidth: 1, borderRadius: 19, padding: 8, backgroundColor: "#FFFFFF", alignItems: "center", justifyContent: "center", overflow: "hidden" },
   logo: { width: "100%", height: "100%" },
   headCopy: { flex: 1, alignItems: "flex-start" },
-  kind: { maxWidth: "100%", minHeight: 27, borderRadius: 999, paddingHorizontal: 8, flexDirection: "row", alignItems: "center", gap: 4 },
-  kindText: { flexShrink: 1, fontSize: 10, fontWeight: "900" },
-  name: { fontSize: 13, lineHeight: 20, fontWeight: "900", textAlign: "right", writingDirection: "rtl", marginTop: 6 },
-  description: { fontSize: 11, lineHeight: 20, textAlign: "right", writingDirection: "rtl", marginTop: 10 },
-  credential: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 10, paddingTop: 8, alignItems: "flex-start" },
-  credentialLabel: { fontSize: 7, fontWeight: "800", textAlign: "right" },
-  credentialValue: { fontSize: 9, fontWeight: "900", textAlign: "left", writingDirection: "ltr", marginTop: 3 },
-  action: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: "auto", paddingTop: 11 },
-  actionText: { fontSize: 9, fontWeight: "900" },
+  kind: { maxWidth: "100%", minHeight: 29, borderRadius: 999, paddingHorizontal: 9, flexDirection: "row", alignItems: "center", gap: 5 },
+  kindText: { flexShrink: 1, fontSize: 11, lineHeight: 18, fontWeight: "900" },
+  name: { fontSize: 15, lineHeight: 23, fontWeight: "900", marginTop: 7 },
+  description: { fontSize: 12, lineHeight: 21, marginTop: 13 },
+  credential: { borderTopWidth: StyleSheet.hairlineWidth, marginTop: 13, paddingTop: 10, alignItems: "flex-start", gap: 3 },
+  credentialLabel: { fontSize: 10, lineHeight: 17, fontWeight: "800" },
+  credentialValue: { fontSize: 12, lineHeight: 19, fontWeight: "900", textAlign: "left", writingDirection: "ltr" },
+  action: { flexDirection: "row", alignItems: "center", gap: 7, minHeight: 44, marginTop: "auto", paddingTop: 11 },
+  actionText: { fontSize: 12, lineHeight: 20, fontWeight: "900" },
 });

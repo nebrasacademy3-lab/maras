@@ -123,7 +123,7 @@ export default function ReferralsScreen() {
   if (!DIRECT_COMMERCE_ENABLED) return <Screen><AppHeader title="هدايا حسابك" subtitle="حالة المكافآت المفعلة مسبقًا" back />
     <Card><Text style={{ color: colors.text, lineHeight: 24 }}>تظهر هنا حالة الهدايا المرتبطة بحسابك. لا يُتيح التطبيق شراء المحتوى أو استخدام قسائم دفع.</Text></Card>
     {data.rewards.filter(reward => !/coupon|discount/i.test(reward.type)).length ? data.rewards.filter(reward => !/coupon|discount/i.test(reward.type)).map(reward => <Card key={reward.id} style={{ marginTop: 12 }}><Text style={{ color: colors.text, lineHeight: 24 }}>{/course/i.test(reward.type) ? "هدية تعلم" : "هدية أدوات المذاكرة"}</Text><Text style={{ color: colors.textSoft, lineHeight: 23 }}>{statusLabels[reward.status] || "قيد المراجعة"} · {dateLabel(reward.expiresAt, locale)}</Text></Card>) : <EmptyState icon="gift-outline" title="لا توجد هدايا مفعلة حاليًا" text="المواد والأدوات المفعلة في حسابك تظهر في تعلّمي وأدوات مراس." />}
-    <AppButton title="تعلّمي" variant="soft" onPress={() => router.push("/(tabs)/learn")} />
+    <AppButton title="تعلّمي" variant="soft" onPress={() => router.push("/(tabs)/learning")} />
   </Screen>;
   const terms = termLines(data.program.terms);
   const percent = Number.isFinite(data.referral.progressPercent) ? Math.min(100, Math.max(0, data.referral.progressPercent)) : 0;

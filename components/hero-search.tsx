@@ -30,6 +30,11 @@ type SearchResult = {
 };
 
 const normalizeSearch = normalizeCatalogSearch;
+// Progressive enhancement from the WebMCP declarative draft. Submission stays user-controlled.
+const publicSearchTool = {
+  toolname: "search_public_courses",
+  tooldescription: "Search the public Meras course catalog by course, university, or specialty. Opens public course results; does not purchase, enroll, or access private account content.",
+};
 
 export function HeroSearch({
   courses,
@@ -124,10 +129,12 @@ export function HeroSearch({
 
   return (
     <div className="hero-search-wrap" ref={rootRef}>
-      <form className="hero-search" action="/courses" method="get" onSubmit={() => setOpen(false)} role="search">
+      <form {...publicSearchTool} className="hero-search" action="/courses" method="get" onSubmit={() => setOpen(false)} role="search">
         <Search size={22} aria-hidden="true" />
         <input
           name="q"
+          maxLength={160}
+          {...{ toolparamdescription: "Course title or code, university, or specialty to find in the public catalog." }}
           value={query}
           onChange={(event) => {
             setQuery(event.target.value);

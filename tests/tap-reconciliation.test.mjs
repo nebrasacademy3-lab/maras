@@ -89,3 +89,21 @@ test("a failed claim waits for the other worker before the scheduler may release
   assert.equal(result.checked, 1);
   assert.equal(result.resolved, 1);
 });
+
+
+test("a course-only backlog fills the whole recovery batch", async () => {
+ const db = database({ orders: Array.from({ length: 15 }, (_, index) => row(index + 1)) });
+ const worker = await service(db, async () => Response.json({ matched: true, status: "paid" }));
+ assert.equal((await worker.reconcilePendingTapCharges(now())).checked, 10);
+ assert.equal((await worker.reconcilePendingTapCharges(now())).checked, 5);
+});
+
+test("configured recovery throughput is bounded and malformed limits fall back safely", async () => {
+ for (const [batch, concurrency, expectedCount, expectedPeak] of [["18", "3", 18, 3], ["9000", "9000", 200, 8], ["invalid", "-1", 10, 2]]) {
+  const db = database({ orders: Array.from({ length: 205 }, (_, index) => row(index + 1)) });
+  let active = 0, peak = 0;
+  const worker = await service(db, async () => { active++; peak = Math.max(peak, active); await new Promise(resolve => setTimeout(resolve, 1)); active--; return Response.json({ matched: true, status: "paid" }); }, { TAP_SECRET_KEY: "sk_synthetic", TAP_RECONCILIATION_BATCH_SIZE: batch, TAP_RECONCILIATION_CONCURRENCY: concurrency });
+  assert.equal((await worker.reconcilePendingTapCharges(now())).checked, expectedCount);
+  assert.equal(peak, expectedPeak);
+ }
+});

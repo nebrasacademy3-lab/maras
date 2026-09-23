@@ -1,9 +1,10 @@
 import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { notificationRecipientWhere } from "@/lib/notification-visibility";
 import { effectiveAccessRows } from "@/lib/course-access";
+import { dashboardCourseLearning, dashboardRecommendationMatch } from "@/lib/dashboard-learning";
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
 import { getDb } from "@/db";
-import { courseAccess, courseRequests, invoices, lessonProgress, notificationReads, notificationsDb, orders, supportReplies, supportTickets } from "@/db/schema";
+import { courseAccess, courseRequests, invoices, lessonProgress, notificationReads, notificationsDb, orders, refundRequests, supportReplies, supportTickets } from "@/db/schema";
 import { getSessionUser } from "@/lib/auth";
 import { jsonError } from "@/lib/api";
 import { getCoursesCatalog, getInstitutionsCatalog, getRecommendedCourses } from "@/lib/catalog-store";
@@ -36,24 +37,20 @@ export async function GET(request: Request) {
     db.select().from(supportTickets).where(eq(supportTickets.userId, user.id)).orderBy(desc(supportTickets.createdAt)).limit(50),
   ]);
   const ticketIds = ticketRows.map((ticket) => ticket.id);
-  const [replyRows, courses, institutions, recommended] = await Promise.all([
+  const [replyRows, courses, institutions, recommended, refundRows] = await Promise.all([
     ticketIds.length ? db.select().from(supportReplies).where(and(eq(supportReplies.internal, false), inArray(supportReplies.ticketId, ticketIds))).orderBy(desc(supportReplies.createdAt)).limit(300) : Promise.resolve([]),
     getCoursesCatalog(),
     getInstitutionsCatalog(),
     getRecommendedCourses(user.universitySlug || "", user.specialty || ""),
+    orderRows.length ? db.select({ orderNumber: refundRequests.orderNumber, status: refundRequests.status, createdAt: refundRequests.createdAt }).from(refundRequests).where(inArray(refundRequests.orderNumber, orderRows.map(row => row.orderNumber))).orderBy(desc(refundRequests.createdAt)) : Promise.resolve([]),
   ]);
   const bySlug = new Map(courses.map((course) => [course.slug, course]));
+  const refundByOrder = new Map<string, string>();
+  for (const refund of refundRows) if (!refundByOrder.has(refund.orderNumber)) refundByOrder.set(refund.orderNumber, refund.status);
   const allCourses = accessRows.filter((access) => !access.revokedAt).flatMap((access) => {
     const course = bySlug.get(access.courseSlug);
     if (!course) return [];
-    const lessons = course.units.flatMap((unit) => unit.lessons);
-    const availableLessons = lessons.filter((lesson) => lesson.ready);
-    const availableIds = new Set(availableLessons.map((lesson) => lesson.id));
-    const progress = progressRows.filter((row) => row.courseSlug === course.slug && availableIds.has(row.lessonId));
-    const completed = progress.filter((row) => row.completed).length;
-    const last = [...progress].sort((a, b) => Date.parse(b.updatedAt) - Date.parse(a.updatedAt))[0];
-    const accessState = access.suspendedAt ? "suspended" : Date.parse(access.startsAt) > Date.parse(now) ? "scheduled" : access.expiresAt && Date.parse(access.expiresAt) <= Date.now() ? "expired" : "active";
-    return [{ ...course, progress: availableLessons.length ? Math.round(completed / availableLessons.length * 100) : 0, currentLessonId: last?.lessonId || availableLessons[0]?.id || null, expiresAt: access.expiresAt, accessState }];
+    return [{ ...course, ...dashboardCourseLearning(course, progressRows, access, now) }];
   });
   const owned = allCourses.filter((course) => course.accessState === "active");
   const expired = allCourses.filter((course) => course.accessState !== "active");
@@ -63,12 +60,12 @@ export async function GET(request: Request) {
     owned,
     expired,
     progress: progressRows,
-    orders: orderRows.map((row) => ({ ...row, courseTitle: bySlug.get(row.courseSlug)?.title || row.courseSlug })),
+    orders: orderRows.map((row) => ({ ...row, courseTitle: bySlug.get(row.courseSlug)?.title || row.courseSlug, refundStatus: refundByOrder.get(row.orderNumber) || null })),
     invoices: invoiceRows,
-    requests: requestRows,
+    requests: requestRows.map(row => ({ ...row, preparedCourseTitle: row.preparedCourseSlug ? bySlug.get(row.preparedCourseSlug)?.title || null : null })),
     notifications: noticeRows.map((row) => ({ ...row.notification, readAt: row.readAt })),
     tickets: ticketRows.map((ticket) => ({ ...ticket, replies: replyRows.filter((reply) => reply.ticketId === ticket.id) })),
-    recommended,
+    recommended: recommended.map(course => ({ ...course, match: dashboardRecommendationMatch(course, user.universitySlug) })),
     institutions,
   }, { headers: mobileNoStoreHeaders });
 }

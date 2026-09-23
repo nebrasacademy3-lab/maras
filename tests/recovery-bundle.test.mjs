@@ -8,6 +8,9 @@ import { Readable } from "node:stream";
 import { sealStream, sealBytes, unsealFile, openManifest, readKey, regularFile } from "../scripts/recovery/crypto.mjs";
 import { objectKey, connection, childEnvironment, validateManifest, canonicalDirectory, createBackup, restoreBackup } from "../scripts/recovery/bundle.mjs";
 
+const posixFiles = { skip: process.platform === "win32" ? "Requires POSIX permission modes and O_NOFOLLOW; Ubuntu Quality gates runs these recovery protection checks without skips." : false };
+const directoryLinkType = process.platform === "win32" ? "junction" : "dir";
+
 async function fixture(t) { const root = await mkdtemp(join(tmpdir(), "maras-recovery-test-")); t.after(() => rm(root, { recursive: true, force: true })); return root; }
 function manifest() { return { format: "maras-local-recovery-v1", id: "f9025673-8c3c-4767-8e44-44e903451745", releaseSha: "a".repeat(40), storageMode: "local", pgMajor: 18, sourceDatabase: "source", database: { archive: "database.enc", bytes: 10, sha256: "b".repeat(64) }, files: [], tables: [{ schema: "public", name: "users", count: "2" }] }; }
 
@@ -58,16 +61,22 @@ test("byte overflow and broken input never leave a completed encrypted object", 
   await assert.rejects(access(path));
 });
 
-test("exclusive destinations and no-follow readers preserve existing files", async t => {
-  const root = await fixture(t), key = randomBytes(32), source = join(root, "source"), target = join(root, "target");
+test("exclusive destinations and hard-link rejection preserve existing files", async t => {
+  const root = await fixture(t), key = randomBytes(32), target = join(root, "target");
   await writeFile(target, "untouched");
   await assert.rejects(sealBytes(Buffer.from("new"), target, key, "x"), { code: "EEXIST" });
   assert.equal(await readFile(target, "utf8"), "untouched");
-  await symlink(target, source); await assert.rejects(regularFile(source));
   await link(target, join(root, "hardlink")); await assert.rejects(regularFile(target), /UNSAFE_OR_OVERSIZED_FILE/);
 });
 
-test("encryption keys require a private non-symlink file and exact 256-bit key material", async t => {
+test("no-follow readers reject file symlinks without touching their target", posixFiles, async t => {
+  const root = await fixture(t), target = join(root, "target"), source = join(root, "source");
+  await writeFile(target, "unchanged sentinel"); await symlink(target, source);
+  await assert.rejects(regularFile(source));
+  assert.equal(await readFile(target, "utf8"), "unchanged sentinel");
+});
+
+test("encryption keys require a private non-symlink file and exact 256-bit key material", posixFiles, async t => {
   const root = await fixture(t), path = join(root, "key"), key = randomBytes(32);
   await writeFile(path, key.toString("hex") + "\n", { mode: 0o600 }); assert.deepEqual(await readKey(path), key);
   await chmod(path, 0o644); await assert.rejects(readKey(path), /KEY_FILE_MUST_BE_PRIVATE/);
@@ -106,7 +115,7 @@ test("PostgreSQL subprocess environment never inherits application secrets or co
 });
 
 test("symlinked directory ancestors are refused rather than canonicalized into the target", async t => {
-  const root = await fixture(t); await mkdir(join(root, "real")); await symlink(join(root, "real"), join(root, "alias"));
+  const root = await fixture(t); await mkdir(join(root, "real")); await symlink(join(root, "real"), join(root, "alias"), directoryLinkType);
   await assert.rejects(canonicalDirectory(join(root, "alias")), /UNSAFE_DIRECTORY/);
 });
 

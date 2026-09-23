@@ -53,19 +53,22 @@ export const instructorAssignments = pgTable("instructor_assignments", {
   contractId: integer("contract_id").notNull(),
   assignedBy: integer("assigned_by").notNull().references(() => users.id), status: text("status").notNull().default("assigned"),
   instructions: text("instructions").notNull().default(""), reviewNotes: text("review_notes").notNull().default(""),
+  structureImportedAt: text("structure_imported_at"),
   revision: integer("revision").notNull().default(1), submittedAt: text("submitted_at"), publishedAt: text("published_at"),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
 }, t => [foreignKey({name:"instructor_assignment_contract_owner_fk",columns:[t.contractId,t.userId],foreignColumns:[instructorContracts.id,instructorContracts.userId]}).onDelete("restrict"), check("instructor_assignment_revision_check", sql`${t.revision} > 0`), index("instructor_assignments_owner_idx").on(t.userId, t.status), uniqueIndex("instructor_assignment_course_unique").on(t.courseSlug).where(sql`${t.status} <> 'cancelled'`), check("instructor_assignment_status_check", sql`${t.status} IN ('assigned','in_progress','submitted','changes_requested','published','cancelled')`)]);
 
 export const instructorUnits = pgTable("instructor_units", {
   id: serial("id").primaryKey(), assignmentId: integer("assignment_id").notNull().references(() => instructorAssignments.id, { onDelete: "cascade" }),
+  sourceUnitId: integer("source_unit_id"),
   title: text("title").notNull(), description: text("description").notNull().default(""), position: integer("position").notNull().default(0),
-}, t => [index("instructor_units_assignment_idx").on(t.assignmentId, t.position), check("instructor_unit_position_check", sql`${t.position} >= 0`)]);
+}, t => [index("instructor_units_assignment_idx").on(t.assignmentId, t.position), uniqueIndex("instructor_units_source_unique").on(t.assignmentId, t.sourceUnitId), check("instructor_unit_position_check", sql`${t.position} >= 0`)]);
 
 export const instructorLessons = pgTable("instructor_lessons", {
   id: serial("id").primaryKey(), unitId: integer("unit_id").notNull().references(() => instructorUnits.id, { onDelete: "cascade" }),
+  sourceLessonId: text("source_lesson_id"),
   title: text("title").notNull(), description: text("description").notNull().default(""), position: integer("position").notNull().default(0),
   videoAssetId: integer("video_asset_id").references(() => videoAssets.id, { onDelete: "restrict" }),
   durationSeconds: integer("duration_seconds").notNull().default(0),
   createdAt: text("created_at").notNull().default(sql`CURRENT_TIMESTAMP::text`), updatedAt: text("updated_at").notNull().default(sql`CURRENT_TIMESTAMP::text`),
-}, t => [index("instructor_lessons_unit_idx").on(t.unitId, t.position), check("instructor_lesson_position_check", sql`${t.position} >= 0`), check("instructor_lesson_duration_check", sql`${t.durationSeconds} >= 0`)]);
+}, t => [index("instructor_lessons_unit_idx").on(t.unitId, t.position), uniqueIndex("instructor_lessons_source_unique").on(t.unitId, t.sourceLessonId), check("instructor_lesson_position_check", sql`${t.position} >= 0`), check("instructor_lesson_duration_check", sql`${t.durationSeconds} >= 0`)]);

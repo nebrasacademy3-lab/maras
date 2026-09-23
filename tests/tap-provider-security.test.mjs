@@ -134,3 +134,25 @@ test("a finance hold that arrives during provider retrieval cannot be overridden
   assert.equal(db.rows.courseAccess.length, 0);
  }
 });
+
+
+test("Tap signatures preserve numeric created timestamps for refunds and three-decimal currencies", async () => {
+ const route = await handler();
+ for (const [currency, amount] of [["SAR", "12.30"], ["KWD", "12.300"], ["BHD", "12.300"], ["OMR", "12.300"], ["JOD", "12.300"]]) {
+  const refund = { id: "re_fixture", object: "refund", amount: 12.3, currency, status: "REFUNDED", created: 1726790400000, reference: { payment: "payment" } };
+  const expected = createHmac("sha256", "sk_synthetic").update(`x_idre_fixturex_amount${amount}x_currency${currency}x_gateway_referencex_payment_referencepaymentx_statusREFUNDEDx_created1726790400000`).digest("hex");
+  assert.equal(route.hashValue(refund, "sk_synthetic"), expected);
+  assert.equal(route.hashValue({ ...refund, created: "1726790400000" }, "sk_synthetic"), expected);
+ }
+ assert.equal(route.hashValue({ ...charge, transaction: { created: 1726790400000 } }, "sk_synthetic"), route.hashValue(charge, "sk_synthetic"));
+});
+
+test("malformed retrieved refund bodies fail closed without database writes or an unhandled exception", async () => {
+ const posted = { id: "re_fixture", object: "refund", amount: 12.3, currency: "SAR", status: "REFUNDED", created: 1726790400000 };
+ for (const payload of [null, [], {}, { id: "re_other", object: "refund" }]) {
+  const route = await handler({ fetch: async () => Response.json(payload) });
+  const response = await route.POST(signedRequest(posted, route.hashValue(posted, "sk_synthetic")));
+  assert.equal(response.status, 409);
+  assert.equal(route.db.writes.length, 0);
+ }
+});

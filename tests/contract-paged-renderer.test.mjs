@@ -8,6 +8,8 @@ import { buildInstructorContractPagedDocument } from "../lib/instructor-contract
 import { contractFixture } from "./instructor-contract-document.test.mjs";
 const python = process.env.CONTRACT_PDF_TEST_PYTHON || "/usr/bin/python3";
 const worker = resolve("scripts/contract-pdf-worker.py");
+// Exercise the real seccomp/rlimit boundary on Ubuntu CI; other hosts cannot model it.
+const linuxWorker = { skip: process.platform !== "linux" && "Requires Linux seccomp, resource limits and POSIX worker identity; exercised by Ubuntu quality CI." };
 function isolated(input, args = ["-I", worker]) {
   const directory = mkdtempSync(join(tmpdir(), "maras-pdf-worker-test-"));
   const root = process.getuid?.() === 0;
@@ -27,7 +29,7 @@ test("paged contract document keeps immutable bilingual terms, signature, metada
   assert.match(html, /content:counter\(pages\)/);
   assert.match(html, /<polyline points="[0-9., ]+"/);
 });
-test("actual paged worker produces a bilingual signed PDF without a browser or inherited secrets", () => {
+test("actual paged worker produces a bilingual signed PDF without a browser or inherited secrets", linuxWorker, () => {
   const fixture = contractFixture();
   const logo = "data:image/png;base64," + readFileSync("public/brand/logo-light-hq.png").toString("base64");
   const result = isolated(buildInstructorContractPagedDocument(fixture, { logo }));
@@ -35,7 +37,7 @@ test("actual paged worker produces a bilingual signed PDF without a browser or i
   assert.ok(result.stdout.length > 10000);
   assert.equal(result.stdout.subarray(0, 5).toString(), "%PDF-");
 });
-test("worker rejects network and local-file URL resources instead of silently returning a partial PDF", () => {
+test("worker rejects network and local-file URL resources instead of silently returning a partial PDF", linuxWorker, () => {
   for (const url of ["http://127.0.0.1/private", "file:///etc/passwd"]) {
     const result = isolated(`<!doctype html><html><body><img src="${url}"></body></html>`);
     assert.equal(result.status, 1);
@@ -44,7 +46,7 @@ test("worker rejects network and local-file URL resources instead of silently re
     assert.doesNotMatch(result.stderr.toString(), /passwd|127\.0\.0\.1/);
   }
 });
-test("OS isolation denies sockets, process execution and forks while allowing font-layout threads", () => {
+test("OS isolation denies sockets, process execution and forks while allowing font-layout threads", linuxWorker, () => {
   const code = `import runpy, socket, subprocess, os, threading\nmodule=runpy.run_path(${JSON.stringify(worker)})\nmodule['harden']()\nfor action in (lambda: socket.socket(), lambda: subprocess.run(['/bin/true']), os.fork):\n try:\n  action()\n except PermissionError:\n  continue\n raise AssertionError('forbidden syscall was allowed')\nthread=threading.Thread(target=lambda:None);thread.start();thread.join()\nprint('ISOLATION_OK')`;
   const result = isolated("", ["-I", "-c", code]);
   assert.equal(result.status, 0, result.stderr?.toString());

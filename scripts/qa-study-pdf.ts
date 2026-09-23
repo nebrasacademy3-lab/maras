@@ -57,7 +57,7 @@ async function expectPdf(response: Response) {
   assert.equal(response.status, 200, response.status === 200 ? "" : await response.text());
   assert.equal(response.headers.get("content-type"), "application/pdf");
   assert.equal(response.headers.get("cache-control"), "private, no-store");
-  const data = Buffer.from(await response.arrayBuffer()); assert.equal(data.subarray(0, 5).toString(), "%PDF-");
+  const data = Buffer.from(await response.arrayBuffer()); assert.equal(data.subarray(0, 5).toString(), "%PDF-"); assert.ok(data.includes(Buffer.from("/Encrypt")), "PDF permissions must be applied before publication");
   assert.equal(Number(response.headers.get("content-length")), data.length); return data;
 }
 try {
@@ -77,8 +77,9 @@ try {
   const cached = await download(base); assert.equal(cached.headers.get("x-maras-export-id"), savedId); assert.deepEqual(await expectPdf(cached), bytes);
   const native = await download(base, alice.app, "format=pdf", true); assert.deepEqual(await expectPdf(native), bytes);
   assert.equal((await download(base, bob.web)).status, 404); assert.equal((await download(base, "")).status, 401);
-  const docx = await download(base, alice.web, ""); assert.equal(docx.status, 200); assert.equal(Buffer.from(await docx.arrayBuffer()).subarray(0, 2).toString(), "PK");
-  pass("web/native authorization, identical cached bytes, cross-account rejection and historical DOCX compatibility");
+  const defaultPdf = await download(base, alice.web, ""); assert.deepEqual(await expectPdf(defaultPdf), bytes);
+  assert.equal((await download(base, alice.web, "format=docx")).status, 400);
+  pass("web/native authorization, identical cached bytes, cross-account rejection and PDF-only default and explicit DOCX rejection");
 
   const duplicate = await fixture(alice); const outcomes = await Promise.all(Array.from({ length: 6 }, () => download(duplicate)));
   assert.ok(outcomes.some(r => r.status === 200)); assert.ok(outcomes.every(r => [200, 202].includes(r.status)));

@@ -42,7 +42,7 @@ test("every purchase needs actual profile fields even when the account is an adm
 });
 
 test("verified staff sign in to their role workspace before student onboarding", () => {
-  for (const [role, path] of [["admin", "/admin"], ["supervisor", "/supervisor"], ["instructor", "/instructor"]]) {
+  for (const [role, path] of [["admin", "/admin"], ["supervisor", "/admin"], ["instructor", "/instructor"]]) {
     const staff = { ...user, role, profileCompleted: false, onboardingCompleted: false };
     assert.equal(access.accountRequirement(staff), null);
     assert.equal(access.authDestination(staff, "/dashboard", "/cart"), path);

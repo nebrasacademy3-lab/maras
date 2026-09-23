@@ -1,6 +1,7 @@
 import {AdminInstructors} from "@/src/components/admin-instructors";
 import {AdminCapability} from "@/src/components/AdminCapability";
 import {AdminNavigation} from "@/src/components/AdminNavigation";
+import { WorkspaceHero } from "@/src/components/staff-workspace-ui";
 import {useAdminCapabilities} from "@/src/lib/admin-capabilities";
 import {ADMIN_NAVIGATION,ADMIN_SELF_SECURITY} from "@/src/lib/admin-navigation";
 import {AdminAdditionalPanel} from "@/src/components/AdminAdditionalPanel";
@@ -190,12 +191,13 @@ function AdminWorkspace() {
 
   return <Screen keyboard>
     <AppHeader title="لوحة الإدارة" subtitle="تحكم مباشر وآمن في منصة مراس" back />
+    <WorkspaceHero eyebrow="مركز قيادة مراس" title={user.fullName || "الإدارة"} description="الأرقام والمهام والأقسام المصرح لك بها، مرتبة للعمل بوضوح." icon="compass-outline" />
     <AdminNavigation selected={destinationId} permissions={capabilities.permissions} owner={capabilities.owner} onSelect={chooseDestination}/>
     <SectionTitle title={destination.title} subtitle={destination.description}/>
     {message ? <Text style={[styles.message, { color: message.startsWith("تم") ? colors.success : colors.danger }]}>{message}</Text> : null}
     {view !== "overview" && (tab !== "users" || !profileEmail) && <Card><Field label="بحث في جميع السجلات" value={searchDraft} onChangeText={setSearchDraft} /><AppButton title="بحث" onPress={() => { setServerSearch(searchDraft.trim()); setPageState({ tab, q: searchDraft.trim(), page: 1 }); }} /></Card>}
     {tab === "roster" && <AdminCourseRoster key={courseSelection} initialSlug={courseSelection} courses={data.courses} onOpenStudent={email => { setProfileEmail(email); setTab("users"); }} />}
-    {tab === "overview" && <Overview data={data} colors={colors} />}
+    {tab === "overview" && <Overview data={data} colors={colors} onNavigate={chooseDestination} />}
     {tab === "users" && (profileEmail ? <AdminStudentProfile email={profileEmail} onClose={() => setProfileEmail("")} onStepUpRequired={stepUpRequired} onOpenCourse={slug => { setCourseSelection(slug); setTab("roster"); }} onOpenSection={(section, search) => { setServerSearch(search); setSearchDraft(search); setTab(section); }} /> : <Users data={data} colors={colors} mutate={mutate} onDelete={deleteEntity} onOpenProfile={setProfileEmail} />)}
     {tab === "subscriptions" && <SubscriptionAdmin data={data} colors={colors} mutate={mutate} />}
     {tab === "staff" && <StaffManager />}
@@ -220,7 +222,7 @@ function AdminWorkspace() {
   </Screen>;
 }
 
-function Overview({ data, colors }: { data: AdminData; colors: Colors }) {
+function Overview({ data, colors, onNavigate }: { data: AdminData; colors: Colors; onNavigate: (id: string) => void }) {
   const capabilities=useAdminCapabilities();
   const { locale } = useLanguage();
   const metrics = [
@@ -231,7 +233,13 @@ function Overview({ data, colors }: { data: AdminData; colors: Colors }) {
   ];
   return <>
     <View style={styles.metricGrid}>{metrics.filter(item=>capabilities.can([item.permission])).map((item) => <Card key={item.label} style={styles.metric}><Ionicons name={item.icon} size={24} color={colors.primary} /><Text style={[styles.metricValue, { color: colors.text }]}>{item.value}</Text><Text style={[styles.metricLabel, { color: colors.textSoft }]}>{item.label}</Text></Card>)}</View>
-    <SectionTitle title="طابور العمل" />
+    <SectionTitle title="العمل الآن" subtitle="اختصارات عملية حسب صلاحيات حسابك" />
+    <View style={styles.actionRow}>
+      {capabilities.can(["requests.manage"]) ? <AppButton full={false} title="طلبات المواد" icon="file-tray-full-outline" variant="soft" onPress={() => onNavigate("requests")} /> : null}
+      {capabilities.can(["support.manage"]) ? <AppButton full={false} title="تذاكر الدعم" icon="chatbubble-ellipses-outline" variant="soft" onPress={() => onNavigate("support")} /> : null}
+      {capabilities.can(["instructors.view"]) ? <AppButton full={false} title="فريق الشارحين" icon="school-outline" variant="soft" onPress={() => onNavigate("instructors")} /> : null}
+    </View>
+    <SectionTitle title="طابور العمل" subtitle="الأمور التي تحتاج انتباه الفريق" />
     <Card>{capabilities.can(["requests.manage"])&&<Queue label="طلبات مواد مفتوحة" value={data.metrics.openRequests} colors={colors}/>}{capabilities.can(["support.manage"])&&<Queue label="تذاكر دعم مفتوحة" value={data.metrics.openTickets} colors={colors}/>}{capabilities.can(["catalog.manage"])&&<Queue label="تقييمات تنتظر المراجعة" value={data.metrics.pendingReviews} colors={colors}/>}</Card>
     {capabilities.can(["operations.manage", "data.all"])&&<>
     <SectionTitle title="جاهزية الخدمات" />
@@ -752,8 +760,8 @@ const styles = StyleSheet.create({
   bundleSelected: { gap: 8, marginBottom: 14 }, removeChoice: { minHeight: 44, minWidth: 44, alignItems: "center", justifyContent: "center" },
   adminNavigator: { borderWidth: 1, borderRadius: 24, padding: 16, paddingBottom: 2, marginBottom: 16 }, adminNavigatorHead: { alignItems: "center", gap: 12, marginBottom: 14 }, adminNavigatorIcon: { width: 48, height: 48, borderRadius: 16, alignItems: "center", justifyContent: "center" }, adminNavigatorTitle: { fontSize: 19, lineHeight: 28, fontWeight: "900" }, adminNavigatorCopy: { fontSize: 11, lineHeight: 19, marginTop: 3 },
   tabs: { gap: 8, paddingBottom: 14 }, tab: { width: 100, height: 62, flexShrink: 0, overflow: "hidden", borderWidth: 1, borderRadius: 16, alignItems: "center", justifyContent: "center", gap: 4 }, tabIcon: { width: 24, height: 24, flexShrink: 0, alignItems: "center", justifyContent: "center" }, tabLabel: { width: "100%", paddingHorizontal: 5, textAlign: "center", fontSize: 9, fontWeight: "900" }, message: { fontSize: 10, textAlign: "center", marginBottom: 8, fontWeight: "800" }, segmentBox: { gap: 10, padding: 12, borderWidth: 1, borderRadius: 15 }, securitySetup: { gap: 9, padding: 12, borderWidth: 1, borderRadius: 14 }, securitySecret: { fontSize: 14, fontWeight: "900", letterSpacing: 2, textAlign: "center" }, bundleCourseGrid: { maxHeight: 420, gap: 7 }, bundleCourse: { minHeight: 58, flexDirection: "row", alignItems: "center", gap: 9, padding: 10, borderWidth: 1, borderRadius: 13 }, bundleQuote: { gap: 5, padding: 12, borderWidth: 1, borderRadius: 13 },
-  metricGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 }, metric: { width: "48%", minHeight: 130, alignItems: "flex-start" }, metricValue: { fontSize: 20, fontWeight: "900", marginTop: 12 }, metricLabel: { fontSize: 9, marginTop: 4 },
-  queue: { minHeight: 54, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, queueValue: { fontSize: 18, fontWeight: "900" }, queueLabel: { fontSize: 11, fontWeight: "800" }, service: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: 9 }, serviceText: { flex: 1, fontSize: 11, fontWeight: "800", textAlign: "right" },
+  metricGrid: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: 10 }, metric: { width: "48%", minHeight: 145, alignItems: "flex-end", justifyContent: "space-between" }, metricValue: { fontSize: 24, fontWeight: "900", marginTop: 10, textAlign: "right", fontVariant: ["tabular-nums"] }, metricLabel: { fontSize: 12, lineHeight: 19, textAlign: "right" },
+  queue: { minHeight: 54, borderBottomWidth: 1, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, queueValue: { fontSize: 22, fontWeight: "900", fontVariant: ["tabular-nums"] }, queueLabel: { fontSize: 14, fontWeight: "800" }, service: { minHeight: 50, flexDirection: "row", alignItems: "center", gap: 9 }, serviceText: { flex: 1, fontSize: 13, fontWeight: "800", textAlign: "right" },
   dataCard: { marginBottom: 9 }, coverPreview: { width: "100%", height: 150, borderRadius: 16, marginTop: 10, backgroundColor: "#CBD5E1" }, requestFiles: { marginTop: 6, gap: 5 }, requestFile: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 6 }, requestLink: { marginTop: 9, borderWidth: 1, borderRadius: 13, padding: 10, flexDirection: "row", alignItems: "center", gap: 9 }, deviceBox: { marginTop: 10, borderWidth: 1, borderRadius: 14, padding: 10, gap: 7 }, deviceTitle: { fontSize: 10, fontWeight: "900" }, deviceRow: { minHeight: 52, borderTopWidth: 1, paddingTop: 7, flexDirection: "row", alignItems: "center", gap: 8 }, deviceCopy: { flex: 1 }, deviceName: { fontSize: 10, fontWeight: "900" }, noticePreview: { minHeight: 86, borderWidth: 1, borderRadius: 16, padding: 12, marginBottom: 12, flexDirection: "row", alignItems: "center", gap: 12 }, dataHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: 8 }, dataTitle: { flex: 1, fontSize: 13, fontWeight: "900", textAlign: "right" }, role: { fontSize: 9, fontWeight: "900" }, dataMeta: { fontSize: 8, textAlign: "right", marginTop: 5 }, actionRow: { flexDirection: "row", flexWrap: "wrap", gap: 7, marginTop: 12 }, statuses: { gap: 6, marginTop: 11 }, status: { minHeight: 34, borderRadius: 11, paddingHorizontal: 10, alignItems: "center", justifyContent: "center" },
   ticketBody: { fontSize: 10, lineHeight: 18, textAlign: "right", marginTop: 9 }, adminThread: { gap: 7, padding: 10, borderRadius: 13, marginTop: 10 }, adminBubble: { padding: 10, borderRadius: 12 }, adminBubbleLabel: { color: "#FFF", fontSize: 9, fontWeight: "900", textAlign: "right" }, adminBubbleText: { color: "#FFF", fontSize: 10, lineHeight: 18, textAlign: "right", marginTop: 4 }, adminAttachment: { flexDirection: "row", alignItems: "center", gap: 5, paddingTop: 6 }, area: { minHeight: 90, borderWidth: 1, borderRadius: 14, padding: 11, marginTop: 11, marginBottom: 12, textAlignVertical: "top", writingDirection: "rtl" }, choices: { flexDirection: "row", gap: 7, paddingBottom: 12 }, choice: { minHeight: 36, borderRadius: 11, paddingHorizontal: 13, alignItems: "center", justifyContent: "center" }, spacer: { height: 10 }, amount: { fontSize: 15, fontWeight: "900", textAlign: "right", marginTop: 10 }, stars: { color: "#F7A810", letterSpacing: 2 },
 });

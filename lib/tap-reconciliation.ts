@@ -6,7 +6,10 @@ import { retrieveAndApplyTapCharge } from "@/lib/tap-webhook";
 const OPEN_STATUSES = ["pending", "initiated", "in_progress", "authorized", "verification_pending"];
 const MIN_AGE_MS = 2 * 60_000;
 const RETRY_INTERVAL_MS = 5 * 60_000;
-const MAX_BATCH = 10;
+function reconciliationLimit(value: string | undefined, fallback: number, max: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 1 ? Math.min(max, Math.floor(parsed)) : fallback;
+}
 const MAX_RUN_MS = 45_000;
 
 type Candidate = { kind: "course" | "ai"; id: number; orderNumber: string; tapChargeId: string | null; status: string; updatedAt: string };
@@ -22,15 +25,17 @@ export async function reconcilePendingTapCharges(now = new Date()): Promise<TapR
   const result: TapReconciliationResult = { enabled: Boolean(secret), checked: 0, resolved: 0, pending: 0, failed: 0 };
   if (!secret || process.env.TAP_RECONCILIATION_ENABLED?.trim().toLowerCase() === "false") return { ...result, enabled: false };
   const startedAt = Date.now();
+  const batchSize = reconciliationLimit(process.env.TAP_RECONCILIATION_BATCH_SIZE, 10, 200);
+  const concurrency = reconciliationLimit(process.env.TAP_RECONCILIATION_CONCURRENCY, 2, 8);
   const db = getDb();
   const ageBefore = new Date(now.getTime() - MIN_AGE_MS).toISOString();
   const retryBefore = new Date(now.getTime() - RETRY_INTERVAL_MS).toISOString();
   const fields = (table: typeof orders | typeof aiSubscriptionOrders) => ({ id: table.id, orderNumber: table.orderNumber, tapChargeId: table.tapChargeId, status: table.status, updatedAt: table.updatedAt });
   const [courseRows, aiRows] = await Promise.all([
-    db.select(fields(orders)).from(orders).where(and(inArray(orders.status, OPEN_STATUSES), isNotNull(orders.tapChargeId), lte(orders.createdAt, ageBefore), lte(orders.updatedAt, retryBefore))).orderBy(asc(orders.updatedAt), asc(orders.id)).limit(MAX_BATCH / 2),
-    db.select(fields(aiSubscriptionOrders)).from(aiSubscriptionOrders).where(and(inArray(aiSubscriptionOrders.status, OPEN_STATUSES), isNotNull(aiSubscriptionOrders.tapChargeId), lte(aiSubscriptionOrders.createdAt, ageBefore), lte(aiSubscriptionOrders.updatedAt, retryBefore))).orderBy(asc(aiSubscriptionOrders.updatedAt), asc(aiSubscriptionOrders.id)).limit(MAX_BATCH / 2),
+    db.select(fields(orders)).from(orders).where(and(inArray(orders.status, OPEN_STATUSES), isNotNull(orders.tapChargeId), lte(orders.createdAt, ageBefore), lte(orders.updatedAt, retryBefore))).orderBy(asc(orders.updatedAt), asc(orders.id)).limit(batchSize),
+    db.select(fields(aiSubscriptionOrders)).from(aiSubscriptionOrders).where(and(inArray(aiSubscriptionOrders.status, OPEN_STATUSES), isNotNull(aiSubscriptionOrders.tapChargeId), lte(aiSubscriptionOrders.createdAt, ageBefore), lte(aiSubscriptionOrders.updatedAt, retryBefore))).orderBy(asc(aiSubscriptionOrders.updatedAt), asc(aiSubscriptionOrders.id)).limit(batchSize),
   ]);
-  const candidates: Candidate[] = [...courseRows.map(row => ({ ...row, kind: "course" as const })), ...aiRows.map(row => ({ ...row, kind: "ai" as const }))].sort((left, right) => left.updatedAt.localeCompare(right.updatedAt));
+  const candidates: Candidate[] = [...courseRows.map(row => ({ ...row, kind: "course" as const })), ...aiRows.map(row => ({ ...row, kind: "ai" as const }))].sort((left, right) => left.updatedAt.localeCompare(right.updatedAt) || left.id - right.id).slice(0, batchSize);
   let next = 0;
   async function run() {
     while (next < candidates.length && Date.now() - startedAt < MAX_RUN_MS) {
@@ -54,7 +59,7 @@ export async function reconcilePendingTapCharges(now = new Date()): Promise<TapR
     }
   }
   // A failed claim must not let another worker outlive the scheduler lock.
-  const workers = await Promise.allSettled([run(), run()]);
+  const workers = await Promise.allSettled(Array.from({ length: Math.min(concurrency, candidates.length) }, () => run()));
   result.failed += workers.filter(worker => worker.status === "rejected").length;
   return result;
 }

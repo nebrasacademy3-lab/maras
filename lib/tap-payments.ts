@@ -1,5 +1,9 @@
 // A transport or provider failure does not prove a charge was never created.
 // Keep ambiguous attempts open until a verified callback or finance review resolves them.
+export function tapProviderOutcomeIsUncertain(response: { ok: boolean; status: number }, hasProviderObject = false) {
+  return response.ok || hasProviderObject || response.status >= 500 || [408, 409, 425, 429].includes(response.status);
+}
+
 export function tapChargeCreationResult(response: { ok: boolean; status: number }, value: unknown):
   | { kind: "initiated"; chargeId: string; checkoutUrl: string }
   | { kind: "pending"; chargeId: string | null }
@@ -15,6 +19,6 @@ export function tapChargeCreationResult(response: { ok: boolean; status: number 
     } catch { /* An invalid redirect is never sent to the browser. */ }
   }
   if (response.ok && chargeId && checkoutUrl) return { kind: "initiated", chargeId, checkoutUrl };
-  if (response.ok || chargeId || response.status >= 500 || [408, 409, 425, 429].includes(response.status)) return { kind: "pending", chargeId };
+  if (tapProviderOutcomeIsUncertain(response, Boolean(chargeId))) return { kind: "pending", chargeId };
   return { kind: "failed", chargeId: null };
 }

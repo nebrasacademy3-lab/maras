@@ -24,7 +24,7 @@ for (const name of chosen) {
     page.on("request", request => { if (request.method() === "POST" && /\/api\/ai\/(?:files\/\d+\/actions|conversations\/\d+\/messages)/.test(request.url())) generationRequests++; });
     const openResult = async () => {
       await page.goto(`${origin}/study-tools?conversation=${conversationId}`, { waitUntil: "domcontentloaded" });
-      const legacy = page.locator(`a[href="/api/ai/artifacts/${artifactId}/download"]`);
+      const legacy = page.locator(`[data-study-artifact="${artifactId}"]`);
       await legacy.waitFor({ state: "attached" });
       const details = legacy.locator("xpath=ancestor::*[self::article or self::details][1]");
       await details.waitFor({ state: "attached" });
@@ -48,7 +48,7 @@ for (const name of chosen) {
     await page.waitForFunction(() => document.documentElement.classList.contains("dark"));
     await details.scrollIntoViewIfNeeded(); await page.screenshot({ path: `${folder}/${name}-dark-phone.png`, fullPage: true });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2), "PDF controls must not overflow the phone viewport");
-    checks.push("visible accessible PDF/legacy Word controls in light and dark themes at desktop and 390px widths");
+    checks.push("visible accessible PDF-only controls in light and dark themes at desktop and 390px widths");
 
     ({ details, button } = await openResult());
     let unexpectedDownloads = 0; const observeDownload = () => unexpectedDownloads++; page.on("download", observeDownload);

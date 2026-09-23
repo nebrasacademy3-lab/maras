@@ -496,10 +496,10 @@ export default function LessonPlayer() {
         <View pointerEvents="none" style={{position:"absolute",right:16,top:14,zIndex:2,opacity:.45,alignItems:"center"}}><BrandMark size={32}/>{sessionData?.branding?.whatsapp&&<Text style={styles.watermarkMeta}>+{sessionData.branding.whatsapp}</Text>}</View>
 
         {showPlayerLoading ? <View pointerEvents="none" style={styles.playerState}><Ionicons name="hourglass-outline" size={30} color="#FFFFFF" /><Text style={styles.playerStateTitle}>جارٍ تحميل الفيديو...</Text></View> : null}
-        {playbackError ? <View style={styles.playerState}><Ionicons name="alert-circle-outline" size={32} color="#FFFFFF" /><Text style={styles.playerStateTitle}>تعذّر تشغيل الفيديو</Text><Text style={styles.playerStateText}>{playbackError}</Text><Pressable style={styles.retryButton} onPress={() => setRetryKey((value) => value + 1)}><Ionicons name="refresh" size={16} color="#FFFFFF" /><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable></View> : null}
+        {playbackError ? <View style={styles.playerState}><Ionicons name="alert-circle-outline" size={32} color="#FFFFFF" /><Text style={styles.playerStateTitle}>تعذّر تشغيل الفيديو</Text><Text style={styles.playerStateText}>{playbackError}</Text><Pressable accessibilityRole="button" accessibilityLabel="إعادة محاولة تشغيل الفيديو" style={styles.retryButton} onPress={() => setRetryKey((value) => value + 1)}><Ionicons name="refresh" size={16} color="#FFFFFF" /><Text style={styles.retryText}>إعادة المحاولة</Text></Pressable></View> : null}
 
         {!isPlaying && !playbackError && statusEvent.status === "readyToPlay" ? (
-          <Pressable accessibilityLabel={t("تشغيل")} disabled={!captureReady} onPress={() => player.play()} style={styles.centerPlay}>
+          <Pressable accessibilityRole="button" accessibilityLabel={t("تشغيل الفيديو")} accessibilityState={{ disabled: !captureReady }} disabled={!captureReady} onPress={() => player.play()} style={styles.centerPlay}>
             <Ionicons name="play" size={31} color="#FFFFFF" />
           </Pressable>
         ) : null}
@@ -539,7 +539,7 @@ export default function LessonPlayer() {
             </View>
             <View style={[styles.controlsSide, { flexDirection: rowDirection }]}>
               {subtitleTracks.length>0&&<PlayerButton icon="text" active={Boolean(subtitleId)} onPress={()=>{const track=subtitleId?null:subtitleTracks[0]||null;player.subtitleTrack=track;setSubtitleId(track?.id||null);}}/>}
-              <Pressable style={styles.labelButton} onPress={() => setSettingsOpen((value) => !value)}><Text style={styles.labelButtonText}>{rate}×</Text></Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel={"سرعة التشغيل " + rate + "، فتح الإعدادات"} style={styles.labelButton} onPress={() => setSettingsOpen((value) => !value)}><Text style={styles.labelButtonText}>{rate}×</Text></Pressable>
               <PlayerButton icon="settings-outline" active={settingsOpen} onPress={() => setSettingsOpen((value) => !value)} />
               {fullscreen ? <PlayerButton icon="phone-landscape-outline" active={manualRotation} onPress={() => setManualRotation((value) => !value)} /> : null}
               <PlayerButton icon={fullscreen ? "contract-outline" : "expand-outline"} onPress={() => { setFullscreen((value) => !value); setManualRotation(false); }} />
@@ -552,9 +552,9 @@ export default function LessonPlayer() {
             <View style={[styles.settingsHead, { flexDirection: rowDirection }]}><Ionicons name="settings-outline" size={16} color="#FFFFFF" /><Text style={styles.settingsTitle}>إعدادات المشاهدة</Text><PlayerButton icon={fullscreen ? "contract-outline" : "expand-outline"} onPress={() => { setFullscreen((value) => !value); setManualRotation(false); }} /><Pressable accessibilityRole="button" accessibilityLabel={t("إغلاق الإعدادات")} hitSlop={10} onPress={() => setSettingsOpen(false)}><Ionicons name="close" size={22} color="#FFFFFF" /></Pressable></View>
             <ScrollView keyboardShouldPersistTaps="handled" style={styles.settingsScroll} contentContainerStyle={styles.settingsContent}>
             <Text style={styles.settingsLabel}>السرعة</Text>
-            <View style={[styles.chips, { flexDirection: rowDirection, justifyContent: startAlignment }]}>{rates.map((value) => <Pressable key={value} onPress={() => changeRate(value)} style={[styles.chip, rate === value && styles.chipActive]}><Text style={styles.chipText}>{value}×</Text></Pressable>)}</View>
+            <View style={[styles.chips, { flexDirection: rowDirection, justifyContent: startAlignment }]}>{rates.map((value) => <Pressable accessibilityRole="radio" accessibilityLabel={"سرعة " + value} accessibilityState={{ checked: rate === value }} key={value} onPress={() => changeRate(value)} style={[styles.chip, rate === value && styles.chipActive]}><Text style={styles.chipText}>{value}×</Text></Pressable>)}</View>
             <Text style={styles.settingsLabel}>الجودة</Text>
-            <View style={[styles.chips, { flexDirection: rowDirection, justifyContent: startAlignment }]}>{Object.keys(qualitySources).map((value) => <Pressable accessibilityRole="radio" accessibilityState={{checked:quality===value}} key={value} onPress={() => changeQuality(value)} style={[styles.chip, quality === value && styles.chipActive]}><Text style={styles.chipText}>{value}</Text></Pressable>)}</View>
+            <View style={[styles.chips, { flexDirection: rowDirection, justifyContent: startAlignment }]}>{Object.keys(qualitySources).map((value) => <Pressable accessibilityRole="radio" accessibilityLabel={"جودة " + value} accessibilityState={{checked:quality===value}} key={value} onPress={() => changeQuality(value)} style={[styles.chip, quality === value && styles.chipActive]}><Text style={styles.chipText}>{value}</Text></Pressable>)}</View>
             <Text style={styles.settingsHelp}>يُعرض الفيديو بالحجم الأصلي داخل الإطار بدون قص أو تقريب.</Text>
             <Text style={styles.settingsLabel}>الصوت</Text>
             <Slider style={styles.volumeSlider} minimumValue={0} maximumValue={1} step={0.05} value={muted ? 0 : volume} onValueChange={changeVolume} minimumTrackTintColor="#4D82FF" maximumTrackTintColor="rgba(255,255,255,.25)" thumbTintColor="#FFFFFF" />
@@ -571,17 +571,17 @@ export default function LessonPlayer() {
         </View>
         <Text style={[styles.lessonTitle, { color: colors.text }]}>{lesson.title}</Text>
         <Text style={[styles.protection, { color: colors.textSoft }]}><Ionicons name="shield-checkmark-outline" size={14} color={colors.success} /> بث محمي · عرض كامل بدون قص · حفظ تقدم تلقائي</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8,paddingVertical:8}} accessibilityRole="tablist">{LESSON_TABS.map(item=><Pressable key={item.id} accessibilityRole="tab" accessibilityState={{selected:tab===item.id}} accessibilityLabel={item.label} onPress={()=>selectLessonTab(item.id)} style={{minHeight:48,flexDirection:"row",alignItems:"center",gap:8,padding:12,borderRadius:13,borderWidth:1,borderColor:tab===item.id?colors.primary:colors.border,backgroundColor:tab===item.id?colors.surfaceAlt:colors.surface}}><Ionicons name={item.icon} size={20} color={tab===item.id?colors.primary:colors.textSoft}/><Text style={{color:tab===item.id?colors.primary:colors.text,fontWeight:"700"}}>{item.label}</Text></Pressable>)}</ScrollView>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:8,paddingVertical:8}} accessibilityRole="tablist">{LESSON_TABS.map(item=><Pressable key={item.id} accessibilityRole="tab" accessibilityState={{selected:tab===item.id}} accessibilityLabel={item.label} onPress={()=>selectLessonTab(item.id)} style={{minHeight:50,flexDirection:"row",alignItems:"center",gap:8,paddingHorizontal:15,paddingVertical:10,borderRadius:15,borderWidth:1,borderColor:tab===item.id?colors.action:colors.border,backgroundColor:tab===item.id?colors.action:colors.surface}}><Ionicons name={item.icon} size={20} color={tab===item.id?colors.onPrimary:colors.textSoft}/><Text style={{color:tab===item.id?colors.onPrimary:colors.text,fontWeight:"800",fontSize:13}}>{item.label}</Text></Pressable>)}</ScrollView>
         {tab==="overview"&&<Card style={{gap:12}}><Text accessibilityRole="header" style={{color:colors.text,fontSize:22,fontWeight:"800"}}>عن هذا الدرس</Text><Text selectable style={{color:colors.textSoft,lineHeight:27}}>{lesson.description?.trim() || "تابع الشرح، وسجّل ملاحظاتك عند اللحظة المهمة، ثم اختبر فهمك واسأل المعلم الذكي من ملف الدرس."}</Text><Text style={{color:colors.primary}}>مدة الدرس: {lesson.duration || formatTime(duration)}</Text><Text style={{color:colors.textSoft}}>اختر ملفات المادة للمراجع، أو ملاحظاتي للعودة إلى وقت محدد في الفيديو.</Text></Card>}
         {tab==="files"&&<LessonCourseFiles key={`${user?.id}:${courseSlug}:${lessonId}`} courseSlug={courseSlug} lessonId={lessonId}/>}
         {(["quiz","tutor"] as const).map(mode=>visited.has(mode)&&<View key={`${user?.id}:${lessonId}:${mode}`} style={tab!==mode?{display:"none"}:undefined} accessibilityElementsHidden={tab!==mode} importantForAccessibility={tab!==mode?"no-hide-descendants":"auto"}><LessonAiTools courseSlug={courseSlug} lessonId={lessonId} mode={mode}/></View>)}
         {tab==="notes"&&<Card style={styles.notes}>
           <Text style={[styles.notesTitle, { color: colors.text }]}>ملاحظات مرتبطة بالفيديو</Text>
           <Text style={[styles.noteTimeHint, { color: colors.primary }]}>اللحظة الحالية: {formatTime(time)}</Text>
-          <TextInput multiline maxLength={4000} value={note} onChangeText={setNote} placeholder="اكتب ملاحظتك عند هذه اللحظة..." placeholderTextColor={colors.textSoft} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} />
+          <TextInput accessibilityLabel="نص الملاحظة عند اللحظة الحالية" multiline maxLength={4000} value={note} onChangeText={setNote} placeholder="اكتب ملاحظتك عند هذه اللحظة..." placeholderTextColor={colors.textSoft} style={[styles.noteInput, { color: colors.text, backgroundColor: colors.surfaceAlt, borderColor: colors.border }]} />
           <AppButton title="حفظ عند هذه اللحظة" variant="soft" icon="bookmark-outline" onPress={saveNote} />
           {noteMessage ? <Text style={[styles.noteMessage, { color: noteMessage.startsWith("تم") ? colors.success : colors.danger }]}>{noteMessage}</Text> : null}
-          <View style={styles.savedNotes}>{videoNotes.map((item) => <View key={item.id} style={[styles.savedNote, { borderColor: colors.border, backgroundColor: colors.surfaceAlt, flexDirection: rowDirection }]}><Pressable style={[styles.savedNoteOpen, { flexDirection: rowDirection }]} onPress={() => openNote(item)}><Text style={styles.savedNoteTime}>{formatTime(item.timestampSeconds)}</Text><Text numberOfLines={2} style={[styles.savedNoteBody, { color: colors.text }]}>{item.body}</Text></Pressable><Pressable accessibilityLabel={t("حذف الملاحظة")} style={styles.savedNoteDelete} onPress={() => void deleteNote(item)}><Ionicons name="trash-outline" size={17} color={colors.danger} /></Pressable></View>)}{videoNotes.length === 0 ? <Text style={[styles.notesEmpty, { color: colors.textSoft }]}>أوقف الفيديو عند الموضع المطلوب واحفظ أول ملاحظة؛ ستظهر هنا ويمكنك الضغط عليها للعودة لنفس الثانية.</Text> : null}</View>
+          <View style={styles.savedNotes}>{videoNotes.map((item) => <View key={item.id} style={[styles.savedNote, { borderColor: colors.border, backgroundColor: colors.surfaceAlt, flexDirection: rowDirection }]}><Pressable accessibilityRole="button" accessibilityLabel={"العودة إلى " + formatTime(item.timestampSeconds) + ": " + item.body} style={[styles.savedNoteOpen, { flexDirection: rowDirection }]} onPress={() => openNote(item)}><Text style={styles.savedNoteTime}>{formatTime(item.timestampSeconds)}</Text><Text numberOfLines={2} style={[styles.savedNoteBody, { color: colors.text }]}>{item.body}</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={t("حذف الملاحظة")} style={styles.savedNoteDelete} onPress={() => void deleteNote(item)}><Ionicons name="trash-outline" size={17} color={colors.danger} /></Pressable></View>)}{videoNotes.length === 0 ? <Text style={[styles.notesEmpty, { color: colors.textSoft }]}>أوقف الفيديو عند الموضع المطلوب واحفظ أول ملاحظة؛ ستظهر هنا ويمكنك الضغط عليها للعودة لنفس الثانية.</Text> : null}</View>
         </Card>}
       </View></LessonDetails>
     </LessonSurface>
@@ -596,7 +596,7 @@ function LessonSurface({ fullscreen, background, children }: { fullscreen: boole
 
 function LessonDetails({ fullscreen, children }: { fullscreen: boolean; children: React.ReactNode }) {
   if (Platform.OS === "web") return <>{children}</>;
-  return <ScrollView keyboardShouldPersistTaps="handled" style={[styles.nativeDetails, fullscreen && styles.hidden]} contentContainerStyle={styles.nativeDetailsContent}>{children}</ScrollView>;
+  return <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" style={[styles.nativeDetails, fullscreen && styles.hidden]} contentContainerStyle={styles.nativeDetailsContent}>{children}</ScrollView>;
 }
 
 function PlayerFullscreenHost({ expanded, rotated, width, height, onClose, children }: { expanded: boolean; rotated: boolean; width: number; height: number; onClose: () => void; children: React.ReactNode }) {
@@ -650,7 +650,7 @@ function WebPlayerHost({ expanded, width, height, onClose, children }: { expande
 function PlayerButton({ icon, label, active = false, onPress }: { icon: React.ComponentProps<typeof Ionicons>["name"]; label?: string; active?: boolean; onPress: () => void }) {
   const { t } = useLanguage();
   const descriptions: Record<string, string> = { play: "تشغيل الفيديو", pause: "إيقاف الفيديو مؤقتًا", "play-back": "الرجوع عشر ثوانٍ", "play-forward": "التقدم عشر ثوانٍ", "volume-mute": "تشغيل الصوت", "volume-high": "كتم الصوت", text: "الترجمة", "settings-outline": "إعدادات المشاهدة", "phone-landscape-outline": "تدوير الفيديو", "contract-outline": "تصغير الفيديو", "expand-outline": "تكبير الفيديو" };
-  return <Pressable accessibilityRole="button" accessibilityLabel={t(descriptions[icon] || label || "التحكم بالفيديو")} accessibilityState={{ selected: active }} onPress={onPress} style={[styles.playerButton, active && styles.playerButtonActive]}><Ionicons name={icon} size={18} color="#FFFFFF" />{label ? <Text style={styles.playerButtonLabel}>{label}</Text> : null}</Pressable>;
+  return <Pressable accessibilityRole="button" accessibilityLabel={t(descriptions[icon] || label || "التحكم بالفيديو")} accessibilityState={{ selected: active }} hitSlop={4} onPress={onPress} style={[styles.playerButton, active && styles.playerButtonActive]}><Ionicons name={icon} size={18} color="#FFFFFF" />{label ? <Text style={styles.playerButtonLabel}>{label}</Text> : null}</Pressable>;
 }
 
 function formatTime(value: number) {
@@ -678,8 +678,8 @@ const styles = StyleSheet.create({
   topShade: { position: "absolute", top: 0, left: 0, right: 0, height: 72, backgroundColor: "rgba(0,0,0,.18)" },
   bottomShade: { position: "absolute", bottom: 0, left: 0, right: 0, height: 92, backgroundColor: "rgba(0,0,0,.48)" },
   titleOverlay: { position: "absolute", top: 11, left: 13, right: 13, alignItems: "flex-start" },
-  overlayTitle: { maxWidth: "76%", color: "#FFFFFF", fontSize: 11, fontWeight: "900", writingDirection: "rtl" },
-  overlaySub: { color: "rgba(255,255,255,.62)", fontSize: 8, marginTop: 3 },
+  overlayTitle: { maxWidth: "76%", color: "#FFFFFF", fontSize: 13, fontWeight: "900", writingDirection: "rtl" },
+  overlaySub: { color: "rgba(255,255,255,.82)", fontSize: 10, marginTop: 3 },
   watermark: { zIndex:2, position: "absolute", alignSelf: "center", top: "38%", opacity: 0.28, alignItems: "center" },
   watermarkText: { color: "#FFFFFF", fontSize: 10, fontWeight: "900" },
   watermarkMeta: { color: "#FFFFFF", fontSize: 8, marginTop: 2 },
@@ -691,50 +691,50 @@ const styles = StyleSheet.create({
   controlsRow: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "space-between", rowGap: 2 },
   controlsMain: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 2 },
   controlsSide: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: 2 },
-  playerButton: { minWidth: 36, height: 36, borderRadius: 8, paddingHorizontal: 5, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 1 },
+  playerButton: { minWidth: 38, height: 38, borderRadius: 8, paddingHorizontal: 5, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 1 },
   playerButtonActive: { backgroundColor: "rgba(255,255,255,.14)" },
-  playerButtonLabel: { color: "#FFFFFF", fontSize: 6, marginLeft: -4, marginTop: -1 },
-  labelButton: { minWidth: 38, height: 31, borderRadius: 8, alignItems: "center", justifyContent: "center" },
-  labelButtonText: { color: "#FFFFFF", fontSize: 9, fontWeight: "800" },
-  timeText: { color: "rgba(255,255,255,.74)", fontSize: 8, marginStart: 4, writingDirection: "ltr" },
+  playerButtonLabel: { color: "#FFFFFF", fontSize: 9, marginLeft: -4, marginTop: -1 },
+  labelButton: { minWidth: 42, height: 38, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  labelButtonText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
+  timeText: { color: "rgba(255,255,255,.9)", fontSize: 10, marginStart: 4, writingDirection: "ltr" },
   settings: { position: "absolute", zIndex: 40, start: 8, top: 8, bottom: 8, width: 310, maxWidth: "94%", padding: 10, borderWidth: 1, borderColor: "rgba(255,255,255,.16)", borderRadius: 14, backgroundColor: "rgba(5,12,31,.98)" },
   settingsScroll: { flex: 1 },
   settingsContent: { paddingBottom: 10 },
   settingsHead: { flexDirection: "row", alignItems: "center", gap: 7, paddingBottom: 9, borderBottomWidth: 1, borderBottomColor: "rgba(255,255,255,.12)" },
-  settingsTitle: { flex: 1, color: "#FFFFFF", fontSize: 11, fontWeight: "900", textAlign: "right" },
-  settingsLabel: { color: "#9FB0CF", fontSize: 9, marginTop: 10, marginBottom: 6, textAlign: "right" },
+  settingsTitle: { flex: 1, color: "#FFFFFF", fontSize: 14, fontWeight: "900", textAlign: "right" },
+  settingsLabel: { color: "#D7E3F8", fontSize: 12, marginTop: 10, marginBottom: 6, textAlign: "right" },
   chips: { flexDirection: "row", flexWrap: "wrap", gap: 5, justifyContent: "flex-end" },
-  chip: { minHeight: 29, minWidth: 46, paddingHorizontal: 8, borderRadius: 7, borderWidth: 1, borderColor: "rgba(255,255,255,.10)", backgroundColor: "rgba(255,255,255,.05)", alignItems: "center", justifyContent: "center" },
+  chip: { minHeight: 42, minWidth: 50, paddingHorizontal: 8, borderRadius: 7, borderWidth: 1, borderColor: "rgba(255,255,255,.10)", backgroundColor: "rgba(255,255,255,.05)", alignItems: "center", justifyContent: "center" },
   chipActive: { borderColor: "#4D82FF", backgroundColor: "#275AC8" },
-  chipText: { color: "#FFFFFF", fontSize: 8, fontWeight: "800" },
-  settingsHelp: { color: "#7890B5", fontSize: 8, lineHeight: 14, textAlign: "right", marginTop: 7 },
+  chipText: { color: "#FFFFFF", fontSize: 11, fontWeight: "800" },
+  settingsHelp: { color: "#A9BCDB", fontSize: 11, lineHeight: 18, textAlign: "right", marginTop: 7 },
   volumeSlider: { width: "100%", height: 26 },
   playerState: { position: "absolute", zIndex: 20, top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "rgba(3,11,29,.94)", alignItems: "center", justifyContent: "center", gap: 7, paddingHorizontal: 26 },
-  playerStateTitle: { color: "#FFFFFF", fontSize: 13, fontWeight: "900", textAlign: "center" },
-  playerStateText: { color: "#AAB9D4", fontSize: 9, lineHeight: 16, textAlign: "center" },
-  retryButton: { marginTop: 7, minHeight: 36, paddingHorizontal: 14, borderRadius: 10, backgroundColor: "#275AC8", flexDirection: "row", alignItems: "center", gap: 6 },
-  retryText: { color: "#FFFFFF", fontSize: 9, fontWeight: "900" },
+  playerStateTitle: { color: "#FFFFFF", fontSize: 16, fontWeight: "900", textAlign: "center" },
+  playerStateText: { color: "#CFDCF1", fontSize: 12, lineHeight: 20, textAlign: "center" },
+  retryButton: { marginTop: 7, minHeight: 44, paddingHorizontal: 14, borderRadius: 10, backgroundColor: "#275AC8", flexDirection: "row", alignItems: "center", gap: 6 },
+  retryText: { color: "#FFFFFF", fontSize: 12, fontWeight: "900" },
   captureBlock: { zIndex: 60 },
   captureActions: { flexDirection: "row", flexWrap: "wrap", gap: 8, justifyContent: "center" },
   privacy: { position: "absolute", zIndex: 90, top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "#02050B", alignItems: "center", justifyContent: "center", gap: 10 },
   privacyText: { color: "#FFFFFF", fontSize: 11, fontWeight: "900" },
   content: { paddingHorizontal: 18, paddingTop: 15, paddingBottom: 30 },
   navigationRow: { flexDirection: "row", gap: 8, justifyContent: "space-between", marginBottom: 15 },
-  lessonTitle: { fontSize: 21, lineHeight: 31, fontWeight: "900", textAlign: "right" },
-  protection: { fontSize: 9, textAlign: "right", marginTop: 7 },
+  lessonTitle: { fontSize: 24, lineHeight: 35, fontWeight: "900", textAlign: "right" },
+  protection: { fontSize: 12, lineHeight: 21, textAlign: "right", marginTop: 7 },
   notes: { marginTop: 20 },
-  notesTitle: { fontSize: 14, fontWeight: "900", textAlign: "right", marginBottom: 11 },
-  noteTimeHint: { fontSize: 9, fontWeight: "900", textAlign: "right", marginBottom: 8, writingDirection: "rtl" },
+  notesTitle: { fontSize: 18, lineHeight: 28, fontWeight: "900", textAlign: "right", marginBottom: 11 },
+  noteTimeHint: { fontSize: 13, fontWeight: "900", textAlign: "right", marginBottom: 8, writingDirection: "rtl" },
   noteInput: { minHeight: 140, borderWidth: 1, borderRadius: 15, padding: 12, textAlignVertical: "top", writingDirection: "rtl", marginBottom: 10 },
-  noteMessage: { fontSize: 9, textAlign: "center", marginTop: 8 },
+  noteMessage: { fontSize: 12, lineHeight: 21, textAlign: "center", marginTop: 8 },
   savedNotes: { gap: 8, marginTop: 14 },
-  savedNote: { minHeight: 56, borderWidth: 1, borderRadius: 13, alignItems: "center", padding: 7, gap: 7 },
+  savedNote: { minHeight: 64, borderWidth: 1, borderRadius: 13, alignItems: "center", padding: 7, gap: 7 },
   savedNoteOpen: { flex: 1, minWidth: 0, alignItems: "center", gap: 8 },
-  savedNoteTime: { color: "#FFFFFF", backgroundColor: "#275AC8", paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, fontSize: 8, fontWeight: "900", writingDirection: "ltr", overflow: "hidden" },
-  savedNoteBody: { flex: 1, fontSize: 9, lineHeight: 15, textAlign: "right", writingDirection: "rtl" },
-  savedNoteDelete: { width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
-  notesEmpty: { fontSize: 9, lineHeight: 17, textAlign: "right" },
+  savedNoteTime: { color: "#FFFFFF", backgroundColor: "#275AC8", paddingHorizontal: 8, paddingVertical: 6, borderRadius: 8, fontSize: 11, fontWeight: "900", writingDirection: "ltr", overflow: "hidden" },
+  savedNoteBody: { flex: 1, fontSize: 13, lineHeight: 21, textAlign: "right", writingDirection: "rtl" },
+  savedNoteDelete: { width: 44, height: 44, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  notesEmpty: { fontSize: 13, lineHeight: 23, textAlign: "right" },
   errorCard: { marginTop: 40, alignItems: "center", gap: 13 },
   errorTitle: { fontSize: 19, fontWeight: "900" },
-  errorText: { fontSize: 11, lineHeight: 19, textAlign: "center" },
+  errorText: { fontSize: 13, lineHeight: 23, textAlign: "center" },
 });

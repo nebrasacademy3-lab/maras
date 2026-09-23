@@ -337,6 +337,13 @@
       "when": 1789938000001,
       "tag": "0047_oauth_account_privacy",
       "breakpoints": true
+    },
+    {
+      "idx": 48,
+      "version": "7",
+      "when": 1790110800000,
+      "tag": "0048_instructor_course_structure",
+      "breakpoints": true
     }
   ]
 }

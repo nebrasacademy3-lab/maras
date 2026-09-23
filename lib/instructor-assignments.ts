@@ -38,14 +38,30 @@ export async function authorizedInstructorAssignment(db: Database, id: number, o
  }
  return assignment;
 }
+/** Called under the assignment lock; importing once preserves instructor edits and deletions. */
+export async function importAssignedCourseStructure(tx: InstructorTransaction, assignment: InstructorAssignment) {
+ if (assignment.structureImportedAt || !isInstructorAssignmentEditable(assignment.status)) return assignment;
+ const units = await tx.select().from(courseUnitsDb).where(eq(courseUnitsDb.courseSlug, assignment.courseSlug)).orderBy(asc(courseUnitsDb.position), asc(courseUnitsDb.id));
+ const sourceLessons = await tx.select().from(lessonsDb).where(eq(lessonsDb.courseSlug, assignment.courseSlug)).orderBy(asc(lessonsDb.position), asc(lessonsDb.id));
+ const now = new Date().toISOString();
+ for (const unit of units) {
+  const [draftUnit] = await tx.insert(instructorUnits).values({ assignmentId: assignment.id, sourceUnitId: unit.id, title: unit.title, description: unit.description, position: unit.position }).returning();
+  const lessons = sourceLessons.filter(lesson => lesson.unitId === unit.id);
+  if (lessons.length) await tx.insert(instructorLessons).values(lessons.map(lesson => ({ unitId: draftUnit.id, sourceLessonId: lesson.id, title: lesson.title, description: lesson.description, position: lesson.position, createdAt: now, updatedAt: now })));
+ }
+ await tx.update(instructorAssignments).set({ structureImportedAt: now }).where(eq(instructorAssignments.id, assignment.id));
+ return { ...assignment, structureImportedAt: now };
+}
 export async function instructorAssignmentDetail(db: Database, assignment: InstructorAssignment) {
  const [course] = await db.select({ title: catalogCourses.title }).from(catalogCourses).where(eq(catalogCourses.slug, assignment.courseSlug)).limit(1);
  const units = await db.select().from(instructorUnits).where(eq(instructorUnits.assignmentId, assignment.id)).orderBy(asc(instructorUnits.position), asc(instructorUnits.id));
  const lessons = units.length ? await db.select().from(instructorLessons).where(inArray(instructorLessons.unitId, units.map(unit => unit.id))).orderBy(asc(instructorLessons.position), asc(instructorLessons.id)) : [];
+ const sourceIds = lessons.map(lesson => lesson.sourceLessonId).filter((id): id is string => Boolean(id));
+ const sources = sourceIds.length ? await db.select().from(lessonsDb).where(and(eq(lessonsDb.courseSlug, assignment.courseSlug), inArray(lessonsDb.id, sourceIds))) : [];
  const assetIds = lessons.map(lesson => lesson.videoAssetId).filter((id): id is number => id !== null);
  const assets = assetIds.length ? await db.select({ id: videoAssets.id, status: videoAssets.status, processingStatus: videoAssets.processingStatus, processingProgress: videoAssets.processingProgress, durationSeconds: videoAssets.durationSeconds }).from(videoAssets).where(inArray(videoAssets.id, assetIds)) : [];
  const resources = await db.select({ id: courseResources.id, title: courseResources.title, originalName: courseResources.originalName, contentType: courseResources.contentType, sizeBytes: courseResources.sizeBytes }).from(courseResources).where(and(eq(courseResources.courseSlug, assignment.courseSlug), eq(courseResources.status, "active"), eq(courseResources.scanStatus, "clean"))).orderBy(asc(courseResources.sortOrder), asc(courseResources.id));
- return { assignment: { ...assignment, courseTitle: course?.title || assignment.courseSlug }, units: units.map(unit => ({ ...unit, lessons: lessons.filter(lesson => lesson.unitId === unit.id).map(lesson => ({ id: lesson.id, title: lesson.title, description: lesson.description, position: lesson.position, video: assets.find(asset => asset.id === lesson.videoAssetId) || null })) })), resources: resources.map(resource => ({ ...resource, url: "/api/instructor/assignments/" + assignment.id + "/resources/" + resource.id })) };
+ return { assignment: { ...assignment, courseTitle: course?.title || assignment.courseSlug }, units: units.map(unit => ({ ...unit, lessons: lessons.filter(lesson => lesson.unitId === unit.id).map(lesson => ({ id: lesson.id, sourceLessonId: lesson.sourceLessonId, existingVideo: assignment.status === "published" || sources.some(source => source.id === lesson.sourceLessonId && source.videoAssetId !== null), title: lesson.title, description: lesson.description, position: lesson.position, video: assignment.status === "published" ? null : assets.find(asset => asset.id === lesson.videoAssetId) || null })) })), resources: resources.map(resource => ({ ...resource, url: "/api/instructor/assignments/" + assignment.id + "/resources/" + resource.id })) };
 }
 export async function instructorAssignmentSummaries(db: Database, userId: number) {
  const assignments = await db.select().from(instructorAssignments).where(eq(instructorAssignments.userId, userId)).orderBy(asc(instructorAssignments.id)).limit(100);
@@ -78,12 +94,20 @@ async function deleteDraftAssets(tx: InstructorTransaction, assignment: Instruct
 export async function assignmentReadyContent(tx: Database, assignment: InstructorAssignment) {
  const units = await tx.select().from(instructorUnits).where(eq(instructorUnits.assignmentId, assignment.id)).orderBy(asc(instructorUnits.position), asc(instructorUnits.id));
  if (!units.length) throw new InstructorError("أضف وحدة ودروسها أولًا", 409);
- const rows: Array<{ unit: typeof instructorUnits.$inferSelect; lessons: Array<{ lesson: typeof instructorLessons.$inferSelect; asset: typeof videoAssets.$inferSelect }> }> = [];
+ const rows: Array<{ unit: typeof instructorUnits.$inferSelect; lessons: Array<{ lesson: typeof instructorLessons.$inferSelect; asset: typeof videoAssets.$inferSelect | null }> }> = [];
  for (const unit of units) {
   const lessons = await tx.select().from(instructorLessons).where(eq(instructorLessons.unitId, unit.id)).orderBy(asc(instructorLessons.position), asc(instructorLessons.id));
   if (!lessons.length) throw new InstructorError("كل وحدة يجب أن تحتوي درسًا واحدًا على الأقل", 409);
   const ready = [];
   for (const lesson of lessons) {
+   if (lesson.sourceLessonId) {
+    const [source] = await tx.select().from(lessonsDb).where(and(eq(lessonsDb.id, lesson.sourceLessonId), eq(lessonsDb.courseSlug, assignment.courseSlug), eq(lessonsDb.unitId, unit.sourceUnitId!))).limit(1);
+    if (!source) throw new InstructorError("تغير هيكل المادة الأصلية. اطلب من الإدارة مراجعة الربط قبل النشر", 409, "INSTRUCTOR_SOURCE_CHANGED");
+    if (source.videoAssetId) {
+     if (lesson.videoAssetId) throw new InstructorError("أضافت الإدارة فيديو لهذا الدرس؛ لا يمكن استبداله من التكليف", 409, "INSTRUCTOR_SOURCE_CHANGED");
+     ready.push({ lesson, asset: null }); continue;
+    }
+   }
    if (!lesson.videoAssetId) throw new InstructorError("أكمل فيديو كل درس قبل الإرسال", 409);
    const asset = await assertDraftAsset(tx, assignment, lesson.id, lesson.videoAssetId);
    if (asset.status !== "ready" || asset.processingStatus !== "ready" || !asset.hlsMasterObjectKey || !asset.durationSeconds || asset.durationSeconds < 1) throw new InstructorError("انتظر اكتمال معالجة جميع الفيديوهات قبل الإرسال أو النشر", 409, "INSTRUCTOR_VIDEOS_NOT_READY");
@@ -109,10 +133,11 @@ export async function editInstructorAssignment(tx: InstructorTransaction, userId
   else { const lessons = await tx.select({ id: instructorLessons.id }).from(instructorLessons).where(inArray(instructorLessons.unitId, units.map(unit => unit.id))); if (lessons.length >= 500) throw new InstructorError("الحد الأقصى 500 درس للمهمة", 409); const [lesson] = await tx.insert(instructorLessons).values({ unitId, ...fields, createdAt: now, updatedAt: now }).returning({ id: instructorLessons.id }); resultId = lesson.id; }
  } else if (body.action === "deleteUnit") {
   const unitId = instructorAssignmentId(body.id); if (!units.some(unit => unit.id === unitId)) throw new InstructorError("الوحدة غير موجودة", 404);
+  if (units.find(unit => unit.id === unitId)?.sourceUnitId) throw new InstructorError("الوحدة من خطة المادة المعتمدة؛ يمكن تعديلها وإضافة دروس إليها، وحذفها من الإدارة فقط", 403);
   const lessons = await tx.select().from(instructorLessons).where(eq(instructorLessons.unitId, unitId)); await deleteDraftAssets(tx, assignment, lessons); await tx.delete(instructorUnits).where(eq(instructorUnits.id, unitId));
  } else if (body.action === "deleteLesson") {
   const lessonId = instructorAssignmentId(body.id); const [lesson] = units.length ? await tx.select().from(instructorLessons).where(and(eq(instructorLessons.id, lessonId), inArray(instructorLessons.unitId, units.map(unit => unit.id)))).limit(1) : [];
-  if (!lesson) throw new InstructorError("الدرس غير موجود", 404); await deleteDraftAssets(tx, assignment, [lesson]);
+  if (!lesson) throw new InstructorError("الدرس غير موجود", 404); if (lesson.sourceLessonId) throw new InstructorError("الدرس من خطة المادة المعتمدة؛ يمكن تعديله وإضافة الفيديو، وحذفه من الإدارة فقط", 403); await deleteDraftAssets(tx, assignment, [lesson]);
  } else if (body.action === "submit") {
   await assignmentReadyContent(tx, assignment);
   const [owner] = await tx.select({ id: users.id }).from(users).where(and(eq(users.isPlatformOwner, true), eq(users.status, "active"), eq(users.role, "admin"))).limit(1);
@@ -126,18 +151,41 @@ export async function editInstructorAssignment(tx: InstructorTransaction, userId
 export async function publishInstructorAssignment(tx: InstructorTransaction, assignment: InstructorAssignment) {
  if (assignment.status === "published") return { reused: true, revision: assignment.revision };
  if (assignment.status !== "submitted") throw new InstructorError("يلزم إرسال المهمة للمراجعة قبل النشر", 409);
- const content = await assignmentReadyContent(tx, assignment);
  await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${"instructor-publish-course:" + assignment.courseSlug}))`);
  const [course] = await tx.select({ slug: catalogCourses.slug }).from(catalogCourses).where(eq(catalogCourses.slug, assignment.courseSlug)).limit(1).for("update");
  if (!course) throw new InstructorError("المادة غير موجودة", 404);
+ const content = await assignmentReadyContent(tx, assignment);
  const existingUnits = await tx.select({ position: courseUnitsDb.position }).from(courseUnitsDb).where(eq(courseUnitsDb.courseSlug, assignment.courseSlug));
  let position = existingUnits.reduce((maximum, unit) => Math.max(maximum, unit.position), -1) + 1;
  const now = new Date().toISOString();
  for (const { unit, lessons } of content) {
-  const [publishedUnit] = await tx.insert(courseUnitsDb).values({ courseSlug: assignment.courseSlug, title: unit.title, description: unit.description, position: position++, status: "published", createdAt: now, updatedAt: now }).returning({ id: courseUnitsDb.id });
-  for (const [index, { lesson, asset }] of lessons.entries()) {
-   const publishedId = "instructor-" + assignment.id + "-lesson-" + lesson.id;
-   await tx.insert(lessonsDb).values({ id: publishedId, courseSlug: assignment.courseSlug, unitId: publishedUnit.id, title: lesson.title, description: lesson.description, position: index, status: "published", freePreview: false, videoAssetId: asset.id, durationSeconds: asset.durationSeconds || 0, createdAt: now, updatedAt: now });
+  let publishedUnitId: number;
+  if (unit.sourceUnitId) {
+   const [sourceUnit] = await tx.select().from(courseUnitsDb).where(and(eq(courseUnitsDb.id, unit.sourceUnitId), eq(courseUnitsDb.courseSlug, assignment.courseSlug))).limit(1).for("update");
+   if (!sourceUnit) throw new InstructorError("الوحدة الأصلية لم تعد متاحة. راجع خطة المادة", 409, "INSTRUCTOR_SOURCE_CHANGED");
+   publishedUnitId = sourceUnit.id;
+   await tx.update(courseUnitsDb).set({ title: unit.title, description: unit.description, position: unit.position, status: "published", updatedAt: now }).where(eq(courseUnitsDb.id, sourceUnit.id));
+  } else {
+   const [created] = await tx.insert(courseUnitsDb).values({ courseSlug: assignment.courseSlug, title: unit.title, description: unit.description, position: position++, status: "published", createdAt: now, updatedAt: now }).returning({ id: courseUnitsDb.id });
+   publishedUnitId = created.id;
+  }
+  const publishedLessons = await tx.select({ position: lessonsDb.position }).from(lessonsDb).where(and(eq(lessonsDb.courseSlug, assignment.courseSlug), eq(lessonsDb.unitId, publishedUnitId)));
+  let lessonPosition = publishedLessons.reduce((max, lesson) => Math.max(max, lesson.position), -1) + 1;
+  for (const { lesson, asset } of lessons) {
+   if (!asset) {
+    const [source] = lesson.sourceLessonId ? await tx.select().from(lessonsDb).where(and(eq(lessonsDb.id, lesson.sourceLessonId), eq(lessonsDb.courseSlug, assignment.courseSlug), eq(lessonsDb.unitId, publishedUnitId))).limit(1).for("update") : [];
+    if (!source || !source.videoAssetId) throw new InstructorError("تغير الفيديو المعتمد أثناء المراجعة؛ راجع الدرس قبل النشر", 409, "INSTRUCTOR_SOURCE_CHANGED");
+    // Review approves metadata edits while preserving the existing video and access flag.
+    await tx.update(lessonsDb).set({ title: lesson.title, description: lesson.description, position: lesson.position, status: "published", updatedAt: now }).where(eq(lessonsDb.id, source.id));
+    continue;
+   }
+   const publishedId = lesson.sourceLessonId || "instructor-" + assignment.id + "-lesson-" + lesson.id;
+   const values = { title: lesson.title, description: lesson.description, status: "published", videoAssetId: asset.id, durationSeconds: asset.durationSeconds || 0, updatedAt: now };
+   if (lesson.sourceLessonId) {
+    const [source] = await tx.select().from(lessonsDb).where(and(eq(lessonsDb.id, publishedId), eq(lessonsDb.courseSlug, assignment.courseSlug), eq(lessonsDb.unitId, publishedUnitId))).limit(1).for("update");
+    if (!source || source.videoAssetId) throw new InstructorError("تغير فيديو الدرس الأصلي أثناء المراجعة؛ لم يتم استبداله", 409, "INSTRUCTOR_SOURCE_CHANGED");
+    await tx.update(lessonsDb).set({ ...values, position: lesson.position }).where(eq(lessonsDb.id, publishedId));
+   } else await tx.insert(lessonsDb).values({ ...values, id: publishedId, courseSlug: assignment.courseSlug, unitId: publishedUnitId, position: lessonPosition++, freePreview: false, createdAt: now });
    await tx.update(videoAssets).set({ courseSlug: assignment.courseSlug, lessonId: publishedId, updatedAt: now }).where(eq(videoAssets.id, asset.id));
   }
  }
@@ -161,6 +209,7 @@ export async function createInstructorAssignment(tx: InstructorTransaction, acto
  if (assignments.some(row => row.status !== "cancelled")) throw new InstructorError("المادة مسندة بالفعل؛ راجع المهمة الحالية", 409);
  const now = new Date().toISOString();
  const [assignment] = await tx.insert(instructorAssignments).values({ userId, contractId, courseSlug, instructions, assignedBy: actorId, status: "assigned", revision: 1, createdAt: now, updatedAt: now }).returning();
+ await importAssignedCourseStructure(tx, assignment);
  await tx.insert(notificationsDb).values({ targetUserId: userId, userEmail: null, audience: "user", title: "مادة جديدة لشرحها", body: "أسندت الإدارة مادة جديدة إليك. راجع الملفات والتعليمات من لوحة الشارح", actionUrl: "/instructor", dedupeKey: "instructor-assignment:" + assignment.id + ":assigned", createdAt: now });
  await tx.insert(auditLogs).values({ actorEmail: "user-id:" + actorId, action: "instructor_assignment_create", entityType: "instructor_assignment", entityId: String(assignment.id), afterJson: JSON.stringify({ userId, courseSlug, contractId }), createdAt: now });
  return assignment;

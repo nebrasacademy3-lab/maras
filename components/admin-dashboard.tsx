@@ -1,5 +1,6 @@
 "use client";
 import {AdminCapability} from "@/components/admin-capability";
+import { AccessibleDataTable } from "@/components/accessible-data-table";
 
 
 import {useRouter} from "next/navigation";
@@ -142,7 +143,7 @@ function Overview({data,go,queues,mfa}:{data:ConsoleData;go:(view:View)=>void;qu
   {can(["finance.view"])&&<section className="admin-panel live-recent"><div className="admin-panel-head"><div><h2>آخر الطلبات</h2><p>سجل الطلبات المالية المسموح لك عرضه</p></div><button onClick={()=>go("orders")}>عرض الكل <ChevronLeft size={14}/></button></div><Table headers={["الطلب","الطالب","المادة","المبلغ","الحالة"]}>{data.orders.slice(0,8).map(row=><div className="live-table-row" key={row.orderNumber}><b dir="ltr">{row.orderNumber}</b><span>{row.customerName}<small>{row.customerEmail}</small></span><span>{data.courses.find(course=>course.slug===row.courseSlug)?.title||row.courseSlug}</span><strong>{row.total} {row.currency}</strong><em className={`status ${row.status==="paid"?"published":"draft"}`}>{statusLabel(row.status)}</em></div>)}</Table></section>}</>;
 }
 
-function Table({headers,children}:{headers:string[];children:React.ReactNode}){return <div className="live-table" role="region" tabIndex={0} aria-label={`جدول ${headers.join("، ")}`} style={{"--live-columns":headers.length} as React.CSSProperties}><div className="live-table-row live-table-head">{headers.map((header)=><span key={header}>{header}</span>)}</div>{children}</div>}
+function Table({headers,children}:{headers:string[];children:React.ReactNode}){return <AccessibleDataTable headers={headers}>{children}</AccessibleDataTable>}
 function includesQuery(query:string,...values:Array<string|number|null|undefined>){const needle=query.trim().toLowerCase();return !needle||values.join(" ").toLowerCase().includes(needle)}
 function institutionPayload(row: ConsoleData["institutions"][number], status: string, featured: boolean) { return { action: "saveInstitution", slug: row.slug, name: row.name, nameEn: row.nameEn, region: row.region, type: row.type, domain: row.domain || "", directorySourceUrl: row.directorySourceUrl || "", verificationStatus: row.verificationStatus || "official-directory", aliases: row.aliases || [], logoUrl: row.logo || "", status, featured }; }
 

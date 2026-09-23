@@ -1,6 +1,7 @@
 // Isolated server-owned renderer. No database, storage, provider or application
 // credential is inherited. Input is data, never JavaScript/HTML supplied by a user.
 import { spawn } from "node:child_process";
+import { protectStudyPdf } from "./study-pdf-protection.mjs";
 import { dropPdfRootPrivileges } from "./pdf-runtime-user.mjs";
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
@@ -98,8 +99,9 @@ try {
   if (bytes.length > MAX_PDF_BYTES || !bytes.subarray(0, 5).equals(Buffer.from("%PDF-"))) throw new StudyPdfError("PDF_OUTPUT_LIMIT");
   await close(); child = undefined; browser = undefined;
   if (pid) process.stderr.write(`PDF_BROWSER_EXIT:${pid}\n`);
+  const protectedBytes = process.argv[2] === "contract" ? bytes : await protectStudyPdf(bytes, process.env.TMPDIR);
   done = true; clearTimeout(deadline);
-  process.stdout.write(bytes);
+  process.stdout.write(protectedBytes);
 } catch (error) {
   clearTimeout(deadline); await close();
   process.stderr.write(JSON.stringify({ code: error instanceof StudyPdfError ? error.code : "PDF_RENDER_UNAVAILABLE" }) + "\n");

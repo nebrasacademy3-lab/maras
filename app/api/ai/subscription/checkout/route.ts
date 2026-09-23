@@ -1,3 +1,4 @@
+import { refreshOwnedTapOrder } from "@/lib/tap-return";
 import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { tapChargeCreationResult } from "@/lib/tap-payments";
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
@@ -34,6 +35,8 @@ export async function GET(request: Request) {
     if (!user) return jsonError("سجّل الدخول لمتابعة الاشتراك", 401);
     const requested = cleanText(new URL(request.url).searchParams.get("order"), 120);
     if (!requested) return jsonError("رقم الطلب مطلوب");
+    if (!await checkRateLimit("ai-subscription-status", `user:${user.id}`, 60, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
+    await refreshOwnedTapOrder("ai", requested, user.id);
     const [row] = await getDb().select({ orderNumber: aiSubscriptionOrders.orderNumber, status: aiSubscriptionOrders.status, amount: aiSubscriptionOrders.amount, currency: aiSubscriptionOrders.currency, paidAt: aiSubscriptionOrders.paidAt, entitlementExpiresAt: aiSubscriptionOrders.entitlementExpiresAt }).from(aiSubscriptionOrders).where(and(eq(aiSubscriptionOrders.orderNumber, requested), eq(aiSubscriptionOrders.userId, user.id))).limit(1);
     if (!row) return jsonError("طلب الاشتراك غير موجود", 404);
     return Response.json({ ok: true, order: row }, { headers: { "cache-control": "private, no-store", "x-content-type-options": "nosniff" } });
@@ -81,7 +84,7 @@ export async function POST(request: Request) {
     try {
       response = await fetch("https://api.tap.company/v2/charges/", {
         method: "POST",
-        headers: { authorization: `Bearer ${tapSecretKey}`, "content-type": "application/json" },
+        headers: { authorization: `Bearer ${tapSecretKey}`, "content-type": "application/json", lang_code: "ar" },
         body: JSON.stringify({
           amount,
           currency: "SAR",

@@ -10,7 +10,7 @@ import type { Institution } from "@/lib/data";
 import { useAcademicPrograms } from "@/components/use-academic-programs";
 import { ACADEMIC_LEVELS } from "@/lib/academic-levels";
 import { webDeviceHeaders } from "@/lib/client-device";
-import { safeAccountReturnTo } from "@/lib/account-readiness";
+import { postAuthenticationDestination, safeAccountReturnTo } from "@/lib/account-readiness";
 import { SocialAuthButtons } from "@/components/social-auth-buttons";
 import styles from "./auth-shell.module.css";
 
@@ -53,12 +53,8 @@ export function LoginForm() {
       if (!response.ok) throw new Error(data.error || "تعذر تسجيل الدخول");
       if ((data as { mfaRequired?: boolean }).mfaRequired) { setMfaRequired(true); setLoading(false); return; }
       const returnTo = safeReturnTo();
-      if (returnTo && !["/onboarding", "/complete-profile", "/verify-email"].includes((data.next || "").split("?")[0])) window.location.assign(returnTo);
-      else {
-        if (returnTo) { try { sessionStorage.setItem("meras_return_to", returnTo); } catch { /* Also retained in the next URL below. */ } }
-        const next = safeAccountReturnTo(data.next || "/dashboard");
-        window.location.assign(returnTo && ["/verify-email", "/complete-profile", "/onboarding"].includes(next.split("?")[0]) ? `${next.split("?")[0]}?return_to=${encodeURIComponent(returnTo)}` : next);
-      }
+      if (returnTo) { try { sessionStorage.setItem("meras_return_to", returnTo); } catch { /* The URL also preserves the return path. */ } }
+      window.location.assign(postAuthenticationDestination(data.next, returnTo));
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "تعذر تسجيل الدخول");
       setLoading(false);

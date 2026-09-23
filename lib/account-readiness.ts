@@ -4,7 +4,7 @@ import type { SessionUser } from "@/lib/auth";
 export function accountNext(user: Pick<SessionUser, "emailVerified" | "profileCompleted" | "onboardingCompleted"> & { role?: SessionUser["role"] }, native = false) {
   if (!user.emailVerified) return "/verify-email";
   if (user.role === "admin") return "/admin";
-  if (user.role === "supervisor") return "/supervisor";
+  if (user.role === "supervisor") return "/admin";
   if (user.role === "instructor") return "/instructor";
   if (!user.profileCompleted) return "/complete-profile";
   if (!user.onboardingCompleted) return "/onboarding";
@@ -25,6 +25,17 @@ export function safeAccountReturnTo(value: unknown, fallback = "/dashboard") {
     if (/^\/api(?:\/|$)/i.test(decodedPath) || decodedPath.startsWith("//") || /[\\\u0000-\u0020]/.test(decodedPath) || /%[0-9a-f]{2}/i.test(decodedPath)) return fallback;
     return `${url.pathname}${url.search}${url.hash}`;
   } catch { return fallback; }
+}
+
+/** Keep workspace routing authoritative through password, MFA and email confirmation. */
+export function postAuthenticationDestination(next: unknown, returnTo?: unknown) {
+  const destination = safeAccountReturnTo(next, "/dashboard");
+  const path = destination.split("?")[0];
+  if (["/admin", "/supervisor", "/instructor"].includes(path)) return path === "/supervisor" ? "/admin" : path;
+  const target = safeAccountReturnTo(returnTo, "");
+  if (["/verify-email", "/complete-profile", "/onboarding"].includes(path)) return target ? path + "?return_to=" + encodeURIComponent(target) : destination;
+  if (target && !/^\/(?:login|register|verify-email|complete-profile|onboarding|oauth)(?:\/|\?|$)/.test(target)) return target;
+  return destination;
 }
 
 export function purchaseRequirement(user: SessionUser) {

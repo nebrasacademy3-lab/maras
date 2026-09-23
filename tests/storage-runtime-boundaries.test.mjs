@@ -38,8 +38,10 @@ test("local reads, writes and prefix deletes reject symlink components", async t
   const { storage, root, directory } = await fixture(t);
   const outside = join(directory, "outside");
   await fs.mkdir(outside); await fs.writeFile(join(outside, "secret.txt"), "unchanged sentinel");
-  await fs.symlink(outside, join(root, "escape"), "dir");
-  await fs.symlink(join(outside, "secret.txt"), join(root, "linked.txt"));
+  await fs.symlink(outside, join(root, "escape"), process.platform === "win32" ? "junction" : "dir");
+  // A Windows junction needs no Developer Mode/admin privilege and exercises
+  // the same leaf isSymbolicLink guard; Ubuntu still uses an actual file symlink.
+  await fs.symlink(process.platform === "win32" ? outside : join(outside, "secret.txt"), join(root, "linked.txt"), process.platform === "win32" ? "junction" : "file");
   await assert.rejects(storage.getObject("escape/secret.txt", undefined, "local"), /Unsafe/);
   await assert.rejects(storage.getObject("linked.txt", undefined, "local"), /Unsafe/);
   await assert.rejects(storage.putObject("escape/new.txt", body("attack"), "text/plain", "local"), /Unsafe/);

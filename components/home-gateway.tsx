@@ -193,12 +193,13 @@ export function HomeGateway({
       <div className={"container " + styles.layout}>
         <div className={styles.copy}>
           <span className={styles.eyebrow}><Sparkles size={16} aria-hidden="true" /> {firstClaim}</span>
+          <span className={styles.editorialLabel}>مراس العلم <i /> مساحةٌ لطموحك</span>
           <h1 id="home-gateway-title">
-            {firstName ? "مرحبًا " + firstName + "،" : "هنا، تتّضح الفكرة."}
+            {firstName ? "مرحبًا " + firstName + "،" : "فهمٌ أعمق."}
             <br />
-            <em>{firstName ? "نكملها خطوة أبعد؟" : "ويكبر الطموح."}<svg viewBox="0 0 560 20" aria-hidden="true" preserveAspectRatio="none"><path d="M5 13 Q250 -5 555 9" /></svg></em>
+            <em>{firstName ? "نكملها خطوة أبعد؟" : "أفقٌ أبعد."}<svg viewBox="0 0 560 20" aria-hidden="true" preserveAspectRatio="none"><path d="M5 13 Q250 -5 555 9" /></svg></em>
           </h1>
-          <p>شروحات مقررات جامعية، تبدأ من جامعتك وتصل بك إلى فهم أعمق.<br className={styles.desktopBreak} /> جرّب الشرح المتاح، رتّب مراجعتك، وأكمل من حيث توقفت.</p>
+          <p>كل ما تحتاجه لتفهم، في مساحة واحدة.<br className={styles.desktopBreak} /> شرح جامعي واضح، وأدوات ذكية، ورحلة تعلّم على إيقاعك.</p>
 
           <div className={styles.heroActions}><Link href="/courses">اكتشف مادتك <ArrowLeft size={17} /></Link><Link href="/how-it-works"><Play size={15} /> كيف تبدأ مع مراس؟</Link></div>
           <div className={styles.intentShell}>
@@ -264,9 +265,9 @@ export function HomeGateway({
           {intent === "resume" && resume ? <ResumeCanvas resume={resume} /> : null}
           {intent !== "course" && intent !== "resume" ? <AiCanvas intent={intent} /> : null}
         </div>
-          <div className={styles.noteCard}><span><NotebookPen size={20} /></span><small>لحظة فهم تستحق الحفظ</small><strong>فكرة. ملاحظة.<br />ورجعة في وقتها.</strong><i /><i /><i /></div>
+          <div className={styles.noteCard}><span><NotebookPen size={20} /></span><div><small>من المشاهدة إلى الفهم</small><strong>شاهد. دوّن. أتقن.</strong></div><Check size={17} /></div>
           <Link href="/study-tools" className={styles.toolsCard}><span><Sparkles size={19} /></span><div><strong>مذاكرتك، بطريقتك.</strong><small>تلخيص · ترجمة · تدريب</small></div><ArrowLeft size={17} /></Link>
-          <span className={styles.stageWord} aria-hidden="true">مساحةٌ لطموحك</span>
+          <span className={styles.stageWord} aria-hidden="true">تعلّم يترك أثرًا.</span>
         </div>
         <a href="#explore" className={styles.exploreLink}>اكتشف عالم مراس <span><ArrowLeft size={17} /></span></a>
       </div>

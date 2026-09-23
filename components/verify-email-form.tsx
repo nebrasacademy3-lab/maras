@@ -4,7 +4,7 @@ import { authRequest } from "@/lib/auth-request";
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, CheckCircle2, Mail, RefreshCw, ShieldCheck } from "lucide-react";
-import { safeAccountReturnTo } from "@/lib/account-readiness";
+import { postAuthenticationDestination, safeAccountReturnTo } from "@/lib/account-readiness";
 import styles from "./verify-email-form.module.css";
 import ui from "./security-form.module.css";
 import { VerificationCodeInput } from "./verification-code-input";
@@ -26,7 +26,7 @@ function continueAccount(next = "/dashboard") {
     window.location.assign(`${next}?return_to=${encodeURIComponent(returnTo)}`);
   } else {
     try { sessionStorage.removeItem("meras_return_to"); } catch { /* Optional cache. */ }
-    window.location.assign(returnTo.startsWith("/verify-email") ? "/dashboard" : returnTo);
+    window.location.assign(postAuthenticationDestination(next, returnTo));
   }
 }
 

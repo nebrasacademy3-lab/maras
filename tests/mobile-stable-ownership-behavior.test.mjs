@@ -4,7 +4,7 @@ import { pureSource } from "./helpers/pure-source.mjs";
 
 // Execute the real handlers. Only database/transport boundaries are synthetic;
 // this fixture deliberately refuses joins with data rather than faking SQL joins.
-const names = ["favorites", "courseAccess", "lessonProgress", "orders", "invoices", "courseRequests",
+const names = ["favorites", "courseAccess", "lessonProgress", "orders", "invoices", "courseRequests", "refundRequests",
   "notificationReads", "notificationsDb", "supportTickets", "supportReplies", "users", "authSessions",
   "courseRequestFiles", "supportReplyFiles", "lessonNotes", "storeCourseGrants", "courseReviews",
   "passwordResetTokens", "pushDevices", "supervisorAssignments", "auditLogs", "oauthIdentities", "oauthExchanges", "appleAccountTokens", "accountMfaChallenges", "accountMfaRecoveryCodes", "adminMfaFactors", "authDevices", "emailChangeRequests", "emailVerificationCodes", "aiArtifacts", "aiConversations", "aiEntitlements", "aiFileJobs", "aiFiles", "aiMessages", "aiQuizAttempts", "aiQuizzes", "instructorDocuments", "instructorProfiles", "studyUploadSessions"];
@@ -63,6 +63,7 @@ function database(initial) {
   return db;
 }
 const studentWorkspace=await pureSource("lib/student-workspace-policy.ts");
+const dashboardLearning=await pureSource("lib/dashboard-learning.ts");
 const oldEmail = "reused@example.test";
 const changed = { id: 1, email: "changed@example.test", role: "student", status: "active", passwordHash: "fixture" };
 const reused = { id: 2, email: oldEmail, role: "student", status: "active", passwordHash: "fixture" };
@@ -76,7 +77,7 @@ function request(method = "GET", payload) {
 }
 async function handler(path, user, db, dependencies = {}) {
   return pureSource(path, {
-    ...tables, ...primitives, ...requestBody, ...studentWorkspace, jsonError, cleanText, getDb: () => db,
+    ...tables, ...primitives, ...requestBody, ...studentWorkspace,...dashboardLearning, jsonError, cleanText, getDb: () => db,
     getSessionUser: async () => user, isMobileRequest: () => true, checkRateLimit: async () => true,
     mobileNoStoreHeaders: { "cache-control": "no-store" }, getCourseCatalog: async slug => slug ? { slug } : null,
     ...dependencies,

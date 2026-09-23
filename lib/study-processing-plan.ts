@@ -63,7 +63,7 @@ export function studyTextUnits(bytes: Buffer, contentType: string): StudyUnit[] 
     const flush = () => { if (block.join("\n").trim()) { ordinal++; add(`text:${ordinal}`, `المقطع ${ordinal}`, block.join("\n")); } block = []; };
     for (const line of lines) {
       const marker = /^\s*(`{3,}|~{3,}|\$\$)\s*/.exec(line)?.[1];
-      if (marker) { if (!fence) fence = marker; else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null; }
+      if (marker && !(marker === "$$" && line.trim().length > 4 && line.trim().endsWith("$$"))) { if (!fence) fence = marker; else if (marker[0] === fence[0] && marker.length >= fence.length) fence = null; }
       if (!line.trim() && !fence) flush(); else block.push(line);
     }
     flush();

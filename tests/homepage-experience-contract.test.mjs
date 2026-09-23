@@ -50,7 +50,9 @@ test("the homepage animation system is responsive and respects reduced motion", 
   assert.match(styles, /@media\s*\(\s*max-width\s*:\s*980px\s*\)/);
   assert.match(styles, /@media\s*\(\s*max-width\s*:\s*640px\s*\)/);
   assert.match(`${styles}\n${gatewayStyles}`, /@media\s*\(prefers-reduced-motion:\s*reduce\)/);
-  assert.match(gatewayStyles, /@keyframes enterCopy/);
-  assert.match(gatewayStyles, /@keyframes enterCanvas/);
+  // The new hero uses a short entrance on its preview, gated by the motion preference.
+  assert.match(gatewayStyles, /prefers-reduced-motion:\s*no-preference/);
+  assert.match(gatewayStyles, /prefers-reduced-motion:\s*reduce[^]*?animation:\s*none/);
+  assert.doesNotMatch(gatewayStyles, /animation:[^;}]*\binfinite\b/);
   assert.match(motion, /\[data-home-reveal\]/);
 });

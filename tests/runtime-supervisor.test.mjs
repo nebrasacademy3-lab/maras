@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { runtimeServices, shutdownTimeout } from "../scripts/runtime-supervisor.mjs";
 const supervisorUrl = new URL("../scripts/runtime-supervisor.mjs", import.meta.url).href;
+const posixSignals = { timeout: 10000, skip: process.platform === "win32" ? "Requires catchable POSIX signals/process groups; Windows kill terminates immediately. Ubuntu Quality gates exercises real graceful shutdown and escalation." : false };
 
 async function until(check, label) {
   const end = Date.now() + 5000;
@@ -79,7 +80,10 @@ test("invalid runtime flags, one-shot workers and shell-like port values fail cl
 test("an unexpectedly successful worker exit still fails the service and terminates web", { timeout: 10000 }, async t => {
   const f = await fixture(t, [{ name: "worker", exitCode: 0 }, { name: "web" }]); await f.ready();
   await writeFile(f.trigger, "exit"); assert.deepEqual(await f.done, { code: 1, signal: null });
-  await f.stopped(); assert.equal(await exists(join(f.directory, "web.stopped")), true);
+  await f.stopped();
+  // Windows terminates the peer without dispatching its SIGTERM handler; the
+  // stopped() check above still proves no synthetic service remains running.
+  assert.equal(await exists(join(f.directory, "web.stopped")), process.platform !== "win32");
   assert.equal(f.events.filter(event => event.event === "runtime.stopping").length, 1);
 });
 
@@ -101,27 +105,27 @@ test("spawn failure fails safely without logging command paths or raw errors", {
   assert.doesNotMatch(JSON.stringify(f.events) + f.stderr(), /nonexistent-synthetic-runtime-command|ENOENT/);
 });
 
-test("SIGTERM gracefully stops every enabled service without an error exit", { timeout: 10000 }, async t => {
+test("SIGTERM gracefully stops every enabled service without an error exit", posixSignals, async t => {
   const f = await fixture(t, [{ name: "storage-cleanup-worker" }, { name: "video-worker" }, { name: "ai-worker" }, { name: "web" }]); await f.ready();
   f.driver.kill("SIGTERM"); assert.deepEqual(await f.done, { code: 0, signal: null }); await f.stopped();
   for (const name of ["storage-cleanup-worker", "video-worker", "ai-worker", "web"]) assert.equal(await exists(join(f.directory, name + ".stopped")), true);
   assert.equal(f.events.some(event => event.event === "runtime.shutdown.forced"), false);
 });
 
-test("a service ignoring termination is forcibly stopped within the shutdown bound", { timeout: 10000 }, async t => {
+test("a service ignoring termination is forcibly stopped within the shutdown bound", posixSignals, async t => {
   const f = await fixture(t, [{ name: "worker", ignore: true }, { name: "web" }], 150); await f.ready();
   const start = Date.now(); f.driver.kill("SIGTERM"); await f.done; await f.stopped();
   assert.ok(Date.now() - start < 3000); assert.equal(f.events.some(event => event.event === "runtime.shutdown.forced"), true);
 });
 
-test("a repeat termination signal escalates safely without duplicate finalization", { timeout: 10000 }, async t => {
+test("a repeat termination signal escalates safely without duplicate finalization", posixSignals, async t => {
   const f = await fixture(t, [{ name: "worker", ignore: true }, { name: "web" }], 5000); await f.ready();
   f.driver.kill("SIGTERM"); await until(() => f.events.some(event => event.event === "runtime.stopping"), "shutdown starts");
   f.driver.kill("SIGINT"); await f.done; await f.stopped();
   assert.equal(f.events.filter(event => event.event === "runtime.stopped").length, 1);
 });
 
-test("worker descendants are stopped even after their parent exits", { timeout: 10000, skip: process.platform === "win32" }, async t => {
+test("worker descendants are stopped even after their parent exits", posixSignals, async t => {
   const f = await fixture(t, [{ name: "worker", exitCode: 8, grandchild: true }, { name: "web" }], 150); await f.ready();
   const grandchild = Number(await readFile(join(f.directory, "grandchild.pid"), "utf8"));
   await writeFile(f.trigger, "exit"); await f.done; await f.stopped();

@@ -29,10 +29,10 @@ type TapCharge = {
   status?: string;
   amount?: number;
   currency?: string;
-  updated?: string;
-  created?: string;
-  date?: string;
-  transaction?: { created?: string };
+  updated?: string | number;
+  created?: string | number;
+  date?: string | number;
+  transaction?: { created?: string | number };
   metadata?: { order_number?: string; course_slug?: string; course_slugs?: string; refund_request?: string; product?: string; ai_order_number?: string; user_id?: string };
   reference?: TapReference;
   customer?: { email?: string };
@@ -59,6 +59,12 @@ function amountDecimals(currency: string) {
   return ["BHD", "JOD", "KWD", "OMR"].includes(currency.toUpperCase()) ? 3 : 2;
 }
 
+// Tap timestamps can be JSON integers (especially refund.created) or strings.
+// Never coerce a callback object into the signature input.
+function tapTimestamp(value: unknown) {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? String(value) : cleanText(value, 100);
+}
+
 function hashValue(value: TapCharge, secret: string) {
   const id = cleanText(value.id, 160);
   const currency = cleanText(value.currency, 10).toUpperCase();
@@ -66,7 +72,7 @@ function hashValue(value: TapCharge, secret: string) {
   const gatewayReference = cleanText(value.reference?.gateway, 160);
   const paymentReference = cleanText(value.reference?.payment, 160);
   const status = cleanText(value.status, 60);
-  const created = cleanText(value.transaction?.created || value.created, 100);
+  const created = tapTimestamp(value.transaction?.created ?? value.created);
   const source = `x_id${id}x_amount${amount}x_currency${currency}x_gateway_reference${gatewayReference}x_payment_reference${paymentReference}x_status${status}x_created${created}`;
   return createHmac("sha256", secret).update(source, "utf8").digest("hex");
 }
@@ -99,7 +105,7 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
   if (!verifiedResponse.ok) return jsonError("تعذر التحقق من الاسترداد لدى Tap", 502);
   let verified: TapRefund;
   try { verified = await verifiedResponse.json() as TapRefund; } catch { return jsonError("استجابة Tap للاسترداد غير صالحة", 502); }
-  if (cleanText(verified.id, 160) !== refundId || cleanText(verified.object, 30).toLowerCase() !== "refund") return jsonError("تعذر مطابقة عملية الاسترداد", 409);
+  if (!verified || typeof verified !== "object" || Array.isArray(verified) || cleanText(verified.id, 160) !== refundId || cleanText(verified.object, 30).toLowerCase() !== "refund") return jsonError("تعذر مطابقة عملية الاسترداد", 409);
 
   const chargeId = cleanText(verified.charge_id, 160);
   const postedChargeId = cleanText(posted.charge_id, 160);
@@ -117,7 +123,7 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
       || amountMinor > aiOrder.amountMinor
       || currency !== aiOrder.currency.toUpperCase()
       || (metadataOrderNumber && metadataOrderNumber !== aiOrder.orderNumber);
-    const eventVersion = cleanText(verified.updated || verified.date || verified.created || verified.transaction?.created, 100) || "unknown";
+    const eventVersion = tapTimestamp(verified.updated || verified.date || verified.created || verified.transaction?.created) || "unknown";
     const eventStatus = matchFailed ? "AI_REFUND_REJECTED_MATCH" : `AI_REFUND_${status || "UNKNOWN"}`;
     await db.insert(paymentEvents).values({
       provider: "tap",
@@ -202,7 +208,7 @@ async function handleRefundWebhook(posted: TapRefund, tapSecretKey: string) {
       ))
     ))
   );
-  const eventVersion = cleanText(verified.updated || verified.date || verified.created || verified.transaction?.created, 100) || "unknown";
+  const eventVersion = tapTimestamp(verified.updated || verified.date || verified.created || verified.transaction?.created) || "unknown";
   const eventStatus = matchFailed ? "REFUND_REJECTED_MATCH" : `REFUND_${status || "UNKNOWN"}`;
   await db.insert(paymentEvents).values({
     provider: "tap",
@@ -394,7 +400,7 @@ export async function retrieveAndApplyTapCharge(chargeId: string, tapSecretKey: 
   const status = cleanText(verified.status, 60).toUpperCase();
   const db = getDb();
 
-  const eventVersion = cleanText(verified.updated || verified.transaction?.created || verified.created, 100) || "unknown";
+  const eventVersion = tapTimestamp(verified.updated || verified.transaction?.created || verified.created) || "unknown";
   await db.insert(paymentEvents).values({
     provider: "tap",
     providerEventId: `${chargeId}:${status}:${eventVersion}:${verified.amount ?? "na"}`,

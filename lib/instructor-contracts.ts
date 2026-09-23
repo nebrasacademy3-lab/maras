@@ -11,13 +11,15 @@ import { validateInstructorSignature, validInstructorRate } from "@/lib/instruct
 
 export type InstructorContractRow = typeof instructorContracts.$inferSelect;
 type Tx = Parameters<Parameters<ReturnType<typeof getDb>["transaction"]>[0]>[0];
-export type EmploymentDetails = { startDate: string; endDate: string; workLocation: string; weeklyHours: number; nationality: string; paymentTermsAr: string; paymentTermsEn: string; benefitsAr: string; benefitsEn: string };
+export type EmploymentDetails = { compensationStart?: "start_date" | "after_trial_approval"; compensationConditionsAr?: string; compensationConditionsEn?: string; startDate: string; endDate: string; workLocation: string; weeklyHours: number; nationality: string; paymentTermsAr: string; paymentTermsEn: string; benefitsAr: string; benefitsEn: string };
 function employmentInput(value: unknown): EmploymentDetails {
  const data = value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
  const weeklyHours = Number(data.weeklyHours);
- return { startDate: cleanText(data.startDate, 10), endDate: cleanText(data.endDate, 10), workLocation: cleanText(data.workLocation, 300), nationality: cleanText(data.nationality, 100), weeklyHours: Number.isFinite(weeklyHours) ? weeklyHours : 0, paymentTermsAr: cleanText(data.paymentTermsAr, 3000), paymentTermsEn: cleanText(data.paymentTermsEn, 3000), benefitsAr: cleanText(data.benefitsAr, 3000), benefitsEn: cleanText(data.benefitsEn, 3000) };
+ if (data.compensationStart !== undefined && !["start_date", "after_trial_approval"].includes(String(data.compensationStart))) throw new InstructorError("اختر آلية بدء التعويض المتفق عليها");
+ return { compensationStart: data.compensationStart === "after_trial_approval" ? "after_trial_approval" : "start_date", compensationConditionsAr: cleanText(data.compensationConditionsAr, 3000), compensationConditionsEn: cleanText(data.compensationConditionsEn, 3000), startDate: cleanText(data.startDate, 10), endDate: cleanText(data.endDate, 10), workLocation: cleanText(data.workLocation, 300), nationality: cleanText(data.nationality, 100), weeklyHours: Number.isFinite(weeklyHours) ? weeklyHours : 0, paymentTermsAr: cleanText(data.paymentTermsAr, 3000), paymentTermsEn: cleanText(data.paymentTermsEn, 3000), benefitsAr: cleanText(data.benefitsAr, 3000), benefitsEn: cleanText(data.benefitsEn, 3000) };
 }
-export function validateEmploymentOffer(value: EmploymentDetails) {
+export function validateEmploymentOffer(value: EmploymentDetails, trialDays = 0) {
+ if (value.compensationStart === "after_trial_approval" && (trialDays < 1 || (value.compensationConditionsAr || "").trim().length < 10 || (value.compensationConditionsEn || "").trim().length < 10)) throw new InstructorError("حدد مدة تجربة ومعايير قبول وبدء التعويض المتفق عليه باللغتين قبل تقديم العرض");
  const realDate = (text: string) => /^\d{4}-\d{2}-\d{2}$/.test(text) && Number.isFinite(Date.parse(text + "T00:00:00Z")) && new Date(text + "T00:00:00Z").toISOString().slice(0,10) === text;
  if (!realDate(value.startDate) || value.endDate && (!realDate(value.endDate) || value.endDate <= value.startDate)) throw new InstructorError("حدد تاريخ مباشرة صحيحاً ونهاية صحيحة للعقد المحدد المدة");
  if (value.workLocation.length < 3 || value.nationality.length < 2 || !Number.isFinite(value.weeklyHours) || value.weeklyHours <= 0 || value.weeklyHours > 48) throw new InstructorError("أكمل الجنسية ومكان العمل وساعات العمل الأسبوعية ضمن الحد المعتاد");
@@ -86,7 +88,7 @@ export async function mutateInstructorContract(actor: SessionUser, request: Requ
   if (!existing) throw new InstructorError("العقد غير موجود", 404);
   if (action === "offer") {
    if (existing.status !== "draft") throw new InstructorError("يمكن تقديم مسودة العقد فقط", 409);
-   validateEmploymentOffer(JSON.parse(existing.employmentJson));
+   validateEmploymentOffer(employmentInput(JSON.parse(existing.employmentJson)), existing.trialDays);
    if (!settings?.legal_name || !settings.commercial_registration_number || !settings.legal_address) throw new InstructorError("أكمل اسم المنشأة والسجل التجاري وعنوانها في الإعدادات قبل تقديم العقد");
    const [open] = await tx.select({ id: instructorContracts.id }).from(instructorContracts).where(and(eq(instructorContracts.userId, userId), sql`${instructorContracts.status} IN ('offered','signed')`)).limit(1);
    if (open) throw new InstructorError("يوجد عقد معروض أو سارٍ؛ اسحبه أو أنهه بإجراء موثق قبل تقديم نسخة بديلة", 409);

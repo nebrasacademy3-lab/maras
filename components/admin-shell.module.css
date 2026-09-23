@@ -47,3 +47,24 @@
   .title strong { font-size: .87rem; line-height: 1.6; }
   .title small { font-size: .65rem; }
 }
+
+/* Operations navigation: an ink rail separates navigation from the working canvas. */
+.sidebar { --text:#edf3ff; --text-soft:#b7c7e5; --muted:#a2b6d9; --primary:#adc6ff; --primary-dark:#edf3ff; --surface:#111d37; --surface-2:#182744; --surface-3:#22365b; --line:#2a3c5d; --line-strong:#365070; background:#111d37; color:var(--text); padding:24px 14px; }
+.brand { gap:10px; padding:4px 12px 24px; }.brand > span:last-child { font-size:.75rem; letter-spacing:.01em; }
+.sidebar :global(.brand-logo-light) { display:none!important; }.sidebar :global(.brand-logo-dark) { display:block!important; }
+.nav a { min-height:47px; border-radius:10px; font-size:.82rem; padding:11px 13px; }.nav a[aria-current=page] { color:var(--primary); background:var(--surface-3); border-color:var(--line-strong); border-inline-start:3px solid var(--primary); }
+.group summary { font-size:.72rem; padding-block:10px; }.search { border-radius:11px; background:var(--surface-2); }
+.footer { gap:6px; }.account { padding-bottom:14px; }.avatar { width:40px; height:40px; flex-basis:40px; }
+.header { min-height:84px; background:var(--surface); backdrop-filter:none; padding-inline:30px; }.title strong { font-size:1.12rem; }.title small { font-size:.72rem; }.header button { min-height:44px; min-width:44px; border-radius:11px; }
+.body { padding:32px; }.body :global(.admin-page-title) { margin-bottom:26px; }.body :global(.admin-page-title h1) { font-size:clamp(25px,3vw,37px); letter-spacing:-.03em; }.body :global(.admin-metric) { min-height:140px; border:1px solid var(--line); box-shadow:none; padding:22px; border-radius:20px; }.body :global(.admin-metric strong) { font-size:28px; }.body :global(.admin-panel) { border-radius:20px; box-shadow:var(--shadow-sm); }
+@media(max-width:1050px) { .header { padding:13px 16px; min-height:72px; }.body { padding:22px 16px; } }
+@media(max-width:460px) { .body { padding:18px 12px; }.header { padding-inline:12px; }.title strong { font-size:.92rem; } }
+
+/* Keep operational labels readable at laptop and phone widths. */
+.body :global(.admin-metric small) { color:var(--text-soft); font-size:calc(12px * var(--font-scale,1)); line-height:1.6; }
+.body :global(.admin-metric em) { color:var(--text-soft); font-size:calc(11px * var(--font-scale,1)); line-height:1.6; margin-top:5px; }
+.body :global(.admin-metric > span) { min-width:0; }
+.body :global(.admin-panel-head h2) { font-size:calc(17px * var(--font-scale,1)); }
+.body :global(.admin-panel-head p) { font-size:calc(12px * var(--font-scale,1)); line-height:1.8; }
+.body :global(.admin-panel + .admin-panel) { margin-top:14px; }
+@media(max-width:600px) { .body :global(.admin-metric) { grid-template-columns:minmax(0,1fr); align-content:start; gap:10px; padding:16px; min-height:150px; }.body :global(.admin-metric strong) { font-size:24px; }.body :global(.admin-metric small) { font-size:11px; }.body :global(.admin-metric em) { font-size:10px; } }

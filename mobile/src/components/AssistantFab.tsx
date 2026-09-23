@@ -76,7 +76,7 @@ export function AssistantFab() {
   const pan = useMemo(() => PanResponder.create({ onStartShouldSetPanResponder: () => true, onMoveShouldSetPanResponder: onMoveShouldSet, onPanResponderGrant: onGrant, onPanResponderMove: onMove, onPanResponderRelease: onRelease, onPanResponderTerminationRequest: onTerminationRequest, onPanResponderTerminate: onTerminate }), [onGrant, onMove, onMoveShouldSet, onRelease, onTerminate, onTerminationRequest]);
   const route = segments.join("/");
   if (!ready || route.includes("(auth)") || route.includes("admin") || /assistant|lesson|oauth|verify-email/.test(route)) return null;
-  return <View pointerEvents="box-none" style={styles.layer}><Animated.View
+  return <View {...(Platform.OS === "web" ? { dir: "ltr" } : {})} pointerEvents="box-none" style={styles.layer}><Animated.View
     {...pan.panHandlers}
     accessible accessibilityRole="button" accessibilityLabel={t("مساعد مراس")}
     accessibilityHint={t("اضغط للفتح، أو اضغط مطولًا ثم اسحب لتغيير موضع الزر")}
@@ -95,4 +95,4 @@ export function AssistantFab() {
   ><Image source={require("@/assets/brand-mark.png")} style={styles.mark} contentFit="contain" /></Animated.View></View>;
 }
 
-const styles = StyleSheet.create({ layer: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, direction: "ltr", zIndex: 50 }, button: { position: "absolute", left: 0, top: 0, width: ASSISTANT_SIZE, height: ASSISTANT_SIZE, zIndex: 50, borderRadius: 22, borderWidth: 1, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: .18, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 8 }, mark: { width: 56, height: 56 } });
+const styles = StyleSheet.create({ layer: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, ...(Platform.OS === "web" ? {} : { direction: "ltr" as const }), zIndex: 50 }, button: { position: "absolute", left: 0, top: 0, width: ASSISTANT_SIZE, height: ASSISTANT_SIZE, zIndex: 50, borderRadius: 22, borderWidth: 1, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: .18, shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 8 }, mark: { width: 56, height: 56 } });

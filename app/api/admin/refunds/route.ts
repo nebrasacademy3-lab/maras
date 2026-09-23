@@ -7,6 +7,7 @@ import { AdminMfaError, requireAdminStepUp } from "@/lib/admin-mfa";
 import { resolveRefundAmount, toMinorUnits } from "@/lib/finance";
 import { createAndSendNotification } from "@/lib/notifications";
 import { ADMIN_PERMISSIONS, authorizePermission } from "@/lib/permissions";
+import { tapProviderOutcomeIsUncertain } from "@/lib/tap-payments";
 import {
   applyConfirmedRefundToOrder,
   confirmedRefundMinorById,
@@ -221,7 +222,10 @@ export async function POST(request: Request) {
     created?: string;
     transaction?: { created?: string };
   } = {};
-  try { provider = await response.json() as typeof provider; } catch { /* handled by response status */ }
+  try {
+    const value: unknown = await response.json();
+    if (value && typeof value === "object" && !Array.isArray(value)) provider = value as typeof provider;
+  } catch { /* A successful response without readable JSON remains uncertain. */ }
   const providerId = cleanText(provider.id, 160);
   const providerStatus = cleanText(provider.status, 60).toUpperCase();
   const providerAmountMinor = majorAmountToMinor(provider.amount);
@@ -236,9 +240,9 @@ export async function POST(request: Request) {
     && (!provider.reference?.idempotent || cleanText(provider.reference.idempotent, 160) === approvedRefund.requestNumber);
   const providerMessage = cleanText(provider.message || provider.response?.message, 500) || `Tap HTTP ${response.status}`;
   if (!response.ok || !providerMatchesRequest) {
-    const ambiguous = response.status >= 500 || response.status === 409 || validRefundShape;
+    const ambiguous = tapProviderOutcomeIsUncertain(response, validRefundShape);
     await reconcileRefundRequest({ id, providerRefundId: providerMatchesRequest ? providerId : null, status: ambiguous ? "provider_pending" : "provider_failed", reviewNote: providerMatchesRequest ? providerMessage : `تعذر مطابقة استجابة Tap: ${providerMessage}` });
-    return jsonError("رفضت Tap إنشاء الاسترداد؛ بقي الطلب محفوظًا للمراجعة", 502);
+    return jsonError(ambiguous ? "نتيجة استرداد Tap قيد التحقق. أوقفنا إعادة الإرسال حتى تؤكد Tap النتيجة؛ راجع الطلب قبل أي محاولة أخرى." : "رفضت Tap إنشاء الاسترداد؛ بقي الطلب محفوظًا للمراجعة", 502);
   }
   const status = tapRefundRequestStatus(providerStatus);
   const reconciled = await reconcileRefundRequest({ id, providerRefundId: providerId, status, reviewNote: status === "provider_failed" ? providerMessage : null, completedAt: status === "completed" ? new Date().toISOString() : null });
@@ -255,7 +259,7 @@ export async function POST(request: Request) {
       eventType: "refund_status",
       amountMinor: approvedRefund.amountMinor,
       currency: approvedRefund.currency,
-      signatureVerified: true,
+      signatureVerified: false,
       processedAt: new Date().toISOString(),
       status: "REFUND_REFUNDED",
       payload: JSON.stringify(provider).slice(0, 60_000),

@@ -1,5 +1,6 @@
 import { and, eq } from "drizzle-orm";
 import { getDb } from "@/db";
+import { lessonsDb } from "@/db/schema";
 import { instructorAssignments, instructorLessons, instructorUnits } from "@/db/instructor-schema";
 import { InstructorError } from "@/lib/instructor-security";
 import { assertDraftAsset, authorizedInstructorAssignment, instructorAssignmentId } from "@/lib/instructor-assignments";
@@ -29,6 +30,10 @@ export function instructorAssignmentUploadTarget(assignmentId: number, expectedR
    const [lesson] = await tx.select().from(instructorLessons).where(eq(instructorLessons.id, id)).limit(1).for("update");
    const [unit] = lesson ? await tx.select().from(instructorUnits).where(and(eq(instructorUnits.id, lesson.unitId), eq(instructorUnits.assignmentId, assignmentId))).limit(1) : [];
    if (!lesson || !unit) throw new InstructorError("الدرس غير موجود في المهمة", 404);
+   if (lesson.sourceLessonId) {
+    const [source] = await tx.select().from(lessonsDb).where(and(eq(lessonsDb.id, lesson.sourceLessonId), eq(lessonsDb.courseSlug, assignment.courseSlug), eq(lessonsDb.unitId, unit.sourceUnitId!))).limit(1);
+    if (!source || source.videoAssetId) throw new InstructorError("الدرس الأصلي تغير أو لديه فيديو معتمد بالفعل؛ راجع الإدارة", 409, "INSTRUCTOR_SOURCE_CHANGED");
+   }
    if (lesson.videoAssetId) await assertDraftAsset(tx, assignment, id, lesson.videoAssetId);
   },
   async assertReplacement(tx, ownerId, data, assetId) {

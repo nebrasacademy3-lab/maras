@@ -84,7 +84,7 @@ test('PDF parser subprocess environment contains no inherited provider, storage 
  const env=pdf.pdfSourceEnvironment('/tmp/synthetic'); assert.deepEqual(Object.keys(env).sort(),['HOME','LANG','LC_ALL','NODE_ENV','PATH','TMPDIR']);
 });
 
-test('actual 431-page PDF packet preserves final original pages and context-only neighbours',async()=>{
+test('actual 431-page PDF packet preserves final original pages and context-only neighbours', { skip: process.platform === 'win32' ? 'PDF parser subprocess isolation requires Linux prlimit; exercised in Linux CI.' : false }, async()=>{
  const {syntheticPdf}=await import('./helpers/synthetic-pdf.mjs');
  const {execFileSync}=await import('node:child_process');
  const bytes=syntheticPdf(431);assert.equal(await pdf.studyPdfPageCount(bytes),431);
@@ -94,4 +94,10 @@ test('actual 431-page PDF packet preserves final original pages and context-only
  try {const file=join(path,'packet.pdf');await writeFile(file,packet.bytes);const text=execFileSync('pdftotext',[file,'-'],{encoding:'utf8',timeout:10000});for(const page of packet.pages) assert.match(text,new RegExp(`ORIGINAL PAGE ${page}`));assert.doesNotMatch(text,/ORIGINAL PAGE 427/);}
  finally {await rm(path,{recursive:true,force:true});}
  await assert.rejects(pdf.studyPdfPacket(bytes,{mode:'units',contentType:'application/pdf',sourcePages:430,units:[{id:'page:1',label:'PDF 1',page:1}]}),error=>error.code==='AI_SOURCE_CHANGED');
+});
+
+test('complete one-line display math never leaves a phantom open processing fence', () => {
+ const input = 'Meaningful introduction to conservation of energy.\n\n$$E=mc^2$$\n\nA complete concluding explanation.';
+ const found = plan.studyTextUnits(Buffer.from(input),'text/markdown');
+ assert.equal(found.length,3); assert.equal(found[1].text,'$$E=mc^2$$');
 });

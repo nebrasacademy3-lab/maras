@@ -29,7 +29,8 @@ try {
  await db.insert(core.catalogCourses).values({ slug: course, institutionSlug: course, specialtySlug: course, title: "Synthetic assigned course", status: "published" });
  const [existingUnit] = await db.insert(core.courseUnitsDb).values({ courseSlug: course, title: "Existing live curriculum fixture", position: 4, status: "published" }).returning();
  const existingLessonId = course + "-existing";
- await db.insert(core.lessonsDb).values({ id: existingLessonId, courseSlug: course, unitId: existingUnit.id, title: "Existing fixture lesson", status: "published" });
+ const [existingAsset] = await db.insert(core.videoAssets).values({ courseSlug: course, lessonId: existingLessonId, objectKey: "qa-fixtures/" + course + "/existing.mp4", contentType: "video/mp4", sizeBytes: 16, status: "ready", processingStatus: "ready", durationSeconds: 90, hlsMasterObjectKey: "qa-fixtures/" + course + "/master.m3u8" }).returning(); assetIds.push(existingAsset.id);
+ await db.insert(core.lessonsDb).values({ id: existingLessonId, courseSlug: course, unitId: existingUnit.id, title: "Existing fixture lesson", status: "published", videoAssetId: existingAsset.id });
  await assert.rejects(db.transaction(tx => assignments.createInstructorAssignment(tx, owner, { userId: foreign, contractId, courseSlug: course })), { status: 409 });
  const concurrent = await Promise.allSettled([0, 1].map(() => db.transaction(tx => assignments.createInstructorAssignment(tx, owner, { userId: instructor, contractId, courseSlug: course, instructions: "Synthetic QA assignment" }))));
  assert.equal(concurrent.filter(result => result.status === "fulfilled").length, 1); assert.equal(concurrent.filter(result => result.status === "rejected").length, 1);
@@ -81,8 +82,8 @@ try {
  await assert.rejects(upload.writeResumableVideoPart(db, instructor, started.id, 0, new Request("https://qa.example", { method: "PUT", body: bytes }), authorize), { status: 409 });
  pass("publication rechecks contract, appends reviewed content without altering prior lessons, is idempotent and prevents shared-asset reuse");
  const detail = await assignments.instructorAssignmentDetail(db, await assignments.authorizedInstructorAssignment(db, assignmentId, instructor));
- assert.equal(JSON.stringify(detail).includes("private/video-source"), false); assert.equal(detail.units[0].lessons[0].video?.durationSeconds, 120);
- pass("instructor detail reports processing state and duration without private object keys");
+ assert.equal(JSON.stringify(detail).includes("private/video-source"), false); assert.ok(detail.units.every(unit => unit.lessons.every(lesson => lesson.existingVideo && lesson.video === null)));
+ pass("published instructor detail marks approved content without private object keys or obsolete draft preview");
  await db.update(schema.instructorContracts).set({ status: "terminated" }).where(eq(schema.instructorContracts.id, contractId));
  await assert.rejects(assignments.authorizedInstructorAssignment(db, assignmentId, instructor), { status: 403 });
  await assert.rejects(db.transaction(tx => assignments.reviewInstructorAssignment(tx, owner, assignmentId, { action: "publish", expectedRevision: 8, reason: "Synthetic revoked contract retry" })), { status: 403 });

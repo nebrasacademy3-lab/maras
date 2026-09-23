@@ -20,15 +20,17 @@ export async function authorizeVideoRequest(request: Request, lessonId: string, 
   const grant = await verifyVideoToken(token, secret);
   if (!grant || grant.lessonId !== lessonId || grant.courseSlug !== courseSlug) return { ok: false, response: jsonError("رابط المشاهدة منتهي أو غير صالح", 403) };
 
+  let user: Awaited<ReturnType<typeof getSessionUser>> = null;
   // A copied URL is insufficient: grants stay bound to the authenticated session or preview proof.
   if (grant.sessionHash || grant.viewerId) {
     const session = requestSessionToken(request), current = await getSessionUser(request);
+    user = current;
     if (!session || !current) return {ok:false,response:jsonError("انتهت جلسة المشاهدة",401)};
     if (current.id !== grant.viewerId || !grant.sessionHash || await hashOpaqueToken(session) !== grant.sessionHash) return {ok:false,response:jsonError("الرابط لا يخص جلسة المشاهدة الحالية",403)};
   } else if (grant.previewProofHash) {
     const proof = readPreviewProof(request);
     if (!proof || await hashOpaqueToken(proof) !== grant.previewProofHash) return {ok:false,response:jsonError("أعد فتح المعاينة من مشغل مراس",403)};
-  } else if (grant.email === "preview") return {ok:false,response:jsonError("جدّد جلسة المعاينة",403)};
+  } else return {ok:false,response:jsonError("جدّد جلسة المشاهدة من مشغل مراس",403)};
 
   const db = getDb();
   const [lesson] = await db.select({ freePreview: lessonsDb.freePreview, videoAssetId: lessonsDb.videoAssetId }).from(lessonsDb).where(and(eq(lessonsDb.id, lessonId), eq(lessonsDb.courseSlug, courseSlug), eq(lessonsDb.status, "published"))).limit(1);
@@ -39,7 +41,8 @@ export async function authorizeVideoRequest(request: Request, lessonId: string, 
       if (policyError) return { ok: false, response: jsonError(policyError, 403) };
     } catch { return { ok: false, response: jsonError("تعذر التحقق من سياسة المشاهدة حاليًا. حاول مجددًا بعد قليل.", 503) }; }
     if (grant.email === "preview") return { ok: false, response: jsonError("انتهت صلاحية المعاينة المجانية لهذا الدرس", 403) };
-    const user = await getSessionUser(request);
+    // The session was validated above for this request; keep revocation checks on every segment.
+
     if (!user) return { ok: false, response: jsonError("سجّل الدخول لمتابعة هذا الفيديو", 401) };
     if (user.role === "instructor") return { ok: false, response: studentWorkspaceRequirementResponse(user)! };
     if (user.email !== grant.email) return { ok: false, response: jsonError("جلسة المشاهدة لا تخص هذا الحساب", 403) };

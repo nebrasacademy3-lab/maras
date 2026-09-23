@@ -15,7 +15,7 @@ export function authDestination(user: SessionUser, next?: string, returnTo?: str
   const suffix = target ? `?return_to=${encodeURIComponent(target)}` : "";
   if (requirement) return `${requirement}${suffix}`;
   if (user.role === "admin") return "/admin";
-  if (user.role === "supervisor") return "/supervisor";
+  if (user.role === "supervisor") return "/admin";
   if (user.role === "instructor") return "/instructor";
   if (!user.onboardingCompleted || next === "/onboarding") return `/onboarding${suffix}`;
   if (target && !/^\/(?:\(auth\)|verify-email|complete-profile|oauth|onboarding)(?:\/|\?|$)/.test(target)) return target;

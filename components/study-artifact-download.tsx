@@ -31,5 +31,5 @@ function PdfDownloadControl({ id }: { id: number }) {
     } catch (error) { if (!controller.signal.aborted) setMessage(error instanceof Error ? error.message : "تعذر تنزيل PDF."); }
     finally { if (pending.current === controller) { pending.current = null; setBusy(false); } }
   }
-  return <div><button type="button" className={styles.primary} disabled={busy} aria-busy={busy} onClick={() => void download()}>{busy ? <LoaderCircle size={18} className={styles.spin}/> : <Download size={18}/>} {busy ? "تجهيز PDF…" : "تنزيل PDF"}</button>{message && <p role="status" className={styles.hint}>{message}</p>}<a className={styles.hint} href={`/api/ai/artifacts/${id}/download`}>نسخة Word السابقة</a></div>;
+  return <div data-study-artifact={id}><button type="button" className={styles.primary} disabled={busy} aria-busy={busy} onClick={() => void download()}>{busy ? <LoaderCircle size={18} className={styles.spin}/> : <Download size={18}/>} {busy ? "تجهيز PDF…" : "تنزيل PDF"}</button>{message && <p role="status" className={styles.hint}>{message}</p>}<p className={styles.hint}>PDF باسمك · حقوق مراس محفوظة</p></div>;
 }

@@ -8,6 +8,7 @@ import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
 import { AppHeader } from "@/src/components/AppHeader";
 import { InstructorContracts } from "@/src/components/instructor-contracts";
+import { WorkspaceHero, WorkspaceStatus } from "@/src/components/staff-workspace-ui";
 import { InstructorProfileFields } from "@/src/components/instructor-profile-fields";
 import { ScaledText as Text } from "@/src/components/ScaledText";
 import { AppButton, Card, EmptyState, Field, LoadingState, Screen, SectionTitle } from "@/src/components/ui";
@@ -37,11 +38,21 @@ function InstructorWorkspace({ userId }: { userId: number }) {
   if (query.isLoading) return <Screen><AppHeader title="مساحة الشارح" back /><LoadingState /></Screen>;
   if (!query.data) return <Screen><AppHeader title="مساحة الشارح" back /><EmptyState icon="cloud-offline-outline" title="تعذر تحميل ملف الشارح" text={query.error instanceof Error ? query.error.message : "تحقق من الاتصال ثم أعد المحاولة."} action={<AppButton title="إعادة المحاولة" onPress={() => void query.refetch()} />} /></Screen>;
   const data = query.data;
+  const approved = data.profile.status === "approved";
+  const statusTone = approved ? "success" : data.profile.status === "changes_requested" ? "warning" : data.profile.status === "rejected" || data.profile.status === "suspended" ? "danger" : "primary";
   return <Screen keyboard><AppHeader title="مساحة الشارح" subtitle={data.user.fullName} back />
-    <Card style={{ gap: 10, marginBottom: 18, backgroundColor: colors.surfaceAlt }}><Text accessibilityRole="header" style={{ color: colors.primary, fontSize: 23, fontWeight: "800", textAlign: "right" }}>{statusLabels[data.profile.status] || data.profile.status}</Text><Text style={{ color: colors.textSoft, fontSize: 15, lineHeight: 26, textAlign: "right" }}>{data.profile.status === "submitted" ? "استلمت الإدارة ملفك. يمكنك متابعة الحالة هنا، وستصلك المستجدات في إشعارات حسابك. المستندات مقفلة أثناء المراجعة." : data.profile.status === "approved" ? "تابع إشعارات حسابك لمعرفة خطوات التعاقد والمواد المسندة إليك. الأجر والالتزامات تحدد في العقد المعتمد." : "أكمل نبذتك، ثم أضف مستنداتك وصورتك الشخصية. عند جاهزية الملف أرسله إلى الإدارة للمراجعة."}</Text>{data.profile.reviewNotes ? <Text style={{ color: colors.text, fontSize: 15, lineHeight: 25, textAlign: "right" }}>ملاحظة الإدارة: {data.profile.reviewNotes}</Text> : null}<AppButton title="تحديث الحالة" variant="ghost" loading={query.isFetching} onPress={() => void query.refetch()} /></Card>
+    <WorkspaceHero eyebrow="استوديو الشارح" title={data.user.fullName} description={approved ? "موادك وعقودك وخطوات الإنتاج في مساحة واحدة." : "جهّز ملفك المهني وتابع قرار الإدارة من هنا."} icon="school-outline">
+      <View style={{ alignSelf: "flex-end", backgroundColor: "#FFFFFF", borderRadius: 18, padding: 5 }}><WorkspaceStatus label={statusLabels[data.profile.status] || data.profile.status} tone={statusTone} /></View>
+    </WorkspaceHero>
+    <Card style={{ gap: 11, marginBottom: 18, borderColor: data.profile.reviewNotes ? colors.warning : colors.border }}>
+      <Text accessibilityRole="header" style={{ color: colors.text, fontSize: 17, fontWeight: "900", textAlign: "right" }}>{approved ? "خطوتك التالية" : "حالة طلبك"}</Text>
+      <Text style={{ color: colors.textSoft, fontSize: 14, lineHeight: 25, textAlign: "right" }}>{data.profile.status === "submitted" ? "استلمت الإدارة ملفك. ستظهر الملاحظات هنا، والمستندات مقفلة أثناء المراجعة." : approved ? "افتح موادك المسندة، راجع العقود، ثم أكمل الفيديوهات المطلوبة." : "أكمل ملفك المهني ومستنداتك، ثم قدّم الطلب للإدارة للمراجعة."}</Text>
+      {data.profile.reviewNotes ? <Text selectable style={{ color: colors.warning, fontSize: 14, lineHeight: 24, textAlign: "right" }}>ملاحظة الإدارة: {data.profile.reviewNotes}</Text> : null}
+      <AppButton title="تحديث الحالة" icon="refresh-outline" variant="ghost" loading={query.isFetching} onPress={() => void query.refetch()} />
+    </Card>
+    {approved ? <><InstructorAssignments userId={userId} /><InstructorContracts userId={userId} /></> : null}
     <InstructorEditor key={data.profile.revision} data={data} refresh={async () => { const updated = await query.refetch(); return !updated.isError; }} />
-    <InstructorContracts userId={userId} />
-    <InstructorAssignments userId={userId} />
+    {!approved ? <><InstructorContracts userId={userId} /><InstructorAssignments userId={userId} /></> : null}
     <SectionTitle title="حماية حساب الشارح" subtitle="حساب مستقل؛ الأدوار والصلاحيات يحددها الخادم" />
     <RegisteredDevices /><AccountMfaPanel />
     <View style={{ gap: 10, marginTop: 18 }}><AppButton title="إشعاراتي" variant="soft" onPress={() => router.push("/notifications")} /><AppButton title="الدعم الفني" variant="ghost" onPress={() => router.push("/support")} /><AppButton title="الأمان وكلمة المرور" variant="ghost" onPress={() => router.push("/security")} /></View>

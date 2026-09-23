@@ -5,10 +5,11 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { tmpdir } from "node:os";
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { nativeSource } from "./helpers/native-source.mjs";
 import { runtimeServices } from "../scripts/runtime-supervisor.mjs";
 const files = await nativeSource("lib/gemini-control-files.ts", { constants, lstat: fs.lstat, open: fs.open, realpath: fs.realpath, dirname: path.dirname, isAbsolute: path.isAbsolute, normalize: path.normalize, parse: path.parse });
-const posix = { skip: process.platform === "win32" };
+const posix = { skip: process.platform === "win32" ? "Requires POSIX private modes/O_NOFOLLOW/FIFO; the Ubuntu Quality gates job executes these real filesystem checks." : false };
 const token = (value = "synthetic-token", milliseconds = 600000) => JSON.stringify({ accessToken: value, expiresAt: new Date(Date.now() + milliseconds).toISOString() });
 async function fixture(t) {
   const dir = await fs.mkdtemp(path.join(tmpdir(), "maras-gemini-control-"));
@@ -86,12 +87,13 @@ test("non-secret plans can be readable but never writable by other principals", 
 });
 test("renewal is disabled by default and only a fixed supervised worker command can be enabled", () => {
   assert.equal(runtimeServices({}).some(s => s.name === "gemini-project-refresh-worker"), false);
-  const service = runtimeServices({ GEMINI_PROJECT_REFRESH_ENABLED: "true", GEMINI_CONTROL_PLANE_TOKEN_FILE: "/run/secrets/gemini-token.json" }).find(s => s.name === "gemini-project-refresh-worker");
+  const tokenPath = path.join(path.parse(tmpdir()).root, "run", "secrets", "gemini-token.json");
+  const service = runtimeServices({ GEMINI_PROJECT_REFRESH_ENABLED: "true", GEMINI_CONTROL_PLANE_TOKEN_FILE: tokenPath }).find(s => s.name === "gemini-project-refresh-worker");
   assert.equal(service.command, process.execPath);
   assert.ok(service.args.includes("scripts/gemini-project-refresh-worker.ts"));
   assert.ok(service.args.includes("./scripts/ai-worker-runtime.mjs"));
-  assert.ok(!JSON.stringify(service).includes("/run/secrets"));
-  for (const env of [{ GEMINI_PROJECT_REFRESH_ENABLED: "yes" }, { GEMINI_PROJECT_REFRESH_ENABLED: "true" }, { GEMINI_PROJECT_REFRESH_ENABLED: "true", GEMINI_CONTROL_PLANE_TOKEN_FILE: "relative.json" }, { GEMINI_PROJECT_REFRESH_ENABLED: "true", GEMINI_CONTROL_PLANE_TOKEN_FILE: "/run/../token" }]) assert.throws(() => runtimeServices(env));
+  assert.ok(!JSON.stringify(service).includes(path.basename(tokenPath)));
+  for (const env of [{ GEMINI_PROJECT_REFRESH_ENABLED: "yes" }, { GEMINI_PROJECT_REFRESH_ENABLED: "true" }, { GEMINI_PROJECT_REFRESH_ENABLED: "true", GEMINI_CONTROL_PLANE_TOKEN_FILE: "relative.json" }, { GEMINI_PROJECT_REFRESH_ENABLED: "true", GEMINI_CONTROL_PLANE_TOKEN_FILE: path.parse(tokenPath).root + "run" + path.sep + ".." + path.sep + "token" }]) assert.throws(() => runtimeServices(env));
 });
 
 // Execute the real CI entry point in a disposable directory. A refused loopback port
@@ -99,16 +101,21 @@ test("renewal is disabled by default and only a fixed supervised worker command 
 test("isolated CI refuses every Gemini credential family before files, migrations or provider work", async t => {
   const dir = await fs.mkdtemp(path.join(tmpdir(), "maras-ci-preflight-"));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
-  const script = new URL("../scripts/qa-study-ci.mjs", import.meta.url).pathname;
+  const script = fileURLToPath(new URL("../scripts/qa-study-ci.mjs", import.meta.url));
+  // Cold Node/module startup can exceed 10s on Windows while other builds run.
+  // Keep every real credential-refusal assertion and a bounded per-child deadline.
+  const childTimeoutMs = process.platform === "win32" ? 30000 : 10000;
   for (const name of ["GEMINI_FREE_API_KEYS", "GEMINI_PAID_API_KEY", "GEMINI_CONTROL_PLANE_ACCESS_TOKEN", "GEMINI_CONTROL_PLANE_TOKEN_FILE", "GOOGLE_APPLICATION_CREDENTIALS", "GOOGLE_API_KEY", "RAILWAY_PROJECT_ID", "AWS_SECRET_ACCESS_KEY", "RESEND_API_KEY"]) {
     const env = { PATH: process.env.PATH, HOME: process.env.HOME, QA_DATABASE_URL: "postgresql://synthetic:synthetic@127.0.0.1:1/maras_qa", [name]: "synthetic-sentinel-never-log-this" };
     const child = spawn(process.execPath, [script], { cwd: dir, env, stdio: ["ignore", "pipe", "pipe"] });
     let output = "";
     const capture = chunk => { output += chunk.toString(); if (output.length > 16384) child.kill("SIGKILL"); };
     child.stdout.on("data", capture); child.stderr.on("data", capture);
-    const timer = setTimeout(() => child.kill("SIGKILL"), 10000);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; child.kill("SIGKILL"); }, childTimeoutMs);
     try {
       const code = await new Promise((resolve, reject) => { child.on("exit", resolve); child.on("error", reject); });
+      assert.equal(timedOut, false, `${name}: credential preflight exceeded ${childTimeoutMs}ms`);
       assert.equal(code, 1, name); assert.match(output, /Do not supply production credentials/);
       assert.equal(output.includes(env[name]), false); assert.deepEqual(await fs.readdir(dir), []);
     } finally { clearTimeout(timer); }

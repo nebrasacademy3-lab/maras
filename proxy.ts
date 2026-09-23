@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomBytes } from "node:crypto";
+import { pageContentSecurityPolicy } from "@/lib/page-csp";
 import { ensureRequestId, logEvent, REQUEST_ID_HEADER } from "@/lib/observability";
 
+const loopbackQa = process.env.MARAS_LOOPBACK_QA === "true" && process.env.CI === "true" && process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_PROJECT_ID && !process.env.RAILWAY_ENVIRONMENT_ID;
 const mobilePaths = ["/api/instructor/", "/api/mobile/", "/api/public/", "/api/catalog/", "/api/assistant", "/api/content-reports", "/api/support", "/api/course-requests", "/api/course-resources", "/api/favorites", "/api/cart", "/api/waitlist", "/api/profile", "/api/progress", "/api/reviews", "/api/video/", "/api/invoices/", "/api/admin/", "/api/supervisor/", "/api/ai/", "/api/auth/", "/api/checkout", "/api/coupons/", "/api/referrals", "/api/sync", "/api/learning-tracks/", "/api/analytics"];
 
 function acceptedOrigins(request: NextRequest) {
@@ -36,6 +39,14 @@ export function proxy(request: NextRequest) {
   const requestId = ensureRequestId(request.headers);
   const forwardedHeaders = new Headers(request.headers);
   forwardedHeaders.set(REQUEST_ID_HEADER, requestId);
+  const isApi = request.nextUrl.pathname === "/api" || request.nextUrl.pathname.startsWith("/api/");
+  const isPage = !isApi;
+  const nonce = isPage ? randomBytes(24).toString("base64") : null;
+  const csp = nonce ? pageContentSecurityPolicy(nonce, { development: process.env.NODE_ENV === "development", loopbackQa }) : null;
+  if (csp) {
+    forwardedHeaders.set("Content-Security-Policy", csp);
+    forwardedHeaders.set("x-nonce", nonce!);
+  }
   const applies = mobilePaths.some((path) => request.nextUrl.pathname === path || request.nextUrl.pathname.startsWith(path));
   const origin = request.headers.get("origin")?.trim();
   const corsOrigin = applies && origin && acceptedOrigins(request).has(origin) ? origin : "";
@@ -47,9 +58,15 @@ export function proxy(request: NextRequest) {
   }
   const response = NextResponse.next({ request: { headers: forwardedHeaders } });
   response.headers.set(REQUEST_ID_HEADER, requestId);
+  if (csp) {
+    response.headers.set("Content-Security-Policy", csp);
+    // Observe Trusted Types compatibility first. React 19.2 and Turbopack
+    // still write strings to DOM sinks during hydration and navigation.
+    if (process.env.NODE_ENV === "production") response.headers.set("Content-Security-Policy-Report-Only", "require-trusted-types-for 'script'");
+  }
   if (corsOrigin) for (const [key, value] of Object.entries(corsHeaders(corsOrigin))) response.headers.set(key, value);
-  logEvent("info", "http.request.accepted", { requestId, method: request.method, path: request.nextUrl.pathname });
+  if (isApi) logEvent("info", "http.request.accepted", { requestId, method: request.method, path: request.nextUrl.pathname });
   return response;
 }
 
-export const config = { matcher: "/api/:path*" };
+export const config = { matcher: ["/api/:path*", "/((?!api|_next/static|_next/image|.*\\..*).*)"] };

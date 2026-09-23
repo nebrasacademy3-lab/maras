@@ -1,5 +1,6 @@
 import { notificationRecipientWhere } from "@/lib/notification-visibility";
 import { effectiveAccessRows } from "@/lib/course-access";
+import { dashboardCourseLearning, dashboardRecommendationMatch } from "@/lib/dashboard-learning";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { and, desc, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
@@ -15,6 +16,7 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage({ searchParams }:{ searchParams:Promise<{view?:string;payment?:string;order?:string;error?:string}> }) {
   const user = await requireUser("/dashboard");
+  if (user.role === "admin" || user.role === "supervisor") redirect("/admin");
   if (!user.onboardingCompleted) redirect("/onboarding");
   const db = getDb();
   const now = new Date().toISOString();
@@ -35,10 +37,7 @@ export default async function DashboardPage({ searchParams }:{ searchParams:Prom
   const courseMap=new Map(catalogCourses.map((course)=>[course.slug,course]));
   const allCourses:DashboardCourse[] = accessRows.filter((access) => !access.revokedAt).flatMap((access) => {
     const course=courseMap.get(access.courseSlug); if(!course)return [];
-    const lessons=course.units.flatMap((unit)=>unit.lessons).filter((lesson)=>lesson.ready); const lessonIds=new Set(lessons.map((lesson)=>lesson.id)); const progress=progressRows.filter((row)=>row.courseSlug===course.slug&&lessonIds.has(row.lessonId)); const completed=progress.filter((row)=>row.completed).length;
-    const percent=lessons.length?Math.round(completed/lessons.length*100):0; const currentProgress=[...progress].sort((a,b)=>b.watchedSeconds-a.watchedSeconds)[0]; const current=lessons.find((lesson)=>lesson.id===currentProgress?.lessonId)?.title||lessons[0]?.title||"ستظهر الدروس المتاحة هنا";
-    const accessState = access.suspendedAt ? "suspended" as const : Date.parse(access.startsAt) > Date.parse(now) ? "scheduled" as const : access.expiresAt && Date.parse(access.expiresAt) <= Date.parse(now) ? "expired" as const : "active" as const;
-    return [{slug:course.slug,title:course.title,university:course.university,color:course.color,icon:course.icon,progress:percent,current,remaining:access.expiresAt?`حتى ${new Date(access.expiresAt).toLocaleDateString("ar-SA")}`:course.access,accessState,expiresAt:access.expiresAt}];
+    return [{slug:course.slug,title:course.title,university:course.university,color:course.color,icon:course.icon,...dashboardCourseLearning(course,progressRows,access,now)}];
   });
   const owned = allCourses.filter((course) => course.accessState === "active");
   const expired = allCourses.filter((course) => course.accessState !== "active");
@@ -47,7 +46,7 @@ export default async function DashboardPage({ searchParams }:{ searchParams:Prom
   const dashboardOrders:DashboardOrder[]=orderRows.map((row)=>({orderNumber:row.orderNumber,courseTitle:courseMap.get(row.courseSlug)?.title||row.courseSlug,total:row.total,currency:row.currency,status:row.status,createdAt:row.createdAt,refundStatus:refundByOrder.get(row.orderNumber)||null}));
   const dashboardRequests:DashboardRequest[]=requestRows.map((row)=>({id:row.id,courseName:row.courseName,status:row.status,attachmentsCount:row.attachmentsCount,createdAt:row.createdAt,preparedCourseSlug:row.preparedCourseSlug||null,preparedCourseTitle:row.preparedCourseSlug?courseMap.get(row.preparedCourseSlug)?.title||null:null,notes:row.notes||""}));
   const notices:DashboardNotice[]=noticeRows.map(({notification:row,readAt})=>({id:row.id,title:row.title,body:row.body,actionUrl:row.actionUrl,actionLabel:row.actionLabel,presentation:row.presentation,template:row.template,createdAt:row.createdAt,read:Boolean(readAt)}));
-  const recommended:DashboardRecommendation[]=recommendedRows.map((course)=>({slug:course.slug,title:course.title,university:course.university,specialty:course.audienceScope==="institution"?"جميع تخصصات الجامعة":course.specialty,price:course.price,color:course.color,icon:course.icon,match:course.universitySlug===user.universitySlug?(course.audienceScope==="institution"?"جامعتك":"تخصصك"):"تخصص مشابه"}));
+  const recommended:DashboardRecommendation[]=recommendedRows.map((course)=>({slug:course.slug,title:course.title,university:course.university,specialty:course.audienceScope==="institution"?"جميع تخصصات الجامعة":course.specialty,price:course.price,color:course.color,icon:course.icon,match:dashboardRecommendationMatch(course,user.universitySlug)}));
   const tickets=ticketRows.map((ticket)=>({...ticket,replies:replyRows.filter((reply)=>reply.ticketId===ticket.id).map((reply)=>({id:reply.id,body:reply.body,createdAt:reply.createdAt}))}));
   const params=await searchParams;
   const returnOrder=params.payment==="return"&&typeof params.order==="string"&&/^[A-Za-z0-9._:-]{3,100}$/.test(params.order)?params.order:"";

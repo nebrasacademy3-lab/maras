@@ -1,24 +1,21 @@
 import type { NextConfig } from "next";
 
-const developmentScriptSource = process.env.NODE_ENV === "development" ? " 'unsafe-eval'" : "";
 const loopbackQa = process.env.MARAS_LOOPBACK_QA === "true" && process.env.CI === "true" && process.env.GITHUB_ACTIONS === "true" && !process.env.RAILWAY_PROJECT_ID && !process.env.RAILWAY_ENVIRONMENT_ID;
-const contentSecurityPolicy = [
-  "default-src 'self'",
-  "base-uri 'self'",
-  "object-src 'none'",
-  "frame-ancestors 'self'",
-  "form-action 'self'",
-  `script-src 'self' 'unsafe-inline'${developmentScriptSource}`,
-  "script-src-attr 'none'",
-  "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: blob: https:",
-  "font-src 'self' data:",
-  "media-src 'self' blob:",
-  `connect-src 'self'${loopbackQa ? " http://127.0.0.1:3100" : ""} https://api.tap.company https://*.tap.company https://*.t3.storageapi.dev`,
-  "frame-src 'self' https://*.tap.company",
-  "worker-src 'self' blob:",
-  "manifest-src 'self'",
-].join("; ");
+
+// Public TLS is terminated by the trusted edge, which must overwrite
+// X-Forwarded-Proto. Never derive a redirect destination from request headers.
+const productionTransport = process.env.NODE_ENV === "production" && !loopbackQa;
+const publicHttpsOrigins = [...new Set([process.env.APP_URL, process.env.NEXT_PUBLIC_SITE_URL].flatMap((value) => {
+  if (!value) return [];
+  try {
+    const url = new URL(value);
+    const host = url.hostname;
+    const dnsHost = host.length <= 253 && host.includes(".") && host.split(".").every((label) => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label));
+    if (url.protocol !== "https:" || url.username || url.password || url.pathname !== "/" || url.search || url.hash
+      || !dnsHost || /^[\d.]+$/.test(host) || /(?:^|\.)(?:localhost|local|internal|invalid)$/.test(host)) return [];
+    return [url.origin];
+  } catch { return []; }
+}))];
 
 // Explicit private namespaces avoid changing public catalog/media cache behavior.
 const privatePageRoots = [
@@ -49,6 +46,20 @@ const nextConfig: NextConfig = {
   experimental: {
     proxyClientMaxBodySize: "220mb",
   },
+  async redirects() {
+    if (!productionTransport) return [];
+    return publicHttpsOrigins.map((origin) => ({
+      source: "/:path*",
+      // Match the configured host exactly, including literal dots.
+      has: [
+        { type: "host" as const, value: new URL(origin).hostname.replace(/\./g, "\\.") },
+        { type: "header" as const, key: "x-forwarded-proto", value: "http" },
+      ],
+      destination: `${origin}/:path*`,
+      // 308 preserves POST bodies for OAuth callbacks, payments and webhooks.
+      permanent: true,
+    }));
+  },
   async headers() {
     return [
       {
@@ -58,7 +69,6 @@ const nextConfig: NextConfig = {
           { key: "X-Frame-Options", value: "SAMEORIGIN" },
           { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
           { key: "Permissions-Policy", value: "camera=(), microphone=(self), geolocation=(), fullscreen=(self), display-capture=(), picture-in-picture=()" },
-          { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
           { key: "X-Permitted-Cross-Domain-Policies", value: "none" },
           { key: "Origin-Agent-Cluster", value: loopbackQa ? "?0" : "?1" },
           { key: "Cross-Origin-Opener-Policy", value: loopbackQa ? "unsafe-none" : "same-origin" },
@@ -67,9 +77,15 @@ const nextConfig: NextConfig = {
             { key: "Access-Control-Allow-Origin", value: "http://127.0.0.1:3100" },
             { key: "Access-Control-Allow-Credentials", value: "true" },
           ] : []),
-          { key: "Content-Security-Policy", value: contentSecurityPolicy },
         ],
       },
+      // HSTS is meaningful only on HTTPS and must not persist for local QA.
+      // Preserve the existing subdomain policy; preload requires a separate audit.
+      ...(productionTransport ? [{
+        source: "/:path*",
+        has: [{ type: "header" as const, key: "x-forwarded-proto", value: "https" }],
+        headers: [{ key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" }],
+      }] : []),
       {
         source: "/api/video/:path*",
         headers: [

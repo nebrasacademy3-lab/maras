@@ -121,7 +121,7 @@ test("return paths reject authority tricks, backslashes/control bytes and API de
 
 test("verified staff enter their own workspace after login or MFA without student onboarding", () => {
   for (const native of [false, true]) {
-    for (const [role, path] of [["admin", "/admin"], ["supervisor", "/supervisor"], ["instructor", "/instructor"]]) {
+    for (const [role, path] of [["admin", "/admin"], ["supervisor", "/admin"], ["instructor", "/instructor"]]) {
       const staff = { ...complete, role, profileCompleted: false, onboardingCompleted: false };
       assert.equal(readiness.accountNext(staff, native), path);
       assert.equal(readiness.accountNext({ ...staff, emailVerified: false }, native), "/verify-email");

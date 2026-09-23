@@ -37,3 +37,43 @@ test("copied session URLs and public preview URLs fail before any private storag
  assert.equal((await run()).response.status,401);user={id:2};session="session-two";assert.equal((await run()).response.status,403);user={id:1};assert.equal((await run()).response.status,403);
  grant={lessonId:"lesson",courseSlug:"course",email:"preview",previewProofHash:hash("a".repeat(48))};assert.equal((await run()).response.status,403);delete grant.previewProofHash;assert.equal((await run()).response.status,403);assert.equal(dbReads,0);
 });
+
+
+test("unbound legacy paid and preview tokens fail before querying any lesson", async () => {
+ for (const email of ["preview", "student@example.test"]) {
+  const access = await pureSource("lib/video-access.ts", { process: { env: { VIDEO_SIGNING_SECRET: secret } }, verifyVideoToken: async () => ({ lessonId: "lesson", courseSlug: "course", email }), jsonError: (error, status) => Response.json({ error }, { status }), getDb: () => { throw Error("unbound tokens must fail before DB"); } });
+  const response = await access.authorizeVideoRequest(new Request("https://example.test/video"), "lesson", "course", "opaque");
+  assert.equal(response.ok, false);
+  assert.equal(response.response.status, 403);
+ }
+});
+
+test("every video segment rechecks session and course revocation but authenticates only once", async () => {
+ const hash = s => createHash("sha256").update(s).digest("hex");
+ let sessionReads = 0, accessReads = 0, revoked = false, signedOut = false;
+ const lessonsDb = { name: "lesson" }, courseAccess = { name: "access" }, videoAssets = { name: "asset" };
+ const access = await pureSource("lib/video-access.ts", {
+  process: { env: { VIDEO_SIGNING_SECRET: secret } },
+  verifyVideoToken: async () => ({ courseSlug: "course", lessonId: "lesson", email: "student@example.test", viewerId: 1, sessionHash: hash("session"), client: "web" }),
+  requestSessionToken: () => "session", hashOpaqueToken: async value => hash(value),
+  getSessionUser: async () => { sessionReads++; return signedOut ? null : { id: 1, email: "student@example.test", role: "student" }; },
+  jsonError: (error, status) => Response.json({ error }, { status }),
+  lessonsDb, courseAccess, videoAssets, and: () => true, eq: () => true,
+  activeCourseAccessWhere: (id, course) => { assert.equal(id, 1); assert.equal(course, "course"); return true; },
+  getContentViewMode: async () => "both", contentViewModeError: () => null,
+  getDb: () => ({ select: () => ({ from: table => ({ where: () => ({ limit: async () => {
+   if (table === lessonsDb) return [{ freePreview: false, videoAssetId: 1 }];
+   if (table === courseAccess) { accessReads++; return revoked ? [] : [{ id: 1 }]; }
+   return [{ id: 1, status: "ready", storageProvider: "local" }];
+  } }) }) }) }),
+ });
+ const run = () => access.authorizeVideoRequest(new Request("https://example.test/video"), "lesson", "course", "opaque");
+ assert.equal((await run()).ok, true);
+ assert.equal(sessionReads, 1);
+ revoked = true;
+ assert.equal((await run()).response.status, 403);
+ assert.equal(sessionReads, 2); assert.equal(accessReads, 2);
+ signedOut = true;
+ assert.equal((await run()).response.status, 401);
+ assert.equal(sessionReads, 3); assert.equal(accessReads, 2);
+});

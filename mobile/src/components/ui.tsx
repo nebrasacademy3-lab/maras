@@ -81,7 +81,7 @@ export function Screen({ children, scroll = true, padded = true, keyboard = fals
   }, [entrance, reduceMotion, reveals]));
   const footer = showFooter ? <MobileFooter /> : null;
   const animatedContent = <Animated.View style={[styles.screenContent, !scroll && styles.flex, { direction, opacity: entrance.interpolate({ inputRange: [0, 1], outputRange: [.92, 1] }), transform: [{ translateY: entrance.interpolate({ inputRange: [0, 1], outputRange: [8, 0] }) }] }]}>{children}{footer}</Animated.View>;
-  const content = scroll ? <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} onScroll={reveals.check} scrollEventThrottle={64} onContentSizeChange={reveals.check} style={{ direction }} contentContainerStyle={[styles.scroll, padded && styles.padded, { direction }, style]}>{animatedContent}</ScrollView> : <View style={[styles.flex, padded && styles.padded, { direction }, style]}>{animatedContent}</View>;
+  const content = scroll ? <ScrollView contentInsetAdjustmentBehavior="automatic" keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} onScroll={reveals.check} scrollEventThrottle={64} onContentSizeChange={reveals.check} style={{ direction }} contentContainerStyle={[styles.scroll, padded && styles.padded, { direction }, style]}>{animatedContent}</ScrollView> : <View style={[styles.flex, padded && styles.padded, { direction }, style]}>{animatedContent}</View>;
   const measuredContent = <View ref={viewport} collapsable={false} onLayout={reveals.check} style={styles.flex}>{content}</View>;
   return <ScrollRevealContext.Provider value={scroll ? reveals : null}><SafeAreaView edges={["top", "left", "right"]} style={[styles.flex, { backgroundColor: colors.background, direction }]}>{keyboard ? <KeyboardAvoidingView style={[styles.flex, { direction }]} behavior={Platform.OS === "ios" ? "padding" : "height"}>{measuredContent}</KeyboardAvoidingView> : measuredContent}</SafeAreaView></ScrollRevealContext.Provider>;
 }
@@ -103,12 +103,12 @@ export function FadeIn({ children, delay = 0, style }: { children: React.ReactNo
 }
 
 export function AppButton({ title, onPress, icon, variant = "primary", disabled = false, loading = false, full = true }: { title: string; onPress?: () => void; icon?: React.ComponentProps<typeof Ionicons>["name"]; variant?: "primary" | "soft" | "ghost" | "danger"; disabled?: boolean; loading?: boolean; full?: boolean }) {
-  const { colors } = useTheme();
-  const { direction, rowDirection } = useLanguage();
+  const { colors, dark } = useTheme();
+  const { direction, rowDirection, t } = useLanguage();
   const reduceMotion = useReduceMotion();
-  const contentColor = variant === "primary" || variant === "danger" ? "#FFFFFF" : colors.primary;
-  const background = variant === "primary" ? colors.primary : variant === "danger" ? colors.danger : variant === "soft" ? colors.surfaceAlt : "transparent";
-  return <Pressable accessibilityRole="button" accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { direction, flexDirection: rowDirection, backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, opacity: disabled ? .45 : pressed ? .8 : 1, transform: [{ scale: pressed && !reduceMotion ? .97 : 1 }] }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
+  const contentColor = variant === "danger" && dark ? "#101B30" : variant === "primary" || variant === "danger" ? "#FFFFFF" : colors.primary;
+  const background = variant === "primary" ? colors.action : variant === "danger" ? colors.danger : variant === "soft" ? colors.surfaceAlt : "transparent";
+  return <Pressable accessibilityRole="button" accessibilityLabel={t(title)} accessibilityState={{ disabled: disabled || loading, busy: loading }} disabled={disabled || loading} onPress={onPress} style={({ pressed }) => [styles.button, full && styles.buttonFull, { direction, flexDirection: rowDirection, backgroundColor: background, borderColor: variant === "ghost" ? colors.border : background, boxShadow: variant === "primary" ? (dark ? "0 8px 22px rgba(0,0,0,.22)" : "0 8px 22px rgba(33,77,202,.18)") : undefined, opacity: disabled ? .45 : pressed ? .82 : 1, transform: [{ scale: pressed && !reduceMotion ? .97 : 1 }] }]}>{loading ? <ActivityIndicator color={contentColor} /> : <>{icon && <Ionicons name={icon} size={18} color={contentColor} />}<Text style={[styles.buttonText, { color: contentColor }]}>{title}</Text></>}</Pressable>;
 }
 
 export function Field({ label, error, icon, trailing, inputDirection = "natural", ...props }: TextInputProps & { label: string; error?: string; icon?: React.ComponentProps<typeof Ionicons>["name"]; trailing?: React.ReactNode; inputDirection?: "natural"|"ltr" }) {
@@ -116,13 +116,13 @@ export function Field({ label, error, icon, trailing, inputDirection = "natural"
   const { direction, textAlign, t } = useLanguage();
   const [focused, setFocused] = useState(false);
   const ltr = inputDirection === "ltr";
-  return <View style={[styles.fieldWrap, { direction }]}><Text style={[styles.label, { color: colors.text, textAlign }]}>{label}</Text><View style={[styles.inputWrap, { direction, backgroundColor: colors.surface, borderColor: error ? colors.danger : focused ? colors.primary : colors.border, opacity: props.editable === false ? .6 : 1 }]}>{icon && <Ionicons name={icon} size={19} color={colors.textSoft} />}<TextInput {...props} accessibilityLabel={props.accessibilityLabel || t(label)} onFocus={(event) => { setFocused(true); props.onFocus?.(event); }} onBlur={(event) => { setFocused(false); props.onBlur?.(event); }} placeholderTextColor={colors.textSoft} selectionColor={colors.primary} style={[styles.input, ltr && styles.inputLtr, { color: colors.text }, props.style]} />{trailing ? <View style={styles.trailing}>{trailing}</View> : null}</View>{error ? <Text style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}</View>;
+  return <View style={[styles.fieldWrap, { direction }]}><Text style={[styles.label, { color: colors.text, textAlign }]}>{label}</Text><View style={[styles.inputWrap, { direction, backgroundColor: colors.surface, borderColor: error ? colors.danger : focused ? colors.primary : colors.border, opacity: props.editable === false ? .6 : 1 }]}>{icon && <Ionicons name={icon} size={19} color={colors.textSoft} />}<TextInput {...props} accessibilityLabel={props.accessibilityLabel || t(label)} onFocus={(event) => { setFocused(true); props.onFocus?.(event); }} onBlur={(event) => { setFocused(false); props.onBlur?.(event); }} placeholderTextColor={colors.textSoft} selectionColor={colors.primary} style={[styles.input, ltr && styles.inputLtr, { color: colors.text }, props.style]} />{trailing ? <View style={styles.trailing}>{trailing}</View> : null}</View>{error ? <Text accessibilityLiveRegion="polite" selectable style={[styles.error, { color: colors.danger }]}>{error}</Text> : null}</View>;
 }
 
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const { colors, dark } = useTheme();
   const { direction } = useLanguage();
-  return <View style={[styles.card, { direction, backgroundColor: colors.surface, borderColor: colors.border, shadowOpacity: dark ? .22 : .06 }, style]}>{children}</View>;
+  return <View style={[styles.card, { direction, backgroundColor: colors.surface, borderColor: colors.border, boxShadow: dark ? "0 10px 28px rgba(0,0,0,.20)" : "0 8px 28px rgba(19,39,80,.07)" }, style]}>{children}</View>;
 }
 
 export function SectionTitle({ title, subtitle, action }: { title: string; subtitle?: string; action?: React.ReactNode }) {
@@ -133,13 +133,13 @@ export function SectionTitle({ title, subtitle, action }: { title: string; subti
 
 export function SearchBox({ value, onChangeText, placeholder = "ابحث..." }: { value: string; onChangeText: (value: string) => void; placeholder?: string }) {
   const { colors } = useTheme();
-  const { direction } = useLanguage();
-  return <View style={[styles.search, { direction, backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="search" size={20} color={colors.textSoft} /><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.textSoft} style={[styles.searchInput, { color: colors.text }]} /><Pressable onPress={() => onChangeText("")} hitSlop={12}>{value ? <Ionicons name="close-circle" size={19} color={colors.textSoft} /> : null}</Pressable></View>;
+  const { direction, t } = useLanguage();
+  return <View style={[styles.search, { direction, backgroundColor: colors.surface, borderColor: colors.border }]}><Ionicons name="search" size={20} color={colors.textSoft} /><TextInput accessibilityLabel={t(placeholder)} returnKeyType="search" value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={colors.textSoft} style={[styles.searchInput, { color: colors.text }]} />{value ? <Pressable accessibilityRole="button" accessibilityLabel={t("مسح البحث")} onPress={() => onChangeText("")} style={{ width: 44, height: 44, alignItems: "center", justifyContent: "center" }}><Ionicons name="close-circle" size={20} color={colors.textSoft} /></Pressable> : null}</View>;
 }
 
 export function LoadingState({ label = "جارٍ تحميل مراس..." }: { label?: string }) {
   const { colors } = useTheme();
-  return <View style={styles.state}><ActivityIndicator size="large" color={colors.primary} /><Text style={[styles.stateText, { color: colors.textSoft }]}>{label}</Text></View>;
+  return <View accessibilityRole="progressbar" accessibilityLabel={label} accessibilityState={{ busy: true }} style={styles.state}><ActivityIndicator size="large" color={colors.primary} /><Text style={[styles.stateText, { color: colors.textSoft }]}>{label}</Text></View>;
 }
 
 export function EmptyState({ icon = "sparkles-outline", title, text, action }: { icon?: React.ComponentProps<typeof Ionicons>["name"]; title: string; text: string; action?: React.ReactNode }) {
@@ -149,16 +149,16 @@ export function EmptyState({ icon = "sparkles-outline", title, text, action }: {
 
 export function HeroGradient({ children }: { children: React.ReactNode }) {
   const { colors } = useTheme();
-  return <LinearGradient colors={[colors.primaryDark, colors.primary, colors.violet]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>{children}</LinearGradient>;
+  return <LinearGradient colors={[colors.hero, colors.heroEnd]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.hero}>{children}</LinearGradient>;
 }
 
 const styles = StyleSheet.create({
-  flex: { flex: 1, minWidth: 0 }, screenContent: { flexGrow: 1, width: "100%", maxWidth: 1160, alignSelf: "center" }, scroll: { flexGrow: 1, paddingBottom: 120 }, padded: { paddingHorizontal: metrics.screen },
-  button: { minHeight: 50, paddingHorizontal: 18, paddingVertical: 12, borderRadius: 15, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }, buttonFull: { width: "100%" }, buttonText: { fontSize: 14, lineHeight: 22, fontWeight: "800", flexShrink: 1, textAlign: "center" },
-  fieldWrap: { gap: 7, marginBottom: 14 }, label: { fontSize: 12, fontWeight: "800", writingDirection: "rtl" }, inputWrap: { minHeight: 56, borderWidth: 1, borderRadius: 15, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 9 }, input: { flex: 1, minWidth: 0, minHeight: 54, paddingVertical: 12, fontSize: 15 }, trailing: { flexShrink: 0, alignItems: "center", justifyContent: "center" }, inputLtr: { writingDirection: "ltr", textAlign: "left" }, error: { fontSize: 11, textAlign: "right" },
-  card: { borderRadius: metrics.radius, borderWidth: 1, padding: 16, shadowColor: "#061A42", shadowRadius: 16, shadowOffset: { width: 0, height: 8 }, elevation: 2 },
-  sectionHead: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 12, marginTop: 24, marginBottom: 12 }, sectionTitle: { fontSize: 21, fontWeight: "900", textAlign: "right", writingDirection: "rtl" }, sectionSub: { fontSize: 11, lineHeight: 18, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
-  search: { minHeight: 52, borderWidth: 1, borderRadius: 17, paddingHorizontal: 14, flexDirection: "row", alignItems: "center", gap: 9 }, searchInput: { flex: 1, minHeight: 50, fontSize: 14, writingDirection: "rtl" },
-  state: { minHeight: 300, alignItems: "center", justifyContent: "center", gap: 14 }, stateText: { fontSize: 13 }, stateCard: { marginTop: 22, alignItems: "center", paddingVertical: 30 }, stateIcon: { width: 64, height: 64, borderRadius: 22, alignItems: "center", justifyContent: "center" }, emptyTitle: { fontSize: 18, fontWeight: "900", marginTop: 14 }, emptyText: { fontSize: 12, lineHeight: 21, textAlign: "center", marginVertical: 8, writingDirection: "rtl" },
-  hero: { borderRadius: 28, padding: 22, overflow: "hidden", marginTop: 8 },
+  flex: { flex: 1, minWidth: 0 }, screenContent: { flexGrow: 1, width: "100%", maxWidth: 1160, alignSelf: "center" }, scroll: { flexGrow: 1, paddingBottom: 130 }, padded: { paddingHorizontal: metrics.screen },
+  button: { minHeight: 54, paddingHorizontal: 20, paddingVertical: 13, borderRadius: 17, borderWidth: 1, alignItems: "center", justifyContent: "center", flexDirection: "row", gap: 8 }, buttonFull: { width: "100%" }, buttonText: { fontSize: 15, lineHeight: 23, fontWeight: "800", flexShrink: 1, textAlign: "center" },
+  fieldWrap: { gap: 8, marginBottom: 16 }, label: { fontSize: 14, fontWeight: "800", writingDirection: "rtl" }, inputWrap: { minHeight: 56, borderWidth: 1, borderRadius: 17, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 9 }, input: { flex: 1, minWidth: 0, minHeight: 54, paddingVertical: 12, fontSize: 16 }, trailing: { flexShrink: 0, alignItems: "center", justifyContent: "center" }, inputLtr: { writingDirection: "ltr", textAlign: "left" }, error: { fontSize: 12, lineHeight: 18, textAlign: "right" },
+  card: { borderRadius: metrics.radius + 2, borderWidth: 1, padding: 18, borderCurve: "continuous" },
+  sectionHead: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 12, marginTop: 28, marginBottom: 14 }, sectionTitle: { fontSize: 22, fontWeight: "900", textAlign: "right", writingDirection: "rtl" }, sectionSub: { fontSize: 13, lineHeight: 21, marginTop: 3, textAlign: "right", writingDirection: "rtl" },
+  search: { minHeight: 56, borderWidth: 1, borderRadius: 18, paddingHorizontal: 15, flexDirection: "row", alignItems: "center", gap: 9 }, searchInput: { flex: 1, minHeight: 54, fontSize: 15, writingDirection: "rtl" },
+  state: { minHeight: 280, alignItems: "center", justifyContent: "center", gap: 14 }, stateText: { fontSize: 13 }, stateCard: { marginTop: 24, alignItems: "center", paddingVertical: 34 }, stateIcon: { width: 68, height: 68, borderRadius: 23, alignItems: "center", justifyContent: "center" }, emptyTitle: { fontSize: 20, lineHeight: 29, fontWeight: "900", marginTop: 14 }, emptyText: { fontSize: 14, lineHeight: 24, textAlign: "center", marginVertical: 8, writingDirection: "rtl" },
+  hero: { borderRadius: 30, padding: 24, overflow: "hidden", marginTop: 8 },
 });

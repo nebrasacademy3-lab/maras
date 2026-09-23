@@ -18,7 +18,7 @@ function Runtime() {
   const { dark } = useTheme();
   const { isRTL, direction } = useLanguage();
   usePushNotifications();
-  return <><StatusBar style={dark ? "light" : "dark"} /><AnnouncementCampaign /><Stack key={user?.id ?? "guest"} screenOptions={{ headerShown: false, animation: isRTL ? "slide_from_left" : "slide_from_right", contentStyle: { direction, backgroundColor: dark ? "#050B18" : "#F7F9FD" } }} /><AssistantFab /><NativeInteractionProvider key={user?.id ?? "guest"} /></>;
+  return <><StatusBar style={dark ? "light" : "dark"} /><AnnouncementCampaign /><Stack key={`navigation-${user?.id ?? "guest"}`} screenOptions={{ headerShown: false, animation: isRTL ? "slide_from_left" : "slide_from_right", contentStyle: { direction, backgroundColor: dark ? "#050B18" : "#F7F9FD" } }} /><AssistantFab /><NativeInteractionProvider key={`interactions-${user?.id ?? "guest"}`} /></>;
 }
 
 export default function RootLayout() { return <AppProviders><Runtime /></AppProviders>; }

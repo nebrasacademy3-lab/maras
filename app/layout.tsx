@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { headers } from "next/headers";
 import "./globals.css";
 import "./checkout.css";
 import "./additions.css";
@@ -8,8 +9,10 @@ import "./brand-premium.css";
 import "./admin-premium.css";
 import "./motion.css";
 import "./navigation.css";
+import "./experience.css";
 import { InteractionProvider } from "@/components/interaction-provider";
 import { ThemeProvider } from "@/components/theme-provider";
+import { SkipToContent } from "@/components/skip-to-content";
 import { DeferredEnhancements } from "@/components/deferred-enhancements";
 import { AnnouncementCampaign } from "@/components/announcement-campaign";
 import { RealtimeSync } from "@/components/realtime-sync";
@@ -54,12 +57,13 @@ export const viewport: Viewport = {
 const themeScript = `(function(){try{var t=localStorage.getItem('meras-theme');var p=localStorage.getItem('meras-palette');var s=localStorage.getItem('meras-font-scale');var d=t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.classList.toggle('dark',d);document.documentElement.dataset.palette=['official','violet','rose','teal'].indexOf(p)>=0?p:'official';document.documentElement.dataset.fontScale=['0.9','1','1.1','1.2'].indexOf(s)>=0?s:'1'}catch(e){}})()`;
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const nonce = (await headers()).get("x-nonce") || undefined;
   const settings = await getPublicSettings();
   const structuredData = siteStructuredData({ legalName: settings.legal_name, description: settings.footer_description, sameAs: organizationSocialIdentityUrls(normalizedSocialLinks(settings).map((link) => link.url)) });
   return (
     <html lang="ar" dir="rtl" data-scroll-behavior="smooth" suppressHydrationWarning>
-      <head><script dangerouslySetInnerHTML={{ __html: themeScript }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(structuredData) }} /></head>
-      <body><ThemeProvider><InteractionProvider><RealtimeSync><PlatformAnalytics /><AnnouncementCampaign />{children}<DeferredEnhancements /></RealtimeSync></InteractionProvider></ThemeProvider></body>
+      <head><script nonce={nonce} dangerouslySetInnerHTML={{ __html: themeScript }} /><script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLd(structuredData) }} />{searchIndexingEnabled() && <><link rel="ard" href="/.well-known/ard.json" /><link rel="ai-catalog" href="/ai-catalog.json" /></>}</head>
+      <body><SkipToContent /><ThemeProvider><InteractionProvider><RealtimeSync><PlatformAnalytics /><AnnouncementCampaign />{children}<DeferredEnhancements /></RealtimeSync></InteractionProvider></ThemeProvider></body>
     </html>
   );
 }

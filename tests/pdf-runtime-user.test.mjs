@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { dropPdfRootPrivileges } from "../scripts/pdf-runtime-user.mjs";
 
-test("root PDF renderer drops supplementary groups then GID/UID without disabling the browser sandbox", async () => {
+test("root PDF renderer drops supplementary groups then GID/UID without disabling the browser sandbox", { skip: process.platform !== "linux" && "Requires Linux POSIX ownership and GID/UID semantics; exercised by Ubuntu quality CI." }, async () => {
  const directory = await mkdtemp(join(tmpdir(), "maras-pdf-test-"));
  const events = [];
  // The root-only branch cannot chmod another user's test directory in non-root CI.

@@ -1,3 +1,4 @@
+import { refreshOwnedTapOrder } from "@/lib/tap-return";
 import { studentWorkspaceRequirementResponse } from "@/lib/student-workspace-policy";
 import { tapChargeCreationResult } from "@/lib/tap-payments";
 import { and, eq, gt, inArray, isNull, or, sql } from "drizzle-orm";
@@ -69,8 +70,12 @@ export async function GET(request: Request) {
   if (!/^[A-Za-z0-9._:-]{3,100}$/.test(orderNumber)) return jsonError("رقم الطلب غير صالح");
   if (!await checkRateLimit("checkout-status", `user:${user.id}`, 60, 60)) return jsonError("طلبات كثيرة. حاول بعد قليل.", 429);
   const db = getDb();
-  const [order] = await db.select().from(orders).where(and(eq(orders.orderNumber, orderNumber), eq(orders.userId, user.id))).limit(1);
+  let [order] = await db.select().from(orders).where(and(eq(orders.orderNumber, orderNumber), eq(orders.userId, user.id))).limit(1);
   if (!order) return jsonError("الطلب غير موجود", 404);
+  if (await refreshOwnedTapOrder("course", orderNumber, user.id)) {
+    [order] = await db.select().from(orders).where(and(eq(orders.orderNumber, orderNumber), eq(orders.userId, user.id))).limit(1);
+    if (!order) return jsonError("الطلب غير موجود", 404);
+  }
   const items = await db.select({ courseSlug: orderItems.courseSlug }).from(orderItems).where(eq(orderItems.orderNumber, order.orderNumber));
   const courseSlugs = items.length ? items.map((item) => item.courseSlug) : [order.courseSlug];
   const catalog = await getCoursesCatalog();
@@ -258,7 +263,7 @@ export async function POST(request: Request) {
   try {
     chargeResponse = await fetch("https://api.tap.company/v2/charges/", {
       method: "POST",
-      headers: { authorization: `Bearer ${tapSecretKey}`, "content-type": "application/json" },
+      headers: { authorization: `Bearer ${tapSecretKey}`, "content-type": "application/json", lang_code: "ar" },
       body: JSON.stringify({ amount: total, currency: "SAR", customer_initiated: true, threeDSecure: true, save_card: false, description: bundleQuote ? `باقة ${bundleQuote.title} في مراس` : `اشتراك ${selected.length} مواد في مراس`, transaction: { expiry: { period: CHECKOUT_EXPIRY_MINUTES, type: "MINUTE" } }, metadata: { order_number: orderNumber, course_slugs: uniqueSlugs.join(","), payment_method: paymentMethod, bundle_slug: bundleQuote?.slug || "" }, reference: { transaction: orderNumber, order: orderNumber, idempotent: orderNumber }, customer: { first_name: nameParts[0] || customerName, last_name: nameParts.slice(1).join(" ") || "طالب مراس", email: customerEmail, phone: { country_code: "966", number: localPhone } }, source: { id: paymentSource(paymentMethod) }, post: { url: `${siteOrigin}/api/webhooks/tap` }, redirect: { url: `${siteOrigin}/dashboard?payment=return&order=${encodeURIComponent(orderNumber)}` } }),
       redirect: "error",
       signal: AbortSignal.timeout(15_000),
