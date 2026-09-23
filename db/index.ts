@@ -1,5 +1,6 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { databaseConnectionOptions } from "./connection-options";
 import * as coreSchema from "./schema";
 import * as geminiSchema from "./gemini-schema";
 import * as instructorSchema from "./instructor-schema";
@@ -9,22 +10,11 @@ const schema = { ...coreSchema, ...geminiSchema, ...instructorSchema, ...oauthPr
 let pool: Pool | null = null;
 let database: ReturnType<typeof drizzle<typeof schema>> | null = null;
 
-function getConnectionString() {
-  const connectionString = process.env.DATABASE_URL?.trim();
-  if (!connectionString) {
-    throw new Error("DATABASE_URL is required. Add the Railway PostgreSQL connection string to the service variables.");
-  }
-  return connectionString;
-}
-
 function createPool() {
-  const connectionString = getConnectionString();
-  const sslEnabled = process.env.DATABASE_SSL === "true" || /[?&]sslmode=(require|verify-ca|verify-full)/i.test(connectionString);
-  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
   const requestedMax = Number(process.env.DATABASE_POOL_MAX || 10);
   const max = Number.isFinite(requestedMax) ? Math.min(50, Math.max(2, Math.floor(requestedMax))) : 10;
   const pool = new Pool({
-    connectionString,
+    ...databaseConnectionOptions(),
     max,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 8_000,
@@ -32,7 +22,6 @@ function createPool() {
     query_timeout: 20_000,
     keepAlive: true,
     keepAliveInitialDelayMillis: 10_000,
-    ssl: sslEnabled ? { rejectUnauthorized } : undefined,
   });
   pool.on("error", (error) => console.error("[postgres-pool] idle client error", error));
   return pool;

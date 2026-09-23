@@ -1,0 +1,5 @@
+# Never commit filled App Platform specs or provider credentials.
+*.private.yaml
+*.private.yml
+*.env
+app.generated.yaml

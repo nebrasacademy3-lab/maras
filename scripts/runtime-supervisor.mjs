@@ -25,7 +25,10 @@ export function runtimeServices(env = process.env) {
     services.push({ name: "video-worker", command: process.execPath, args: ["--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/video-worker.ts"] });
   }
   if (enabled("AI_WORKER_ENABLED")) services.push({ name: "ai-worker", command: process.execPath, args: ["--import", "./scripts/ai-worker-runtime.mjs", "--require", "./scripts/tsx-runtime-bootstrap.cjs", "--import", "tsx", "scripts/ai-worker.ts"] });
-  services.push({ name: "web", command: process.execPath, args: ["./node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0", "--port", port] });
+  // The web and worker process types share this image, but only the web type
+  // listens for HTTP. Deploy worker replicas separately to avoid duplicate jobs.
+  if (enabled("WEB_RUNTIME_ENABLED")) services.push({ name: "web", command: process.execPath, args: ["./node_modules/next/dist/bin/next", "start", "--hostname", "0.0.0.0", "--port", port] });
+  if (!services.length) throw new Error("No runtime services enabled");
   return services;
 }
 

@@ -34,6 +34,11 @@ test("a partial S3 configuration cannot silently select local storage", async t 
   assert.throws(() => storage.activeStorageProvider(), /incomplete/);
 });
 
+test("DigitalOcean cannot silently use its ephemeral disk for new uploads", async t => {
+  const { storage } = await fixture(t, { HOSTING_PLATFORM: "digitalocean-app-platform" });
+  assert.throws(() => storage.activeStorageProvider(), /Durable S3 storage is required/);
+});
+
 test("local reads, writes and prefix deletes reject symlink components", async t => {
   const { storage, root, directory } = await fixture(t);
   const outside = join(directory, "outside");

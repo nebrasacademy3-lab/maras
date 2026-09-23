@@ -27,7 +27,11 @@ function s3Config(): S3Config | null {
   const endpoint = storageEndpointUrl(endpointValue, { allowLoopbackHttp: process.env.NODE_ENV !== "production" && process.env.S3_ALLOW_INSECURE_LOOPBACK === "true" });
   return { endpoint, bucket: normalizeStorageBucket(bucketValue), region: process.env.S3_REGION?.trim() || "auto", accessKeyId, secretAccessKey, forcePathStyle: process.env.S3_FORCE_PATH_STYLE !== "false" };
 }
-export function activeStorageProvider(): StorageProvider { return s3Config() ? "s3" : "local"; }
+export function activeStorageProvider(): StorageProvider {
+  if (s3Config()) return "s3";
+  if (process.env.HOSTING_PLATFORM === "digitalocean-app-platform") throw new Error("Durable S3 storage is required on DigitalOcean App Platform");
+  return "local";
+}
 /** Non-secret identity of the configured destination; queued deletion must never
  * silently follow a changed bucket, endpoint, path style or local root. */
 export function storageLocationFingerprint(provider: StorageProvider): string {

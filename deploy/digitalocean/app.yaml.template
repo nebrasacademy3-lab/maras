@@ -1,0 +1,416 @@
+# Preparation template, NOT a deployable app spec. Fill every __...__ and
+# REPLACE_SECRET marker in a private copy, validate with `doctl apps spec validate`,
+# and never commit the filled copy. See README_AR.md.
+name: maras-production
+region: __APP_REGION__
+vpc:
+  id: __VPC_UUID__
+domains:
+  - domain: __PRODUCTION_DOMAIN__
+    type: PRIMARY
+    minimum_tls_version: "1.2"
+ingress:
+  rules:
+    - match:
+        path:
+          prefix: /
+      component:
+        name: web
+        preserve_path_prefix: true
+# The app serves GET Server-Sent Events at /api/sync/stream. DigitalOcean
+# requires disabling edge caching for SSE on a custom domain.
+disable_edge_cache: true
+enhanced_threat_control_enabled: true
+alerts:
+  - rule: DEPLOYMENT_FAILED
+  - rule: DOMAIN_FAILED
+databases:
+  - name: pg
+    engine: PG
+    production: true
+    cluster_name: __PG_CLUSTER_NAME__
+    db_name: __PG_DATABASE_NAME__
+    db_user: __PG_DATABASE_USER__
+envs:
+  - key: HOSTING_PLATFORM
+    value: digitalocean-app-platform
+    scope: RUN_TIME
+    type: GENERAL
+  # Dockerfile declares ARG NEXT_PUBLIC_SITE_URL. This non-secret value must
+  # exist at build time; changing it requires rebuilding every image.
+  - key: NEXT_PUBLIC_SITE_URL
+    value: https://__PRODUCTION_DOMAIN__
+    scope: RUN_AND_BUILD_TIME
+    type: GENERAL
+  - key: APP_URL
+    value: https://__PRODUCTION_DOMAIN__
+    scope: RUN_TIME
+    type: GENERAL
+  - key: DATABASE_SSL
+    value: "true"
+    scope: RUN_TIME
+    type: GENERAL
+  - key: DATABASE_SSL_REJECT_UNAUTHORIZED
+    value: "true"
+    scope: RUN_TIME
+    type: GENERAL
+  # Six web containers x 4 connections + workers + migration must remain below
+  # the managed cluster's actual direct connection budget. Recalculate before
+  # increasing web or worker replica counts.
+  - key: DATABASE_POOL_MAX
+    value: "4"
+    scope: RUN_TIME
+    type: GENERAL
+  - key: SESSION_COOKIE_SECURE
+    value: "true"
+    scope: RUN_TIME
+    type: GENERAL
+  - key: S3_ENDPOINT
+    value: https://__SPACES_REGION__.digitaloceanspaces.com
+    scope: RUN_TIME
+    type: GENERAL
+  - key: S3_REGION
+    value: __SPACES_REGION__
+    scope: RUN_TIME
+    type: GENERAL
+  - key: S3_BUCKET
+    value: __PRIVATE_SPACES_BUCKET__
+    scope: RUN_TIME
+    type: GENERAL
+  - key: S3_FORCE_PATH_STYLE
+    value: "true"
+    scope: RUN_TIME
+    type: GENERAL
+  - key: S3_DIRECT_UPLOAD_CONDITIONAL_WRITES_VERIFIED
+    value: "false"
+    scope: RUN_TIME
+    type: GENERAL
+  - key: SEO_INDEXING_ENABLED
+    value: "false"
+    scope: RUN_TIME
+    type: GENERAL
+  - key: AUTO_SEED_CATALOG
+    value: "false"
+    scope: RUN_TIME
+    type: GENERAL
+  - key: RUN_DB_MIGRATIONS
+    value: "false"
+    scope: RUN_TIME
+    type: GENERAL
+services:
+  - name: web
+    github:
+      repo: nebrasacademy3-lab/maras
+      branch: main
+      deploy_on_push: false
+    source_dir: /
+    dockerfile_path: Dockerfile
+    run_command: ./scripts/digitalocean-launch.sh web
+    http_port: 3000
+    instance_size_slug: apps-d-2vcpu-4gb
+    autoscaling:
+      min_instance_count: 2
+      max_instance_count: 6
+      metrics:
+        cpu:
+          percent: 70
+    health_check:
+      http_path: /api/health
+      initial_delay_seconds: 180
+      period_seconds: 20
+      timeout_seconds: 15
+      failure_threshold: 6
+    termination:
+      drain_seconds: 30
+      grace_period_seconds: 60
+    envs:
+      - key: DATABASE_URL
+        value: ${pg.DATABASE_PRIVATE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_CA_CERT
+        value: ${pg.CA_CERT}
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_ACCESS_KEY_ID
+        value: REPLACE_SECRET_SPACES_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_SECRET_ACCESS_KEY
+        value: REPLACE_SECRET_SPACES_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: SESSION_SECRET
+        value: REPLACE_SECRET_SESSION
+        scope: RUN_TIME
+        type: SECRET
+      - key: ADMIN_API_TOKEN
+        value: REPLACE_SECRET_ADMIN_API
+        scope: RUN_TIME
+        type: SECRET
+      - key: ADMIN_UPLOAD_TOKEN
+        value: REPLACE_SECRET_ADMIN_UPLOAD
+        scope: RUN_TIME
+        type: SECRET
+      - key: VIDEO_SIGNING_SECRET
+        value: REPLACE_SECRET_VIDEO_SIGNING
+        scope: RUN_TIME
+        type: SECRET
+      - key: ADMIN_MFA_ENCRYPTION_KEY
+        value: REPLACE_SECRET_ADMIN_MFA
+        scope: RUN_TIME
+        type: SECRET
+      - key: SCHEDULED_TASK_TOKEN
+        value: REPLACE_SECRET_SCHEDULED_TASK
+        scope: RUN_TIME
+        type: SECRET
+      - key: REFERRAL_HASH_SALT
+        value: REPLACE_SECRET_REFERRAL_HASH
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_KEYS_ENCRYPTION_KEY
+        value: REPLACE_SECRET_AI_KEYS
+        scope: RUN_TIME
+        type: SECRET
+      - key: INSTRUCTOR_DATA_ENCRYPTION_KEY
+        value: REPLACE_SECRET_INSTRUCTOR_DATA
+        scope: RUN_TIME
+        type: SECRET
+      - key: OAUTH_TOKEN_ENCRYPTION_KEY
+        value: REPLACE_SECRET_OAUTH_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+      - key: TAP_SECRET_KEY
+        value: REPLACE_SECRET_TAP
+        scope: RUN_TIME
+        type: SECRET
+      - key: RESEND_API_KEY
+        value: REPLACE_SECRET_RESEND
+        scope: RUN_TIME
+        type: SECRET
+      - key: EMAIL_FROM
+        value: __VERIFIED_SENDER_EMAIL__
+        scope: RUN_TIME
+        type: GENERAL
+      - key: GEMINI_FREE_API_KEYS
+        value: REPLACE_SECRET_GEMINI_FREE_KEYS
+        scope: RUN_TIME
+        type: SECRET
+      - key: MALWARE_SCAN_URL
+        value: http://scanner:3001/scan
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MALWARE_SCAN_TOKEN
+        value: REPLACE_SECRET_SCANNER
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_WORKER_ENABLED
+        value: "false"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: VIDEO_WORKER_ENABLED
+        value: "false"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: STORAGE_CLEANUP_WORKER_ENABLED
+        value: "false"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: FILE_SCAN_SCHEDULER_ENABLED
+        value: "false"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: LIFECYCLE_SCHEDULER_ENABLED
+        value: "true"
+        scope: RUN_TIME
+        type: GENERAL
+  - name: scanner
+    github:
+      repo: nebrasacademy3-lab/maras
+      branch: main
+      deploy_on_push: false
+    source_dir: services/scanner
+    dockerfile_path: services/scanner/Dockerfile
+    # An internal service has no http_port and no public ingress route.
+    internal_ports:
+      - 3001
+    instance_count: 1
+    instance_size_slug: apps-d-1vcpu-4gb
+    health_check:
+      http_path: /ready
+      port: 3001
+      initial_delay_seconds: 900
+      period_seconds: 30
+      timeout_seconds: 15
+      failure_threshold: 8
+    envs:
+      - key: MALWARE_SCAN_TOKEN
+        value: REPLACE_SECRET_SCANNER
+        scope: RUN_TIME
+        type: SECRET
+workers:
+  - name: video-worker
+    github:
+      repo: nebrasacademy3-lab/maras
+      branch: main
+      deploy_on_push: false
+    source_dir: /
+    dockerfile_path: Dockerfile
+    run_command: ./scripts/digitalocean-launch.sh video-worker
+    instance_count: 1
+    instance_size_slug: apps-d-2vcpu-4gb
+    envs:
+      - key: DATABASE_URL
+        value: ${pg.DATABASE_PRIVATE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_CA_CERT
+        value: ${pg.CA_CERT}
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_ACCESS_KEY_ID
+        value: REPLACE_SECRET_SPACES_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_SECRET_ACCESS_KEY
+        value: REPLACE_SECRET_SPACES_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: VIDEO_WORKER_MAX_ACTIVE
+        value: "1"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: VIDEO_FFMPEG_THREADS
+        value: "2"
+        scope: RUN_TIME
+        type: GENERAL
+  - name: ai-worker
+    github:
+      repo: nebrasacademy3-lab/maras
+      branch: main
+      deploy_on_push: false
+    source_dir: /
+    dockerfile_path: Dockerfile
+    run_command: ./scripts/digitalocean-launch.sh ai-worker
+    instance_count: 1
+    instance_size_slug: apps-d-1vcpu-2gb
+    envs:
+      - key: DATABASE_URL
+        value: ${pg.DATABASE_PRIVATE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_CA_CERT
+        value: ${pg.CA_CERT}
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_ACCESS_KEY_ID
+        value: REPLACE_SECRET_SPACES_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_SECRET_ACCESS_KEY
+        value: REPLACE_SECRET_SPACES_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_KEYS_ENCRYPTION_KEY
+        value: REPLACE_SECRET_AI_KEYS
+        scope: RUN_TIME
+        type: SECRET
+      - key: GEMINI_FREE_API_KEYS
+        value: REPLACE_SECRET_GEMINI_FREE_KEYS
+        scope: RUN_TIME
+        type: SECRET
+      - key: AI_WORKER_MAX_ACTIVE
+        value: "2"
+        scope: RUN_TIME
+        type: GENERAL
+      - key: AI_PROVIDER_MAX_CONCURRENT
+        value: "2"
+        scope: RUN_TIME
+        type: GENERAL
+  - name: file-scan-worker
+    github:
+      repo: nebrasacademy3-lab/maras
+      branch: main
+      deploy_on_push: false
+    source_dir: /
+    dockerfile_path: Dockerfile
+    run_command: ./scripts/digitalocean-launch.sh file-scan-worker
+    instance_count: 1
+    instance_size_slug: apps-d-1vcpu-2gb
+    envs:
+      - key: DATABASE_URL
+        value: ${pg.DATABASE_PRIVATE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_CA_CERT
+        value: ${pg.CA_CERT}
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_ACCESS_KEY_ID
+        value: REPLACE_SECRET_SPACES_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_SECRET_ACCESS_KEY
+        value: REPLACE_SECRET_SPACES_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: MALWARE_SCAN_URL
+        value: http://scanner:3001/scan
+        scope: RUN_TIME
+        type: GENERAL
+      - key: MALWARE_SCAN_TOKEN
+        value: REPLACE_SECRET_SCANNER
+        scope: RUN_TIME
+        type: SECRET
+  - name: cleanup-worker
+    github:
+      repo: nebrasacademy3-lab/maras
+      branch: main
+      deploy_on_push: false
+    source_dir: /
+    dockerfile_path: Dockerfile
+    run_command: ./scripts/digitalocean-launch.sh cleanup-worker
+    instance_count: 1
+    instance_size_slug: apps-d-1vcpu-2gb
+    envs:
+      - key: DATABASE_URL
+        value: ${pg.DATABASE_PRIVATE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_CA_CERT
+        value: ${pg.CA_CERT}
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_ACCESS_KEY_ID
+        value: REPLACE_SECRET_SPACES_KEY_ID
+        scope: RUN_TIME
+        type: SECRET
+      - key: S3_SECRET_ACCESS_KEY
+        value: REPLACE_SECRET_SPACES_KEY
+        scope: RUN_TIME
+        type: SECRET
+      - key: OAUTH_TOKEN_ENCRYPTION_KEY
+        value: REPLACE_SECRET_OAUTH_TOKEN
+        scope: RUN_TIME
+        type: SECRET
+jobs:
+  - name: migrate
+    kind: PRE_DEPLOY
+    github:
+      repo: nebrasacademy3-lab/maras
+      branch: main
+      deploy_on_push: false
+    source_dir: /
+    dockerfile_path: Dockerfile
+    run_command: ./scripts/digitalocean-launch.sh migrate
+    instance_count: 1
+    instance_size_slug: apps-d-1vcpu-2gb
+    envs:
+      - key: DATABASE_URL
+        value: ${pg.DATABASE_PRIVATE_URL}
+        scope: RUN_TIME
+        type: SECRET
+      - key: DATABASE_CA_CERT
+        value: ${pg.CA_CERT}
+        scope: RUN_TIME
+        type: SECRET

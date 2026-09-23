@@ -72,8 +72,17 @@ test("runtime service configuration enables required workers and uses fixed argv
   assert.equal(shutdownTimeout({ RUNTIME_SHUTDOWN_TIMEOUT_MS: "1000" }), 1000);
 });
 
+test("web replicas and worker replicas select disjoint processes", () => {
+  const web = runtimeServices({ WEB_RUNTIME_ENABLED: "true", STORAGE_CLEANUP_WORKER_ENABLED: "false", VIDEO_WORKER_ENABLED: "false", AI_WORKER_ENABLED: "false" });
+  assert.deepEqual(web.map(service => service.name), ["web"]);
+  const workers = runtimeServices({ WEB_RUNTIME_ENABLED: " FALSE " });
+  assert.deepEqual(workers.map(service => service.name), ["storage-cleanup-worker", "video-worker", "ai-worker"]);
+  assert.ok(workers.every(service => !service.args.includes("./node_modules/next/dist/bin/next")));
+  assert.throws(() => runtimeServices({ WEB_RUNTIME_ENABLED: "false", STORAGE_CLEANUP_WORKER_ENABLED: "false", VIDEO_WORKER_ENABLED: "false", AI_WORKER_ENABLED: "false" }), /No runtime services enabled/);
+});
+
 test("invalid runtime flags, one-shot workers and shell-like port values fail closed", () => {
-  for (const env of [{ PORT: "3000; echo secret" }, { PORT: "0" }, { PORT: "65536" }, { VIDEO_WORKER_ENABLED: "yes" }, { AI_WORKER_ENABLED: "unexpected" }, { STORAGE_CLEANUP_WORKER_ENABLED: "yes" }, { VIDEO_WORKER_ONCE: "true" }]) assert.throws(() => runtimeServices(env));
+  for (const env of [{ PORT: "3000; echo secret" }, { PORT: "0" }, { PORT: "65536" }, { VIDEO_WORKER_ENABLED: "yes" }, { AI_WORKER_ENABLED: "unexpected" }, { STORAGE_CLEANUP_WORKER_ENABLED: "yes" }, { VIDEO_WORKER_ONCE: "true" }, { WEB_RUNTIME_ENABLED: "yes" }]) assert.throws(() => runtimeServices(env));
   for (const value of ["NaN", "Infinity", "0", "60001", "1.1", "-1"]) assert.throws(() => shutdownTimeout({ RUNTIME_SHUTDOWN_TIMEOUT_MS: value }));
 });
 
